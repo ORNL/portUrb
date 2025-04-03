@@ -13,6 +13,3 @@
 [submodule "external/WGS84toCartesian"]
 	path = external/WGS84toCartesian
 	url = git@github.com:chrberger/WGS84toCartesian.git
-[submodule "external/FloPoComp"]
-	path = external/FloPoComp
-	url = git@github.com:mrnorman/FloPoComp.git
