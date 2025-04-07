@@ -25,7 +25,7 @@ namespace modules {
   struct Dynamics_Euler_Stratified_WenoFV {
     // Order of accuracy (numerical convergence for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
-      size_t static constexpr ord = 11;
+      size_t static constexpr ord = 9;
     #else
       size_t static constexpr ord = PORTURB_ORD;
     #endif
@@ -58,7 +58,7 @@ namespace modules {
       auto dx = coupler.get_dx();
       auto dy = coupler.get_dy();
       auto dz = coupler.get_dz();
-      real constexpr maxwave = 350 + 100;
+      real constexpr maxwave = 350 + coupler.get_option<real>( "dycore_max_wind" , 100 );
       real cfl = coupler.get_option<real>("cfl",0.60);
       return cfl * std::min( std::min( dx , dy ) , dz ) / maxwave;
     }

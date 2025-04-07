@@ -147,43 +147,65 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "buildings_periodic") {
 
-      real constexpr p0     = 1.e5;
-      real constexpr theta0 = 300;
-      real constexpr u_g    = 10;
-      real constexpr h      = 10;
+      real h  = coupler.get_option<real>( "buildings_h"  );
+      real u0 = coupler.get_option<real>( "buildings_u0" );
+      auto compute_theta = KOKKOS_LAMBDA (real z) -> real { return 300; };
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        real x = (i_beg+i+0.5_fp)*dx;
-        real y = (j_beg+j+0.5_fp)*dy;
-        real z = (      k+0.5_fp)*dz;
-        real p     = p0;
-        real rt    = std::pow( p/C0 , 1._fp/gamma );
-        real r     = rt / theta0;
-        real T     = p/R_d/r;
-        dm_rho_d(k,j,i) = r;
-        dm_uvel (k,j,i) = u_g;
-        dm_vvel (k,j,i) = 0;
-        dm_wvel (k,j,i) = 0;
-        dm_temp (k,j,i) = T;
-        dm_rho_v(k,j,i) = 0;
+        dm_rho_d        (k,j,i) = 0;
+        dm_uvel         (k,j,i) = 0;
+        dm_vvel         (k,j,i) = 0;
+        dm_wvel         (k,j,i) = 0;
+        dm_temp         (k,j,i) = 0;
+        dm_rho_v        (k,j,i) = 0;
+        dm_immersed_prop(k,j,i) = 0;
+        for (int kk=0; kk<nqpoints; kk++) {
+          for (int jj=0; jj<nqpoints; jj++) {
+            for (int ii=0; ii<nqpoints; ii++) {
+              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real z         = (      k+0.5)*dz + qpoints(kk)*dz;
+              real theta     = compute_theta(z);
+              real p         = pressGLL(k,kk);
+              real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+              real rho       = rho_theta / theta;
+              real u         = u0;
+              real v         = 0;
+              real w         = 0;
+              real T         = p/(rho*R_d);
+              real rho_v     = 0;
+              real imm       = 0;
+              real wt = qweights(kk)*qweights(jj)*qweights(ii);
+              if ( (x >= 1*h/2 && x <= 3*h/2 && y >= 1*h/2 && y <= 3*h/2 && z <= h) ||  // Cube 1
+                   (x >= 1*h/2 && x <= 3*h/2 && y >= 5*h/2 && y <= 7*h/2 && z <= h) ||  // Cube 2
+                   (x >= 5*h/2 && x <= 7*h/2 && y >= 3*h/2 && y <= 5*h/2 && z <= h) ||  // Cube 3
+                   (x >= 5*h/2 && x <= 7*h/2 && y >= 0*h/2 && y <= 1*h/2 && z <= h) ||  // Cube 4a
+                   (x >= 5*h/2 && x <= 7*h/2 && y >= 7*h/2 && y <= 8*h/2 && z <= h) ) { // Cube 4b
+                imm = 1;
+                u = 0;
+                v = 0;
+                w = 0;
+              }
+              dm_immersed_prop(k,j,i) += imm   * wt;
+              dm_rho_d        (k,j,i) += rho   * wt;
+              dm_uvel         (k,j,i) += u     * wt;
+              dm_vvel         (k,j,i) += v     * wt;
+              dm_wvel         (k,j,i) += w     * wt;
+              dm_temp         (k,j,i) += T     * wt;
+              dm_rho_v        (k,j,i) += rho_v * wt;
+            }
+          }
+        }
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        dm_uvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
-        dm_vvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
-        if ( (x >= 1*h/2 && x <= 3*h/2 && y >= 1*h/2 && y <= 3*h/2 && z <= h) ||  // Cube 1
-             (x >= 1*h/2 && x <= 3*h/2 && y >= 5*h/2 && y <= 7*h/2 && z <= h) ||  // Cube 2
-             (x >= 5*h/2 && x <= 7*h/2 && y >= 3*h/2 && y <= 5*h/2 && z <= h) ||  // Cube 3
-             (x >= 5*h/2 && x <= 7*h/2 && y >= 0*h/2 && y <= 1*h/2 && z <= h) ||  // Cube 4a
-             (x >= 5*h/2 && x <= 7*h/2 && y >= 7*h/2 && y <= 8*h/2 && z <= h) ) { // Cube 4b
-          dm_immersed_prop(k,j,i) = 1;
-          dm_uvel         (k,j,i) = 0;
-          dm_vvel         (k,j,i) = 0;
-          dm_wvel         (k,j,i) = 0;
+        if (dm_immersed_prop(k,j,i) == 0) {
+          dm_uvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
+          dm_vvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
         }
         if (k == 0) dm_surface_temp(j,i) = 300;
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "cubes_periodic") {
 
-      dm_surface_rough = coupler.get_option<real>("cubes_sfc_roughness");
       real constexpr p0     = 1.e5;
       real constexpr theta0 = 300;
       real constexpr u0     = 10;

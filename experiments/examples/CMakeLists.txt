@@ -50,4 +50,5 @@ process_target(bomex)
 process_target(sphere)
 process_target(city)
 process_target(city_ensemble)
+process_target(buildings_periodic)
 
