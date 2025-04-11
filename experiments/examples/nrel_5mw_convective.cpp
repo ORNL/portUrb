@@ -7,6 +7,7 @@
 #include "les_closure.h"
 #include "windmill_actuators_yaw.h"
 #include "surface_flux.h"
+#include "surface_heat_flux.h"
 #include "precursor_sponge.h"
 #include "uniform_pg_wind_forcing.h"
 
@@ -29,8 +30,8 @@ int main(int argc, char** argv) {
     real D     = config["blade_radius"].as<real>()*2;
     real hub_z = config["hub_height"  ].as<real>();
 
-    real        sim_time          = 15001;
-    real        xlen              = 5120
+    real        sim_time          = 20001;
+    real        xlen              = 5120;
     real        ylen              = 5120;
     real        zlen              = 1920;
     int         nx_glob           = std::ceil(xlen/dx);    xlen = nx_glob * dx;
@@ -76,11 +77,11 @@ int main(int argc, char** argv) {
       std::cout << "Prefix:    " << out_prefix << std::endl;
       std::cout << "Domain:    " << xlen/D << " x " << ylen/D << " x " << zlen/D << std::endl;
       std::cout << "Time:      " << sim_time/3600 << std::endl;
-      std::cout << "Wind:      " << hub_wind << std::endl;
+      std::cout << "Wind:      " << std::sqrt(hub_u*hub_u+hub_v*hub_v) << std::endl;
       std::cout << "Tower:     " << coupler_main.get_option<bool>("turbine_immerse_material") << std::endl;
-      std::cout << "Blades:    " << coupler_main.get_option<bool>("turbine_do_blades") << std::endl;
-      std::cout << "Yaw Fixed: " << coupler_main.get_option<bool>("turbine_fixed_yaw") << std::endl;
-      std::cout << "Yaw Angle: " << coupler_main.get_option<bool>("turbine_initial_yaw") << std::endl;
+      std::cout << "Blades:    " << coupler_main.get_option<bool>("turbine_do_blades"       ) << std::endl;
+      std::cout << "Yaw Fixed: " << coupler_main.get_option<bool>("turbine_fixed_yaw"       ) << std::endl;
+      std::cout << "Yaw Angle: " << coupler_main.get_option<bool>("turbine_initial_yaw"     ) << std::endl;
     }
 
     // Set the turbine
@@ -125,13 +126,13 @@ int main(int argc, char** argv) {
     coupler_main.set_option<std::string>("bc_y1","open");
     coupler_main.set_option<std::string>("bc_y2","open");
     coupler_main.set_option<std::string>("bc_z1","wall_free_slip");
-    coupler_main.set_option<std::string>("bc_z2","open");
+    coupler_main.set_option<std::string>("bc_z2","wall_free_slip");
 
     coupler_prec.set_option<std::string>("bc_x1","periodic");
     coupler_prec.set_option<std::string>("bc_x2","periodic");
     coupler_prec.set_option<std::string>("bc_y1","periodic");
     coupler_prec.set_option<std::string>("bc_y2","periodic");
-    coupler_prec.set_option<std::string>("bc_z1","open"    );
+    coupler_prec.set_option<std::string>("bc_z1","wall_free_slip");
     coupler_prec.set_option<std::string>("bc_z2","wall_free_slip");
 
     windmills         .init( coupler_main );
@@ -184,19 +185,7 @@ int main(int argc, char** argv) {
       if (etime + dt > sim_time) { dt = sim_time - etime; }
 
       // Run modules
-      // {
-      //   using core::Coupler;
-      //   using modules::uniform_pg_wind_forcing_height;
-      //   coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,h,u,v); } , "pg_forcing"     );
-      //   // custom_modules::precursor_sponge( coupler_main , coupler_prec ,
-      //   //                                   {"density_dry","uvel","vvel","wvel","temp"} ,
-      //   //                                   (int) (0.1*nx_glob) , (int) (0.1*nx_glob) ,
-      //   //                                   (int) (0.1*ny_glob) , (int) (0.1*ny_glob) );
-      //   coupler_main.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"        );
-      //   coupler_main.run_module( [&] (Coupler &c) { windmills.apply         (c,dt); } , "windmills"     );
-      //   coupler_main.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"   );
-      //   coupler_main.run_module( [&] (Coupler &c) { time_averager_main.accumulate(c,dt); } , "time_averager_main" );
-      // }
+      real pgu, pgv;
       {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
@@ -204,11 +193,40 @@ int main(int argc, char** argv) {
         real u = coupler_prec.get_option<real>("hub_height_uvel");
         real v = coupler_prec.get_option<real>("hub_height_vvel");
         real tau = dt*100;
-        coupler_prec.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,h,u,v,tau); } , "pg_forcing"     );
-        coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt);           } , "dycore"         );
-        coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt);           } , "surface_fluxes" );
-        coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt);           } , "les_closure"    );
-        coupler_prec.run_module( [&] (Coupler &c) { time_averager_prec.accumulate (c,dt);           } , "time_averager"  );
+        auto run_pg_frc   = [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,tau); };
+        auto run_dycore   = [&] (Coupler &c) { dycore.time_step                                  (c,dt);           };
+        auto run_sfc_flx  = [&] (Coupler &c) { modules::apply_surface_fluxes                     (c,dt);           };
+        auto run_heat_flx = [&] (Coupler &c) { custom_modules::surface_heat_flux                 (c,dt);           };
+        auto run_les      = [&] (Coupler &c) { les_closure.apply                                 (c,dt);           };
+        auto run_tavg     = [&] (Coupler &c) { time_averager_prec.accumulate                     (c,dt);           };
+        coupler_prec.run_module( run_pg_frc   , "pg_forcing"     );
+        coupler_prec.run_module( run_dycore   , "dycore"         );
+        coupler_prec.run_module( run_sfc_flx  , "surface_fluxes" );
+        coupler_prec.run_module( run_heat_flx , "heat_fluxes"    );
+        coupler_prec.run_module( run_les      , "les_closure"    );
+        coupler_prec.run_module( run_tavg     , "time_averager"  );
+      }
+      {
+        using core::Coupler;
+        using modules::uniform_pg_wind_forcing_specified;
+        custom_modules::precursor_sponge( coupler_main , coupler_prec ,
+                                          {"density_dry","uvel","vvel","wvel","temp"} ,
+                                          (int) (0.1*nx_glob) , 0 ,
+                                          (int) (0.1*ny_glob) , 0 );
+        auto run_pg_frc   = [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); };
+        auto run_dycore   = [&] (Coupler &c) { dycore.time_step                 (c,dt);         };
+        auto run_sfc_flx  = [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);         };
+        auto run_heat_flx = [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);         };
+        auto run_turbine  = [&] (Coupler &c) { windmills.apply                  (c,dt);         };
+        auto run_les      = [&] (Coupler &c) { les_closure.apply                (c,dt);         };
+        auto run_tavg     = [&] (Coupler &c) { time_averager_main.accumulate    (c,dt);         };
+        coupler_main.run_module( run_pg_frc   , "pg_forcing"    );
+        coupler_main.run_module( run_dycore   , "dycore"        );
+        coupler_main.run_module( run_sfc_flx  , "surface_fluxes");
+        coupler_main.run_module( run_heat_flx , "heat_fluxes"   );
+        coupler_main.run_module( run_turbine  , "windmills"     );
+        coupler_main.run_module( run_les      , "les_closure"   );
+        coupler_main.run_module( run_tavg     , "time_averager" );
       }
 
       // Update time step

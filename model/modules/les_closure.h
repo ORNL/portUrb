@@ -527,28 +527,6 @@ namespace modules {
         });
       }
 
-      if (coupler.get_option<std::string>("bc_z2") == "open") {
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) ,
-                                          KOKKOS_LAMBDA (int kk, int j, int i) {
-          state(idU,hs+nz+kk,j,i) = state(idU,hs+nz-1,j,i);
-          state(idV,hs+nz+kk,j,i) = state(idV,hs+nz-1,j,i);
-          state(idW,hs+nz+kk,j,i) = state(idW,hs+nz-1,j,i);
-          state(idT,hs+nz+kk,j,i) = state(idT,hs+nz-1,j,i);
-          tke  (    hs+nz+kk,j,i) = tke  (    hs+nz-1,j,i);
-          for (int l=0; l < num_tracers; l++) { tracers(l,hs+nz+kk,j,i) = tracers(l,hs+nz-1,j,i); }
-          {
-            int  k0       = hs+nz-1;
-            int  k        = k0+1+kk;
-            real rho0     = state(idR,k0,j,i);
-            real theta0   = state(idT,k0,j,i);
-            real rho0_gm1 = std::pow(rho0  ,gamma-1);
-            real theta0_g = std::pow(theta0,gamma  );
-            state(idR,k,j,i) = std::pow( rho0_gm1 - grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) ,
-                                         1._fp/(gamma-1) );
-          }
-        });
-      }
-
       if (coupler.get_option<std::string>("bc_z2") == "periodic") {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) ,
                                           KOKKOS_LAMBDA (int kk, int j, int i) {

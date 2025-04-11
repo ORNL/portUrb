@@ -40,8 +40,12 @@ namespace modules {
   }
 
 
-  inline void uniform_pg_wind_forcing_height( core::Coupler &coupler , real dt , real height , real u0 , real v0 ,
-                                              real tau = 10 ) {
+  inline std::tuple<real,real> uniform_pg_wind_forcing_height( core::Coupler & coupler  ,
+                                                               real            dt       ,
+                                                               real            height   ,
+                                                               real            u0       ,
+                                                               real            v0       ,
+                                                               real            tau = 10 ) {
     using yakl::c::parallel_for;
     using yakl::c::SimpleBounds;
     auto dz      = coupler.get_dz();
@@ -76,6 +80,26 @@ namespace modules {
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       uvel(k,j,i) += u_forcing;
       vvel(k,j,i) += v_forcing;
+    });
+    return std::make_tuple(u_forcing/dt,v_forcing/dt);
+  }
+
+
+  inline void uniform_pg_wind_forcing_specified( core::Coupler & coupler ,
+                                                 real            dt      ,
+                                                 real            utend   ,
+                                                 real            vtend   ) {
+    using yakl::c::parallel_for;
+    using yakl::c::SimpleBounds;
+    auto nz      = coupler.get_nz();
+    auto ny      = coupler.get_ny();
+    auto nx      = coupler.get_nx();
+    auto &dm     = coupler.get_data_manager_readwrite();
+    auto uvel    = dm.get<real,3>("uvel");
+    auto vvel    = dm.get<real,3>("vvel");
+    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      uvel(k,j,i) += dt*utend;
+      vvel(k,j,i) += dt*vtend;
     });
   }
 

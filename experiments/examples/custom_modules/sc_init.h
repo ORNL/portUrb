@@ -47,7 +47,7 @@ namespace custom_modules {
     real gamma_d = cp_d/cv_d;
     real kappa_d = R_d/cp_d ;
     real cv_v    = cp_v-R_v ;
-    real C0      = pow(R_d*pow(p0,-kappa),gamma);
+    real C0      = pow(R_d*pow(p0,-kappa_d),gamma_d);
     if (! coupler.option_exists("R_d"    )) coupler.set_option<real>("R_d"    ,R_d    );
     if (! coupler.option_exists("cp_d"   )) coupler.set_option<real>("cp_d"   ,cp_d   );
     if (! coupler.option_exists("R_v"    )) coupler.set_option<real>("R_v"    ,R_v    );
@@ -129,7 +129,7 @@ namespace custom_modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real zloc = (k+0.5_fp)*dz;
         real p     = press(k);
-        real rt    = std::pow( p/C0 , 1._fp/gamma );
+        real rt    = std::pow( p/C0 , 1._fp/gamma_d );
         real r     = rt / theta0;
         real T     = p/R_d/r;
         dm_rho_d(k,j,i) = rt / theta0;
@@ -173,7 +173,7 @@ namespace custom_modules {
               real z         = (      k+0.5)*dz + qpoints(kk)*dz;
               real theta     = compute_theta(z);
               real p         = pressGLL(k,kk);
-              real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+              real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
               real rho       = rho_theta / theta;
               real u         = u0;
               real v         = 0;
@@ -221,7 +221,7 @@ namespace custom_modules {
         real y = (j_beg+j+0.5_fp)*dy;
         real z = (      k+0.5_fp)*dz;
         real p     = p0;
-        real rt    = std::pow( p/C0 , 1._fp/gamma );
+        real rt    = std::pow( p/C0 , 1._fp/gamma_d );
         real r     = rt / theta0;
         real T     = p/R_d/r;
         dm_rho_d(k,j,i) = r;
@@ -303,7 +303,7 @@ namespace custom_modules {
               real z         = (      k+0.5)*dz + qpoints(kk)*dz;
               real theta     = compute_theta(z);
               real p         = pressGLL(k,kk);
-              real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+              real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
               real rho       = rho_theta / theta;
               real umag      = uref*std::log((z+roughness)/roughness)/std::log((href+roughness)/roughness);
               real ang       = 29./180.*M_PI;
@@ -432,7 +432,7 @@ namespace custom_modules {
           for (int iter=0; iter < 10; iter++) { qv = compute_qv(z)*(1+qv); }
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
-          real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+          real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
           real rho_d     = rho / (1 + qv);
           real rho_v     = rho - rho_d;
@@ -472,7 +472,7 @@ namespace custom_modules {
           real z         = (k+0.5)*dz + qpoints(kk)*dz;
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
-          real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+          real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
           real u         = u_g;
           real v         = v_g;
@@ -492,13 +492,25 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "nrel_5mw_convective") {
 
+      real z1 = 0;
+      real z2 = 750;
+      real z3 = 850;
+      real z4 = 2000;
+      real T1 = 300;
+      real T2 = 300;
+      real T3 = 308;
+      real T4 = 311.45;
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
-        if   (z <  600) { return 309;               }
-        else            { return 309+0.004*(z-600); }
+        if      (z < z1) { return T1                         ; }
+        if      (z < z2) { return T1 + (z-z1)*(T2-T1)/(z2-z1); }
+        else if (z < z3) { return T2 + (z-z2)*(T3-T2)/(z3-z2); }
+        else if (z < z4) { return T3 + (z-z3)*(T4-T3)/(z4-z3); }
+        else             { return T4                         ; }
       };
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
-      auto u_g = coupler.get_option<real>("geostrophic_u",10.);
-      auto v_g = coupler.get_option<real>("geostrophic_v",0.);
+      auto hub_u = coupler.get_option<real>("hub_height_uvel");
+      auto hub_v = coupler.get_option<real>("hub_height_vvel");
+      auto hub_z = coupler.get_option<real>("turbine_hub_height");
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = 0;
         dm_uvel (k,j,i) = 0;
@@ -510,10 +522,10 @@ namespace custom_modules {
           real z         = (k+0.5)*dz + qpoints(kk)*dz;
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
-          real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+          real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
-          real u         = u_g;
-          real v         = v_g;
+          real u         = hub_u * std::log((z+roughness)/roughness) / std::log((hub_z+roughness)/roughness);
+          real v         = hub_v * std::log((z+roughness)/roughness) / std::log((hub_z+roughness)/roughness);
           real w         = 0;
           real T         = p/(rho*R_d);
           real rho_v     = 0;
@@ -525,7 +537,10 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = 300;
+        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
+        dm_uvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
+        dm_vvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
+        // if (k == 0) dm_surface_temp(j,i) = 300;
       });
 
 
@@ -549,7 +564,7 @@ namespace custom_modules {
           real z         = (k+0.5)*dz + qpoints(kk)*dz;
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
-          real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+          real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
           real u         = u_g;
           real v         = v_g;
@@ -564,7 +579,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = 309;
+        // if (k == 0) dm_surface_temp(j,i) = 309;
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable") {
@@ -587,7 +602,7 @@ namespace custom_modules {
           real z         = (k+0.5)*dz + qpoints(kk)*dz;
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
-          real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+          real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
           real u         = u_g;
           real v         = v_g;
@@ -626,7 +641,7 @@ namespace custom_modules {
           real z         = (k+0.5)*dz + qpoints(kk)*dz;
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
-          real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+          real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
           real ustar     = uref / std::log((href+roughness)/roughness);
           real u         = ustar * std::log((z+roughness)/roughness);
@@ -661,7 +676,7 @@ namespace custom_modules {
         real ustar = uref / std::log((href+roughness)/roughness);
         real u     = ustar * std::log((zloc+roughness)/roughness);
         real p     = press(k);
-        real rt    = std::pow( p/C0 , 1._fp/gamma );
+        real rt    = std::pow( p/C0 , 1._fp/gamma_d );
         real r     = rt / theta0;
         real T     = p/R_d/r;
         dm_rho_d(k,j,i) = rt / theta0;
@@ -691,7 +706,7 @@ namespace custom_modules {
         real ustar = uref;
         real u     = ustar * std::pow( zloc/href , pwr );
         real p     = press(k);
-        real rt    = std::pow( p/C0 , 1._fp/gamma );
+        real rt    = std::pow( p/C0 , 1._fp/gamma_d );
         real r     = rt / theta0;
         real T     = p/R_d/r;
         dm_rho_d(k,j,i) = rt / theta0;

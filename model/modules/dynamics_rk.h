@@ -749,44 +749,52 @@ namespace modules {
       auto hy_theta_cells  = dm.get<float const,1>("hy_theta_cells");
 
       if (coupler.get_option<std::string>("bc_x1") == "periodic") { // Already handled in halo_exchange
-      } else if (coupler.get_option<std::string>("bc_x1") == "open" && coupler.get_px() == 0                      ) {
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
-                                          KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-          fields(l,hs+k,hs+j,      ii) = fields(l,hs+k,hs+j,hs+0   );
-        });
+      } else if (coupler.get_option<std::string>("bc_x1") == "open") {
+        if (coupler.get_px() == 0) {
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
+                                            KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+            fields(l,hs+k,hs+j,      ii) = fields(l,hs+k,hs+j,hs+0   );
+          });
+        }
       } else {
         std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x1 can only be periodic or open";
         Kokkos::abort("");
       }
 
       if (coupler.get_option<std::string>("bc_x2") == "periodic") { // Already handled in halo_exchange
-      } else if (coupler.get_option<std::string>("bc_x2") == "open" && coupler.get_px() == coupler.get_nproc_x()-1) {
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
-                                          KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-          fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
-        });
+      } else if (coupler.get_option<std::string>("bc_x2") == "open") {
+        if (coupler.get_px() == coupler.get_nproc_x()-1) {
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
+                                            KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+            fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
+          });
+        }
       } else {
         std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x2 can only be periodic or open";
         Kokkos::abort("");
       }
 
       if (coupler.get_option<std::string>("bc_y1") == "periodic") { // Already handled in halo_exchange
-      } else if (coupler.get_option<std::string>("bc_y1") == "open" && coupler.get_py() == 0                      ) {
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
-                                          KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-          fields(l,hs+k,      jj,hs+i) = fields(l,hs+k,hs+0   ,hs+i);
-        });
+      } else if (coupler.get_option<std::string>("bc_y1") == "open") {
+        if (coupler.get_py() == 0) {
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+                                            KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            fields(l,hs+k,      jj,hs+i) = fields(l,hs+k,hs+0   ,hs+i);
+          });
+        }
       } else {
         std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y1 can only be periodic or open";
         Kokkos::abort("");
       }
 
       if (coupler.get_option<std::string>("bc_y2") == "periodic") { // Already handled in halo_exchange
-      } else if (coupler.get_option<std::string>("bc_y2") == "open" && coupler.get_py() == coupler.get_nproc_y()-1) {
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
-                                          KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-          fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
-        });
+      } else if (coupler.get_option<std::string>("bc_y2") == "open") {
+        if (coupler.get_py() == coupler.get_nproc_y()-1) {
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+                                            KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
+          });
+        }
       } else {
         std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y2 can only be periodic or open";
         Kokkos::abort("");
@@ -820,18 +828,13 @@ namespace modules {
             fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
           }
         });
-      } else if (coupler.get_option<std::string>("bc_z2") == "open") {
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
-                                          KOKKOS_LAMBDA (int l, int kk, int j, int i) {
-          fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
-        });
       } else if (coupler.get_option<std::string>("bc_z2") == "periodic") {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
                                           KOKKOS_LAMBDA (int l, int kk, int j, int i) {
           fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+kk,hs+j,hs+i);
         });
       } else {
-        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_z2 can only be open, periodic, or wall_free_slip";
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_z2 can only be periodic or wall_free_slip";
         Kokkos::abort("");
       }
 

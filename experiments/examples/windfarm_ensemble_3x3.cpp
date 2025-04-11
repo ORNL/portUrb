@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
       ensembler.register_dimension( 2 , func_nranks , func_coupler );
     }
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_main , 64 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_main , 32 , MPI_COMM_WORLD );
     coupler_main.set_parallel_comm( par_comm );
     // auto par_comm = ensembler.create_coupler_comm( coupler_main , 12 , MPI_COMM_WORLD );
 
@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
       real        sim_time          = 3600*24+1;
       std::string init_data         = "ABL_stable_bvf";
       real        bvf               = 0.03;
-      real        out_freq          = 1800;
+      real        out_freq          = 300;
       real        inform_freq       = 10;
       std::string turbine_file      = "./inputs/NREL_5MW_126_RWT.yaml";
       YAML::Node  node              = YAML::LoadFile(turbine_file);
@@ -154,6 +154,8 @@ int main(int argc, char** argv) {
       coupler_main.set_option<std::string>("bc_x2","open");
       coupler_main.set_option<std::string>("bc_y1","open");
       coupler_main.set_option<std::string>("bc_y2","open");
+      coupler_main.set_option<std::string>("bc_z1","wall_free_slip");
+      coupler_main.set_option<std::string>("bc_z2","wall_free_slip");
 
       windmills         .init( coupler_main );
       time_averager_main.init( coupler_main );
@@ -205,8 +207,8 @@ int main(int argc, char** argv) {
           if (run_main) {
             custom_modules::precursor_sponge( coupler_main , coupler_prec ,
                                               {"density_dry","uvel","vvel","wvel","temp"} ,
-                                              (int) (0.05*ny_glob) , (int) (0.05*ny_glob) ,
-                                              (int) (0.05*ny_glob) , (int) (0.05*ny_glob) );
+                                              (int) (0.05*ny_glob) , 0                    ,
+                                              0                    , 0                    );
             coupler_main.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt);           } , "dycore"            );
             coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt);           } , "surface_fluxes"    );
             coupler_main.run_module( [&] (Coupler &c) { windmills.apply              (c,dt);           } , "windmillactuators" );

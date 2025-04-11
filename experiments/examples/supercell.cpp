@@ -21,14 +21,14 @@ int main(int argc, char** argv) {
     real        xlen        = 200000;
     real        ylen        = 200000;
     real        zlen        = 20000;
-    real        dx          = 400;
-    real        dz          = 400;
+    real        dx          = 500;
+    real        dz          = 500;
     real        nx_glob     = xlen/dx;
     real        ny_glob     = ylen/dx;
     real        nz          = zlen/dz;
     real        dtphys_in   = 0;    // Use dycore time step
     int         dyn_cycle   = 1;
-    real        out_freq    = 60;
+    real        out_freq    = 900;
     real        inform_freq = 60;
     std::string out_prefix  = "supercell_200m";
     bool        is_restart  = false;
@@ -62,6 +62,13 @@ int main(int argc, char** argv) {
     time_averager.init        ( coupler );
     custom_modules::sc_perturb( coupler );
 
+    coupler.set_option<std::string>("bc_x1","periodic");
+    coupler.set_option<std::string>("bc_x2","periodic");
+    coupler.set_option<std::string>("bc_y1","periodic");
+    coupler.set_option<std::string>("bc_y2","periodic");
+    coupler.set_option<std::string>("bc_z1","wall_free_slip");
+    coupler.set_option<std::string>("bc_z2","wall_free_slip");
+
     real etime = coupler.get_option<real>("elapsed_time");
     core::Counter output_counter( out_freq    , etime );
     core::Counter inform_counter( inform_freq , etime );
@@ -89,16 +96,16 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         auto run_dycore    = [&] (Coupler &c) { dycore.time_step             (c,dt);            };
-        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer        (c,dt,dt,0.02);    };
+        // auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer        (c,dt,dt,0.02);    };
         // auto run_surf_flux = [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt);         };
-        auto run_les       = [&] (Coupler &c) { les_closure.apply            (c,dt);            };
+        // auto run_les       = [&] (Coupler &c) { les_closure.apply            (c,dt);            };
         auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate     (c,dt);            };
         auto run_micro     = [&] (Coupler &c) { micro.time_step              (c,dt);            };
         coupler.run_module( run_micro     , "microphysics"   );
         coupler.run_module( run_dycore    , "dycore"         );
-        coupler.run_module( run_sponge    , "sponge"         );
+        // coupler.run_module( run_sponge    , "sponge"         );
         // coupler.run_module( run_surf_flux , "surface_fluxes" );
-        coupler.run_module( run_les       , "les_closure"    );
+        // coupler.run_module( run_les       , "les_closure"    );
         coupler.run_module( run_tavg      , "time_averager"  );
       }
 
