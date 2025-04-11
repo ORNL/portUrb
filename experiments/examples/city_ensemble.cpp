@@ -153,8 +153,10 @@ int main(int argc, char** argv) {
       edge_sponge  .set_column  ( coupler );
       custom_modules::sc_perturb( coupler );
 
-      // coupler.set_option<std::string>("bc_x","precursor");
-      // coupler.set_option<std::string>("bc_y","precursor");
+      // coupler.set_option<std::string>("bc_x1","open");
+      // coupler.set_option<std::string>("bc_x2","open");
+      // coupler.set_option<std::string>("bc_y1","open");
+      // coupler.set_option<std::string>("bc_y2","open");
 
       real etime = coupler.get_option<real>("elapsed_time");
       core::Counter output_counter( out_freq    , etime );

@@ -150,8 +150,10 @@ int main(int argc, char** argv) {
       coupler_main.clone_into(coupler_prec);
       /////////////////////////////////////////////////////////////////////////
 
-      coupler_main.set_option<std::string>("bc_x","precursor");
-      coupler_main.set_option<std::string>("bc_y","precursor");
+      coupler_main.set_option<std::string>("bc_x1","open");
+      coupler_main.set_option<std::string>("bc_x2","open");
+      coupler_main.set_option<std::string>("bc_y1","open");
+      coupler_main.set_option<std::string>("bc_y2","open");
 
       windmills         .init( coupler_main );
       time_averager_main.init( coupler_main );

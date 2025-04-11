@@ -14,42 +14,52 @@ namespace custom_modules {
   inline void sc_init( core::Coupler & coupler ) {
     using yakl::c::parallel_for;
     using yakl::c::SimpleBounds;
-    auto nx      = coupler.get_nx();
-    auto ny      = coupler.get_ny();
-    auto nz      = coupler.get_nz();
-    auto dx      = coupler.get_dx();
-    auto dy      = coupler.get_dy();
-    auto dz      = coupler.get_dz();
-    auto xlen    = coupler.get_xlen();
-    auto ylen    = coupler.get_ylen();
-    auto zlen    = coupler.get_zlen();
-    auto i_beg   = coupler.get_i_beg();
-    auto j_beg   = coupler.get_j_beg();
-    auto nx_glob = coupler.get_nx_glob();
-    auto ny_glob = coupler.get_ny_glob();
-    auto sim2d   = coupler.is_sim2d();
-    if (! coupler.option_exists("R_d"     )) coupler.set_option<real>("R_d"     ,287.       );
-    if (! coupler.option_exists("cp_d"    )) coupler.set_option<real>("cp_d"    ,1003.      );
-    if (! coupler.option_exists("R_v"     )) coupler.set_option<real>("R_v"     ,461.       );
-    if (! coupler.option_exists("cp_v"    )) coupler.set_option<real>("cp_v"    ,1859       );
-    if (! coupler.option_exists("p0"      )) coupler.set_option<real>("p0"      ,1.e5       );
-    if (! coupler.option_exists("grav"    )) coupler.set_option<real>("grav"    ,9.81       );
-    auto R_d  = coupler.get_option<real>("R_d" );
-    auto cp_d = coupler.get_option<real>("cp_d");
-    auto R_v  = coupler.get_option<real>("R_v" );
-    auto cp_v = coupler.get_option<real>("cp_v");
-    auto p0   = coupler.get_option<real>("p0"  );
-    auto grav = coupler.get_option<real>("grav");
-    if (! coupler.option_exists("cv_d"   )) coupler.set_option<real>("cv_d"   ,cp_d - R_d );
-    auto cv_d = coupler.get_option<real>("cv_d");
-    if (! coupler.option_exists("gamma_d")) coupler.set_option<real>("gamma_d",cp_d / cv_d);
-    if (! coupler.option_exists("kappa_d")) coupler.set_option<real>("kappa_d",R_d  / cp_d);
-    if (! coupler.option_exists("cv_v"   )) coupler.set_option<real>("cv_v"   ,cp_v - R_v );
-    auto gamma = coupler.get_option<real>("gamma_d");
-    auto kappa = coupler.get_option<real>("kappa_d");
-    if (! coupler.option_exists("C0")) coupler.set_option<real>("C0" , pow( R_d * pow( p0 , -kappa ) , gamma ));
-    auto C0    = coupler.get_option<real>("C0");
+    // Grid and variable parameters
+    auto nx        = coupler.get_nx();
+    auto ny        = coupler.get_ny();
+    auto nz        = coupler.get_nz();
+    auto dx        = coupler.get_dx();
+    auto dy        = coupler.get_dy();
+    auto dz        = coupler.get_dz();
+    auto xlen      = coupler.get_xlen();
+    auto ylen      = coupler.get_ylen();
+    auto zlen      = coupler.get_zlen();
+    auto i_beg     = coupler.get_i_beg();
+    auto j_beg     = coupler.get_j_beg();
+    auto nx_glob   = coupler.get_nx_glob();
+    auto ny_glob   = coupler.get_ny_glob();
+    auto sim2d     = coupler.is_sim2d();
     auto roughness = coupler.get_option<real>("roughness",0.1);
+    auto idWV      = coupler.get_option<int >("idWV"     ,-1 );
+    if (idWV == -1) {
+      auto tracer_names = coupler.get_tracer_names();
+      for (int tr=0; tr < tracer_names.size(); tr++) { if (tracer_names.at(tr) == "water_vapor") idWV = tr; }
+      coupler.set_option<int>("idWV",idWV);
+    }
+    // Physics parameters
+    real R_d     = 287.     ;
+    real cp_d    = 1003.    ;
+    real R_v     = 461.     ;
+    real cp_v    = 1859     ;
+    real p0      = 1.e5     ;
+    real grav    = 9.81     ;
+    real cv_d    = cp_d-R_d ;
+    real gamma_d = cp_d/cv_d;
+    real kappa_d = R_d/cp_d ;
+    real cv_v    = cp_v-R_v ;
+    real C0      = pow(R_d*pow(p0,-kappa),gamma);
+    if (! coupler.option_exists("R_d"    )) coupler.set_option<real>("R_d"    ,R_d    );
+    if (! coupler.option_exists("cp_d"   )) coupler.set_option<real>("cp_d"   ,cp_d   );
+    if (! coupler.option_exists("R_v"    )) coupler.set_option<real>("R_v"    ,R_v    );
+    if (! coupler.option_exists("cp_v"   )) coupler.set_option<real>("cp_v"   ,cp_v   );
+    if (! coupler.option_exists("p0"     )) coupler.set_option<real>("p0"     ,p0     );
+    if (! coupler.option_exists("grav"   )) coupler.set_option<real>("grav"   ,grav   );
+    if (! coupler.option_exists("cv_d"   )) coupler.set_option<real>("cv_d"   ,cv_d   );
+    if (! coupler.option_exists("gamma_d")) coupler.set_option<real>("gamma_d",gamma_d);
+    if (! coupler.option_exists("kappa_d")) coupler.set_option<real>("kappa_d",kappa_d);
+    if (! coupler.option_exists("cv_v"   )) coupler.set_option<real>("cv_v"   ,cv_v   );
+    if (! coupler.option_exists("C0"     )) coupler.set_option<real>("C0"     ,C0     );
+    // Variables
     auto &dm = coupler.get_data_manager_readwrite();
     auto dims3d = {nz,ny,nx};
     auto dims2d = {   ny,nx};
@@ -64,13 +74,6 @@ namespace custom_modules {
     if (! dm.entry_exists("immersed_temp"      )) dm.register_and_allocate<real>("immersed_temp"      ,"",dims3d);
     if (! dm.entry_exists("surface_roughness"  )) dm.register_and_allocate<real>("surface_roughness"  ,"",dims2d);
     if (! dm.entry_exists("surface_temp"       )) dm.register_and_allocate<real>("surface_temp"       ,"",dims2d);
-    if (! coupler.option_exists("idWV")) {
-      auto tracer_names = coupler.get_tracer_names();
-      int idWV = -1;
-      for (int tr=0; tr < tracer_names.size(); tr++) { if (tracer_names.at(tr) == "water_vapor") idWV = tr; }
-      coupler.set_option<int>("idWV",idWV);
-    }
-    int idWV = coupler.get_option<int>("idWV");
     auto dm_rho_d          = dm.get<real,3>("density_dry"        );
     auto dm_uvel           = dm.get<real,3>("uvel"               );
     auto dm_vvel           = dm.get<real,3>("vvel"               );
@@ -88,16 +91,19 @@ namespace custom_modules {
     dm_surface_rough  = roughness;
     dm_surface_temp   = 0;
     dm_rho_v          = 0;
-
+    // Quadrature parameters
     const int nqpoints = 9;
     SArray<real,1,nqpoints> qpoints;
     SArray<real,1,nqpoints> qweights;
     TransformMatrices::get_gll_points (qpoints );
     TransformMatrices::get_gll_weights(qweights);
 
-    coupler.add_option<std::string>("bc_x","periodic");
-    coupler.add_option<std::string>("bc_y","periodic");
-    coupler.add_option<std::string>("bc_z","solid_wall");
+    coupler.add_option<std::string>("bc_x1","periodic");
+    coupler.add_option<std::string>("bc_x2","periodic");
+    coupler.add_option<std::string>("bc_y1","periodic");
+    coupler.add_option<std::string>("bc_y2","periodic");
+    coupler.add_option<std::string>("bc_z1","wall_free_slip");
+    coupler.add_option<std::string>("bc_z2","wall_free_slip");
     auto enable_gravity = coupler.get_option<bool>("enable_gravity",true);
 
 
@@ -242,9 +248,10 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "constant") {
 
-      coupler.set_option<std::string>("bc_x","precursor");
-      coupler.set_option<std::string>("bc_y","precursor");
-      coupler.set_option<std::string>("bc_z","solid_wall");
+      coupler.set_option<std::string>("bc_x1","open");
+      coupler.set_option<std::string>("bc_x2","open");
+      coupler.set_option<std::string>("bc_y1","open");
+      coupler.set_option<std::string>("bc_y2","open");
       coupler.set_option<bool>("enable_gravity",false);
       real u  = coupler.get_option<real>( "constant_uvel"  , 10.  );
       real v  = coupler.get_option<real>( "constant_vvel"  , 0.   );
@@ -264,9 +271,6 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "city") {
 
-      coupler.set_option<std::string>("bc_x","periodic");
-      coupler.set_option<std::string>("bc_y","periodic");
-      coupler.set_option<std::string>("bc_z","solid_wall");
       dm_immersed_rough = coupler.get_option<real>("building_roughness");
       real uref = 20;
       real href = 500;
@@ -325,9 +329,12 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "sphere") {
 
-      coupler.set_option<std::string>("bc_x","periodic");
-      coupler.set_option<std::string>("bc_y","periodic");
-      coupler.set_option<std::string>("bc_z","periodic");
+      coupler.set_option<std::string>("bc_x1","periodic");
+      coupler.set_option<std::string>("bc_x2","periodic");
+      coupler.set_option<std::string>("bc_y1","periodic");
+      coupler.set_option<std::string>("bc_y2","periodic");
+      coupler.set_option<std::string>("bc_z1","periodic");
+      coupler.set_option<std::string>("bc_z2","periodic");
       coupler.set_option<bool>("enable_gravity",false);
       real u  = coupler.get_option<real>( "constant_uvel"  , 20.  );
       real v  = coupler.get_option<real>( "constant_vvel"  , 0.   );
@@ -482,6 +489,45 @@ namespace custom_modules {
         }
         if (k == 0) dm_surface_temp(j,i) = 300;
       });
+
+    } else if (coupler.get_option<std::string>("init_data") == "nrel_5mw_convective") {
+
+      auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
+        if   (z <  600) { return 309;               }
+        else            { return 309+0.004*(z-600); }
+      };
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
+      auto u_g = coupler.get_option<real>("geostrophic_u",10.);
+      auto v_g = coupler.get_option<real>("geostrophic_v",0.);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        dm_rho_d(k,j,i) = 0;
+        dm_uvel (k,j,i) = 0;
+        dm_vvel (k,j,i) = 0;
+        dm_wvel (k,j,i) = 0;
+        dm_temp (k,j,i) = 0;
+        dm_rho_v(k,j,i) = 0;
+        for (int kk=0; kk<nqpoints; kk++) {
+          real z         = (k+0.5)*dz + qpoints(kk)*dz;
+          real theta     = compute_theta(z);
+          real p         = pressGLL(k,kk);
+          real rho_theta = std::pow( p/C0 , 1._fp/gamma );
+          real rho       = rho_theta / theta;
+          real u         = u_g;
+          real v         = v_g;
+          real w         = 0;
+          real T         = p/(rho*R_d);
+          real rho_v     = 0;
+          real wt = qweights(kk);
+          dm_rho_d(k,j,i) += rho   * wt;
+          dm_uvel (k,j,i) += u     * wt;
+          dm_vvel (k,j,i) += v     * wt;
+          dm_wvel (k,j,i) += w     * wt;
+          dm_temp (k,j,i) += T     * wt;
+          dm_rho_v(k,j,i) += rho_v * wt;
+        }
+        if (k == 0) dm_surface_temp(j,i) = 300;
+      });
+
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_convective") {
 

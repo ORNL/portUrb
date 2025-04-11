@@ -58,7 +58,7 @@ namespace modules {
       auto dx = coupler.get_dx();
       auto dy = coupler.get_dy();
       auto dz = coupler.get_dz();
-      real constexpr maxwave = 350 + coupler.get_option<real>( "dycore_max_wind" , 100 );
+      real maxwave = 350 + coupler.get_option<real>( "dycore_max_wind" , 100 );
       real cfl = coupler.get_option<real>("cfl",0.60);
       return cfl * std::min( std::min( dx , dy ) , dz ) / maxwave;
     }
@@ -744,60 +744,97 @@ namespace modules {
       auto ny              = coupler.get_ny();
       auto nz              = coupler.get_nz();
       auto num_tracers     = coupler.get_num_tracers();
-      auto bc_z            = coupler.get_option<std::string>("bc_z","solid_wall");
       auto &dm             = coupler.get_data_manager_readonly();
       auto hy_dens_cells   = dm.get<float const,1>("hy_dens_cells" );
       auto hy_theta_cells  = dm.get<float const,1>("hy_theta_cells");
 
-      if (coupler.get_option<std::string>("bc_x") == "precursor" && coupler.get_px() == 0) {
+      if (coupler.get_option<std::string>("bc_x1") == "periodic") { // Already handled in halo_exchange
+      } else if (coupler.get_option<std::string>("bc_x1") == "open" && coupler.get_px() == 0                      ) {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                           KOKKOS_LAMBDA (int l, int k, int j, int ii) {
           fields(l,hs+k,hs+j,      ii) = fields(l,hs+k,hs+j,hs+0   );
         });
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x1 can only be periodic or open";
+        Kokkos::abort("");
       }
-      if (coupler.get_option<std::string>("bc_x") == "precursor" && coupler.get_px() == coupler.get_nproc_x()-1) {
+
+      if (coupler.get_option<std::string>("bc_x2") == "periodic") { // Already handled in halo_exchange
+      } else if (coupler.get_option<std::string>("bc_x2") == "open" && coupler.get_px() == coupler.get_nproc_x()-1) {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                           KOKKOS_LAMBDA (int l, int k, int j, int ii) {
           fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
         });
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x2 can only be periodic or open";
+        Kokkos::abort("");
       }
 
-      if (coupler.get_option<std::string>("bc_y") == "precursor" && coupler.get_py() == 0) {
+      if (coupler.get_option<std::string>("bc_y1") == "periodic") { // Already handled in halo_exchange
+      } else if (coupler.get_option<std::string>("bc_y1") == "open" && coupler.get_py() == 0                      ) {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                           KOKKOS_LAMBDA (int l, int k, int jj, int i) {
           fields(l,hs+k,      jj,hs+i) = fields(l,hs+k,hs+0   ,hs+i);
         });
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y1 can only be periodic or open";
+        Kokkos::abort("");
       }
 
-      if (coupler.get_option<std::string>("bc_y") == "precursor" && coupler.get_py() == coupler.get_nproc_y()-1) {
+      if (coupler.get_option<std::string>("bc_y2") == "periodic") { // Already handled in halo_exchange
+      } else if (coupler.get_option<std::string>("bc_y2") == "open" && coupler.get_py() == coupler.get_nproc_y()-1) {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                           KOKKOS_LAMBDA (int l, int k, int jj, int i) {
           fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
         });
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y2 can only be periodic or open";
+        Kokkos::abort("");
       }
 
-      // z-direction BC's
-      if (bc_z == "solid_wall") {
-        auto no_slip = coupler.get_option<bool>("no_slip",false);
+      if (coupler.get_option<std::string>("bc_z1") == "wall_free_slip") {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
                                           KOKKOS_LAMBDA (int l, int kk, int j, int i) {
-          if (l == idW || l == idT) {
-            fields(l,      kk,hs+j,hs+i) = 0;
+          if (l == idW) {
+            fields(l,kk,hs+j,hs+i) = 0;
+          } else {
+            fields(l,kk,hs+j,hs+i) = fields(l,hs+0,hs+j,hs+i);
+          }
+        });
+      } else if (coupler.get_option<std::string>("bc_z1") == "periodic") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+                                          KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          fields(l,kk,hs+j,hs+i) = fields(l,nz+kk,hs+j,hs+i);
+        });
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_z1 can only be periodic or wall_free_slip";
+        Kokkos::abort("");
+      }
+
+      if (coupler.get_option<std::string>("bc_z2") == "wall_free_slip") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+                                          KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          if (l == idW) {
             fields(l,hs+nz+kk,hs+j,hs+i) = 0;
           } else {
-            fields(l,      kk,hs+j,hs+i) = fields(l,hs+0   ,hs+j,hs+i);
             fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
           }
         });
-      } else if (bc_z == "periodic") {
+      } else if (coupler.get_option<std::string>("bc_z2") == "open") {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
                                           KOKKOS_LAMBDA (int l, int kk, int j, int i) {
-          fields(l,      kk,hs+j,hs+i) = fields(l,nz+kk,hs+j,hs+i);
+          fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
+        });
+      } else if (coupler.get_option<std::string>("bc_z2") == "periodic") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+                                          KOKKOS_LAMBDA (int l, int kk, int j, int i) {
           fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+kk,hs+j,hs+i);
         });
       } else {
-        Kokkos::abort("ERROR: Specified invalid bc_z in coupler options");
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_z2 can only be open, periodic, or wall_free_slip";
+        Kokkos::abort("");
       }
+
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("halo_boundary_conditions");
       #endif
@@ -819,7 +856,6 @@ namespace modules {
       auto nz             = coupler.get_nz();
       auto num_tracers    = coupler.get_num_tracers();
       auto &neigh         = coupler.get_neighbor_rankid_matrix();
-      auto bc_z           = coupler.get_option<std::string>("bc_z","solid_wall");
       auto &dm            = coupler.get_data_manager_readonly();
       auto hy_dens_edges  = dm.get<float const,1>("hy_dens_edges" );
       auto hy_theta_edges = dm.get<float const,1>("hy_theta_edges");
@@ -861,51 +897,74 @@ namespace modules {
         });
       }
 
-      if (coupler.get_option<std::string>("bc_x") == "precursor" && coupler.get_px() == 0) {
+      if (coupler.get_option<std::string>("bc_x1") == "open" && coupler.get_px() == 0                      ) {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_state+num_tracers+1,nz,ny) ,
                                           KOKKOS_LAMBDA (int l, int k, int j) {
           limits_x(0,l,k,j,0 ) = limits_x(1,l,k,j,0 );
         });
       }
-      if (coupler.get_option<std::string>("bc_x") == "precursor" && coupler.get_px() == coupler.get_nproc_x()-1) {
+
+      if (coupler.get_option<std::string>("bc_x2") == "open" && coupler.get_px() == coupler.get_nproc_x()-1) {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_state+num_tracers+1,nz,ny) ,
                                           KOKKOS_LAMBDA (int l, int k, int j) {
           limits_x(1,l,k,j,nx) = limits_x(0,l,k,j,nx);
         });
       }
 
-      if (coupler.get_option<std::string>("bc_y") == "precursor" && coupler.get_py() == 0) {
+      if (coupler.get_option<std::string>("bc_y1") == "open" && coupler.get_py() == 0                      ) {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_state+num_tracers+1,nz,nx) ,
                                           KOKKOS_LAMBDA (int l, int k, int i) {
           limits_y(0,l,k,0 ,i) = limits_y(1,l,k,0 ,i);
         });
       }
 
-      if (coupler.get_option<std::string>("bc_y") == "precursor" && coupler.get_py() == coupler.get_nproc_y()-1) {
+      if (coupler.get_option<std::string>("bc_y2") == "open" && coupler.get_py() == coupler.get_nproc_y()-1) {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_state+num_tracers+1,nz,nx) ,
                                           KOKKOS_LAMBDA (int l, int k, int i) {
           limits_y(1,l,k,ny,i) = limits_y(0,l,k,ny,i);
         });
       }
 
-      if (bc_z == "solid_wall") {
+      if (coupler.get_option<std::string>("bc_z1") == "wall_free_slip") {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
-          if (l == idW || l == idT) {
+          if (l == idW) {
             limits_z(0,l,0 ,j,i) = 0;
             limits_z(1,l,0 ,j,i) = 0;
+          } else {
+            limits_z(0,l,0 ,j,i) = limits_z(1,l,0 ,j,i);
+          }
+        });
+      }
+
+      if (coupler.get_option<std::string>("bc_z1") == "periodic") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
+          limits_z(0,l,0 ,j,i) = limits_z(0,l,nz,j,i);
+        });
+      }
+
+      if (coupler.get_option<std::string>("bc_z2") == "wall_free_slip") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
+          if (l == idW || l == idT) {
             limits_z(0,l,nz,j,i) = 0;
             limits_z(1,l,nz,j,i) = 0;
           } else {
-            limits_z(0,l,0 ,j,i) = limits_z(1,l,0 ,j,i);
             limits_z(1,l,nz,j,i) = limits_z(0,l,nz,j,i);
           }
         });
-      } else if (bc_z == "periodic") {
+      }
+
+      if (coupler.get_option<std::string>("bc_z2") == "open") {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
-          limits_z(0,l,0 ,j,i) = limits_z(0,l,nz,j,i);
+          limits_z(1,l,nz,j,i) = limits_z(0,l,nz,j,i);
+        });
+      }
+
+      if (coupler.get_option<std::string>("bc_z2") == "periodic") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
           limits_z(1,l,nz,j,i) = limits_z(1,l,0 ,j,i);
         });
       }
+
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("edge_exchange");
       #endif
@@ -1013,7 +1072,6 @@ namespace modules {
         auto nz     = coupler.get_nz  ();
         auto ny     = coupler.get_ny  ();
         auto nx     = coupler.get_nx  ();
-        auto bc_z   = coupler.get_option<std::string>("bc_z","solid_wall");
         auto &dm    = coupler.get_data_manager_readwrite();
         if (!dm.entry_exists("dycore_immersed_proportion_halos")) {
           auto immersed_prop = dm.get<real const,3>("immersed_proportion").createDeviceCopy<real>();
