@@ -99,8 +99,7 @@ int main(int argc, char** argv) {
 
     // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-    custom_modules::Time_Averager              time_averager_main;
-    custom_modules::Time_Averager              time_averager_prec;
+    custom_modules::Time_Averager              time_averager;
     modules::LES_Closure                       les_closure;
     modules::WindmillActuators                 windmills;
 
@@ -122,10 +121,10 @@ int main(int argc, char** argv) {
     coupler_main.clone_into(coupler_prec);
     /////////////////////////////////////////////////////////////////////////
 
-    coupler_main.set_option<std::string>("bc_x1","open");
-    coupler_main.set_option<std::string>("bc_x2","open");
-    coupler_main.set_option<std::string>("bc_y1","open");
-    coupler_main.set_option<std::string>("bc_y2","open");
+    coupler_main.set_option<std::string>("bc_x1","periodic");
+    coupler_main.set_option<std::string>("bc_x2","periodic");
+    coupler_main.set_option<std::string>("bc_y1","periodic");
+    coupler_main.set_option<std::string>("bc_y2","periodic");
     coupler_main.set_option<std::string>("bc_z1","wall_free_slip");
     coupler_main.set_option<std::string>("bc_z2","wall_free_slip");
 
@@ -136,10 +135,9 @@ int main(int argc, char** argv) {
     coupler_prec.set_option<std::string>("bc_z1","wall_free_slip");
     coupler_prec.set_option<std::string>("bc_z2","wall_free_slip");
 
-    windmills         .init( coupler_main );
-    time_averager_main.init( coupler_main );
-
-    time_averager_prec.init ( coupler_prec );
+    windmills    .init( coupler_main );
+    time_averager.init( coupler_main );
+    time_averager.init( coupler_prec );
 
     windmills.turbine_group.turbines[0].u_samp_inertial = coupler_prec.get_option<real>("hub_height_uvel");
     windmills.turbine_group.turbines[0].v_samp_inertial = coupler_prec.get_option<real>("hub_height_vvel");
@@ -199,7 +197,7 @@ int main(int argc, char** argv) {
         auto run_sfc_flx  = [&] (Coupler &c) { modules::apply_surface_fluxes                     (c,dt);           };
         auto run_heat_flx = [&] (Coupler &c) { custom_modules::surface_heat_flux                 (c,dt);           };
         auto run_les      = [&] (Coupler &c) { les_closure.apply                                 (c,dt);           };
-        auto run_tavg     = [&] (Coupler &c) { time_averager_prec.accumulate                     (c,dt);           };
+        auto run_tavg     = [&] (Coupler &c) { time_averager.accumulate                          (c,dt);           };
         coupler_prec.run_module( run_pg_frc   , "pg_forcing"     );
         coupler_prec.run_module( run_dycore   , "dycore"         );
         coupler_prec.run_module( run_sfc_flx  , "surface_fluxes" );
@@ -210,17 +208,17 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_specified;
-        custom_modules::precursor_sponge( coupler_main , coupler_prec ,
-                                          {"uvel","vvel","wvel","temp","TKE"} ,
-                                          (int) (0.1*nx_glob) , 0 ,
-                                          (int) (0.1*ny_glob) , 0 );
+        // custom_modules::precursor_sponge( coupler_main , coupler_prec ,
+        //                                   {"uvel","vvel","wvel","temp","TKE"} ,
+        //                                   (int) (0.1*nx_glob) , 0 ,
+        //                                   (int) (0.1*ny_glob) , 0 );
         auto run_pg_frc   = [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); };
         auto run_dycore   = [&] (Coupler &c) { dycore.time_step                 (c,dt);         };
         auto run_sfc_flx  = [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);         };
         auto run_heat_flx = [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);         };
         auto run_turbine  = [&] (Coupler &c) { windmills.apply                  (c,dt);         };
         auto run_les      = [&] (Coupler &c) { les_closure.apply                (c,dt);         };
-        auto run_tavg     = [&] (Coupler &c) { time_averager_main.accumulate    (c,dt);         };
+        auto run_tavg     = [&] (Coupler &c) { time_averager.accumulate         (c,dt);         };
         coupler_main.run_module( run_pg_frc   , "pg_forcing"    );
         coupler_main.run_module( run_dycore   , "dycore"        );
         coupler_main.run_module( run_sfc_flx  , "surface_fluxes");
@@ -241,8 +239,8 @@ int main(int argc, char** argv) {
       if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
         coupler_main.write_output_file( out_prefix , true );
         coupler_prec.write_output_file( out_prefix_prec , true );
-        time_averager_main.reset(coupler_main);
-        time_averager_prec.reset(coupler_prec);
+        time_averager.reset(coupler_main);
+        time_averager.reset(coupler_prec);
         output_counter.reset();
       }
     } // End main simulation loop
