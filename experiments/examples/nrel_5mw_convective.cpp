@@ -72,6 +72,7 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "hub_height_vvel"          , hub_v             );
     coupler_main.set_option<real       >( "sfc_heat_flux"            , 0.005             );
     coupler_main.set_option<real       >( "kinematic_viscosity"      , 0                 );
+    coupler_main.set_option<real       >( "dycore_max_wind"          , 40                );
 
     if (coupler_main.is_mainproc()) {
       std::cout << "Prefix:    " << out_prefix << std::endl;
@@ -210,7 +211,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_specified;
         custom_modules::precursor_sponge( coupler_main , coupler_prec ,
-                                          {"density_dry","uvel","vvel","wvel","temp"} ,
+                                          {"uvel","vvel","wvel","temp","TKE"} ,
                                           (int) (0.1*nx_glob) , 0 ,
                                           (int) (0.1*ny_glob) , 0 );
         auto run_pg_frc   = [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); };
