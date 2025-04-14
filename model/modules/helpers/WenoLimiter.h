@@ -135,6 +135,8 @@ namespace limiter {
       real TV_L = TransformMatrices::coefs_to_tv( coefs_L );
       real TV_R = TransformMatrices::coefs_to_tv( coefs_R );
       convexify( TV_L , TV_R );
+      if (TV_L == 0) TV_L = TV_R;
+      if (TV_R == 0) TV_R = TV_L;
       if (params_in.imm_L) { imm_L_alter(TV_L,TV_R); }
       if (params_in.imm_R) { imm_R_alter(TV_L,TV_R); }
       qL = gll_1(TV_L,TV_R,params_in.do_map,s);
@@ -206,6 +208,8 @@ namespace limiter {
       real TV_L = TransformMatrices::coefs_to_tv( coefs_L );
       real TV_C = TransformMatrices::coefs_to_tv( coefs_C );
       real TV_R = TransformMatrices::coefs_to_tv( coefs_R );
+      if (TV_L == 0) TV_L = std::min(TV_C,TV_R);
+      if (TV_R == 0) TV_R = std::min(TV_L,TV_C);
       convexify( TV_L , TV_C , TV_R );
       if (params_in.imm_L) { imm_L_alter(TV_L,TV_C,TV_R); }
       if (params_in.imm_R) { imm_R_alter(TV_L,TV_C,TV_R); }
@@ -286,6 +290,8 @@ namespace limiter {
       real TV_2 = TransformMatrices::coefs_to_tv( coefs_2 );
       real TV_3 = TransformMatrices::coefs_to_tv( coefs_3 );
       real TV_4 = TransformMatrices::coefs_to_tv( coefs_4 );
+      if (TV_1 == 0) TV_1 = std::min(std::min(TV_2,TV_3),TV_4);
+      if (TV_4 == 0) TV_4 = std::min(std::min(TV_1,TV_2),TV_3);
       convexify( TV_1 , TV_2 , TV_3 , TV_4 );
       if (params_in.imm_L) { imm_L_alter(TV_1,TV_2,TV_3,TV_4); }
       if (params_in.imm_R) { imm_R_alter(TV_1,TV_2,TV_3,TV_4); }
@@ -372,6 +378,8 @@ namespace limiter {
       real TV_3 = TransformMatrices::coefs_to_tv( coefs_3 );
       real TV_4 = TransformMatrices::coefs_to_tv( coefs_4 );
       real TV_5 = TransformMatrices::coefs_to_tv( coefs_5 );
+      if (TV_1 == 0) TV_1 = std::min(std::min(std::min(TV_2,TV_3),TV_4),TV_5);
+      if (TV_5 == 0) TV_5 = std::min(std::min(std::min(TV_1,TV_2),TV_3),TV_4);
       convexify(TV_1,TV_2,TV_3,TV_4,TV_5);
       if (params_in.imm_L) { imm_L_alter(TV_1,TV_2,TV_3,TV_4,TV_5); }
       if (params_in.imm_R) { imm_R_alter(TV_1,TV_2,TV_3,TV_4,TV_5); }
@@ -466,6 +474,8 @@ namespace limiter {
       real TV_4 = TransformMatrices::coefs_to_tv( coefs_4 );
       real TV_5 = TransformMatrices::coefs_to_tv( coefs_5 );
       real TV_6 = TransformMatrices::coefs_to_tv( coefs_6 );
+      if (TV_1 == 0) TV_1 = std::min(std::min(std::min(std::min(TV_2,TV_3),TV_4),TV_5),TV_6);
+      if (TV_6 == 0) TV_6 = std::min(std::min(std::min(std::min(TV_1,TV_2),TV_3),TV_4),TV_5);
       convexify(TV_1,TV_2,TV_3,TV_4,TV_5,TV_6);
       if (params_in.imm_L) { imm_L_alter(TV_1,TV_2,TV_3,TV_4,TV_5,TV_6); }
       if (params_in.imm_R) { imm_R_alter(TV_1,TV_2,TV_3,TV_4,TV_5,TV_6); }
@@ -568,6 +578,8 @@ namespace limiter {
       real TV_5 = TransformMatrices::coefs_to_tv( coefs_5 );
       real TV_6 = TransformMatrices::coefs_to_tv( coefs_6 );
       real TV_7 = TransformMatrices::coefs_to_tv( coefs_7 );
+      if (TV_1 == 0) TV_1 = std::min(std::min(std::min(std::min(std::min(TV_2,TV_3),TV_4),TV_5),TV_6),TV_7);
+      if (TV_7 == 0) TV_7 = std::min(std::min(std::min(std::min(std::min(TV_1,TV_2),TV_3),TV_4),TV_5),TV_6);
       convexify(TV_1,TV_2,TV_3,TV_4,TV_5,TV_6,TV_7);
       if (params_in.imm_L) { imm_L_alter(TV_1,TV_2,TV_3,TV_4,TV_5,TV_6,TV_7); }
       if (params_in.imm_R) { imm_R_alter(TV_1,TV_2,TV_3,TV_4,TV_5,TV_6,TV_7); }
@@ -678,6 +690,8 @@ namespace limiter {
       real TV_6 = TransformMatrices::coefs_to_tv( coefs_6 );
       real TV_7 = TransformMatrices::coefs_to_tv( coefs_7 );
       real TV_8 = TransformMatrices::coefs_to_tv( coefs_8 );
+      if (TV_1 == 0) TV_1 = std::min(std::min(std::min(std::min(std::min(std::min(TV_2,TV_3),TV_4),TV_5),TV_6),TV_7),TV_8);
+      if (TV_8 == 0) TV_8 = std::min(std::min(std::min(std::min(std::min(std::min(TV_1,TV_2),TV_3),TV_4),TV_5),TV_6),TV_7);
       convexify(TV_1,TV_2,TV_3,TV_4,TV_5,TV_6,TV_7,TV_8);
       if (params_in.imm_L) { imm_L_alter(TV_1,TV_2,TV_3,TV_4,TV_5,TV_6,TV_7,TV_8); }
       if (params_in.imm_R) { imm_R_alter(TV_1,TV_2,TV_3,TV_4,TV_5,TV_6,TV_7,TV_8); }

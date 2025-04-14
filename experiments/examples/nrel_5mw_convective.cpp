@@ -121,10 +121,10 @@ int main(int argc, char** argv) {
     coupler_main.clone_into(coupler_prec);
     /////////////////////////////////////////////////////////////////////////
 
-    coupler_main.set_option<std::string>("bc_x1","periodic");
-    coupler_main.set_option<std::string>("bc_x2","periodic");
-    coupler_main.set_option<std::string>("bc_y1","periodic");
-    coupler_main.set_option<std::string>("bc_y2","periodic");
+    coupler_main.set_option<std::string>("bc_x1","open");
+    coupler_main.set_option<std::string>("bc_x2","open");
+    coupler_main.set_option<std::string>("bc_y1","open");
+    coupler_main.set_option<std::string>("bc_y2","open");
     coupler_main.set_option<std::string>("bc_z1","wall_free_slip");
     coupler_main.set_option<std::string>("bc_z2","wall_free_slip");
 
@@ -208,10 +208,10 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_specified;
-        // custom_modules::precursor_sponge( coupler_main , coupler_prec ,
-        //                                   {"uvel","vvel","wvel","temp","TKE"} ,
-        //                                   (int) (0.1*nx_glob) , 0 ,
-        //                                   (int) (0.1*ny_glob) , 0 );
+        custom_modules::precursor_sponge( coupler_main , coupler_prec ,
+                                          {"uvel","vvel","wvel"} ,
+                                          (int) (0.1*nx_glob) , 0 ,
+                                          (int) (0.1*ny_glob) , 0 );
         auto run_pg_frc   = [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); };
         auto run_dycore   = [&] (Coupler &c) { dycore.time_step                 (c,dt);         };
         auto run_sfc_flx  = [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);         };
