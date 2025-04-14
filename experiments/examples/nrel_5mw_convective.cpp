@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "latitude"                 , latitude          );
     coupler_main.set_option<real       >( "roughness"                , roughness         );
     coupler_main.set_option<std::string>( "turbine_file"             , turbine_file      );
-    coupler_main.set_option<bool       >( "turbine_do_blades"        , true              );
+    coupler_main.set_option<bool       >( "turbine_do_blades"        , false             );
     coupler_main.set_option<real       >( "turbine_initial_yaw"      , 30./180.*M_PI     );
     coupler_main.set_option<bool       >( "turbine_fixed_yaw"        , true              );
     coupler_main.set_option<bool       >( "turbine_floating_motions" , false             );
