@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk.h"
+#include "dynamics_rk_cycle.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -27,10 +27,10 @@ int main(int argc, char** argv) {
     real        ny_glob     = ylen/dx;
     real        nz          = zlen/dz;
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 1;
+    int         dyn_cycle   = 10;
     real        out_freq    = 900;
     real        inform_freq = 60;
-    std::string out_prefix  = "supercell_200m";
+    std::string out_prefix  = "supercell_500m";
     bool        is_restart  = false;
 
     core::Coupler coupler;
