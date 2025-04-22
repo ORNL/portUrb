@@ -119,7 +119,7 @@ namespace modules {
             real rho         = 0.5_fp * ( state(idR,hs+k,hs+j,hs+i-1) + state(idR,hs+k,hs+j,hs+i) );
             real K           = 0.5_fp * ( tke      (hs+k,hs+j,hs+i-1) + tke      (hs+k,hs+j,hs+i) );
             real t           = 0.5_fp * ( state(idT,hs+k,hs+j,hs+i-1) + state(idT,hs+k,hs+j,hs+i) );
-            real N           = dt_dz >= 0 && enable_gravity ? std::sqrt(grav/t*dt_dz) : 0;
+            real N           = dt_dz >= 0 ? std::sqrt(grav/t*dt_dz) : 0;
             real ell         = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
             real km          = total_mult * 0.1_fp * ell * std::sqrt(K);
             real Pr_t        = delta / (1+2*ell);
@@ -165,7 +165,7 @@ namespace modules {
             real rho  = 0.5_fp * ( state(idR,hs+k,hs+j-1,hs+i) + state(idR,hs+k,hs+j,hs+i) );
             real K    = 0.5_fp * ( tke      (hs+k,hs+j-1,hs+i) + tke      (hs+k,hs+j,hs+i) );
             real t    = 0.5_fp * ( state(idT,hs+k,hs+j-1,hs+i) + state(idT,hs+k,hs+j,hs+i) );
-            real N    = dt_dz >= 0 && enable_gravity ? std::sqrt(grav/t*dt_dz) : 0;
+            real N    = dt_dz >= 0 ? std::sqrt(grav/t*dt_dz) : 0;
             real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
             real km   = total_mult * 0.1_fp * ell * std::sqrt(K);
             real Pr_t = delta / (1+2*ell);
@@ -209,7 +209,7 @@ namespace modules {
             real rho  = 0.5_fp * ( state(idR,hs+k-1,hs+j,hs+i) + state(idR,hs+k,hs+j,hs+i) );
             real K    = 0.5_fp * ( tke      (hs+k-1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
             real t    = 0.5_fp * ( state(idT,hs+k-1,hs+j,hs+i) + state(idT,hs+k,hs+j,hs+i) );
-            real N    = dt_dz >= 0 && enable_gravity ? std::sqrt(grav/t*dt_dz) : 0;
+            real N    = dt_dz >= 0 ? std::sqrt(grav/t*dt_dz) : 0;
             real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
             real km   = total_mult * 0.1_fp * ell * std::sqrt(K);
             real Pr_t = delta / (1+2*ell);
@@ -235,7 +235,7 @@ namespace modules {
         real K     = tke      (hs+k,hs+j,hs+i);
         real t     = state(idT,hs+k,hs+j,hs+i);
         real dt_dz = ( state(idT,hs+k+1,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i) ) / (2*dz);
-        real N     = dt_dz >= 0 && enable_gravity ? std::sqrt(grav/t*dt_dz) : 0;
+        real N     = dt_dz >= 0 ? std::sqrt(grav/t*dt_dz) : 0;
         real ell   = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
         real km    = 0.1_fp * ell * std::sqrt(K);
         real Pr_t  = delta / (1+2*ell);

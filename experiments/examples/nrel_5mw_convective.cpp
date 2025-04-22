@@ -9,7 +9,9 @@
 #include "surface_flux.h"
 #include "surface_heat_flux.h"
 #include "precursor_sponge.h"
+#include "sponge_layer.h"
 #include "uniform_pg_wind_forcing.h"
+#include "simple_bouss.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -17,6 +19,9 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
+
+    bool run_main = false;
+    bool bouss    = false;
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler_main;
@@ -38,7 +43,7 @@ int main(int argc, char** argv) {
     int         ny_glob           = std::ceil(ylen/dx);    ylen = ny_glob * dx;
     int         nz                = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in         = 0;  // Determined by dycore CFL restriction
-    std::string init_data         = "nrel_5mw_convective";
+    std::string init_data         = bouss ? "nrel_5mw_convective_bouss" : "nrel_5mw_convective";
     real        out_freq          = 1000;
     real        inform_freq       = 10;
     std::string out_prefix        = "nrel_5mw_convective";
@@ -155,7 +160,7 @@ int main(int argc, char** argv) {
       output_counter = core::Counter( out_freq    , etime-((int)(etime/out_freq   ))*out_freq    );
       inform_counter = core::Counter( inform_freq , etime-((int)(etime/inform_freq))*inform_freq );
     } else {
-      coupler_main.write_output_file( out_prefix );
+      if (run_main) coupler_main.write_output_file( out_prefix );
     }
 
     if (restart_file_prec != "" && restart_file_prec != "null") {
@@ -192,20 +197,24 @@ int main(int argc, char** argv) {
         real u = coupler_prec.get_option<real>("hub_height_uvel");
         real v = coupler_prec.get_option<real>("hub_height_vvel");
         real tau = dt*100;
-        auto run_pg_frc   = [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,tau); };
+        auto run_pg_frc   = [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,dt); };
+        auto run_sponge   = [&] (Coupler &c) { modules::sponge_layer                             (c,dt,dt*100,0.1);};
         auto run_dycore   = [&] (Coupler &c) { dycore.time_step                                  (c,dt);           };
         auto run_sfc_flx  = [&] (Coupler &c) { modules::apply_surface_fluxes                     (c,dt);           };
         auto run_heat_flx = [&] (Coupler &c) { custom_modules::surface_heat_flux                 (c,dt);           };
+        auto run_bouss    = [&] (Coupler &c) { custom_modules::simple_bouss                      (c,dt);           };
         auto run_les      = [&] (Coupler &c) { les_closure.apply                                 (c,dt);           };
         auto run_tavg     = [&] (Coupler &c) { time_averager.accumulate                          (c,dt);           };
         coupler_prec.run_module( run_pg_frc   , "pg_forcing"     );
+        coupler_prec.run_module( run_sponge   , "top_sponge"     );
         coupler_prec.run_module( run_dycore   , "dycore"         );
         coupler_prec.run_module( run_sfc_flx  , "surface_fluxes" );
         coupler_prec.run_module( run_heat_flx , "heat_fluxes"    );
+        if (bouss) coupler_prec.run_module( run_bouss    , "bouss buoyancy" );
         coupler_prec.run_module( run_les      , "les_closure"    );
         coupler_prec.run_module( run_tavg     , "time_averager"  );
       }
-      {
+      if (run_main) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_specified;
         custom_modules::precursor_sponge( coupler_main , coupler_prec ,
@@ -213,19 +222,23 @@ int main(int argc, char** argv) {
                                           (int) (0.1*nx_glob) , 0 ,
                                           (int) (0.1*ny_glob) , 0 );
         auto run_pg_frc   = [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); };
+        auto run_sponge   = [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);};
         auto run_dycore   = [&] (Coupler &c) { dycore.time_step                 (c,dt);         };
         auto run_sfc_flx  = [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);         };
         auto run_heat_flx = [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);         };
+        auto run_bouss    = [&] (Coupler &c) { custom_modules::simple_bouss     (c,dt);         };
         auto run_turbine  = [&] (Coupler &c) { windmills.apply                  (c,dt);         };
         auto run_les      = [&] (Coupler &c) { les_closure.apply                (c,dt);         };
         auto run_tavg     = [&] (Coupler &c) { time_averager.accumulate         (c,dt);         };
-        coupler_main.run_module( run_pg_frc   , "pg_forcing"    );
-        coupler_main.run_module( run_dycore   , "dycore"        );
-        coupler_main.run_module( run_sfc_flx  , "surface_fluxes");
-        coupler_main.run_module( run_heat_flx , "heat_fluxes"   );
-        coupler_main.run_module( run_turbine  , "windmills"     );
-        coupler_main.run_module( run_les      , "les_closure"   );
-        coupler_main.run_module( run_tavg     , "time_averager" );
+        coupler_main.run_module( run_pg_frc   , "pg_forcing"     );
+        coupler_prec.run_module( run_sponge   , "top_sponge"     );
+        coupler_main.run_module( run_dycore   , "dycore"         );
+        coupler_main.run_module( run_sfc_flx  , "surface_fluxes" );
+        coupler_main.run_module( run_heat_flx , "heat_fluxes"    );
+        if (bouss) coupler_main.run_module( run_bouss    , "bouss buoyancy" );
+        coupler_main.run_module( run_turbine  , "windmills"      );
+        coupler_main.run_module( run_les      , "les_closure"    );
+        coupler_main.run_module( run_tavg     , "time_averager"  );
       }
 
       // Update time step
@@ -233,13 +246,14 @@ int main(int argc, char** argv) {
       coupler_main.set_option<real>("elapsed_time",etime);
       coupler_prec.set_option<real>("elapsed_time",etime);
       if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
-        coupler_main.inform_user();
+        if (run_main) { coupler_main.inform_user(); }
+        else          { coupler_prec.inform_user(); }
         inform_counter.reset();
       }
       if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
-        coupler_main.write_output_file( out_prefix , true );
+        if (run_main) coupler_main.write_output_file( out_prefix , true );
         coupler_prec.write_output_file( out_prefix_prec , true );
-        time_averager.reset(coupler_main);
+        if (run_main) time_averager.reset(coupler_main);
         time_averager.reset(coupler_prec);
         output_counter.reset();
       }

@@ -1041,6 +1041,8 @@ namespace modules {
       auto grav           = coupler.get_option<real>("grav"   );
       auto enable_gravity = coupler.get_option<bool>("enable_gravity",true);
 
+      coupler.set_option<int>("dycore_hs",hs);
+
       num_tracers = coupler.get_num_tracers();
       bool1d tracer_adds_mass("tracer_adds_mass",num_tracers);
       bool1d tracer_positive ("tracer_positive" ,num_tracers);
