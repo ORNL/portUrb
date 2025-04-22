@@ -7,7 +7,9 @@ import xarray
 import pandas as pd
 from scipy.ndimage import rotate
 
-workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+# workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+workdir = "/lustre/orion/stf006/scratch/imn/nrel_5mw_convective"
+# workdir = "/lustre/orion/stf006/scratch/imn/nrel_5mw_convective_bouss"
 amrwdir = "/ccs/home/imn/exawind-benchmarks/amr-wind/atmospheric_boundary_layer/convective_abl_nrel5mw/results"
 
 def spectra(T,dx = 1) :
@@ -94,6 +96,7 @@ for i in range(len(times)) :
   uTloc   = up*Tp
   vTloc   = vp*Tp
   wTloc   = wp*Tp
+  Tloc    = np.array(nc["theta_pert"][:,:,:])+np.array(nc["hy_theta_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
   magh = maghloc if i==0 else magh+maghloc
   mag  = magloc  if i==0 else mag +magloc
   th   = thloc   if i==0 else th  +thloc
@@ -108,6 +111,7 @@ for i in range(len(times)) :
   uT   = uTloc   if i==0 else uT  +uTloc
   vT   = vTloc   if i==0 else vT  +vTloc
   wT   = wTloc   if i==0 else wT  +wTloc
+  T    = Tloc    if i==0 else T   +Tloc
 magh /= len(times)
 mag  /= len(times)
 th   /= len(times)
@@ -122,6 +126,7 @@ ww   /= len(times)
 uT   /= len(times)
 vT   /= len(times)
 wT   /= len(times)
+T    /= len(times)
 
 amrw_zi = 803.133
 amrw_ustar = .468
@@ -132,15 +137,18 @@ dthz = (thz[1:] - thz[:nz-1])/(dz*1000)
 k = np.argmax(np.abs(dthz))
 zi = z[k]-dz/2
 k2 = get_ind(z,zi*0.1)
-ustar = np.mean(np.sqrt(np.abs(uv)/rho)[:k2+1,:,:])
+ustar = np.mean(np.sqrt(np.sqrt(uw*uw+vw*vw))[:k2+1,:,:])
 uref = 11.4
 zref = 90
 z0   = 0.01
 kar  = 0.4
 ustar_ideal = kar*uref/np.log((zref-z0)/z0);
+kind = get_ind(z,0.027)
+ob_L = -ustar*ustar*ustar*np.mean(T[kind,:,:])/(0.4*9.81*np.mean(wT[kind,:,:]))
 print(f"Boundary layer height: z(dtheta/dz>0.1): {zi*1000}m")
 print(f"Shear velocity: int(sqrt(u'v'/rho),0,z_i/10) : {ustar} m/s")
 print(f"Log Law shear velocity: K*u_R/log((z_R-z0)/z0): {ustar_ideal} m/s")
+print(f"Obukhov Length: : {ob_L} m")
 
 amrw_z = pd.read_csv(f"{amrwdir}/avgprofile_5000s_Uhoriz.csv")["z"].to_numpy()
 amrw_D = pd.read_csv(f"{amrwdir}/avgprofile_5000s_Uhoriz.csv")["Uhoriz"].to_numpy()
@@ -436,3 +444,36 @@ plt.grid()
 plt.savefig("turbine_power.png")
 plt.show()
 plt.close()
+
+t1=16
+t2=20
+times = range(t1,t2+1)
+fig = plt.figure(figsize=(6,4))
+ax = fig.gca()
+ax.set_title(r"KE spectra")
+kind = get_ind(z,0.027)
+for i in range(len(times)) :
+  nc = Dataset(f"{workdir}/nrel_5mw_convective_precursor_{times[i]:08d}.nc","r")
+  u = np.array(nc.variables["uvel"][:,:,:])
+  v = np.array(nc.variables["vvel"][:,:,:])
+  w = np.array(nc.variables["wvel"][:,:,:])
+  freq,spdloc_h = spectra(u*u/2+v*v/2,dx)
+  freq,spdloc_v = spectra(w*w/2,dx)
+  spd_h = spdloc_h if i==0 else spd_h+spdloc_h
+  spd_v = spdloc_v if i==0 else spd_v+spdloc_v
+spd_h /= len(times)
+spd_v /= len(times)
+ax.loglog(freq,spd_h,label=r"$(u^2+v^2)/2$")
+ax.loglog(freq,spd_v*1.e3,label=r"$(w^2/2)*10^3$")
+ax.loglog(freq,1.e7*freq**(-5/3),label=r"$k^{-5/3}$")
+ax.set_xlabel("Frequency")
+ax.set_ylabel("Spectral Power Density")
+ax.margins(x=0)
+plt.tight_layout()
+plt.legend()
+# plt.grid()
+plt.savefig("spectra.png")
+plt.show()
+plt.close()
+
+
