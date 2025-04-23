@@ -102,7 +102,6 @@ namespace modules {
     // Perform a time step
     void time_step(core::Coupler &coupler, real dt_phys) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("time_step");
       #endif
       using yakl::c::parallel_for;
@@ -133,7 +132,6 @@ namespace modules {
       }
       convert_dynamics_to_coupler( coupler , state , tracers );
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("time_step");
       #endif
     }
@@ -190,7 +188,6 @@ namespace modules {
                            real4d const  & tracers ,
                            real            dt_dyn  ) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("time_step_sspab3");
       #endif
       using yakl::c::parallel_for;
@@ -273,7 +270,6 @@ namespace modules {
 
       enforce_immersed_boundaries( coupler , state , tracers );
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("time_step_sspab3");
       #endif
     }
@@ -285,7 +281,6 @@ namespace modules {
                           real4d const  & tracers ,
                           real            dt_dyn  ) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("time_step_rk_3_3");
       #endif
       using yakl::c::parallel_for;
@@ -367,7 +362,6 @@ namespace modules {
       enforce_immersed_boundaries( coupler , state , tracers );
 
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("time_step_rk_3_3");
       #endif
     }
@@ -377,7 +371,6 @@ namespace modules {
                                       real4d        const & state   ,
                                       real4d        const & tracers ) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("enforce_immersed_boundaries");
       #endif
       using yakl::c::parallel_for;
@@ -475,7 +468,6 @@ namespace modules {
         }
       });
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("enforce_immersed_boundaries");
       #endif
     }
@@ -509,7 +501,6 @@ namespace modules {
                              real4d        const & tracers      ,
                              real4d        const & tracers_tend ) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("compute_tendencies");
       #endif
       using yakl::c::parallel_for;
@@ -568,20 +559,17 @@ namespace modules {
 
       // Perform periodic halo exchange in the horizontal, and implement vertical no-slip solid wall boundary conditions
       #ifdef YAKL_AUTO_PROFILE
-      Kokkos::fence();
       coupler.get_parallel_comm().barrier();
       yakl::timer_start("dycore_halo_exchange_x");
       #endif
       if (ord > 1) coupler.halo_exchange_x( fields_loc , hs );
       #ifdef YAKL_AUTO_PROFILE
-      Kokkos::fence();
       coupler.get_parallel_comm().barrier();
       yakl::timer_stop("dycore_halo_exchange_x");
       yakl::timer_start("dycore_halo_exchange_y");
       #endif
       if (ord > 1) coupler.halo_exchange_y( fields_loc , hs );
       #ifdef YAKL_AUTO_PROFILE
-      Kokkos::fence();
       coupler.get_parallel_comm().barrier();
       yakl::timer_stop("dycore_halo_exchange_y");
       #endif
@@ -752,7 +740,6 @@ namespace modules {
         }
       });
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("compute_tendencies");
       #endif
     }
@@ -762,7 +749,6 @@ namespace modules {
     void halo_boundary_conditions( core::Coupler const & coupler ,
                                    float4d       const & fields  ) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("halo_boundary_conditions");
       #endif
       using yakl::c::parallel_for;
@@ -866,7 +852,6 @@ namespace modules {
       }
 
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("halo_boundary_conditions");
       #endif
     }
@@ -878,7 +863,6 @@ namespace modules {
                         float5d       const & limits_y ,
                         float5d       const & limits_z ) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("edge_exchange");
       #endif
       using yakl::c::parallel_for;
@@ -895,7 +879,6 @@ namespace modules {
 
       // x-exchange
       #ifdef YAKL_AUTO_PROFILE
-      Kokkos::fence();
       coupler.get_parallel_comm().barrier();
       yakl::timer_start("dycore_edge_exchange_x");
       #endif
@@ -916,7 +899,6 @@ namespace modules {
         });
       }
       #ifdef YAKL_AUTO_PROFILE
-      Kokkos::fence();
       coupler.get_parallel_comm().barrier();
       yakl::timer_stop("dycore_edge_exchange_x");
       yakl::timer_start("dycore_edge_exchange_y");
@@ -940,7 +922,6 @@ namespace modules {
         });
       }
       #ifdef YAKL_AUTO_PROFILE
-      Kokkos::fence();
       coupler.get_parallel_comm().barrier();
       yakl::timer_stop("dycore_edge_exchange_y");
       #endif
@@ -1014,7 +995,6 @@ namespace modules {
       }
 
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("edge_exchange");
       #endif
     }
@@ -1024,7 +1004,6 @@ namespace modules {
     // Initialize the class data as well as the state and tracers arrays and convert them back into the coupler state
     void init(core::Coupler &coupler) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("init");
       #endif
       using yakl::c::parallel_for;
@@ -1351,7 +1330,6 @@ namespace modules {
         compute_hydrostasis_edges       ( coupler );
       } );
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("init");
       #endif
     }
@@ -1363,7 +1341,6 @@ namespace modules {
                                       realConst4d    state   ,
                                       realConst4d    tracers ) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("convert_dynamics_to_coupler");
       #endif
       using yakl::c::parallel_for;
@@ -1406,7 +1383,6 @@ namespace modules {
         for (int tr=0; tr < num_tracers; tr++) { dm_tracers(tr,k,j,i) = tracers(tr,hs+k,hs+j,hs+i); }
       });
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("convert_dynamics_to_coupler");
       #endif
     }
@@ -1418,7 +1394,6 @@ namespace modules {
                                       real4d              &state   ,
                                       real4d              &tracers ) const {
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_start("convert_coupler_to_dynamics");
       #endif
       using yakl::c::parallel_for;
@@ -1461,7 +1436,6 @@ namespace modules {
         for (int tr=0; tr < num_tracers; tr++) { tracers(tr,hs+k,hs+j,hs+i) = dm_tracers(tr,k,j,i); }
       });
       #ifdef YAKL_AUTO_PROFILE
-        coupler.get_parallel_comm().barrier();
         yakl::timer_stop("convert_coupler_to_dynamics");
       #endif
     }

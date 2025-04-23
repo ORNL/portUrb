@@ -58,7 +58,15 @@ namespace modules {
       for (int l=0; l < num_state  ; l++) { fields.add_field( state  .slice<3>(l,0,0,0) ); }
       for (int l=0; l < num_tracers; l++) { fields.add_field( tracers.slice<3>(l,0,0,0) ); }
       fields.add_field( tke );
+      #ifdef YAKL_AUTO_PROFILE
+        coupler.get_parallel_comm().barrier();
+        yakl::timer_start("les_halo_exchange");
+      #endif
       coupler.halo_exchange( fields , hs );
+      #ifdef YAKL_AUTO_PROFILE
+        coupler.get_parallel_comm().barrier();
+        yakl::timer_stop("les_halo_exchange");
+      #endif
       halo_bcs( coupler , state , tracers , tke );
 
       real3d flux_ru_x     ("flux_ru_x"                 ,nz  ,ny  ,nx+1);

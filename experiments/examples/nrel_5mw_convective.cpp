@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     real D     = config["blade_radius"].as<real>()*2;
     real hub_z = config["hub_height"  ].as<real>();
 
-    real        sim_time          = 20001;
+    real        sim_time          = 101;
     real        xlen              = 5120;
     real        ylen              = 5120;
     real        zlen              = 1920;
