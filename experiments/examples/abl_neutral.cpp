@@ -35,16 +35,17 @@ int main(int argc, char** argv) {
                                              // Most studies use f=10^-4 which means lat=43.289
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"     , out_prefix    );
-    coupler.set_option<std::string>( "init_data"      , "ABL_neutral" );
-    coupler.set_option<real       >( "out_freq"       , out_freq      );
-    coupler.set_option<bool       >( "is_restart"     , is_restart    );
-    coupler.set_option<std::string>( "restart_file"   , ""            );
-    coupler.set_option<real       >( "latitude"       , 0.            );
-    coupler.set_option<real       >( "roughness"      , 0.1           );
-    coupler.set_option<real       >( "cfl"            , 0.6           );
-    coupler.set_option<bool       >( "enable_gravity" , true          );
-    coupler.set_option<bool       >( "weno_all"       , true          );
+    coupler.set_option<std::string>( "out_prefix"      , out_prefix    );
+    coupler.set_option<std::string>( "init_data"       , "ABL_neutral" );
+    coupler.set_option<real       >( "out_freq"        , out_freq      );
+    coupler.set_option<bool       >( "is_restart"      , is_restart    );
+    coupler.set_option<std::string>( "restart_file"    , ""            );
+    coupler.set_option<real       >( "latitude"        , 0.            );
+    coupler.set_option<real       >( "roughness"       , 0.1           );
+    coupler.set_option<real       >( "cfl"             , 0.7           );
+    coupler.set_option<bool       >( "enable_gravity"  , true          );
+    coupler.set_option<bool       >( "weno_all"        , true          );
+    coupler.get_option<real       >( "dycore_max_wind" , 30            );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 
