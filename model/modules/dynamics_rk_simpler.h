@@ -25,11 +25,11 @@ namespace modules {
   struct Dynamics_Euler_Stratified_WenoFV {
     // Order of accuracy (numerical convergence for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
-      size_t static constexpr ord = 8;
+      size_t static constexpr ord = 9;
     #else
       size_t static constexpr ord = PORTURB_ORD;
     #endif
-    int static constexpr hs  = ord/2; // Number of halo cells ("hs" == "halo size")
+    int static constexpr hs  = (ord+1)/2; // Number of halo cells ("hs" == "halo size")
     int static constexpr num_state = 5;   // Number of state variables
     // IDs for the variables in the state vector
     int  static constexpr idR = 0;  // Density
@@ -313,7 +313,7 @@ namespace modules {
     // Once you encounter an immersed boundary, set zero derivative boundary conditions
     template <class FP, size_t ORD>
     KOKKOS_INLINE_FUNCTION static void modify_stencil_immersed_der0( SArray<FP  ,1,ORD>       & stencil  ,
-                                                          SArray<bool,1,ORD> const & immersed ) {
+                                                                     SArray<bool,1,ORD> const & immersed ) {
       int constexpr hs = (ORD-1)/2;
       // Don't modify the stencils of immersed cells
       if (! immersed(hs)) {
@@ -330,22 +330,22 @@ namespace modules {
 
 
 
-    real static KOKKOS_INLINE_FUNCTION interp_val( SArray<float,1,ord> const &s) {
-      if      constexpr (ord == 2 ) { return 0.5*(s(0)+s(1)); }
-      else if constexpr (ord == 4 ) { return -1.f/12.f*s(0) + 7.f/12.f*s(1) + 7.f/12.f*s(2) - 1.f/12.f*s(3); }
-      else if constexpr (ord == 6 ) { return 1.f/60.f*s(0) - 2.f/15.f*s(1) + 37.f/60.f*s(2) + 37.f/60.f*s(3) - 2.f/15.f*s(4) + 1.f/60.f*s(5); }
-      else if constexpr (ord == 8 ) { return -1.f/280.f*s(0) + 29.f/840.f*s(1) - 139.f/840.f*s(2) + 533.f/840.f*s(3) + 533.f/840.f*s(4) - 139.f/840.f*s(5) + 29.f/840.f*s(6) - 1.f/280.f*s(7); }
-      else if constexpr (ord == 10) { return 1.f/1260.f*s(0) - 23.f/2520.f*s(1) + 127.f/2520.f*s(2) - 473.f/2520.f*s(3) + 1627.f/2520.f*s(4) + 1627.f/2520.f*s(5) - 473.f/2520.f*s(6) + 127.f/2520.f*s(7) - 23.f/2520.f*s(8) + 1.f/1260.f*s(9); }
+    real static KOKKOS_INLINE_FUNCTION interp_val_L( SArray<float,1,ord> const &s) {
+      if      constexpr (ord == 3 ) { return 0.333333333f*s(0)+0.833333333f*s(1)-0.166666667f*s(2); }
+      else if constexpr (ord == 5 ) { return -0.0500000000f*s(0)+0.450000000f*s(1)+0.783333333f*s(2)-0.216666667f*s(3)+0.0333333333f*s(4); }
+      else if constexpr (ord == 7 ) { return 0.00952380952f*s(0)-0.0904761905f*s(1)+0.509523810f*s(2)+0.759523810f*s(3)-0.240476190f*s(4)+0.0595238095f*s(5)-0.00714285714f*s(6); }
+      else if constexpr (ord == 9 ) { return -0.00198412698f*s(0)+0.0218253968f*s(1)-0.121031746f*s(2)+0.545634921f*s(3)+0.745634921f*s(4)-0.254365079f*s(5)+0.0789682540f*s(6)-0.0162698413f*s(7)+0.00158730159f*s(8); }
+      else if constexpr (ord == 11) { return 0.000432900433f*s(0)-0.00551948052f*s(1)-0.000360750361f*s(10)+0.0341630592f*s(2)-0.144408369f*s(3)+0.569877345f*s(4)+0.736544012f*s(5)-0.263455988f*s(6)+0.0936868687f*s(7)-0.0253607504f*s(8)+0.00440115440f*s(9); }
     }
 
 
 
-    real static KOKKOS_INLINE_FUNCTION interp_der( SArray<float,1,ord> const &s) {
-      if      constexpr (ord == 2 ) { return (s(1)-s(0)); }
-      else if constexpr (ord == 4 ) { return -s(0) + 3*s(1) - 3*s(2) + s(3) ; }
-      else if constexpr (ord == 6 ) { return -s(0) + 5*s(1) - 10*s(2) + 10*s(3) - 5*s(4) + s(5) ; }
-      else if constexpr (ord == 8 ) { return -s(0) + 7*s(1) - 21*s(2) + 35*s(3) - 35*s(4) + 21*s(5) - 7*s(6) + s(7) ; }
-      else if constexpr (ord == 10) { return -s(0) + 9*s(1) - 36*s(2) + 84*s(3) - 126*s(4) + 126*s(5) - 84*s(6) + 36*s(7) - 9*s(8) + s(9) ; }
+    real static KOKKOS_INLINE_FUNCTION interp_val_R( SArray<float,1,ord> const &s) {
+      if      constexpr (ord == 3 ) { return -0.166666667f*s(0)+0.833333333f*s(1)+0.333333333f*s(2); }
+      else if constexpr (ord == 5 ) { return 0.0333333333f*s(0)-0.216666667f*s(1)+0.783333333f*s(2)+0.450000000f*s(3)-0.0500000000f*s(4); }
+      else if constexpr (ord == 7 ) { return -0.00714285714f*s(0)+0.0595238095f*s(1)-0.240476190f*s(2)+0.759523810f*s(3)+0.509523810f*s(4)-0.0904761905f*s(5)+0.00952380952f*s(6); }
+      else if constexpr (ord == 9 ) { return 0.00158730159f*s(0)-0.0162698413f*s(1)+0.0789682540f*s(2)-0.254365079f*s(3)+0.745634921f*s(4)+0.545634921f*s(5)-0.121031746f*s(6)+0.0218253968f*s(7)-0.00198412698f*s(8); }
+      else if constexpr (ord == 11) { return -0.000360750361f*s(0)+0.00440115440f*s(1)+0.000432900433f*s(10)-0.0253607504f*s(2)+0.0936868687f*s(3)-0.263455988f*s(4)+0.736544012f*s(5)+0.569877345f*s(6)-0.144408369f*s(7)+0.0341630592f*s(8)-0.00551948052f*s(9); }
     }
 
 
@@ -404,7 +404,7 @@ namespace modules {
         for (int l=1; l < num_state  ; l++) { fields_loc(            l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i)*r_r; }
         for (int l=0; l < num_tracers; l++) { fields_loc(num_state+1+l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i)*r_r; }
         fields_loc(idR,hs+k,hs+j,hs+i) -= hy_dens_cells (hs+k);
-        fields_loc(idT,hs+k,hs+j,hs+i) -= hy_theta_cells(hs+k);
+        // fields_loc(idT,hs+k,hs+j,hs+i) -= hy_theta_cells(hs+k);
       });
 
       // Perform periodic halo exchange in the horizontal, and implement vertical no-slip solid wall boundary conditions
@@ -425,172 +425,121 @@ namespace modules {
       #endif
       halo_boundary_conditions( coupler , fields_loc );
 
-      float hv_beta = 0.01;
-
-      float hv_coef;
-      if      constexpr (ord == 2 ) { hv_coef =  std::pow(2.,-2. )*dx/dt*hv_beta; }
-      else if constexpr (ord == 4 ) { hv_coef = -std::pow(2.,-4. )*dx/dt*hv_beta; }
-      else if constexpr (ord == 6 ) { hv_coef =  std::pow(2.,-6. )*dx/dt*hv_beta; }
-      else if constexpr (ord == 8 ) { hv_coef = -std::pow(2.,-8. )*dx/dt*hv_beta; }
-      else if constexpr (ord == 10) { hv_coef =  std::pow(2.,-10.)*dx/dt*hv_beta; }
-
       float4d flux_x("flux_x",num_state+num_tracers,nz,ny,nx+1);
       float4d flux_y("flux_y",num_state+num_tracers,nz,ny+1,nx);
       float4d flux_z("flux_z",num_state+num_tracers,nz+1,ny,nx);
 
+      float3d p_x("p_x",nz,ny,nx+1);
+      float3d p_y("p_y",nz,ny+1,nx);
+      float3d p_z("p_z",nz+1,ny,nx);
+
+      float3d ru_x("ru_x",nz,ny,nx+1);
+      float3d rv_y("rv_y",nz,ny+1,nx);
+      float3d rw_z("rw_z",nz+1,ny,nx);
+
+      real constexpr cs = 350;
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
-        float r, ru;
-        {
-          SArray<bool,1,ord> immersed;
-          for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,i+ii) > 0; }
-          SArray<float,1,ord> s;
-          // Density & derivative
-          for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(idR,hs+k,hs+j,i+ii); }
-                r  = interp_val(s)+hy_dens_cells(hs+k);
-          float dr = interp_der(s);
-          // u-velocity & rho*u derivative
-          for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(idU,hs+k,hs+j,i+ii); }
-          float u  = interp_val(s);
-          float du = interp_der(s);
-          // v-velocity and rho*v derivative
-          for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(idV,hs+k,hs+j,i+ii); }
-          modify_stencil_immersed_der0( s , immersed );
-          float v  = interp_val(s);
-          float dv = interp_der(s);
-          // w-velocity and rho*w derivative
-          for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(idW,hs+k,hs+j,i+ii); }
-          modify_stencil_immersed_der0( s , immersed );
-          float w  = interp_val(s);
-          float dw = interp_der(s);
-          // pressure perturbation
-          for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(idP,hs+k,hs+j,i+ii); }
-          modify_stencil_immersed_der0( s , immersed );
-          float p = interp_val(s);
-          // Assemble flux vector for rho, rho*u, rho*v, and rho*w
-          flux_x(idR,k,j,i) = r*u     - hv_coef*dr  ;
-          flux_x(idU,k,j,i) = r*u*u+p - hv_coef*du*r;
-          flux_x(idV,k,j,i) = r*u*v   - hv_coef*dv*r;
-          flux_x(idW,k,j,i) = r*u*w   - hv_coef*dw*r;
-          ru = r*u;
-        }
+        SArray<bool ,1,ord> immersed;
         SArray<float,1,ord> s;
-        // theta & rho*theta derivative
-        for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(idT,hs+k,hs+j,i+ii); }
-        float t  = interp_val(s)+hy_theta_cells(hs+k);
-        float dt = interp_der(s);
-        flux_x(idT,k,j,i) = ru*t - hv_coef*dt*r;
-        // tracers & rho*tracer derivatives
-        #pragma nounroll
-        for (int tr=0; tr < num_tracers; tr++) {
-          for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(num_state+1+tr,hs+k,hs+j,i+ii); }
-          float t  = interp_val(s);
-          float dt = interp_der(s);
-          flux_x(num_state+tr,k,j,i) = ru*t - hv_coef*dt*r;
-        }
+        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > 0; }
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii); }
+        modify_stencil_immersed_der0( s , immersed );
+        real p_L  = interp_val_R(s);
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii); }
+        real ru_L = interp_val_R(s);
+        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > 0; }
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii+1); }
+        modify_stencil_immersed_der0( s , immersed );
+        real p_R  = interp_val_L(s);
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii+1); }
+        real ru_R = interp_val_L(s);
+        p_x (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(ru_R-ru_L)   );
+        ru_x(k,j,i) = 0.5_fp*(ru_L + ru_R -    (p_R -p_L )/cs);
       });
-
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        float r, rv;
-        {
-          SArray<bool,1,ord> immersed;
-          for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,j+jj,hs+i) > 0; }
-          SArray<float,1,ord> s;
-          // Density & derivative
-          for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(idR,hs+k,j+jj,hs+i); }
-                r  = interp_val(s)+hy_dens_cells(hs+k);
-          float dr = interp_der(s);
-          // u-velocity & rho*u derivative
-          for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(idU,hs+k,j+jj,hs+i); }
-          modify_stencil_immersed_der0( s , immersed );
-          float u  = interp_val(s);
-          float du = interp_der(s);
-          // v-velocity and rho*v derivative
-          for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(idV,hs+k,j+jj,hs+i); }
-          float v  = interp_val(s);
-          float dv = interp_der(s);
-          // w-velocity and rho*w derivative
-          for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(idW,hs+k,j+jj,hs+i); }
-          modify_stencil_immersed_der0( s , immersed );
-          float w  = interp_val(s);
-          float dw = interp_der(s);
-          // pressure perturbation
-          for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(idP,hs+k,j+jj,hs+i); }
-          modify_stencil_immersed_der0( s , immersed );
-          float p = interp_val(s);
-          // Assemble flux vector for rho, rho*u, rho*v, and rho*w
-          flux_y(idR,k,j,i) = r*v     - hv_coef*dr ;
-          flux_y(idU,k,j,i) = r*v*u   - hv_coef*du*r;
-          flux_y(idV,k,j,i) = r*v*v+p - hv_coef*dv*r;
-          flux_y(idW,k,j,i) = r*v*w   - hv_coef*dw*r;
-          rv = r*v;
-        }
+        SArray<bool ,1,ord> immersed;
         SArray<float,1,ord> s;
-        // theta & rho*theta derivative
-        for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(idT,hs+k,j+jj,hs+i); }
-        float t  = interp_val(s)+hy_theta_cells(hs+k);
-        float dt = interp_der(s);
-        flux_y(idT,k,j,i) = rv*t - hv_coef*dt*r;
-        // tracers & rho*tracer derivatives
-        #pragma nounroll
-        for (int tr=0; tr < num_tracers; tr++) {
-          for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(num_state+1+tr,hs+k,j+jj,hs+i); }
-          float t  = interp_val(s);
-          float dt = interp_der(s);
-          flux_y(num_state+tr,k,j,i) = rv*t - hv_coef*dt*r;
-        }
+        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > 0; }
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj,hs+i); }
+        modify_stencil_immersed_der0( s , immersed );
+        real p_L  = interp_val_R(s);
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj,hs+i); }
+        real rv_L = interp_val_R(s);
+        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > 0; }
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj+1,hs+i); }
+        modify_stencil_immersed_der0( s , immersed );
+        real p_R  = interp_val_L(s);
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj+1,hs+i); }
+        real rv_R = interp_val_L(s);
+        p_y (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(rv_R-rv_L)   );
+        rv_y(k,j,i) = 0.5_fp*(rv_L + rv_R -    (p_R -p_L )/cs);
+      });
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        SArray<bool ,1,ord> immersed;
+        SArray<float,1,ord> s;
+        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > 0; }
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk,hs+j,hs+i); }
+        modify_stencil_immersed_der0( s , immersed );
+        real p_L  = interp_val_R(s);
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk,hs+j,hs+i)+hy_dens_cells(k+kk))*fields_loc(idW,k+kk,hs+j,hs+i); }
+        real rw_L = interp_val_R(s);
+        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk+1,hs+j,hs+i) > 0; }
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk+1,hs+j,hs+i); }
+        modify_stencil_immersed_der0( s , immersed );
+        real p_R  = interp_val_L(s);
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*fields_loc(idW,k+kk+1,hs+j,hs+i); }
+        real rw_R = interp_val_L(s);
+        p_z (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(rw_R-rw_L)   );
+        rw_z(k,j,i) = 0.5_fp*(rw_L + rw_R -    (p_R -p_L )/cs);
       });
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        float r, rw;
-        {
-          SArray<bool,1,ord> immersed;
-          for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(k+kk,hs+j,hs+i) > 0; }
+      core::MultiField<float,3> advect_fields;
+      advect_fields.add_field( fields_loc.slice<3>(idR,0,0,0) );
+      advect_fields.add_field( fields_loc.slice<3>(idU,0,0,0) );
+      advect_fields.add_field( fields_loc.slice<3>(idV,0,0,0) );
+      advect_fields.add_field( fields_loc.slice<3>(idW,0,0,0) );
+      advect_fields.add_field( fields_loc.slice<3>(idT,0,0,0) );
+      for (int tr=0; tr < num_tracers; tr++) { advect_fields.add_field( fields_loc.slice<3>(num_state+1+tr,0,0,0) ); }
+      int num_fields = advect_fields.get_num_fields();
+
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
+        SArray<bool ,1,ord> immersed;
+        int ind = ru_x(k,j,i) > 0 ? 0 : 1;
+        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,i+ii+ind) > 0; }
+        for (int l=1; l < num_fields; l++) {
           SArray<float,1,ord> s;
-          // Density & derivative
-          for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(idR,k+kk,hs+j,hs+i); }
-                r  = interp_val(s)+hy_dens_edges(k);
-          float dr = interp_der(s);
-          // u-velocity & rho*u derivative
-          for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(idU,k+kk,hs+j,hs+i); }
-          modify_stencil_immersed_der0( s , immersed );
-          float u  = interp_val(s);
-          float du = interp_der(s);
-          // v-velocity and rho*v derivative
-          for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(idV,k+kk,hs+j,hs+i); }
-          modify_stencil_immersed_der0( s , immersed );
-          float v  = interp_val(s);
-          float dv = interp_der(s);
-          // w-velocity and rho*w derivative
-          for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(idW,k+kk,hs+j,hs+i); }
-          float w  = interp_val(s);
-          float dw = interp_der(s);
-          // pressure perturbation
-          for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(idP,k+kk,hs+j,hs+i); }
-          modify_stencil_immersed_der0( s , immersed );
-          float p = interp_val(s);
-          if (k == 0 ) { w = 0; dw = 0; }
-          if (k == nz) { w = 0; dw = 0; }
-          // Assemble flux vector for rho, rho*u, rho*v, and rho*w
-          flux_z(idR,k,j,i) = r*w     - hv_coef*dr ;
-          flux_z(idU,k,j,i) = r*w*u   - hv_coef*du*r;
-          flux_z(idV,k,j,i) = r*w*v   - hv_coef*dv*r;
-          flux_z(idW,k,j,i) = r*w*w+p - hv_coef*dw*r;
-          rw = r*w;
+          for (int ii = 0; ii < ord; ii++) { s(ii) = advect_fields(l,hs+k,hs+j,i+ii+ind); }
+          if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
+          flux_x(l,k,j,i) = ru_x(k,j,i) * ( ru_x(k,j,i) > 0 ? interp_val_R(s) : interp_val_L(s) );
         }
-        SArray<float,1,ord> s;
-        // theta & rho*theta derivative
-        for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(idT,k+kk,hs+j,hs+i); }
-        float t  = interp_val(s)+hy_theta_edges(k);
-        float dt = interp_der(s);
-        flux_z(idT,k,j,i) = rw*t - hv_coef*dt*r;
-        // tracers & rho*tracer derivatives
-        #pragma nounroll
-        for (int tr=0; tr < num_tracers; tr++) {
-          for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(num_state+1+tr,k+kk,hs+j,hs+i); }
-          float t  = interp_val(s);
-          float dt = interp_der(s);
-          flux_z(num_state+tr,k,j,i) = rw*t - hv_coef*dt*r;
+        flux_x(idR,k,j,i)  = ru_x(k,j,i);
+        flux_x(idU,k,j,i) += p_x(k,j,i);
+      });
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        SArray<bool ,1,ord> immersed;
+        int ind = rv_y(k,j,i) > 0 ? 0 : 1;
+        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,j+jj+ind,hs+i) > 0; }
+        for (int l=1; l < num_fields; l++) {
+          SArray<float,1,ord> s;
+          for (int jj = 0; jj < ord; jj++) { s(jj) = advect_fields(l,hs+k,j+jj+ind,hs+i); }
+          if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
+          flux_y(l,k,j,i) = rv_y(k,j,i) * ( rv_y(k,j,i) > 0 ? interp_val_R(s) : interp_val_L(s) );
         }
+        flux_y(idR,k,j,i)  = rv_y(k,j,i);
+        flux_y(idV,k,j,i) += p_y(k,j,i);
+      });
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        SArray<bool ,1,ord> immersed;
+        int ind = rw_z(k,j,i) > 0 ? 0 : 1;
+        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(k+kk+ind,hs+j,hs+i) > 0; }
+        for (int l=1; l < num_fields; l++) {
+          SArray<float,1,ord> s;
+          for (int kk = 0; kk < ord; kk++) { s(kk) = advect_fields(l,k+kk+ind,hs+j,hs+i); }
+          if (l == idU || l == idV) modify_stencil_immersed_der0( s , immersed );
+          flux_z(l,k,j,i) = rw_z(k,j,i) * ( rw_z(k,j,i) > 0 ? interp_val_R(s) : interp_val_L(s) );
+        }
+        flux_z(idR,k,j,i)  = rw_z(k,j,i);
+        flux_z(idW,k,j,i) += p_z(k,j,i);
       });
 
       // Compute tendencies as the flux divergence + gravity source term + coriolis
