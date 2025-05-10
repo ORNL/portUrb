@@ -25,7 +25,7 @@ namespace modules {
   struct Dynamics_Euler_Stratified_WenoFV {
     // Order of accuracy (numerical convergence for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
-      size_t static constexpr ord = 9;
+      size_t static constexpr ord = 11;
     #else
       size_t static constexpr ord = PORTURB_ORD;
     #endif
@@ -121,6 +121,7 @@ namespace modules {
       #endif
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
+      using yakl::c::Bounds;
       auto num_tracers = coupler.get_num_tracers();
       auto nx          = coupler.get_nx();
       auto ny          = coupler.get_ny();
@@ -151,7 +152,7 @@ namespace modules {
         }
       });
 
-      enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
+      // enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       //////////////
       // Stage 2
@@ -172,7 +173,7 @@ namespace modules {
         }
       });
 
-      enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
+      // enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       //////////////
       // Stage 3
@@ -203,6 +204,7 @@ namespace modules {
     }
 
 
+
     void enforce_immersed_boundaries( core::Coupler       & coupler ,
                                       real4d        const & state   ,
                                       real4d        const & tracers ) const {
@@ -222,48 +224,8 @@ namespace modules {
       auto immersed_prop   = dm.get<real  const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion
       auto tracer_positive = dm.get<bool const,1>("tracer_positive");
 
-      if (! dm.entry_exists("dycore_immersed_tau")) {
-        coupler.get_data_manager_readwrite().register_and_allocate<int>("dycore_immersed_tau","",{nz,ny,nx});
-        auto immersed_tau = coupler.get_data_manager_readwrite().get<int,3>("dycore_immersed_tau");
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          bool not_immersed_1 = false;
-          bool not_immersed_2 = false;
-          bool not_immersed_3 = false;
-          int rad = 1;
-          for (int kk=-rad; kk <= rad; kk++) {
-            for (int jj=-rad; jj <= rad; jj++) {
-              for (int ii=-rad; ii <= rad; ii++) {
-                if ( immersed_prop(hs+k+kk,hs+j+jj,hs+i+ii) == 0 ) not_immersed_1 = true;
-              }
-            }
-          }
-          rad = 2;
-          for (int kk=-rad; kk <= rad; kk++) {
-            for (int jj=-rad; jj <= rad; jj++) {
-              for (int ii=-rad; ii <= rad; ii++) {
-                if ( immersed_prop(hs+k+kk,hs+j+jj,hs+i+ii) == 0 ) not_immersed_2 = true;
-              }
-            }
-          }
-          rad = 3;
-          for (int kk=-rad; kk <= rad; kk++) {
-            for (int jj=-rad; jj <= rad; jj++) {
-              for (int ii=-rad; ii <= rad; ii++) {
-                if ( immersed_prop(hs+k+kk,hs+j+jj,hs+i+ii) == 0 ) not_immersed_3 = true;
-              }
-            }
-          }
-          if      ( not_immersed_1 ) { immersed_tau(k,j,i) = 8; }
-          else if ( not_immersed_2 ) { immersed_tau(k,j,i) = 4; }
-          else if ( not_immersed_3 ) { immersed_tau(k,j,i) = 2; }
-          else                       { immersed_tau(k,j,i) = 1; }
-        });
-      }
-
-      auto immersed_tau = dm.get<int const,3>("dycore_immersed_tau");
-
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        real mult = std::pow( immersed_prop(hs+k,hs+j,hs+i) , immersed_power ) / immersed_tau(k,j,i);
+        real mult = std::pow( immersed_prop(hs+k,hs+j,hs+i) , immersed_power );
         // TODO: Find a way to calculate drag in here
         // Density
         {
@@ -350,6 +312,16 @@ namespace modules {
 
 
 
+    real static KOKKOS_INLINE_FUNCTION hypervis( SArray<float,1,ord> const &s) {
+      if      constexpr (ord == 3 ) { return  ( 1.00000000f*s(0)-2.00000000f*s(1)+1.00000000f*s(2) )/4; }
+      else if constexpr (ord == 5 ) { return -( 1.00000000f*s(0)-4.00000000f*s(1)+6.00000000f*s(2)-4.00000000f*s(3)+1.00000000f*s(4) )/16; }
+      else if constexpr (ord == 7 ) { return  ( 1.00000000f*s(0)-6.00000000f*s(1)+15.0000000f*s(2)-20.0000000f*s(3)+15.0000000f*s(4)-6.00000000f*s(5)+1.00000000f*s(6) )/64; }
+      else if constexpr (ord == 9 ) { return -( 1.00000000f*s(0)-8.00000000f*s(1)+28.0000000f*s(2)-56.0000000f*s(3)+70.0000000f*s(4)-56.0000000f*s(5)+28.0000000f*s(6)-8.00000000f*s(7)+1.00000000f*s(8) )/256; }
+      else if constexpr (ord == 11) { return  ( 1.00000000f*s(0)-10.0000000f*s(1)+1.00000000f*s(10)+45.0000000f*s(2)-120.000000f*s(3)+210.000000f*s(4)-252.000000f*s(5)+210.000000f*s(6)-120.000000f*s(7)+45.0000000f*s(8)-10.0000000f*s(9) )/1024; }
+    }
+
+
+
     int static constexpr idP = 5;
 
     void compute_tendencies( core::Coupler       & coupler      ,
@@ -379,7 +351,11 @@ namespace modules {
       auto  &dm               = coupler.get_data_manager_readonly();  // Grab read-only data manager
       auto  tracer_positive   = dm.get<bool const,1>("tracer_positive"          ); // Is a tracer positive-definite?
       auto  immersed_prop     = dm.get<real const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion
-      auto  any_immersed      = dm.get<bool const,3>("dycore_any_immersed10"    ); // Are any immersed in 3-D halo?
+      auto  any_immersed2     = dm.get<bool const,3>("dycore_any_immersed2"     ); // Are any immersed in 3-D halo?
+      auto  any_immersed4     = dm.get<bool const,3>("dycore_any_immersed4"     ); // Are any immersed in 3-D halo?
+      auto  any_immersed6     = dm.get<bool const,3>("dycore_any_immersed6"     ); // Are any immersed in 3-D halo?
+      auto  any_immersed8     = dm.get<bool const,3>("dycore_any_immersed8"     ); // Are any immersed in 3-D halo?
+      auto  any_immersed10    = dm.get<bool const,3>("dycore_any_immersed10"    ); // Are any immersed in 3-D halo?
       auto  hy_dens_cells     = dm.get<float const,1>("hy_dens_cells"            ); // Hydrostatic density
       auto  hy_theta_cells    = dm.get<float const,1>("hy_theta_cells"           ); // Hydrostatic potential temperature
       auto  hy_dens_edges     = dm.get<float const,1>("hy_dens_edges"            ); // Hydrostatic density
@@ -437,22 +413,22 @@ namespace modules {
       float3d rv_y("rv_y",nz,ny+1,nx);
       float3d rw_z("rw_z",nz+1,ny,nx);
 
-      real constexpr cs = 350;
+      float constexpr cs = 350;
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
         SArray<float,1,ord> s;
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii); }
         modify_stencil_immersed_der0( s , immersed );
-        real p_L  = interp_val_R(s);
+        float p_L  = interp_val_R(s);
         for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii); }
-        real ru_L = interp_val_R(s);
+        float ru_L = interp_val_R(s);
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii+1); }
         modify_stencil_immersed_der0( s , immersed );
-        real p_R  = interp_val_L(s);
+        float p_R  = interp_val_L(s);
         for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii+1); }
-        real ru_R = interp_val_L(s);
+        float ru_R = interp_val_L(s);
         p_x (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(ru_R-ru_L)   );
         ru_x(k,j,i) = 0.5_fp*(ru_L + ru_R -    (p_R -p_L )/cs);
       });
@@ -462,15 +438,15 @@ namespace modules {
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        real p_L  = interp_val_R(s);
+        float p_L  = interp_val_R(s);
         for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj,hs+i); }
-        real rv_L = interp_val_R(s);
+        float rv_L = interp_val_R(s);
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj+1,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        real p_R  = interp_val_L(s);
+        float p_R  = interp_val_L(s);
         for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj+1,hs+i); }
-        real rv_R = interp_val_L(s);
+        float rv_R = interp_val_L(s);
         p_y (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(rv_R-rv_L)   );
         rv_y(k,j,i) = 0.5_fp*(rv_L + rv_R -    (p_R -p_L )/cs);
       });
@@ -480,15 +456,15 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk,hs+j,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        real p_L  = interp_val_R(s);
+        float p_L  = interp_val_R(s);
         for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk,hs+j,hs+i)+hy_dens_cells(k+kk))*fields_loc(idW,k+kk,hs+j,hs+i); }
-        real rw_L = interp_val_R(s);
+        float rw_L = interp_val_R(s);
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk+1,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk+1,hs+j,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        real p_R  = interp_val_L(s);
+        float p_R  = interp_val_L(s);
         for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*fields_loc(idW,k+kk+1,hs+j,hs+i); }
-        real rw_R = interp_val_L(s);
+        float rw_R = interp_val_L(s);
         p_z (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(rw_R-rw_L)   );
         rw_z(k,j,i) = 0.5_fp*(rw_L + rw_R -    (p_R -p_L )/cs);
       });
@@ -562,6 +538,47 @@ namespace modules {
                                   -( flux_z(num_state+l,k+1,j,i) - flux_z(num_state+l,k,j,i) ) * r_dz;
         }
       });
+
+      core::MultiField<float,3> fields_visc;
+      for (int l=0; l < num_state  ; l++) { fields_visc.add_field(fields_loc.slice<3>(            l,0,0,0)); }
+      for (int l=0; l < num_tracers; l++) { fields_visc.add_field(fields_loc.slice<3>(num_state+1+l,0,0,0)); }
+
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        float hv_beta = 0;
+        if      (any_immersed2 (k,j,i)) { hv_beta = 1.f/4.f/2.f;  }
+        else if (any_immersed4 (k,j,i)) { hv_beta = 1.f/4.f/4.f;  }
+        else if (any_immersed6 (k,j,i)) { hv_beta = 1.f/4.f/8.f;  }
+        else if (any_immersed8 (k,j,i)) { hv_beta = 1.f/4.f/16.f; }
+        else if (any_immersed10(k,j,i)) { hv_beta = 1.f/4.f/32.f; }
+        if (hv_beta > 0) {
+          SArray<bool ,1,ord> immersed;
+          for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,1+i+ii) > 0; }
+          for (int l=1; l < num_state+num_tracers; l++) {
+            SArray<float,1,ord> s;
+            for (int ii = 0; ii < ord; ii++) { s(ii) = fields_visc(l,hs+k,hs+j,1+i+ii); }
+            if (l==idV || l==idW) modify_stencil_immersed_der0( s , immersed );
+            if (l < num_state) { state_tend  (l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            else               { tracers_tend(l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+          }
+          for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,1+j+jj,hs+i) > 0; }
+          for (int l=1; l < num_state+num_tracers; l++) {
+            SArray<float,1,ord> s;
+            for (int jj = 0; jj < ord; jj++) { s(jj) = fields_visc(l,hs+k,1+j+jj,hs+i); }
+            if (l==idU || l==idW) modify_stencil_immersed_der0( s , immersed );
+            if (l < num_state) { state_tend  (l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            else               { tracers_tend(l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+          }
+          for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(1+k+kk,hs+j,hs+i) > 0; }
+          for (int l=1; l < num_state+num_tracers; l++) {
+            SArray<float,1,ord> s;
+            for (int kk = 0; kk < ord; kk++) { s(kk) = fields_visc(l,1+k+kk,hs+j,hs+i); }
+            if (l==idU || l==idV) modify_stencil_immersed_der0( s , immersed );
+            if (l < num_state) { state_tend  (l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            else               { tracers_tend(l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+          }
+        }
+      });
+
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("compute_tendencies");
       #endif
