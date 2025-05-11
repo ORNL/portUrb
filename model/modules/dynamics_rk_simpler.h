@@ -292,26 +292,6 @@ namespace modules {
 
 
 
-    real static KOKKOS_INLINE_FUNCTION interp_val_L( SArray<float,1,ord> const &s) {
-      if      constexpr (ord == 3 ) { return 0.333333333f*s(0)+0.833333333f*s(1)-0.166666667f*s(2); }
-      else if constexpr (ord == 5 ) { return -0.0500000000f*s(0)+0.450000000f*s(1)+0.783333333f*s(2)-0.216666667f*s(3)+0.0333333333f*s(4); }
-      else if constexpr (ord == 7 ) { return 0.00952380952f*s(0)-0.0904761905f*s(1)+0.509523810f*s(2)+0.759523810f*s(3)-0.240476190f*s(4)+0.0595238095f*s(5)-0.00714285714f*s(6); }
-      else if constexpr (ord == 9 ) { return -0.00198412698f*s(0)+0.0218253968f*s(1)-0.121031746f*s(2)+0.545634921f*s(3)+0.745634921f*s(4)-0.254365079f*s(5)+0.0789682540f*s(6)-0.0162698413f*s(7)+0.00158730159f*s(8); }
-      else if constexpr (ord == 11) { return 0.000432900433f*s(0)-0.00551948052f*s(1)-0.000360750361f*s(10)+0.0341630592f*s(2)-0.144408369f*s(3)+0.569877345f*s(4)+0.736544012f*s(5)-0.263455988f*s(6)+0.0936868687f*s(7)-0.0253607504f*s(8)+0.00440115440f*s(9); }
-    }
-
-
-
-    real static KOKKOS_INLINE_FUNCTION interp_val_R( SArray<float,1,ord> const &s) {
-      if      constexpr (ord == 3 ) { return -0.166666667f*s(0)+0.833333333f*s(1)+0.333333333f*s(2); }
-      else if constexpr (ord == 5 ) { return 0.0333333333f*s(0)-0.216666667f*s(1)+0.783333333f*s(2)+0.450000000f*s(3)-0.0500000000f*s(4); }
-      else if constexpr (ord == 7 ) { return -0.00714285714f*s(0)+0.0595238095f*s(1)-0.240476190f*s(2)+0.759523810f*s(3)+0.509523810f*s(4)-0.0904761905f*s(5)+0.00952380952f*s(6); }
-      else if constexpr (ord == 9 ) { return 0.00158730159f*s(0)-0.0162698413f*s(1)+0.0789682540f*s(2)-0.254365079f*s(3)+0.745634921f*s(4)+0.545634921f*s(5)-0.121031746f*s(6)+0.0218253968f*s(7)-0.00198412698f*s(8); }
-      else if constexpr (ord == 11) { return -0.000360750361f*s(0)+0.00440115440f*s(1)+0.000432900433f*s(10)-0.0253607504f*s(2)+0.0936868687f*s(3)-0.263455988f*s(4)+0.736544012f*s(5)+0.569877345f*s(6)-0.144408369f*s(7)+0.0341630592f*s(8)-0.00551948052f*s(9); }
-    }
-
-
-
     real static KOKKOS_INLINE_FUNCTION hypervis( SArray<float,1,ord> const &s) {
       if      constexpr (ord == 3 ) { return  ( 1.00000000f*s(0)-2.00000000f*s(1)+1.00000000f*s(2) )/4; }
       else if constexpr (ord == 5 ) { return -( 1.00000000f*s(0)-4.00000000f*s(1)+6.00000000f*s(2)-4.00000000f*s(3)+1.00000000f*s(4) )/16; }
@@ -370,6 +350,49 @@ namespace modules {
       real r_dz = 1./dz; // reciprocal of grid spacing
       real fcor = 2*7.2921e-5*std::sin(latitude/180*M_PI);      // For coriolis: 2*Omega*sin(latitude)
 
+      SArray<float,1,ord> wt;
+      if      constexpr (ord == 3 ) {
+        wt(0) =  0.333333333f;
+        wt(1) = +0.833333333f;
+        wt(2) = -0.166666667f;
+      } else if constexpr (ord == 5 ) {
+        wt(0) = -0.0500000000f;
+        wt(1) = +0.450000000f;
+        wt(2) = +0.783333333f;
+        wt(3) = -0.216666667f;
+        wt(4) = +0.0333333333f;
+      } else if constexpr (ord == 7 ) {
+        wt(0 ) =  0.00952380952f;
+        wt(1 ) = -0.0904761905f;
+        wt(2 ) = +0.509523810f;
+        wt(3 ) = +0.759523810f;
+        wt(4 ) = -0.240476190f;
+        wt(5 ) = +0.0595238095f;
+        wt(6 ) = -0.00714285714f;
+      } else if constexpr (ord == 9 ) {
+        wt(0 ) = -0.00198412698f;
+        wt(1 ) = +0.0218253968f;
+        wt(2 ) = -0.121031746f;
+        wt(3 ) = +0.545634921f;
+        wt(4 ) = +0.745634921f;
+        wt(5 ) = -0.254365079f;
+        wt(6 ) = +0.0789682540f;
+        wt(7 ) = -0.0162698413f;
+        wt(8 ) = +0.00158730159f;
+      } else if constexpr (ord == 11) {
+        wt(0 ) =  0.000432900433f;
+        wt(1 ) = -0.00551948052f;
+        wt(2 ) = +0.0341630592f;
+        wt(3 ) = -0.144408369f;
+        wt(4 ) = +0.569877345f;
+        wt(5 ) = +0.736544012f;
+        wt(6 ) = -0.263455988f;
+        wt(7 ) = +0.0936868687f;
+        wt(8 ) = -0.0253607504f;
+        wt(9 ) = +0.00440115440f;
+        wt(10) = -0.000360750361f;
+      }
+
       float4d fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
 
       // Compute pressure
@@ -379,8 +402,8 @@ namespace modules {
         fields_loc(idR,hs+k,hs+j,hs+i) = state(idR,hs+k,hs+j,hs+i);
         for (int l=1; l < num_state  ; l++) { fields_loc(            l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i)*r_r; }
         for (int l=0; l < num_tracers; l++) { fields_loc(num_state+1+l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i)*r_r; }
-        fields_loc(idR,hs+k,hs+j,hs+i) -= hy_dens_cells (hs+k);
-        // fields_loc(idT,hs+k,hs+j,hs+i) -= hy_theta_cells(hs+k);
+        // fields_loc(idR,hs+k,hs+j,hs+i) -= hy_dens_cells (hs+k);
+        fields_loc(idT,hs+k,hs+j,hs+i) -= hy_theta_cells(hs+k);
       });
 
       // Perform periodic halo exchange in the horizontal, and implement vertical no-slip solid wall boundary conditions
@@ -420,15 +443,19 @@ namespace modules {
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_L  = interp_val_R(s);
-        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii); }
-        float ru_L = interp_val_R(s);
+        float p_L = 0;
+        for (int ii=0; ii < ord; ii++) { p_L += wt(ord-1-ii)*s(ii); }
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii))*fields_loc(idU,hs+k,hs+j,i+ii); }
+        float ru_L = 0;
+        for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii+1); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_R  = interp_val_L(s);
-        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii+1); }
-        float ru_R = interp_val_L(s);
+        float p_R = 0;
+        for (int ii=0; ii < ord; ii++) { p_R += wt(ii)*s(ii); }
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1))*fields_loc(idU,hs+k,hs+j,i+ii+1); }
+        float ru_R = 0;
+        for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
         p_x (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(ru_R-ru_L)   );
         ru_x(k,j,i) = 0.5_fp*(ru_L + ru_R -    (p_R -p_L )/cs);
       });
@@ -438,15 +465,19 @@ namespace modules {
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_L  = interp_val_R(s);
-        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj,hs+i); }
-        float rv_L = interp_val_R(s);
+        float p_L = 0;
+        for (int jj=0; jj < ord; jj++) { p_L += wt(ord-1-jj)*s(jj); }
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idR,hs+k,j+jj,hs+i)*fields_loc(idV,hs+k,j+jj,hs+i); }
+        float rv_L = 0;
+        for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj+1,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_R  = interp_val_L(s);
-        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj+1,hs+i); }
-        float rv_R = interp_val_L(s);
+        float p_R = 0;
+        for (int jj=0; jj < ord; jj++) { p_R += wt(jj)*s(jj); }
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idR,hs+k,j+jj+1,hs+i)*fields_loc(idV,hs+k,j+jj+1,hs+i); }
+        float rv_R = 0;
+        for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
         p_y (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(rv_R-rv_L)   );
         rv_y(k,j,i) = 0.5_fp*(rv_L + rv_R -    (p_R -p_L )/cs);
       });
@@ -456,15 +487,19 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk,hs+j,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_L  = interp_val_R(s);
-        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk,hs+j,hs+i)+hy_dens_cells(k+kk))*fields_loc(idW,k+kk,hs+j,hs+i); }
-        float rw_L = interp_val_R(s);
+        float p_L = 0;
+        for (int kk=0; kk < ord; kk++) { p_L += wt(ord-1-kk)*s(kk); }
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idR,k+kk,hs+j,hs+i)*fields_loc(idW,k+kk,hs+j,hs+i); }
+        float rw_L = 0;
+        for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk+1,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk+1,hs+j,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_R  = interp_val_L(s);
-        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*fields_loc(idW,k+kk+1,hs+j,hs+i); }
-        float rw_R = interp_val_L(s);
+        float p_R = 0;
+        for (int kk=0; kk < ord; kk++) { p_R += wt(kk)*s(kk); }
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idR,k+kk+1,hs+j,hs+i)*fields_loc(idW,k+kk+1,hs+j,hs+i); }
+        float rw_R = 0;
+        for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
         p_z (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(rw_R-rw_L)   );
         rw_z(k,j,i) = 0.5_fp*(rw_L + rw_R -    (p_R -p_L )/cs);
       });
@@ -478,43 +513,78 @@ namespace modules {
       for (int tr=0; tr < num_tracers; tr++) { advect_fields.add_field( fields_loc.slice<3>(num_state+1+tr,0,0,0) ); }
       int num_fields = advect_fields.get_num_fields();
 
+      typedef limiter::WenoLimiter<float,ord> Limiter;
+
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
-        int ind = ru_x(k,j,i) > 0 ? 0 : 1;
+        float ru = ru_x(k,j,i);
+        int ind = ru > 0 ? 0 : 1;
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,i+ii+ind) > 0; }
         for (int l=1; l < num_fields; l++) {
           SArray<float,1,ord> s;
           for (int ii = 0; ii < ord; ii++) { s(ii) = advect_fields(l,hs+k,hs+j,i+ii+ind); }
           if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
-          flux_x(l,k,j,i) = ru_x(k,j,i) * ( ru_x(k,j,i) > 0 ? interp_val_R(s) : interp_val_L(s) );
+          float val;
+          if (l==idU || l==idV || l==idW) {
+            val = 0;
+            for (int ii=0; ii < ord; ii++) { val += wt(ru>0?ord-1-ii:ii)*s(ii); }
+          } else {
+            float val_L, val_R;
+            Limiter::compute_limited_edges( s , val_L , val_R , { true , immersed(hs-1) , immersed(hs+1) } );
+            val = ru > 0 ? val_R : val_L;
+          }
+          if (l == idT) val += hy_theta_cells(hs+k);
+          flux_x(l,k,j,i) = ru*val;
         }
-        flux_x(idR,k,j,i)  = ru_x(k,j,i);
+        flux_x(idR,k,j,i)  = ru;
         flux_x(idU,k,j,i) += p_x(k,j,i);
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
-        int ind = rv_y(k,j,i) > 0 ? 0 : 1;
+        float rv = rv_y(k,j,i);
+        int ind = rv > 0 ? 0 : 1;
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,j+jj+ind,hs+i) > 0; }
         for (int l=1; l < num_fields; l++) {
           SArray<float,1,ord> s;
           for (int jj = 0; jj < ord; jj++) { s(jj) = advect_fields(l,hs+k,j+jj+ind,hs+i); }
           if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
-          flux_y(l,k,j,i) = rv_y(k,j,i) * ( rv_y(k,j,i) > 0 ? interp_val_R(s) : interp_val_L(s) );
+          float val;
+          if (l==idU || l==idV || l==idW) {
+            val = 0;
+            for (int jj=0; jj < ord; jj++) { val += wt(rv>0?ord-1-jj:jj)*s(jj); }
+          } else {
+            float val_L, val_R;
+            Limiter::compute_limited_edges( s , val_L , val_R , { true , immersed(hs-1) , immersed(hs+1) } );
+            val = rv > 0 ? val_R : val_L;
+          }
+          if (l == idT) val += hy_theta_cells(hs+k);
+          flux_y(l,k,j,i) = rv*val;
         }
-        flux_y(idR,k,j,i)  = rv_y(k,j,i);
+        flux_y(idR,k,j,i)  = rv;
         flux_y(idV,k,j,i) += p_y(k,j,i);
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
-        int ind = rw_z(k,j,i) > 0 ? 0 : 1;
+        float rw = rw_z(k,j,i);
+        int ind = rw > 0 ? 0 : 1;
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(k+kk+ind,hs+j,hs+i) > 0; }
         for (int l=1; l < num_fields; l++) {
           SArray<float,1,ord> s;
           for (int kk = 0; kk < ord; kk++) { s(kk) = advect_fields(l,k+kk+ind,hs+j,hs+i); }
           if (l == idU || l == idV) modify_stencil_immersed_der0( s , immersed );
-          flux_z(l,k,j,i) = rw_z(k,j,i) * ( rw_z(k,j,i) > 0 ? interp_val_R(s) : interp_val_L(s) );
+          float val;
+          if (l==idU || l==idV || l==idW) {
+            val = 0;
+            for (int kk=0; kk < ord; kk++) { val += wt(rw>0?ord-1-kk:kk)*s(kk); }
+          } else {
+            float val_L, val_R;
+            Limiter::compute_limited_edges( s , val_L , val_R , { true , immersed(hs-1) , immersed(hs+1) } );
+            val = rw > 0 ? val_R : val_L;
+          }
+          if (l == idT) val += hy_theta_edges(k);
+          flux_z(l,k,j,i) = rw*val;
         }
-        flux_z(idR,k,j,i)  = rw_z(k,j,i);
+        flux_z(idR,k,j,i)  = rw;
         flux_z(idW,k,j,i) += p_z(k,j,i);
       });
 
