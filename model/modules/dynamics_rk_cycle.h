@@ -25,7 +25,7 @@ namespace modules {
   struct Dynamics_Euler_Stratified_WenoFV {
     // Order of accuracy (numerical convergence for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
-      size_t static constexpr ord = 9;
+      size_t static constexpr ord = 5;
     #else
       size_t static constexpr ord = PORTURB_ORD;
     #endif
@@ -121,12 +121,15 @@ namespace modules {
       auto nx   = coupler.get_nx();
       auto ny   = coupler.get_ny();
       auto nz   = coupler.get_nz();
+      auto gamma = coupler.get_option<real>("gamma_d");  // cp_dry / cv_dry (about 1.4)
+      auto C0    = coupler.get_option<real>("C0"     );  // pressure = C0*pow(rho*theta,gamma)
       auto num_tracers = coupler.get_num_tracers();
       auto &dm  = coupler.get_data_manager_readwrite();
       auto hy_theta_cells = dm.get<float const,1>("hy_theta_cells");
       auto hy_theta_edges = dm.get<float const,1>("hy_theta_edges");
+      auto hy_p  = dm.get<float const,1>("hy_pressure_cells");
 
-      int niter = 1;
+      int niter = 4;
 
       float4d fields("fields",num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_tracers+1,nz,ny,nx) ,
@@ -135,7 +138,7 @@ namespace modules {
         else                 { fields(l,hs+k,hs+j,hs+i) = state(idT,hs+k,hs+j,hs+i)/state(idR,hs+k,hs+j,hs+i)-hy_theta_cells(hs+k); }
       });
 
-      std::vector<std::string> regs = {"dycore_reg1","dycore_reg2"};
+      std::vector<std::string> regs = {"dycore_reg1","dycore_reg2","dycore_reg3","dycore_reg4"};
       for (int ireg = 0; ireg < regs.size(); ireg++) {
         if ( ! dm.entry_exists(regs.at(ireg)) ) {
           dm.register_and_allocate<float>(regs.at(ireg),"",{num_tracers+1,nz,ny,nx});
@@ -147,15 +150,25 @@ namespace modules {
         }
       }
 
-      auto fields_nm2 = dm.get<float,4>("dycore_reg1");
-      auto fields_nm1 = dm.get<float,4>("dycore_reg2");
+      auto fields_nm4 = dm.get<float,4>("dycore_reg1");
+      auto fields_nm3 = dm.get<float,4>("dycore_reg2");
+      auto fields_nm2 = dm.get<float,4>("dycore_reg3");
+      auto fields_nm1 = dm.get<float,4>("dycore_reg4");
 
       float4d fields_tavg("fields_tavg",num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_tracers+1,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        fields_tavg(l,hs+k,hs+j,hs+i) =  5. /12.*fields_nm2(l,k,j,i) +
-                                        -4. /3. *fields_nm1(l,k,j,i) +
-                                         23./12.*fields(l,hs+k,hs+j,hs+i);
+        // fields_tavg(l,hs+k,hs+j,hs+i) =  5. /12.*fields_nm2(l,k,j,i) +
+        //                                 -4. /3. *fields_nm1(l,k,j,i) +
+        //                                  23./12.*fields(l,hs+k,hs+j,hs+i);
+        fields_tavg(l,hs+k,hs+j,hs+i) = -5. /12.*fields_nm2(l,k,j,i) +
+                                         1. /3. *fields_nm1(l,k,j,i) +
+                                         13./12.*fields(l,hs+k,hs+j,hs+i);
+        // fields_tavg(l,hs+k,hs+j,hs+i) =  67. /210.*fields_nm4(l,k,j,i) +
+        //                                 -151./420.*fields_nm3(l,k,j,i) +
+        //                                 -44. /105.*fields_nm2(l,k,j,i) +
+        //                                  59. /420.*fields_nm1(l,k,j,i) +
+        //                                  277./210.*fields(l,hs+k,hs+j,hs+i);
       });
 
 
@@ -175,7 +188,17 @@ namespace modules {
         if (j < ny && i < nx) rw_accum(k,j,i) = 0;
       });
 
+      real3d rho_theta("rho_theta",nz+2*hs,ny+2*hs,nx+2*hs);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        rho_theta(hs+k,hs+j,hs+i) = state(idT,hs+k,hs+j,hs+i);
+        state(idT,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,hs+k,hs+j,hs+i),gamma) - hy_p(hs+k);
+      });
+
       for (int iter = 0; iter < niter; iter++) { time_step_rk_3_3_acoust(coupler,state,dt_dyn/niter); }
+
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        state(idT,hs+k,hs+j,hs+i) = rho_theta(hs+k,hs+j,hs+i);
+      });
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny+1,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         if (k < nz && j < ny) ru_accum(k,j,i) /= niter;
@@ -192,6 +215,8 @@ namespace modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_tracers+1,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        fields_nm4(l,k,j,i) = fields_nm3(l,k,j,i);
+        fields_nm3(l,k,j,i) = fields_nm2(l,k,j,i);
         fields_nm2(l,k,j,i) = fields_nm1(l,k,j,i);
         if (l < num_tracers) {
           tracers(l,hs+k,hs+j,hs+i) += dt_dyn * fields_tend(l,k,j,i);
@@ -217,18 +242,7 @@ namespace modules {
       auto nx    = coupler.get_nx();
       auto ny    = coupler.get_ny();
       auto nz    = coupler.get_nz();
-      auto gamma = coupler.get_option<real>("gamma_d");  // cp_dry / cv_dry (about 1.4)
-      auto C0    = coupler.get_option<real>("C0"     );  // pressure = C0*pow(rho*theta,gamma)
       auto &dm   = coupler.get_data_manager_readwrite();
-      auto hy_p  = dm.get<float const,1>("hy_pressure_cells");
-      auto hy_t  = dm.get<float const,1>("hy_theta_cells");
-
-      // Make perturbation pressure the primary thermodynamic variable
-      real3d rho_theta("rho_theta",nz+2*hs,ny+2*hs,nx+2*hs);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        rho_theta(hs+k,hs+j,hs+i) = state(idT,hs+k,hs+j,hs+i);
-        state(idT,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,hs+k,hs+j,hs+i),gamma) - hy_p(hs+k);
-      });
 
       real4d state_tmp   ("state_tmp"   ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);
       real4d state_tend  ("state_tend"  ,num_state  ,nz     ,ny     ,nx     );
@@ -270,11 +284,6 @@ namespace modules {
       });
 
       enforce_immersed_boundaries_acoust( coupler , state );
-
-      // Restore original thermodynamics variable
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        state(idT,hs+k,hs+j,hs+i) = rho_theta(hs+k,hs+j,hs+i);
-      });
 
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("time_step_rk_3_3");

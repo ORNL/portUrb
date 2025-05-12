@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     real        ny_glob     = ylen/dx;
     real        nz          = zlen/dz;
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 10;
+    int         dyn_cycle   = 1;
     real        out_freq    = 900;
     real        inform_freq = 10;
     std::string out_prefix  = "supercell_100m";
@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "restart_file"     , ""          );
     coupler.set_option<real       >( "latitude"         , 0.          );
     coupler.set_option<real       >( "roughness"        , 0.1         );
-    coupler.set_option<real       >( "cfl"              , 0.5         );
+    coupler.set_option<real       >( "cfl"              , 2.8         );
     coupler.set_option<bool       >( "enable_gravity"   , true        );
     coupler.set_option<bool       >( "weno_all"         , true        );
     coupler.set_option<int        >( "micro_morr_ihail" , 1           );
