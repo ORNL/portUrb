@@ -25,7 +25,7 @@ namespace modules {
   struct Dynamics_Euler_Stratified_WenoFV {
     // Order of accuracy (numerical convergence for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
-      size_t static constexpr ord = 11;
+      size_t static constexpr ord = 9;
     #else
       size_t static constexpr ord = PORTURB_ORD;
     #endif
@@ -103,11 +103,105 @@ namespace modules {
       real dt_dyn = compute_time_step( coupler );
       int ncycles = (int) std::ceil( dt_phys / dt_dyn );
       dt_dyn = dt_phys / ncycles;
-      for (int icycle = 0; icycle < ncycles; icycle++) { time_step_rk_3_3_acoust(coupler,state,dt_dyn); }
+      for (int icycle = 0; icycle < ncycles; icycle++) { time_step_rk_3_3(coupler,state,tracers,dt_dyn); }
       convert_dynamics_to_coupler( coupler , state , tracers );
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("time_step");
       #endif
+    }
+
+
+
+    void time_step_rk_3_3( core::Coupler & coupler ,
+                           real4d const  & state   ,
+                           real4d const  & tracers ,
+                           real            dt_dyn  ) const {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto nx   = coupler.get_nx();
+      auto ny   = coupler.get_ny();
+      auto nz   = coupler.get_nz();
+      auto num_tracers = coupler.get_num_tracers();
+      auto &dm  = coupler.get_data_manager_readwrite();
+      auto hy_theta_cells = dm.get<float const,1>("hy_theta_cells");
+      auto hy_theta_edges = dm.get<float const,1>("hy_theta_edges");
+
+      int niter = 1;
+
+      float4d fields("fields",num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_tracers+1,nz,ny,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        if (l < num_tracers) { fields(l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i)/state(idR,hs+k,hs+j,hs+i); }
+        else                 { fields(l,hs+k,hs+j,hs+i) = state(idT,hs+k,hs+j,hs+i)/state(idR,hs+k,hs+j,hs+i)-hy_theta_cells(hs+k); }
+      });
+
+      std::vector<std::string> regs = {"dycore_reg1","dycore_reg2"};
+      for (int ireg = 0; ireg < regs.size(); ireg++) {
+        if ( ! dm.entry_exists(regs.at(ireg)) ) {
+          dm.register_and_allocate<float>(regs.at(ireg),"",{num_tracers+1,nz,ny,nx});
+          auto reg = dm.get<float,4>(regs.at(ireg));
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_tracers+1,nz,ny,nx) ,
+                                            KOKKOS_LAMBDA (int l, int k, int j, int i) {
+              reg(l,k,j,i) = fields(l,hs+k,hs+j,hs+i);
+          });
+        }
+      }
+
+      auto fields_nm2 = dm.get<float,4>("dycore_reg1");
+      auto fields_nm1 = dm.get<float,4>("dycore_reg2");
+
+      float4d fields_tavg("fields_tavg",num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_tracers+1,nz,ny,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        fields_tavg(l,hs+k,hs+j,hs+i) =  5. /12.*fields_nm2(l,k,j,i) +
+                                        -4. /3. *fields_nm1(l,k,j,i) +
+                                         23./12.*fields(l,hs+k,hs+j,hs+i);
+      });
+
+
+
+
+
+      if ( ! dm.entry_exists("dycore_ru_accum") ) dm.register_and_allocate<float>("dycore_ru_accum","",{nz,ny,nx+1});
+      if ( ! dm.entry_exists("dycore_rv_accum") ) dm.register_and_allocate<float>("dycore_rv_accum","",{nz,ny+1,nx});
+      if ( ! dm.entry_exists("dycore_rw_accum") ) dm.register_and_allocate<float>("dycore_rw_accum","",{nz+1,ny,nx});
+      auto ru_accum = dm.get<float,3>("dycore_ru_accum");
+      auto rv_accum = dm.get<float,3>("dycore_rv_accum");
+      auto rw_accum = dm.get<float,3>("dycore_rw_accum");
+
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny+1,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (k < nz && j < ny) ru_accum(k,j,i) = 0;
+        if (k < nz && i < nx) rv_accum(k,j,i) = 0;
+        if (j < ny && i < nx) rw_accum(k,j,i) = 0;
+      });
+
+      for (int iter = 0; iter < niter; iter++) { time_step_rk_3_3_acoust(coupler,state,dt_dyn/niter); }
+
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny+1,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (k < nz && j < ny) ru_accum(k,j,i) /= niter;
+        if (k < nz && i < nx) rv_accum(k,j,i) /= niter;
+        if (j < ny && i < nx) rw_accum(k,j,i) /= niter;
+      });
+
+
+
+
+
+      float4d fields_tend("fields_tend",num_tracers+1,nz,ny,nx);
+      compute_tendencies_advect( coupler , fields_tavg , fields_tend , ru_accum , rv_accum , rw_accum , dt_dyn );
+
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_tracers+1,nz,ny,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        fields_nm2(l,k,j,i) = fields_nm1(l,k,j,i);
+        if (l < num_tracers) {
+          tracers(l,hs+k,hs+j,hs+i) += dt_dyn * fields_tend(l,k,j,i);
+          fields_nm1(l,k,j,i) = tracers(l,hs+k,hs+j,hs+i)/state(idR,hs+k,hs+j,hs+i);
+        } else {
+          state(idT,hs+k,hs+j,hs+i) += dt_dyn * fields_tend(l,k,j,i);
+          fields_nm1(l,k,j,i) = state(idT,hs+k,hs+j,hs+i)/state(idR,hs+k,hs+j,hs+i) - hy_theta_cells(hs+k);
+        }
+      });
+
     }
 
 
@@ -120,32 +214,24 @@ namespace modules {
       #endif
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      auto nx          = coupler.get_nx();
-      auto ny          = coupler.get_ny();
-      auto nz          = coupler.get_nz();
-      auto gamma       = coupler.get_option<real>("gamma_d");  // cp_dry / cv_dry (about 1.4)
-      auto C0          = coupler.get_option<real>("C0"     );  // pressure = C0*pow(rho*theta,gamma)
-      auto &dm         = coupler.get_data_manager_readwrite();
-      auto hy_p        = dm.get<float const,1>("hy_pressure_cells");
-      auto hy_t        = dm.get<float const,1>("hy_theta_cells");
+      auto nx    = coupler.get_nx();
+      auto ny    = coupler.get_ny();
+      auto nz    = coupler.get_nz();
+      auto gamma = coupler.get_option<real>("gamma_d");  // cp_dry / cv_dry (about 1.4)
+      auto C0    = coupler.get_option<real>("C0"     );  // pressure = C0*pow(rho*theta,gamma)
+      auto &dm   = coupler.get_data_manager_readwrite();
+      auto hy_p  = dm.get<float const,1>("hy_pressure_cells");
+      auto hy_t  = dm.get<float const,1>("hy_theta_cells");
 
       // Make perturbation pressure the primary thermodynamic variable
-      real3d theta("theta",nz+2*hs,ny+2*hs,nx+2*hs);
+      real3d rho_theta("rho_theta",nz+2*hs,ny+2*hs,nx+2*hs);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        theta(hs+k,hs+j,hs+i) = state(idT,hs+k,hs+j,hs+i)/state(idR,hs+k,hs+j,hs+i);
+        rho_theta(hs+k,hs+j,hs+i) = state(idT,hs+k,hs+j,hs+i);
         state(idT,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,hs+k,hs+j,hs+i),gamma) - hy_p(hs+k);
       });
 
       real4d state_tmp   ("state_tmp"   ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);
       real4d state_tend  ("state_tend"  ,num_state  ,nz     ,ny     ,nx     );
-
-      if ( ! dm.entry_exists("ru_accum") ) dm.register_and_allocate<float>("ru_accum","",{nz,ny,nx+1});
-      if ( ! dm.entry_exists("rv_accum") ) dm.register_and_allocate<float>("rv_accum","",{nz,ny+1,nx});
-      if ( ! dm.entry_exists("rw_accum") ) dm.register_and_allocate<float>("rw_accum","",{nz+1,ny,nx});
-
-      dm.get<float,3>("ru_accum") = 0;
-      dm.get<float,3>("rv_accum") = 0;
-      dm.get<float,3>("rw_accum") = 0;
 
       enforce_immersed_boundaries_acoust( coupler , state );
 
@@ -187,7 +273,7 @@ namespace modules {
 
       // Restore original thermodynamics variable
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        state(idT,hs+k,hs+j,hs+i) = state(idR,hs+k,hs+j,hs+i)*theta(hs+k,hs+j,hs+i);
+        state(idT,hs+k,hs+j,hs+i) = rho_theta(hs+k,hs+j,hs+i);
       });
 
       #ifdef YAKL_AUTO_PROFILE
@@ -283,6 +369,188 @@ namespace modules {
 
 
 
+    void compute_tendencies_advect( core::Coupler       & coupler      ,
+                                    float4d       const & fields       ,
+                                    float4d       const & fields_tend  ,
+                                    float3d       const & ru_accum     ,
+                                    float3d       const & rv_accum     ,
+                                    float3d       const & rw_accum     ,
+                                    real                  dt           ) const {
+      #ifdef YAKL_AUTO_PROFILE
+        yakl::timer_start("compute_tendencies");
+      #endif
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto  nx             = coupler.get_nx();    // Proces-local number of cells
+      auto  ny             = coupler.get_ny();    // Proces-local number of cells
+      auto  nz             = coupler.get_nz();    // Total vertical cells
+      auto  dx             = coupler.get_dx();    // grid spacing
+      auto  dy             = coupler.get_dy();    // grid spacing
+      auto  dz             = coupler.get_dz();    // grid spacing
+      auto  &dm            = coupler.get_data_manager_readonly();  // Grab read-only data manager
+      auto  immersed_prop  = dm.get<real  const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion
+      auto  any_immersed2  = dm.get<bool  const,3>("dycore_any_immersed2"     ); // Are any immersed in 3-D halo?
+      auto  any_immersed4  = dm.get<bool  const,3>("dycore_any_immersed4"     ); // Are any immersed in 3-D halo?
+      auto  any_immersed6  = dm.get<bool  const,3>("dycore_any_immersed6"     ); // Are any immersed in 3-D halo?
+      auto  any_immersed8  = dm.get<bool  const,3>("dycore_any_immersed8"     ); // Are any immersed in 3-D halo?
+      auto  any_immersed10 = dm.get<bool  const,3>("dycore_any_immersed10"    ); // Are any immersed in 3-D halo?
+      auto  hy_theta_cells = dm.get<float const,1>("hy_theta_cells"    ); // Are any immersed in 3-D halo?
+      auto  hy_theta_edges = dm.get<float const,1>("hy_theta_edges"    ); // Are any immersed in 3-D halo?
+      // Compute matrices to convert polynomial coefficients to 2 GLL points and stencil values to 2 GLL points
+      // These matrices will be in column-row format. That performed better than row-column format in performance tests
+      real r_dx = 1./dx; // reciprocal of grid spacing
+      real r_dy = 1./dy; // reciprocal of grid spacing
+      real r_dz = 1./dz; // reciprocal of grid spacing
+
+      SArray<float,1,ord> wt;
+      if      constexpr (ord == 3 ) {
+        wt(0) =  0.333333333f;
+        wt(1) = +0.833333333f;
+        wt(2) = -0.166666667f;
+      } else if constexpr (ord == 5 ) {
+        wt(0) = -0.0500000000f;
+        wt(1) = +0.450000000f;
+        wt(2) = +0.783333333f;
+        wt(3) = -0.216666667f;
+        wt(4) = +0.0333333333f;
+      } else if constexpr (ord == 7 ) {
+        wt(0 ) =  0.00952380952f;
+        wt(1 ) = -0.0904761905f;
+        wt(2 ) = +0.509523810f;
+        wt(3 ) = +0.759523810f;
+        wt(4 ) = -0.240476190f;
+        wt(5 ) = +0.0595238095f;
+        wt(6 ) = -0.00714285714f;
+      } else if constexpr (ord == 9 ) {
+        wt(0 ) = -0.00198412698f;
+        wt(1 ) = +0.0218253968f;
+        wt(2 ) = -0.121031746f;
+        wt(3 ) = +0.545634921f;
+        wt(4 ) = +0.745634921f;
+        wt(5 ) = -0.254365079f;
+        wt(6 ) = +0.0789682540f;
+        wt(7 ) = -0.0162698413f;
+        wt(8 ) = +0.00158730159f;
+      } else if constexpr (ord == 11) {
+        wt(0 ) =  0.000432900433f;
+        wt(1 ) = -0.00551948052f;
+        wt(2 ) = +0.0341630592f;
+        wt(3 ) = -0.144408369f;
+        wt(4 ) = +0.569877345f;
+        wt(5 ) = +0.736544012f;
+        wt(6 ) = -0.263455988f;
+        wt(7 ) = +0.0936868687f;
+        wt(8 ) = -0.0253607504f;
+        wt(9 ) = +0.00440115440f;
+        wt(10) = -0.000360750361f;
+      }
+
+      auto num_fields = fields.extent(0);
+      int num_tracers = num_fields - 1;
+
+      // Perform periodic halo exchange in the horizontal, and implement vertical no-slip solid wall boundary conditions
+      #ifdef YAKL_AUTO_PROFILE
+      coupler.get_parallel_comm().barrier();
+      yakl::timer_start("dycore_halo_exchange_x");
+      #endif
+      if (ord > 1) coupler.halo_exchange_x( fields , hs );
+      #ifdef YAKL_AUTO_PROFILE
+      coupler.get_parallel_comm().barrier();
+      yakl::timer_stop("dycore_halo_exchange_x");
+      yakl::timer_start("dycore_halo_exchange_y");
+      #endif
+      if (ord > 1) coupler.halo_exchange_y( fields , hs );
+      #ifdef YAKL_AUTO_PROFILE
+      coupler.get_parallel_comm().barrier();
+      yakl::timer_stop("dycore_halo_exchange_y");
+      #endif
+      halo_boundary_conditions_advect( coupler , fields );
+
+      float4d flux_x("flux_x",num_fields,nz,ny,nx+1);
+      float4d flux_y("flux_y",num_fields,nz,ny+1,nx);
+      float4d flux_z("flux_z",num_fields,nz+1,ny,nx);
+
+      typedef limiter::WenoLimiter<float,ord> Limiter;
+
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,nx+1) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        float ru = ru_accum(k,j,i);
+        int ind = ru > 0 ? 0 : 1;
+        SArray<float,1,ord> s;
+        for (int ii = 0; ii < ord; ii++) { s(ii) = fields(l,hs+k,hs+j,i+ii+ind); }
+        float val_L, val_R;
+        Limiter::compute_limited_edges( s , val_L , val_R , { true , false , false } );
+        float val = ru > 0 ? val_R : val_L;
+        if (l < num_tracers) { flux_x(l,k,j,i) = ru*val; }
+        else                 { flux_x(l,k,j,i) = ru*(val+hy_theta_cells(hs+k)); }
+      });
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny+1,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        float rv = rv_accum(k,j,i);
+        int ind = rv > 0 ? 0 : 1;
+        SArray<float,1,ord> s;
+        for (int jj = 0; jj < ord; jj++) { s(jj) = fields(l,hs+k,j+jj+ind,hs+i); }
+        float val_L, val_R;
+        Limiter::compute_limited_edges( s , val_L , val_R , { true , false , false } );
+        float val = rv > 0 ? val_R : val_L;
+        if (l < num_tracers) { flux_y(l,k,j,i) = rv*val; }
+        else                 { flux_y(l,k,j,i) = rv*(val+hy_theta_cells(hs+k)); }
+      });
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+1,ny,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        float rw = rw_accum(k,j,i);
+        int ind = rw > 0 ? 0 : 1;
+        SArray<float,1,ord> s;
+        for (int kk = 0; kk < ord; kk++) { s(kk) = fields(l,k+kk+ind,hs+j,hs+i); }
+        float val_L, val_R;
+        Limiter::compute_limited_edges( s , val_L , val_R , { true , false , false } );
+        float val = rw > 0 ? val_R : val_L;
+        flux_z(l,k,j,i) = rw*val;  // plus one because we're skipping idR in the loop
+        if (l < num_tracers) { flux_z(l,k,j,i) = rw*val; }
+        else                 { flux_z(l,k,j,i) = rw*(val+hy_theta_edges(k)); }
+      });
+
+      // Compute tendencies as the flux divergence + gravity source term + coriolis
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        fields_tend(l,k,j,i) = -( flux_x(l,k,j,i+1) - flux_x(l,k,j,i) ) * r_dx
+                               -( flux_y(l,k,j+1,i) - flux_y(l,k,j,i) ) * r_dy
+                               -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) * r_dz;
+      });
+
+      // parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      //   float hv_beta = 0;
+      //   if      (any_immersed2 (k,j,i)) { hv_beta = 1.f/4.f/2.f;  }
+      //   else if (any_immersed4 (k,j,i)) { hv_beta = 1.f/4.f/4.f;  }
+      //   else if (any_immersed6 (k,j,i)) { hv_beta = 1.f/4.f/8.f;  }
+      //   else if (any_immersed8 (k,j,i)) { hv_beta = 1.f/4.f/16.f; }
+      //   else if (any_immersed10(k,j,i)) { hv_beta = 1.f/4.f/32.f; }
+      //   if (hv_beta > 0) {
+      //     for (int l=0; l < num_fields; l++) {
+      //       SArray<float,1,ord> s;
+      //       for (int ii = 0; ii < ord; ii++) { s(ii) = fields(l,hs+k,hs+j,1+i+ii); }
+      //       fields_tend(l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt;
+      //     }
+      //     for (int l=0; l < num_fields; l++) {
+      //       SArray<float,1,ord> s;
+      //       for (int jj = 0; jj < ord; jj++) { s(jj) = fields(l,hs+k,1+j+jj,hs+i); }
+      //       fields_tend(l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt;
+      //     }
+      //     for (int l=0; l < num_fields; l++) {
+      //       SArray<float,1,ord> s;
+      //       for (int kk = 0; kk < ord; kk++) { s(kk) = fields(l,1+k+kk,hs+j,hs+i); }
+      //       fields_tend(l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt;
+      //     }
+      //   }
+      // });
+
+      #ifdef YAKL_AUTO_PROFILE
+        yakl::timer_stop("compute_tendencies");
+      #endif
+    }
+
+
+
     void compute_tendencies_acoust( core::Coupler       & coupler      ,
                                     real4d        const & state        ,
                                     real4d        const & state_tend   ,
@@ -305,7 +573,7 @@ namespace modules {
       auto  grav           = coupler.get_option<real>("grav"   );  // Gravity
       auto  gamma          = coupler.get_option<real>("gamma_d");  // cp_dry / cv_dry (about 1.4)
       auto  latitude       = coupler.get_option<real>("latitude",0); // For coriolis
-      auto  &dm            = coupler.get_data_manager_readonly();  // Grab read-only data manager
+      auto  &dm            = coupler.get_data_manager_readwrite();  // Grab read-only data manager
       auto  immersed_prop  = dm.get<real  const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion
       auto  any_immersed2  = dm.get<bool  const,3>("dycore_any_immersed2"     ); // Are any immersed in 3-D halo?
       auto  any_immersed4  = dm.get<bool  const,3>("dycore_any_immersed4"     ); // Are any immersed in 3-D halo?
@@ -313,9 +581,9 @@ namespace modules {
       auto  any_immersed8  = dm.get<bool  const,3>("dycore_any_immersed8"     ); // Are any immersed in 3-D halo?
       auto  any_immersed10 = dm.get<bool  const,3>("dycore_any_immersed10"    ); // Are any immersed in 3-D halo?
       auto  hy_dens_cells  = dm.get<float const,1>("hy_dens_cells"            ); // Hydrostatic density
-      auto  ru_accum       = dm.get<float      ,3>("ru_accum");
-      auto  rv_accum       = dm.get<float      ,3>("rv_accum");
-      auto  rw_accum       = dm.get<float      ,3>("rw_accum");
+      auto  ru_accum       = dm.get<float      ,3>("dycore_ru_accum");
+      auto  rv_accum       = dm.get<float      ,3>("dycore_rv_accum");
+      auto  rw_accum       = dm.get<float      ,3>("dycore_rw_accum");
       // Compute matrices to convert polynomial coefficients to 2 GLL points and stencil values to 2 GLL points
       // These matrices will be in column-row format. That performed better than row-column format in performance tests
       real r_dx = 1./dx; // reciprocal of grid spacing
@@ -584,6 +852,107 @@ namespace modules {
 
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("compute_tendencies");
+      #endif
+    }
+
+
+
+    void halo_boundary_conditions_advect( core::Coupler const & coupler ,
+                                          float4d       const & fields  ) const {
+      #ifdef YAKL_AUTO_PROFILE
+        yakl::timer_start("halo_boundary_conditions");
+      #endif
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto nx              = coupler.get_nx();
+      auto ny              = coupler.get_ny();
+      auto nz              = coupler.get_nz();
+      auto &dm             = coupler.get_data_manager_readonly();
+
+      if (coupler.get_option<std::string>("bc_x1") == "periodic") { // Already handled in halo_exchange
+      } else if (coupler.get_option<std::string>("bc_x1") == "open") {
+        if (coupler.get_px() == 0) {
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(fields.extent(0),nz,ny,hs) ,
+                                            KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+            fields(l,hs+k,hs+j,      ii) = fields(l,hs+k,hs+j,hs+0   );
+          });
+        }
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x1 can only be periodic or open";
+        Kokkos::abort("");
+      }
+
+      if (coupler.get_option<std::string>("bc_x2") == "periodic") { // Already handled in halo_exchange
+      } else if (coupler.get_option<std::string>("bc_x2") == "open") {
+        if (coupler.get_px() == coupler.get_nproc_x()-1) {
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(fields.extent(0),nz,ny,hs) ,
+                                            KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+            fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
+          });
+        }
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x2 can only be periodic or open";
+        Kokkos::abort("");
+      }
+
+      if (coupler.get_option<std::string>("bc_y1") == "periodic") { // Already handled in halo_exchange
+      } else if (coupler.get_option<std::string>("bc_y1") == "open") {
+        if (coupler.get_py() == 0) {
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(fields.extent(0),nz,hs,nx) ,
+                                            KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            fields(l,hs+k,      jj,hs+i) = fields(l,hs+k,hs+0   ,hs+i);
+          });
+        }
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y1 can only be periodic or open";
+        Kokkos::abort("");
+      }
+
+      if (coupler.get_option<std::string>("bc_y2") == "periodic") { // Already handled in halo_exchange
+      } else if (coupler.get_option<std::string>("bc_y2") == "open") {
+        if (coupler.get_py() == coupler.get_nproc_y()-1) {
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(fields.extent(0),nz,hs,nx) ,
+                                            KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
+          });
+        }
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y2 can only be periodic or open";
+        Kokkos::abort("");
+      }
+
+      if (coupler.get_option<std::string>("bc_z1") == "wall_free_slip") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(fields.extent(0),hs,ny,nx) ,
+                                          KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          fields(l,kk,hs+j,hs+i) = fields(l,hs+0,hs+j,hs+i);
+        });
+      } else if (coupler.get_option<std::string>("bc_z1") == "periodic") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(fields.extent(0),hs,ny,nx) ,
+                                          KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          fields(l,kk,hs+j,hs+i) = fields(l,nz+kk,hs+j,hs+i);
+        });
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_z1 can only be periodic or wall_free_slip";
+        Kokkos::abort("");
+      }
+
+      if (coupler.get_option<std::string>("bc_z2") == "wall_free_slip") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(fields.extent(0),hs,ny,nx) ,
+                                          KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
+        });
+      } else if (coupler.get_option<std::string>("bc_z2") == "periodic") {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(fields.extent(0),hs,ny,nx) ,
+                                          KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+kk,hs+j,hs+i);
+        });
+      } else {
+        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_z2 can only be periodic or wall_free_slip";
+        Kokkos::abort("");
+      }
+
+      #ifdef YAKL_AUTO_PROFILE
+        yakl::timer_stop("halo_boundary_conditions");
       #endif
     }
 
