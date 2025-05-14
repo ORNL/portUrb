@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_cycle.h"
+#include "dynamics_rk_simpler.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "restart_file"     , ""          );
     coupler.set_option<real       >( "latitude"         , 0.          );
     coupler.set_option<real       >( "roughness"        , 0.1         );
-    coupler.set_option<real       >( "cfl"              , 2.8         );
+    coupler.set_option<real       >( "cfl"              , 0.6         );
     coupler.set_option<bool       >( "enable_gravity"   , true        );
     coupler.set_option<bool       >( "weno_all"         , true        );
     coupler.set_option<int        >( "micro_morr_ihail" , 1           );
