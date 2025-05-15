@@ -25,7 +25,7 @@ namespace modules {
   struct Dynamics_Euler_Stratified_WenoFV {
     // Order of accuracy (numerical convergence for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
-      size_t static constexpr ord = 11;
+      size_t static constexpr ord = 9;
     #else
       size_t static constexpr ord = PORTURB_ORD;
     #endif
@@ -151,8 +151,6 @@ namespace modules {
         }
       });
 
-      // enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
-
       //////////////
       // Stage 2
       //////////////
@@ -171,8 +169,6 @@ namespace modules {
                                           (1._fp/4._fp) * dt_dyn * tracers_tend(l,k,j,i);
         }
       });
-
-      // enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       //////////////
       // Stage 3
@@ -455,8 +451,8 @@ namespace modules {
         for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1))*fields_loc(idU,hs+k,hs+j,i+ii+1); }
         float ru_R = 0;
         for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
-        p_x (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(ru_R-ru_L)   );
-        ru_x(k,j,i) = 0.5_fp*(ru_L + ru_R -    (p_R -p_L )/cs);
+        p_x (k,j,i) = 0.5f*(p_L  + p_R  - cs*(ru_R-ru_L)   );
+        ru_x(k,j,i) = 0.5f*(ru_L + ru_R -    (p_R -p_L )/cs);
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
@@ -477,8 +473,8 @@ namespace modules {
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idR,hs+k,j+jj+1,hs+i)*fields_loc(idV,hs+k,j+jj+1,hs+i); }
         float rv_R = 0;
         for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
-        p_y (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(rv_R-rv_L)   );
-        rv_y(k,j,i) = 0.5_fp*(rv_L + rv_R -    (p_R -p_L )/cs);
+        p_y (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rv_R-rv_L)   );
+        rv_y(k,j,i) = 0.5f*(rv_L + rv_R -    (p_R -p_L )/cs);
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
@@ -499,8 +495,8 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idR,k+kk+1,hs+j,hs+i)*fields_loc(idW,k+kk+1,hs+j,hs+i); }
         float rw_R = 0;
         for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
-        p_z (k,j,i) = 0.5_fp*(p_L  + p_R  - cs*(rw_R-rw_L)   );
-        rw_z(k,j,i) = 0.5_fp*(rw_L + rw_R -    (p_R -p_L )/cs);
+        p_z (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rw_R-rw_L)   );
+        rw_z(k,j,i) = 0.5f*(rw_L + rw_R -    (p_R -p_L )/cs);
       });
 
       core::MultiField<float,3> advect_fields;

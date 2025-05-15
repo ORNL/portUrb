@@ -1,0 +1,37 @@
+---
+# Simulation time in seconds
+sim_time: 7201.
+
+# Domain size of the CRMs
+xlen: 200000
+ylen: 200000
+zlen: 20000
+
+# Number of cells to use in the CRMs
+nx_glob: 400
+ny_glob: 400
+nz     : 40
+
+# Output filename
+out_prefix: supercell
+
+# Physics time step (zero means use dynamics time step)
+dt_phys: 0.
+
+# Dynamics subcycling (if dt_phys == 0)
+dyn_cycle: 1
+
+# Output frequency in seconds (negative number turns off all file I/O)
+out_freq: 900.
+
+# How frequently (in model time in seconds) to inform the user of the model state
+inform_freq: 10.
+
+# Whether this is a restart run. If so, the filename to restart from
+is_restart: false
+restart_file: none
+
+# CFL value for the dynamical core to use (typically 0.6-0.7)
+cfl: 0.6
+
+
