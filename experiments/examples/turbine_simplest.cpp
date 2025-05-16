@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk.h"
+#include "dynamics_rk_simpler.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
 
-    real dx = 2;
+    real dx = 10;
     coupler.set_option<bool>("turbine_orig_C_T",true);
 
     std::string turbine_file = "./inputs/NREL_5MW_126_RWT.yaml";
@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
     real D = config["blade_radius"].as<real>()*2;
 
-    real        sim_time     = 30;
+    real        sim_time     = 1800;
     real        xlen         = D*14;
     real        ylen         = D*2;
     real        zlen         = D*2;
@@ -36,17 +36,19 @@ int main(int argc, char** argv) {
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 5;
-    real        inform_freq  = 1;
+    real        out_freq     = 60;
+    real        inform_freq  = 10;
     std::string out_prefix   = "test";
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
     real        roughness    = 0;
-    int         dyn_cycle    = 10;
-    real        vort_freq    = 1./10.;
+    int         dyn_cycle    = 1;
+    real        vort_freq    = -1.;
 
     // Things the coupler might need to know about
+    coupler.set_option<real>       ( "cfl"            , 0.7          );
+    coupler.set_option<real>       ( "dycore_max_wind", 20           );
     coupler.set_option<std::string>( "out_prefix"     , out_prefix   );
     coupler.set_option<std::string>( "init_data"      , init_data    );
     coupler.set_option<real       >( "out_freq"       , out_freq     );
@@ -59,10 +61,10 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "constant_temp"  , 300          );
     coupler.set_option<real       >( "constant_press" , 1.e5         );
     coupler.set_option<std::string>( "turbine_file"             , turbine_file );
-    coupler.set_option<bool       >( "turbine_do_blades"        , true   );
+    coupler.set_option<bool       >( "turbine_do_blades"        , false  );
     coupler.set_option<real       >( "turbine_initial_yaw"      , 0./180.*M_PI );
-    coupler.set_option<bool       >( "turbine_fixed_yaw"        , true   );
-    coupler.set_option<bool       >( "turbine_floating_motions" , true   );
+    coupler.set_option<bool       >( "turbine_fixed_yaw"        , false  );
+    coupler.set_option<bool       >( "turbine_floating_motions" , false  );
     coupler.set_option<bool       >( "turbine_immerse_material" , true   );
 
     // Set the turbine
@@ -90,8 +92,8 @@ int main(int argc, char** argv) {
 
     // Run the initialization modules
     custom_modules::sc_init   ( coupler );
-    coupler.set_option<std::string>("bc_y1","periodic");
-    coupler.set_option<std::string>("bc_y2","periodic");
+    coupler.set_option<std::string>("bc_y1","open");
+    coupler.set_option<std::string>("bc_y2","open");
     les_closure  .init        ( coupler );
     windmills    .init        ( coupler );
     dycore       .init        ( coupler ); // Important that dycore inits after windmills for base immersed boundaries
@@ -131,7 +133,7 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
-        coupler.run_module( [&] (Coupler &c) { edge_sponge.apply       (c,0.05,0.05,0,0); } , "edge_sponge" );
+        coupler.run_module( [&] (Coupler &c) { edge_sponge.apply       (c,0.05,0,0,0); } , "edge_sponge" );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"        );
         coupler.run_module( [&] (Coupler &c) { windmills.apply         (c,dt); } , "windmills"     );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"   );

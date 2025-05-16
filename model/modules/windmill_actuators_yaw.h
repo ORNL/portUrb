@@ -548,10 +548,12 @@ namespace modules {
 
       float3d tend_u  ("tend_u"  ,nz,ny,nx);
       float3d tend_v  ("tend_v"  ,nz,ny,nx);
+      float3d tend_w  ("tend_w"  ,nz,ny,nx);
       float3d tend_tke("tend_tke",nz,ny,nx);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         tend_u         (k,j,i) = 0;
         tend_v         (k,j,i) = 0;
+        tend_w         (k,j,i) = 0;
         tend_tke       (k,j,i) = 0;
         proj_weight_tot(k,j,i) = 0;
         samp_weight_tot(k,j,i) = 0;
@@ -634,18 +636,20 @@ namespace modules {
           // Zero out disk weights for projection and sampling
           // Compute 19.5m horizontal wind magnitude for floating platform motions
           // Compute wind direction and offset for upstream sampling to get freestream velocities
+          float3d disk_weight_angle("disk_weight_angle",nz,ny,nx);
           float3d disk_weight_proj ("disk_weight_proj" ,nz,ny,nx);
           float3d disk_weight_samp ("disk_weight_samp" ,nz,ny,nx);
           float3d uvel_3d          ("uvel_3d"          ,nz,ny,nx);
           float3d vvel_3d          ("vvel_3d"          ,nz,ny,nx);
           float3d blade_weight_proj("blade_weight_proj",nz,ny,nx);
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+            disk_weight_angle(k,j,i) = 0;
             disk_weight_proj (k,j,i) = 0;
             disk_weight_samp (k,j,i) = 0;
             blade_weight_proj(k,j,i) = 0;
-            float x = (i_beg+i+0.5_fp)*dx;
-            float y = (j_beg+j+0.5_fp)*dy;
-            float z = (      k+0.5_fp)*dz;
+            float x = (i_beg+i+0.5f)*dx;
+            float y = (j_beg+j+0.5f)*dy;
+            float z = (      k+0.5f)*dz;
             if ( z >= hub_height-rad && z <= hub_height+rad &&
                  y >= base_y    -rad && y <= base_y    +rad &&
                  x >= base_x    -rad && x <= base_x    +rad ) {
@@ -700,7 +704,8 @@ namespace modules {
                 int tj = static_cast<int>(std::round(yp/dy-0.5-j_beg));
                 int tk = static_cast<int>(std::round(zp/dz-0.5      ));
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
-                  Kokkos::atomic_add( &disk_weight_proj(tk,tj,ti) , shp );
+                  Kokkos::atomic_add( &disk_weight_angle(tk,tj,ti) , shp*std::atan2(z,-y) );
+                  Kokkos::atomic_add( &disk_weight_proj (tk,tj,ti) , shp );
                 }
                 xp += upstream_x_offset;
                 yp += upstream_y_offset;
@@ -829,8 +834,8 @@ namespace modules {
               // Disk weights for projection will be normalized by sum later
             }
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
-              float x = (i_beg+i+0.5_fp)*dx;
-              float y = (j_beg+j+0.5_fp)*dy;
+              float x = (i_beg+i+0.5f)*dx;
+              float y = (j_beg+j+0.5f)*dy;
               if (std::abs(x-(base_x+upstream_x_offset)) <= rad && std::abs(y-(base_y+upstream_y_offset)) <= rad) {
                 int k19_5 = std::max( 0._fp , std::round(19.5/dz-0.5) );
                 float u = uvel(k19_5,j,i);
@@ -844,7 +849,7 @@ namespace modules {
           using yakl::componentwise::operator>;
           yakl::SArray<float,1,5> weights_tot2;
           weights_tot2(0) = yakl::intrinsics::sum(umag_19_5m_2d);
-          weights_tot2(1) = (float) yakl::intrinsics::count(umag_19_5m_2d > 0._fp);
+          weights_tot2(1) = (float) yakl::intrinsics::count(umag_19_5m_2d > 0.f);
           weights_tot2(2) = yakl::intrinsics::sum(disk_weight_proj);
           weights_tot2(3) = yakl::intrinsics::sum(disk_weight_samp);
           weights_tot2(4) = yakl::intrinsics::sum(blade_weight_proj);
@@ -862,9 +867,10 @@ namespace modules {
             blade_wt = -2*x*x*x + 3*x*x;   // p(0)=0; p'(0)=0; p(1)=1; p'(1)=0  defined in [0,1]
           }
           turbine.mag195_trace.push_back( umag_19_5m );
-          // Blend blades and disk based on grid spacing
+          // Blend blades and disk based on grid spacing, and normalize cell angle by projected weights
           if (do_blades) {
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+              if (disk_weight_proj(k,j,i) > 1.e-10) disk_weight_angle(k,j,i) /= disk_weight_proj(k,j,i);
               disk_weight_proj (k,j,i) /= disk_proj_tot;
               blade_weight_proj(k,j,i) /= blade_proj_tot;
               disk_weight_proj (k,j,i) = blade_wt*blade_weight_proj(k,j,i) + (1-blade_wt)*disk_weight_proj(k,j,i);
@@ -876,10 +882,12 @@ namespace modules {
           ///////////////////////////////////////////////////
           // Normalize disk weights for projection and upstream sampling
           // Aggregate disk-averaged wind velocities in upstream sampling region
+          // Normalize cell angle by projected weights if blades are not used
           float3d samp_u("samp_u",nz,ny,nx);
           float3d samp_v("samp_v",nz,ny,nx);
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             if (disk_weight_proj(k,j,i) > 0) {
+              if (! do_blades && disk_weight_proj(k,j,i) > 1.e-10) disk_weight_angle(k,j,i) /= disk_weight_proj(k,j,i);
               disk_weight_proj(k,j,i) /= disk_proj_tot;
               proj_weight_tot (k,j,i) += disk_weight_proj(k,j,i);
             }
@@ -918,7 +926,7 @@ namespace modules {
           if (coupler.option_exists("turbine_rot_fixed")) rot_speed = coupler.get_option<real>("turbine_rot_fixed");
           if (inertial_mag0 > 1.e-10) {
             if ( ! coupler.get_option<bool>("turbine_orig_C_T",false) ) {
-              float a = std::max( 0._fp , std::min( 1._fp , 1 - C_P / (C_T+1.e-10) ) );
+              float a = std::max( 0.f , std::min( 1.f , 1 - C_P / (C_T+1.e-10f) ) );
               C_T    = 4*a*(1-a);
             }
             C_P = std::min( (double) C_T , pwr*1.e6/(0.5*1.2*M_PI*rad*rad*inertial_mag0*inertial_mag0*inertial_mag0) );
@@ -926,6 +934,7 @@ namespace modules {
             C_T = 0;
             C_P = 0;
           }
+          float C_Q = rot_speed == 0 ? 0 : C_P * inertial_mag0 / (rot_speed * rad);
           //////////////////////////////////////////////////////////////////
           // Application of floating turbine motion perturbation
           //////////////////////////////////////////////////////////////////
@@ -985,7 +994,7 @@ namespace modules {
           // This is needed to compute the thrust force based on windmill proportion in each cell
           float turb_factor = M_PI*rad*rad/(dx*dy*dz);
           // Fraction of thrust that didn't generate power to send into TKE
-          float f_TKE = 0.25_fp; // Recommended by Archer et al., 2020, MWR "Two corrections TKE ..."
+          float f_TKE = 0.25f; // Recommended by Archer et al., 2020, MWR "Two corrections TKE ..."
           float C_TKE = f_TKE * (C_T - C_P);
           ///////////////////////////////////////////////////
           // Application of disk onto tendencies
@@ -993,26 +1002,22 @@ namespace modules {
           if (turbine.apply_thrust) {
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               if (disk_weight_proj(k,j,i) > 0) {
+                float az = disk_weight_angle(k,j,i);
                 float wt = disk_weight_proj(k,j,i)*turb_factor;
                 float un = uvel(k,j,i)*cos_yaw + vvel(k,j,i)*sin_yaw;
                 // If normal wind is negative, don't do anything.
                 if (un > 0) {
                   // Compute tendencies implied by actuator disk thoery; Only apply TKE for disk, not blades
-                  float t_u   = -0.5_fp             *C_T  *instant_mag0*instant_mag0*cos_yaw     *wt;
-                  float t_v   = -0.5_fp             *C_T  *instant_mag0*instant_mag0*sin_yaw     *wt;
-                  float t_tke =  0.5_fp*rho_d(k,j,i)*C_TKE*instant_mag0*instant_mag0*instant_mag0*wt*(1-blade_wt);
-                  float un_new = (uvel(k,j,i)+dt*t_u)*cos_yaw + (vvel(k,j,i)+dt*t_v)*sin_yaw;
-                  // if tendencies make the normal wind negative, limit them to reach zero instead
-                  if (un_new < 0) {
-                    float t_old = std::abs(t_u*cos_yaw + t_v*sin_yaw);  // Original tendencies
-                    float t_new = un;                                   // Maximum magnitude of new tendencies
-                    t_u   *= (t_new/t_old);
-                    t_v   *= (t_new/t_old);
-                    t_tke *= (t_new/t_old)*(t_new/t_old);
-                  }
-                  // Limit tendencies to avoid flipping the sign of normal wind
+                  float t_u    = -0.5f             *C_T  *instant_mag0*instant_mag0*cos_yaw                  *wt;
+                  float t_v    = -0.5f             *C_T  *instant_mag0*instant_mag0*sin_yaw                  *wt;
+                  float t_tke  =  0.5f*rho_d(k,j,i)*C_TKE*instant_mag0*instant_mag0*instant_mag0*(1-blade_wt)*wt;
+                  // Compute tendencies for swirl
+                  float t_w    = -0.5f             *C_Q  *instant_mag0*instant_mag0*std::cos(az)         *wt;
+                        t_u   +=  0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*sin_yaw *wt;
+                        t_v   += -0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*cos_yaw *wt;
                   tend_u  (k,j,i) += t_u;
                   tend_v  (k,j,i) += t_v;
+                  tend_w  (k,j,i) += t_w;
                   tend_tke(k,j,i) += t_tke;
                 }
               }
@@ -1039,6 +1044,7 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         uvel(k,j,i) += dt * tend_u  (k,j,i);
         vvel(k,j,i) += dt * tend_v  (k,j,i);
+        wvel(k,j,i) += dt * tend_w  (k,j,i);
         tke (k,j,i) += dt * tend_tke(k,j,i);
       });
 
