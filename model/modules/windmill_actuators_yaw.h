@@ -704,7 +704,7 @@ namespace modules {
                 int tj = static_cast<int>(std::round(yp/dy-0.5-j_beg));
                 int tk = static_cast<int>(std::round(zp/dz-0.5      ));
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
-                  Kokkos::atomic_add( &disk_weight_angle(tk,tj,ti) , shp*std::atan2(z,y) );
+                  Kokkos::atomic_add( &disk_weight_angle(tk,tj,ti) , shp*std::atan2(z,-y) );
                   Kokkos::atomic_add( &disk_weight_proj (tk,tj,ti) , shp );
                 }
                 xp += upstream_x_offset;
@@ -870,7 +870,7 @@ namespace modules {
           // Blend blades and disk based on grid spacing, and normalize cell angle by projected weights
           if (do_blades) {
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              disk_weight_angle(k,j,i) /= disk_weight_proj(k,j,i);
+              if (disk_weight_proj(k,j,i) > 1.e-10) disk_weight_angle(k,j,i) /= disk_weight_proj(k,j,i);
               disk_weight_proj (k,j,i) /= disk_proj_tot;
               blade_weight_proj(k,j,i) /= blade_proj_tot;
               disk_weight_proj (k,j,i) = blade_wt*blade_weight_proj(k,j,i) + (1-blade_wt)*disk_weight_proj(k,j,i);
@@ -1012,9 +1012,9 @@ namespace modules {
                   float t_v    = -0.5f             *C_T  *instant_mag0*instant_mag0*sin_yaw                  *wt;
                   float t_tke  =  0.5f*rho_d(k,j,i)*C_TKE*instant_mag0*instant_mag0*instant_mag0*(1-blade_wt)*wt;
                   // Compute tendencies for swirl
-                  float t_w    = -0.5f             *C_Q  *instant_mag0*instant_mag0*rad*std::cos(az)         *wt;
-                        t_u   +=  0.5f             *C_Q  *instant_mag0*instant_mag0*rad*std::sin(az)*sin_yaw *wt;
-                        t_v   += -0.5f             *C_Q  *instant_mag0*instant_mag0*rad*std::sin(az)*cos_yaw *wt;
+                  float t_w    = -0.5f             *C_Q  *instant_mag0*instant_mag0*std::cos(az)         *wt;
+                        t_u   +=  0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*sin_yaw *wt;
+                        t_v   += -0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*cos_yaw *wt;
                   tend_u  (k,j,i) += t_u;
                   tend_v  (k,j,i) += t_v;
                   tend_w  (k,j,i) += t_w;

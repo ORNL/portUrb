@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk.h"
+#include "dynamics_rk_simpler.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    bool run_main = false;
+    bool run_main = true ;
     bool bouss    = false;
 
     // This holds all of the model's variables, dimension sizes, and options
@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     real D     = config["blade_radius"].as<real>()*2;
     real hub_z = config["hub_height"  ].as<real>();
 
-    real        sim_time          = 101;
+    real        sim_time          = 20001;
     real        xlen              = 5120;
     real        ylen              = 5120;
     real        zlen              = 1920;
@@ -78,6 +78,7 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "sfc_heat_flux"            , 0.005             );
     coupler_main.set_option<real       >( "kinematic_viscosity"      , 0                 );
     coupler_main.set_option<real       >( "dycore_max_wind"          , 40                );
+    coupler_main.set_option<real       >( "cfl"                      , 0.7               );
 
     if (coupler_main.is_mainproc()) {
       std::cout << "Prefix:    " << out_prefix << std::endl;
