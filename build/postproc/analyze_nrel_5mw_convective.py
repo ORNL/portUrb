@@ -8,7 +8,7 @@ import pandas as pd
 from scipy.ndimage import rotate
 
 # workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
-workdir = "/lustre/orion/stf006/scratch/imn/nrel_5mw_convective"
+workdir = "/lustre/storm/nwp501/scratch/imn/portUrb/build"
 # workdir = "/lustre/orion/stf006/scratch/imn/nrel_5mw_convective_bouss"
 amrwdir = "/ccs/home/imn/exawind-benchmarks/amr-wind/atmospheric_boundary_layer/convective_abl_nrel5mw/results"
 
@@ -305,13 +305,14 @@ plt.close()
 
 
 
-t1=15
+t1=16
 t2=20
 times = range(t1,t2+1)
 for i in range(len(times)) :
   nc = Dataset(f"{workdir}/nrel_5mw_convective_{times[i]:08d}.nc","r")
   u  = np.array(nc["avg_u"][:,:,:])
   v  = np.array(nc["avg_v"][:,:,:])
+  w  = np.array(nc["avg_w"][:,:,:])
   u0 = np.array(nc["u_samp_trace_turb_0"][:])
   v0 = np.array(nc["v_samp_trace_turb_0"][:])
   pwrloc  = np.array(nc["power_trace_turb_0"][:])
@@ -320,10 +321,14 @@ for i in range(len(times)) :
   pwr  = pwrloc  if i==0 else np.concatenate((pwr,pwrloc))
   magh = maghloc if i==0 else magh+maghloc
   uinf = uinfloc if i==0 else uinf+uinfloc
+  wavg = w       if i==0 else wavg+w
   print(times[i],np.mean(pwrloc))
 magh /= len(times)
 uinf /= len(times)
+wavg /= len(times)
+uinf = 11.4
 mag_rot = rotate(magh,30,(1,2),False)
+w_rot = rotate(wavg,30,(1,2),False)
 x = np.array(nc["x"])/1000
 y = np.array(nc["y"])/1000
 z = np.array(nc["z"])/1000
@@ -362,6 +367,28 @@ cbar1.ax.tick_params(labelrotation=0)
 fig.tight_layout()
 plt.tight_layout()
 plt.savefig("turbine_contour_xy.png")
+plt.show()
+plt.close()
+
+fig = plt.figure(figsize=(10,4))
+ax = fig.gca()
+X,Y = np.meshgrid((x-x0)/D,(y-y0)/D)
+zind = get_ind(z,z0)
+CS1 = ax.contourf(X,Y,w_rot[zind,:,:],levels=np.arange(-0.5,0.5,0.01),cmap=Colormap('coolwarm').to_mpl(),extend="both")
+ax.set_title(r"NREL5MW AD w-velocity hub-height t$\in$[15000,20000]s")
+ax.axis('scaled')
+ax.set_xlabel("x-location (km)")
+ax.set_ylabel("y-location (km)")
+ax.set_xlim(-4,10)
+ax.set_ylim(-2,2)
+ax.margins(x=0)
+divider = make_axes_locatable(ax)
+cax = divider.append_axes("right", size="3%", pad=0.1)
+cbar1 = plt.colorbar(CS1,orientation="vertical",cax=cax)
+cbar1.ax.tick_params(labelrotation=0)
+fig.tight_layout()
+plt.tight_layout()
+plt.savefig("turbine_wavg_xy.png")
 plt.show()
 plt.close()
 
