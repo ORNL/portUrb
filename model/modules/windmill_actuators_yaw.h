@@ -1012,9 +1012,9 @@ namespace modules {
                   float t_v    = -0.5f             *C_T  *instant_mag0*instant_mag0*sin_yaw                  *wt;
                   float t_tke  =  0.5f*rho_d(k,j,i)*C_TKE*instant_mag0*instant_mag0*instant_mag0*(1-blade_wt)*wt;
                   // Compute tendencies for swirl
-                  float t_w    = -0.5f             *C_Q  *instant_mag0*instant_mag0*std::cos(az)         *wt;
-                        t_u   +=  0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*sin_yaw *wt;
-                        t_v   += -0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*cos_yaw *wt;
+                  float t_w    =  0.5f             *C_Q  *instant_mag0*instant_mag0*std::cos(az)         *wt;
+                        t_u   += -0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*sin_yaw *wt;
+                        t_v   +=  0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*cos_yaw *wt;
                   tend_u  (k,j,i) += t_u;
                   tend_v  (k,j,i) += t_v;
                   tend_w  (k,j,i) += t_w;
