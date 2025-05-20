@@ -214,9 +214,9 @@ namespace modules {
       auto nz              = coupler.get_nz();
       auto immersed_power  = coupler.get_option<real>("immersed_power",5);
       auto &dm             = coupler.get_data_manager_readonly();
-      auto hy_dens_cells   = dm.get<float const,1>("hy_dens_cells" ); // Hydrostatic density
-      auto hy_theta_cells  = dm.get<float const,1>("hy_theta_cells"); // Hydrostatic potential temperature
-      auto immersed_prop   = dm.get<real  const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion
+      auto hy_dens_cells   = dm.get<real const,1>("hy_dens_cells" ); // Hydrostatic density
+      auto hy_theta_cells  = dm.get<real const,1>("hy_theta_cells"); // Hydrostatic potential temperature
+      auto immersed_prop   = dm.get<real const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion
       auto tracer_positive = dm.get<bool const,1>("tracer_positive");
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -331,12 +331,12 @@ namespace modules {
       auto  any_immersed6     = dm.get<bool const,3>("dycore_any_immersed6"     ); // Are any immersed in 3-D halo?
       auto  any_immersed8     = dm.get<bool const,3>("dycore_any_immersed8"     ); // Are any immersed in 3-D halo?
       auto  any_immersed10    = dm.get<bool const,3>("dycore_any_immersed10"    ); // Are any immersed in 3-D halo?
-      auto  hy_dens_cells     = dm.get<float const,1>("hy_dens_cells"            ); // Hydrostatic density
-      auto  hy_theta_cells    = dm.get<float const,1>("hy_theta_cells"           ); // Hydrostatic potential temperature
-      auto  hy_dens_edges     = dm.get<float const,1>("hy_dens_edges"            ); // Hydrostatic density
-      auto  hy_theta_edges    = dm.get<float const,1>("hy_theta_edges"           ); // Hydrostatic potential temperature
-      auto  hy_pressure_edges = dm.get<float const,1>("hy_pressure_edges"        ); // Hydrostatic potential temperature
-      auto  hy_pressure_cells = dm.get<float const,1>("hy_pressure_cells"        ); // Hydrostatic pressure
+      auto  hy_dens_cells     = dm.get<real const,1>("hy_dens_cells"            ); // Hydrostatic density
+      auto  hy_theta_cells    = dm.get<real const,1>("hy_theta_cells"           ); // Hydrostatic potential temperature
+      auto  hy_dens_edges     = dm.get<real const,1>("hy_dens_edges"            ); // Hydrostatic density
+      auto  hy_theta_edges    = dm.get<real const,1>("hy_theta_edges"           ); // Hydrostatic potential temperature
+      auto  hy_pressure_edges = dm.get<real const,1>("hy_pressure_edges"        ); // Hydrostatic potential temperature
+      auto  hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells"        ); // Hydrostatic pressure
       auto  weno_all          = coupler.get_option<bool>("weno_all",true);
       // Compute matrices to convert polynomial coefficients to 2 GLL points and stencil values to 2 GLL points
       // These matrices will be in column-row format. That performed better than row-column format in performance tests
@@ -663,8 +663,8 @@ namespace modules {
       auto nz              = coupler.get_nz();
       auto num_tracers     = coupler.get_num_tracers();
       auto &dm             = coupler.get_data_manager_readonly();
-      auto hy_dens_cells   = dm.get<float const,1>("hy_dens_cells" );
-      auto hy_theta_cells  = dm.get<float const,1>("hy_theta_cells");
+      auto hy_dens_cells   = dm.get<real const,1>("hy_dens_cells" );
+      auto hy_theta_cells  = dm.get<real const,1>("hy_theta_cells");
 
       if (coupler.get_option<std::string>("bc_x1") == "periodic") { // Already handled in halo_exchange
       } else if (coupler.get_option<std::string>("bc_x1") == "open") {
@@ -810,12 +810,12 @@ namespace modules {
       real4d state  ("state"  ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);  state   = 0;
       real4d tracers("tracers",num_tracers,nz+2*hs,ny+2*hs,nx+2*hs);  tracers = 0;
       convert_coupler_to_dynamics( coupler , state , tracers );
-      dm.register_and_allocate<float>("hy_dens_cells"    ,"",{nz+2*hs});
-      dm.register_and_allocate<float>("hy_theta_cells"   ,"",{nz+2*hs});
-      dm.register_and_allocate<float>("hy_pressure_cells","",{nz+2*hs});
-      auto r = dm.get<float,1>("hy_dens_cells"    );    r = 0;
-      auto t = dm.get<float,1>("hy_theta_cells"   );    t = 0;
-      auto p = dm.get<float,1>("hy_pressure_cells");    p = 0;
+      dm.register_and_allocate<real>("hy_dens_cells"    ,"",{nz+2*hs});
+      dm.register_and_allocate<real>("hy_theta_cells"   ,"",{nz+2*hs});
+      dm.register_and_allocate<real>("hy_pressure_cells","",{nz+2*hs});
+      auto r = dm.get<real,1>("hy_dens_cells"    );    r = 0;
+      auto t = dm.get<real,1>("hy_theta_cells"   );    t = 0;
+      auto p = dm.get<real,1>("hy_pressure_cells");    p = 0;
       parallel_for( YAKL_AUTO_LABEL() , nz+2*hs , KOKKOS_LAMBDA (int k) {
         for (int j = 0; j < ny; j++) {
           for (int i = 0; i < nx; i++) {
@@ -1000,15 +1000,15 @@ namespace modules {
         auto ny   = coupler.get_ny  ();
         auto nx   = coupler.get_nx  ();
         auto &dm  = coupler.get_data_manager_readwrite();
-        if (! dm.entry_exists("hy_dens_edges"    )) dm.register_and_allocate<float>("hy_dens_edges"    ,"",{nz+1});
-        if (! dm.entry_exists("hy_theta_edges"   )) dm.register_and_allocate<float>("hy_theta_edges"   ,"",{nz+1});
-        if (! dm.entry_exists("hy_pressure_edges")) dm.register_and_allocate<float>("hy_pressure_edges","",{nz+1});
-        auto hy_dens_cells     = dm.get<float const,1>("hy_dens_cells"    );
-        auto hy_theta_cells    = dm.get<float const,1>("hy_theta_cells"   );
-        auto hy_pressure_cells = dm.get<float const,1>("hy_pressure_cells");
-        auto hy_dens_edges     = dm.get<float      ,1>("hy_dens_edges"    );
-        auto hy_theta_edges    = dm.get<float      ,1>("hy_theta_edges"   );
-        auto hy_pressure_edges = dm.get<float      ,1>("hy_pressure_edges");
+        if (! dm.entry_exists("hy_dens_edges"    )) dm.register_and_allocate<real>("hy_dens_edges"    ,"",{nz+1});
+        if (! dm.entry_exists("hy_theta_edges"   )) dm.register_and_allocate<real>("hy_theta_edges"   ,"",{nz+1});
+        if (! dm.entry_exists("hy_pressure_edges")) dm.register_and_allocate<real>("hy_pressure_edges","",{nz+1});
+        auto hy_dens_cells     = dm.get<real const,1>("hy_dens_cells"    );
+        auto hy_theta_cells    = dm.get<real const,1>("hy_theta_cells"   );
+        auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");
+        auto hy_dens_edges     = dm.get<real      ,1>("hy_dens_edges"    );
+        auto hy_theta_edges    = dm.get<real      ,1>("hy_theta_edges"   );
+        auto hy_pressure_edges = dm.get<real      ,1>("hy_pressure_edges");
         if (ord < 5) {
           parallel_for( YAKL_AUTO_LABEL() , nz+1 , KOKKOS_LAMBDA (int k) {
             hy_dens_edges    (k) = std::exp( 0.5_fp*std::log(hy_dens_cells(hs+k-1)) +
@@ -1049,35 +1049,35 @@ namespace modules {
         auto nx    = coupler.get_nx();
         nc.redef();
         nc.create_dim( "z_halo" , coupler.get_nz()+2*hs );
-        nc.create_var<float>( "hy_dens_cells"     , {"z_halo"});
-        nc.create_var<float>( "hy_theta_cells"    , {"z_halo"});
-        nc.create_var<float>( "hy_pressure_cells" , {"z_halo"});
+        nc.create_var<real>( "hy_dens_cells"     , {"z_halo"});
+        nc.create_var<real>( "hy_theta_cells"    , {"z_halo"});
+        nc.create_var<real>( "hy_pressure_cells" , {"z_halo"});
         nc.create_var<real>( "theta_pert"        , {"z","y","x"});
         nc.create_var<real>( "pressure_pert"     , {"z","y","x"});
         nc.create_var<real>( "density_pert"      , {"z","y","x"});
         nc.enddef();
         nc.begin_indep_data();
         auto &dm = coupler.get_data_manager_readonly();
-        if (coupler.is_mainproc()) nc.write( dm.get<float const,1>("hy_dens_cells"    ) , "hy_dens_cells"     );
-        if (coupler.is_mainproc()) nc.write( dm.get<float const,1>("hy_theta_cells"   ) , "hy_theta_cells"    );
-        if (coupler.is_mainproc()) nc.write( dm.get<float const,1>("hy_pressure_cells") , "hy_pressure_cells" );
+        if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_dens_cells"    ) , "hy_dens_cells"     );
+        if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_theta_cells"   ) , "hy_theta_cells"    );
+        if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_pressure_cells") , "hy_pressure_cells" );
         nc.end_indep_data();
         real4d state  ("state"  ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);
         real4d tracers("tracers",num_tracers,nz+2*hs,ny+2*hs,nx+2*hs);
         convert_coupler_to_dynamics( coupler , state , tracers );
         std::vector<MPI_Offset> start_3d = {0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
         real3d data("data",nz,ny,nx);
-        auto hy_dens_cells = dm.get<float const,1>("hy_dens_cells");
+        auto hy_dens_cells = dm.get<real const,1>("hy_dens_cells");
         yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           data(k,j,i) = state(idR,hs+k,hs+j,hs+i) - hy_dens_cells(hs+k);
         });
         nc.write_all(data,"density_pert",start_3d);
-        auto hy_theta_cells = dm.get<float const,1>("hy_theta_cells");
+        auto hy_theta_cells = dm.get<real const,1>("hy_theta_cells");
         yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           data(k,j,i) = state(idT,hs+k,hs+j,hs+i) / state(idR,hs+k,hs+j,hs+i) - hy_theta_cells(hs+k);
         });
         nc.write_all(data,"theta_pert",start_3d);
-        auto hy_pressure_cells = dm.get<float const,1>("hy_pressure_cells");
+        auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");
         yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           data(k,j,i) = C0 * std::pow( state(idT,hs+k,hs+j,hs+i) , gamma ) - hy_pressure_cells(hs+k);
         });
@@ -1085,9 +1085,9 @@ namespace modules {
       } );
       coupler.register_overwrite_with_restart_module( [=] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
         auto &dm = coupler.get_data_manager_readwrite();
-        nc.read_all(dm.get<float,1>("hy_dens_cells"    ),"hy_dens_cells"    ,{0});
-        nc.read_all(dm.get<float,1>("hy_theta_cells"   ),"hy_theta_cells"   ,{0});
-        nc.read_all(dm.get<float,1>("hy_pressure_cells"),"hy_pressure_cells",{0});
+        nc.read_all(dm.get<real,1>("hy_dens_cells"    ),"hy_dens_cells"    ,{0});
+        nc.read_all(dm.get<real,1>("hy_theta_cells"   ),"hy_theta_cells"   ,{0});
+        nc.read_all(dm.get<real,1>("hy_pressure_cells"),"hy_pressure_cells",{0});
         create_immersed_proportion_halos( coupler );
         compute_hydrostasis_edges       ( coupler );
       } );
