@@ -929,7 +929,7 @@ namespace modules {
               float a = std::max( 0.f , std::min( 1.f , 1 - C_P / (C_T+1.e-10f) ) );
               C_T    = 4*a*(1-a);
             }
-            C_P = std::min( (double) C_T , pwr*1.e6/(0.5*1.2*M_PI*rad*rad*inertial_mag0*inertial_mag0*inertial_mag0) );
+            C_P = std::min( C_T , C_P );
           } else {
             C_T = 0;
             C_P = 0;
