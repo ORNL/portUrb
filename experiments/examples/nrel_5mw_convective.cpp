@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
 
     real dx = 10;
 
-    std::string turbine_file = "./inputs/NREL_5MW_126_RWT.yaml";
+    std::string turbine_file = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
     YAML::Node config = YAML::LoadFile( turbine_file );
     if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
     real D     = config["blade_radius"].as<real>()*2;
