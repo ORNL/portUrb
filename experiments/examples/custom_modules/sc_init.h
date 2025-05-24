@@ -593,12 +593,6 @@ namespace custom_modules {
           dm_rho_v(k,j,i) += rho_v * wt;
         }
         if (i==0 && j==0) temp_0(k) = dm_temp(k,j,i);
-        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if ((k+0.5)*dz <= 50) {
-          dm_uvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
-          dm_vvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
-          dm_temp(k,j,i) += rand.genFP<real>(-0.5,0.5);
-        }
         // if (k == 0) dm_surface_temp(j,i) = 300;
       });
 
