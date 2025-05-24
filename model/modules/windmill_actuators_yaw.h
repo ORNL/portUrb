@@ -925,7 +925,7 @@ namespace modules {
           if (ref_rotation.initialized()) rot_speed = interp( ref_velmag , ref_rotation , inertial_mag0 );
           if (coupler.option_exists("turbine_rot_fixed")) rot_speed = coupler.get_option<real>("turbine_rot_fixed");
           if (inertial_mag0 > 1.e-10) {
-            if ( ! coupler.get_option<bool>("turbine_orig_C_T",false) ) {
+            if ( ! coupler.get_option<bool>("turbine_orig_C_T",true) ) {
               float a = std::max( 0.f , std::min( 1.f , 1 - C_P / (C_T+1.e-10f) ) );
               C_T    = 4*a*(1-a);
             }

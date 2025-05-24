@@ -868,12 +868,12 @@ namespace modules {
         auto &dm    = coupler.get_data_manager_readwrite();
         if (!dm.entry_exists("dycore_immersed_proportion_halos")) {
           auto immersed_prop = dm.get<real const,3>("immersed_proportion").createDeviceCopy<real>();
-          if (dm.entry_exists("windmill_proj_weight")) {
-            auto proj = dm.get<real const,3>("windmill_proj_weight");
-            parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              immersed_prop(k,j,i) += proj(k,j,i);
-            });
-          }
+          // if (dm.entry_exists("windmill_proj_weight")) {
+          //   auto proj = dm.get<real const,3>("windmill_proj_weight");
+          //   parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          //     immersed_prop(k,j,i) += proj(k,j,i);
+          //   });
+          // }
           core::MultiField<real,3> fields;
           fields.add_field( immersed_prop  );
           auto fields_halos = coupler.create_and_exchange_halos( fields , hs );

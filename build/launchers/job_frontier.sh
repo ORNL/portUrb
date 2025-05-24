@@ -2,8 +2,8 @@
 #SBATCH -A stf006
 #SBATCH -J portUrb
 #SBATCH -o %x-%j.out
-#SBATCH -t 8:00:00
-#SBATCH -N 32
+#SBATCH -t 2:00:00
+#SBATCH -N 48
 
 # #SBATCH --partition extended
 

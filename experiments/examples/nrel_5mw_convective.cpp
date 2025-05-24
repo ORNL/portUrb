@@ -79,6 +79,7 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "kinematic_viscosity"      , 0                 );
     coupler_main.set_option<real       >( "dycore_max_wind"          , 40                );
     coupler_main.set_option<real       >( "cfl"                      , 0.7               );
+    coupler_main.set_option<real       >( "turbine_orig_C_T"         , true              );
 
     if (coupler_main.is_mainproc()) {
       std::cout << "Prefix:    " << out_prefix << std::endl;
