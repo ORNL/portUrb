@@ -678,19 +678,18 @@ namespace modules {
           float2d umag_19_5m_2d("umag_19_5m_2d",ny,nx);
           {
             // Project disks
-            float decayloc = decay + 0.02;
             float xr = std::max(5.,5*dx);
-            int num_x = std::ceil(20/dx*xr              *2);
-            int num_y = std::ceil(20/dx*rad*(1+decayloc)*2);
-            int num_z = std::ceil(20/dx*rad*(1+decayloc)*2);
+            int num_x = std::ceil(20/dx*xr           *2);
+            int num_y = std::ceil(20/dx*rad*(1+decay)*2);
+            int num_z = std::ceil(20/dx*rad*(1+decay)*2);
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_z,num_y,num_x) , KOKKOS_LAMBDA (int k, int j, int i) {
               // Initial point in the y-z plane facing the negative x direction
-              float x = -xr               + (2*xr              *i)/(num_x-1);
-              float y = -rad*(1+decayloc) + (2*rad*(1+decayloc)*j)/(num_y-1);
-              float z = -rad*(1+decayloc) + (2*rad*(1+decayloc)*k)/(num_z-1);
+              float x = -xr            + (2*xr           *i)/(num_x-1);
+              float y = -rad*(1+decay) + (2*rad*(1+decay)*j)/(num_y-1);
+              float z = -rad*(1+decay) + (2*rad*(1+decay)*k)/(num_z-1);
               float rloc = std::sqrt(y*y+z*z);
-              if (rloc <= rad*(1+decayloc)) {
-                float shp = rloc <= hub_radius ? 0 : thrust_shape2(rloc/rad,0.7,1,1+decayloc,1)*proj_shape_1d(x,xr);
+              if (rloc <= rad*(1+decay)) {
+                float shp = rloc <= hub_radius ? 0 : thrust_shape(rloc/rad,1,1+decay,0.5)*proj_shape_1d(x,xr);
                 // Rotate about y-axis for shaft tilt
                 float x1 =  cos_tlt*(x+overhang) + sin_tlt*z;
                 float y1 =  y;
@@ -994,7 +993,7 @@ namespace modules {
           // This is needed to compute the thrust force based on windmill proportion in each cell
           float turb_factor = M_PI*rad*rad/(dx*dy*dz);
           // Fraction of thrust that didn't generate power to send into TKE
-          float f_TKE = 0.25f; // Recommended by Archer et al., 2020, MWR "Two corrections TKE ..."
+          float f_TKE = 0.00f;
           float C_TKE = f_TKE * (C_T - C_P);
           ///////////////////////////////////////////////////
           // Application of disk onto tendencies
