@@ -33,21 +33,30 @@ namespace custom_modules {
 
     real p = 5;
 
+    // parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
+    //   real weight = 0;
+    //   if (i_beg+i < cells_x1) {
+    //     weight = std::max(weight,1-std::pow((real)(i_beg+i)/(real)(cells_x1-1),p));
+    //   }
+    //   if (j_beg+j < cells_y1) {
+    //     weight = std::max(weight,1-std::pow((real)(j_beg+j)/(real)(cells_y1-1),p));
+    //   }
+    //   if (nx_glob-1-(i_beg+i) < cells_x2) {
+    //     weight = std::max(weight,1-std::pow((real)(nx_glob-1-(i_beg+i))/(real)(cells_x2-1),p));
+    //   }
+    //   if (ny_glob-1-(j_beg+j) < cells_y2) {
+    //     weight = std::max(weight,1-std::pow((real)(ny_glob-1-(j_beg+j))/(real)(cells_y2-1),p));
+    //   }
+    //   fields_main(l,k,j,i) = weight*fields_precursor(l,k,j,i) + (1-weight)*fields_main(l,k,j,i);
+    // });
+
+
+
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
       real weight = 0;
-      if (i_beg+i < cells_x1) {
-        weight = std::max(weight,1-std::pow((real)(i_beg+i)/(real)(cells_x1-1),p));
+      if (i_beg+i < cells_x1 || j_beg+j < cells_y1 || nx_glob-1-(i_beg+i) < cells_x2 || ny_glob-1-(j_beg+j) < cells_y2) {
+        fields_main(l,k,j,i) = fields_precursor(l,k,j,i);
       }
-      if (j_beg+j < cells_y1) {
-        weight = std::max(weight,1-std::pow((real)(j_beg+j)/(real)(cells_y1-1),p));
-      }
-      if (nx_glob-1-(i_beg+i) < cells_x2) {
-        weight = std::max(weight,1-std::pow((real)(nx_glob-1-(i_beg+i))/(real)(cells_x2-1),p));
-      }
-      if (ny_glob-1-(j_beg+j) < cells_y2) {
-        weight = std::max(weight,1-std::pow((real)(ny_glob-1-(j_beg+j))/(real)(cells_y2-1),p));
-      }
-      fields_main(l,k,j,i) = weight*fields_precursor(l,k,j,i) + (1-weight)*fields_main(l,k,j,i);
     });
 
 

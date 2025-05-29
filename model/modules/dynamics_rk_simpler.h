@@ -671,7 +671,11 @@ namespace modules {
         if (coupler.get_px() == 0) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            fields(l,hs+k,hs+j,      ii) = fields(l,hs+k,hs+j,hs+0   );
+            real d = -0.3*fields(l,hs+k,hs+j,hs+3) +
+                     -0.1*fields(l,hs+k,hs+j,hs+2) +
+                      0.1*fields(l,hs+k,hs+j,hs+1) +
+                      0.3*fields(l,hs+k,hs+j,hs+0);
+            fields(l,hs+k,hs+j,ii) = fields(l,hs+k,hs+j,hs+0) + (hs-1-ii)*d;
           });
         }
       } else {
@@ -684,7 +688,11 @@ namespace modules {
         if (coupler.get_px() == coupler.get_nproc_x()-1) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
+            real d = -0.3*fields(l,hs+k,hs+j,hs+nx-4) +
+                     -0.1*fields(l,hs+k,hs+j,hs+nx-3) +
+                      0.1*fields(l,hs+k,hs+j,hs+nx-2) +
+                      0.3*fields(l,hs+k,hs+j,hs+nx-1);
+            fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1) + ii*d;
           });
         }
       } else {
@@ -697,7 +705,11 @@ namespace modules {
         if (coupler.get_py() == 0) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            fields(l,hs+k,      jj,hs+i) = fields(l,hs+k,hs+0   ,hs+i);
+            real d = -0.3*fields(l,hs+k,hs+3,hs+i) +
+                     -0.1*fields(l,hs+k,hs+2,hs+i) +
+                      0.1*fields(l,hs+k,hs+1,hs+i) +
+                      0.3*fields(l,hs+k,hs+0,hs+i);
+            fields(l,hs+k,jj,hs+i) = fields(l,hs+k,hs+0,hs+i) + (hs-1-jj)*d;
           });
         }
       } else {
@@ -710,7 +722,11 @@ namespace modules {
         if (coupler.get_py() == coupler.get_nproc_y()-1) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
+            real d = -0.3*fields(l,hs+k,hs+ny-4,hs+i) +
+                     -0.1*fields(l,hs+k,hs+ny-3,hs+i) +
+                      0.1*fields(l,hs+k,hs+ny-2,hs+i) +
+                      0.3*fields(l,hs+k,hs+ny-1,hs+i);
+            fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i) + jj*d;
           });
         }
       } else {

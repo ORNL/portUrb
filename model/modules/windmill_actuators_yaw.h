@@ -993,7 +993,7 @@ namespace modules {
           // This is needed to compute the thrust force based on windmill proportion in each cell
           float turb_factor = M_PI*rad*rad/(dx*dy*dz);
           // Fraction of thrust that didn't generate power to send into TKE
-          float f_TKE = 0.00f;
+          float f_TKE = coupler.get_option<real>("turbine_f_TKE",0.25);
           float C_TKE = f_TKE * (C_T - C_P);
           ///////////////////////////////////////////////////
           // Application of disk onto tendencies

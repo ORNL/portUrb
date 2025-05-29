@@ -52,4 +52,5 @@ process_target(city)
 process_target(city_ensemble)
 process_target(buildings_periodic)
 process_target(nrel_5mw_convective)
+process_target(nrel_5mw_smaller)
 

@@ -11,6 +11,7 @@
 #include "precursor_sponge.h"
 #include "sponge_layer.h"
 #include "uniform_pg_wind_forcing.h"
+#include "Ensembler.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -25,6 +26,34 @@ int main(int argc, char** argv) {
     core::Coupler coupler_main;
     core::Coupler coupler_prec;
 
+    coupler_main.set_option<std::string>("ensemble_stdout","ensemble_nrel_5mw_smaller" );
+    coupler_main.set_option<std::string>("out_prefix"     ,"turbulent_nrel_5mw_smaller");
+
+    // This holds all of the model's variables, dimension sizes, and options
+    core::Ensembler ensembler;
+
+    // Add wind dimension
+    {
+      auto func_nranks  = [=] (int ind) { return 1; };
+      auto func_coupler = [=] (int ind, core::Coupler &coupler) {
+        real f_TKE = ind/7.;
+        coupler.set_option<real>( "turbine_f_TKE" , f_TKE );
+        ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("f_TKE-")+std::to_string(f_TKE));
+        ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("f_TKE-")+std::to_string(f_TKE));
+      };
+      ensembler.register_dimension( 1 , func_nranks , func_coupler );
+    }
+
+    auto par_comm = ensembler.create_coupler_comm( coupler_main , 8 , MPI_COMM_WORLD );
+    coupler_main.set_parallel_comm( par_comm );
+    // // auto par_comm = ensembler.create_coupler_comm( coupler_main , 12 , MPI_COMM_WORLD );
+
+    auto ostr = std::ofstream(coupler_main.get_option<std::string>("ensemble_stdout")+std::string(".out"));
+    auto orig_cout_buf = std::cout.rdbuf();
+    auto orig_cerr_buf = std::cerr.rdbuf();
+    std::cout.rdbuf(ostr.rdbuf());
+    std::cerr.rdbuf(ostr.rdbuf());
+
     real dx = 10;
 
     std::string turbine_file = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
@@ -33,31 +62,29 @@ int main(int argc, char** argv) {
     real D     = config["blade_radius"].as<real>()*2;
     real hub_z = config["hub_height"  ].as<real>();
 
-    real        sim_time          = 20001;
-    real        xlen              = 5120;
-    real        ylen              = 5120;
-    real        zlen              = 1920;
+    real        sim_time          = 3600*5;
+    real        xlen              = 2000;
+    real        ylen              = 800;
+    real        zlen              = 600;
     int         nx_glob           = std::ceil(xlen/dx);    xlen = nx_glob * dx;
     int         ny_glob           = std::ceil(ylen/dx);    ylen = ny_glob * dx;
     int         nz                = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in         = 0;  // Determined by dycore CFL restriction
-    std::string init_data         = "nrel_5mw_convective";
-    real        out_freq          = 1000;
+    std::string init_data         = "ABL_neutral";
+    real        out_freq          = 900;
     real        inform_freq       = 10;
-    std::string out_prefix        = "nrel_5mw_convective";
-    std::string out_prefix_prec   = out_prefix+std::string("_precursor");
+    std::string out_prefix_prec   = coupler_main.get_option<std::string>("out_prefix")+std::string("_precursor");
     bool        is_restart        = false;
     std::string restart_file      = "";
     std::string restart_file_prec = "";
-    real        latitude          = 40;
+    real        latitude          = 0;
     real        roughness         = 0.01;
     int         dyn_cycle         = 1;
     real        vort_freq         = -1;
-    real        hub_u             = 9.8726896031426;
-    real        hub_v             = 5.7;
+    real        hub_u             = 11.4;
+    real        hub_v             = 0;
 
     // Things the coupler_main might need to know about
-    coupler_main.set_option<std::string>( "out_prefix"               , out_prefix        );
     coupler_main.set_option<std::string>( "init_data"                , init_data         );
     coupler_main.set_option<real       >( "out_freq"                 , out_freq          );
     coupler_main.set_option<bool       >( "is_restart"               , is_restart        );
@@ -67,22 +94,19 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "roughness"                , roughness         );
     coupler_main.set_option<std::string>( "turbine_file"             , turbine_file      );
     coupler_main.set_option<bool       >( "turbine_do_blades"        , false             );
-    coupler_main.set_option<real       >( "turbine_initial_yaw"      , 30./180.*M_PI     );
+    coupler_main.set_option<real       >( "turbine_initial_yaw"      , 0.                );
     coupler_main.set_option<bool       >( "turbine_fixed_yaw"        , true              );
     coupler_main.set_option<bool       >( "turbine_floating_motions" , false             );
     coupler_main.set_option<bool       >( "turbine_immerse_material" , false             );
     coupler_main.set_option<real       >( "hub_height_uvel"          , hub_u             );
     coupler_main.set_option<real       >( "hub_height_vvel"          , hub_v             );
-    coupler_main.set_option<real       >( "sfc_heat_flux"            , 0.005             );
     coupler_main.set_option<real       >( "kinematic_viscosity"      , 0                 );
     coupler_main.set_option<real       >( "dycore_max_wind"          , 40                );
     coupler_main.set_option<real       >( "cfl"                      , 0.7               );
     coupler_main.set_option<bool       >( "turbine_orig_C_T"         , true              );
 
-    coupler_main.set_parallel_comm( MPI_COMM_WORLD );
-
     if (coupler_main.is_mainproc()) {
-      std::cout << "Prefix:    " << out_prefix << std::endl;
+      std::cout << "Prefix:    " << coupler_main.get_option<std::string>("out_prefix") << std::endl;
       std::cout << "Domain:    " << xlen/D << " x " << ylen/D << " x " << zlen/D << std::endl;
       std::cout << "Time:      " << sim_time/3600 << std::endl;
       std::cout << "Wind:      " << std::sqrt(hub_u*hub_u+hub_v*hub_v) << std::endl;
@@ -93,13 +117,13 @@ int main(int argc, char** argv) {
     }
 
     // Set the turbine
-    coupler_main.set_option<std::vector<real>>("turbine_x_locs"      ,{1800});
-    coupler_main.set_option<std::vector<real>>("turbine_y_locs"      ,{1800});
+    coupler_main.set_option<std::vector<real>>("turbine_x_locs"      ,{1000});
+    coupler_main.set_option<std::vector<real>>("turbine_y_locs"      ,{ylen/2});
     coupler_main.set_option<std::vector<bool>>("turbine_apply_thrust",{true});
 
     // Coupler state is: (1) dry density;  (2) u-velocity;  (3) v-velocity;  (4) w-velocity;  (5) temperature
     //                   (6+) tracer masses (*not* mixing ratios!); and Option elapsed_time init to zero
-    coupler_main.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
+    coupler_main.distribute_mpi_and_allocate_coupled_state( par_comm , nz, ny_glob, nx_glob);
 
     // Just tells the coupler_main how big the domain is in each dimensions
     coupler_main.set_grid( xlen , ylen , zlen );
@@ -162,7 +186,7 @@ int main(int argc, char** argv) {
       output_counter = core::Counter( out_freq    , etime-((int)(etime/out_freq   ))*out_freq    );
       inform_counter = core::Counter( inform_freq , etime-((int)(etime/inform_freq))*inform_freq );
     } else {
-      if (run_main) coupler_main.write_output_file( out_prefix );
+      if (run_main) coupler_main.write_output_file( coupler_main.get_option<std::string>("out_prefix") );
     }
 
     if (restart_file_prec != "" && restart_file_prec != "null") {
@@ -217,20 +241,18 @@ int main(int argc, char** argv) {
         // coupler_prec.run_module( [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);} , "top_sponge"     );
         coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
-        coupler_prec.run_module( [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);           } , "heat_fluxes"    );
         coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
         coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);           } , "time_averager"  );
       }
       if (run_main) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_specified;
-        custom_modules::precursor_sponge( coupler_main , coupler_prec , {"uvel","vvel","wvel"} ,
-                                          (int) (0.1*nx_glob) , 0 , (int) (0.1*ny_glob) , 0 );
+        custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp","TKE"} ,
+                                          (int) (0.05*nx_glob) , 0 , 0 , 0 );
         coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv);   } , "pg_forcing"     );
         // coupler_main.run_module( [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);} , "top_sponge"     );
         coupler_main.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
-        coupler_main.run_module( [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);           } , "heat_fluxes"    );
         coupler_main.run_module( [&] (Coupler &c) { windmills.apply                  (c,dt);           } , "windmills"      );
         coupler_main.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
         coupler_main.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);           } , "time_averager"  );
@@ -246,7 +268,7 @@ int main(int argc, char** argv) {
         inform_counter.reset();
       }
       if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
-        if (run_main) coupler_main.write_output_file( out_prefix , true );
+        if (run_main) coupler_main.write_output_file( coupler_main.get_option<std::string>("out_prefix") , true );
         coupler_prec.write_output_file( out_prefix_prec , true );
         if (run_main) time_averager.reset(coupler_main);
         time_averager.reset(coupler_prec);

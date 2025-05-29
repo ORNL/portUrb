@@ -4,15 +4,23 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import xarray
 
-winds=[5,7,9,11,13,15,17,19,21,23]
-# winds=[5,7]
+tkes  = [ "0.000000",
+          "0.142857",
+          "0.285714",
+          "0.428571",
+          "0.571429",
+          "0.714286",
+          "0.857143",
+          "1.000000"]
 
-for wind in winds :
-  nc1 = Dataset(f"turbulent_fixed-yaw-upstream_wind-{wind}.000000_fixed-_precursor_00000010.nc","r")
-  nc2 = Dataset(f"turbulent_fixed-yaw-upstream_wind-{wind}.000000_floating-_precursor_00000010.nc","r")
+prefixes = [f"turbulent_nrel_5mw_smaller_f_TKE-{tke}_precursor" for tke in tkes]
+
+for i in range(1,8) :
+  nc1 = Dataset(f"{prefixes[0]}_00000020.nc","r")
+  nc2 = Dataset(f"{prefixes[i]}_00000020.nc","r")
   for vname in nc1.variables.keys() :
     v1 = np.array(nc1[vname])
     v2 = np.array(nc2[vname])
-    print(f"Wind [{wind}], Var[{vname:20}], MAE: {np.sum(np.abs(v2-v1))/v1.size:12.5}")
+    print(f"TKE [{tkes[i]}], Var[{vname:20}], MAE: {np.sum(np.abs(v2-v1))/v1.size:12.5}")
   print("\n")
 
