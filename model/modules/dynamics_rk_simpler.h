@@ -759,7 +759,11 @@ namespace modules {
           if (l == idW) {
             fields(l,hs+nz+kk,hs+j,hs+i) = 0;
           } else {
-            fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
+            real d = -0.3*fields(l,hs+nz-4,hs+j,hs+i) +
+                     -0.1*fields(l,hs+nz-3,hs+j,hs+i) +
+                      0.1*fields(l,hs+nz-2,hs+j,hs+i) +
+                      0.3*fields(l,hs+nz-1,hs+j,hs+i);
+            fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i) + kk*d;
           }
         });
       } else if (coupler.get_option<std::string>("bc_z2") == "periodic") {

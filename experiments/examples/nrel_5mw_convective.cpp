@@ -78,6 +78,7 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "dycore_max_wind"          , 40                );
     coupler_main.set_option<real       >( "cfl"                      , 0.7               );
     coupler_main.set_option<bool       >( "turbine_orig_C_T"         , true              );
+    coupler_main.set_option<real       >( "turbine_f_TKE"            , 0.25              );
 
     coupler_main.set_parallel_comm( MPI_COMM_WORLD );
 
@@ -203,7 +204,7 @@ int main(int argc, char** argv) {
         real u = coupler_prec.get_option<real>("hub_height_uvel");
         real v = coupler_prec.get_option<real>("hub_height_vvel");
         if (etime < 15000) {
-          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,100); } , "pg_forcing" );
+          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,10); } , "pg_forcing" );
           if (etime >= 14000) {
             pgu_sum += pgu;
             pgv_sum += pgv;
