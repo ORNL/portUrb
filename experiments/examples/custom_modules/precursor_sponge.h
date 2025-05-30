@@ -31,64 +31,34 @@ namespace custom_modules {
       fields_precursor.add_field( dm_precursor.get<real const,3>(vnames.at(i)) );
     }
 
-    real p = 5;
-
-    // parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
-    //   real weight = 0;
-    //   if (i_beg+i < cells_x1) {
-    //     weight = std::max(weight,1-std::pow((real)(i_beg+i)/(real)(cells_x1-1),p));
-    //   }
-    //   if (j_beg+j < cells_y1) {
-    //     weight = std::max(weight,1-std::pow((real)(j_beg+j)/(real)(cells_y1-1),p));
-    //   }
-    //   if (nx_glob-1-(i_beg+i) < cells_x2) {
-    //     weight = std::max(weight,1-std::pow((real)(nx_glob-1-(i_beg+i))/(real)(cells_x2-1),p));
-    //   }
-    //   if (ny_glob-1-(j_beg+j) < cells_y2) {
-    //     weight = std::max(weight,1-std::pow((real)(ny_glob-1-(j_beg+j))/(real)(cells_y2-1),p));
-    //   }
-    //   fields_main(l,k,j,i) = weight*fields_precursor(l,k,j,i) + (1-weight)*fields_main(l,k,j,i);
-    // });
-
-
-
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
       real weight = 0;
-      if (i_beg+i < cells_x1 || j_beg+j < cells_y1 || nx_glob-1-(i_beg+i) < cells_x2 || ny_glob-1-(j_beg+j) < cells_y2) {
-        fields_main(l,k,j,i) = fields_precursor(l,k,j,i);
+      if (i_beg+i < cells_x1) {
+        int nfull = cells_x1/3;
+        int npart = cells_x1-nfull;
+        if (i_beg+i < nfull) { weight = 1; }
+        else                 { weight = std::max(weight,(1+std::cos(M_PI*(i_beg+i-nfull)/npart))/2); }
       }
+      if (j_beg+j < cells_y1) {
+        int nfull = cells_y1/3;
+        int npart = cells_y1-nfull;
+        if (j_beg+j < nfull) { weight = 1; }
+        else                 { weight = std::max(weight,(1+std::cos(M_PI*(j_beg+j-nfull)/npart))/2); }
+      }
+      if (nx_glob-1-(i_beg+i) < cells_x2) {
+        int nfull = cells_x2/3;
+        int npart = cells_x2-nfull;
+        if (nx_glob-1-(i_beg+i) < nfull) { weight = 1; }
+        else                             { weight = std::max(weight,(1+std::cos(M_PI*(nx_glob-1-(i_beg+i)-nfull)/npart))/2); }
+      }
+      if (ny_glob-1-(j_beg+j) < cells_y2) {
+        int nfull = cells_y2/3;
+        int npart = cells_y2-nfull;
+        if (ny_glob-1-(j_beg+j) < nfull) { weight = 1; }
+        else                             { weight = std::max(weight,(1+std::cos(M_PI*(ny_glob-1-(j_beg+j)-nfull)/npart))/2); }
+      }
+      fields_main(l,k,j,i) = weight*fields_precursor(l,k,j,i) + (1-weight)*fields_main(l,k,j,i);
     });
-
-
-
-    // if (cells_x1 > 0) {
-    //   parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
-    //     if (i_beg+i < cells_x1) {
-    //       fields_main(l,k,j,i) = fields_precursor(l,k,j,i);
-    //     }
-    //   });
-    // }
-    // if (cells_x2 > 0) {
-    //   parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
-    //     if (nx_glob-1-(i_beg+i) < cells_x2) {
-    //       fields_main(l,k,j,i) = fields_precursor(l,k,j,i);
-    //     }
-    //   });
-    // }
-    // if (cells_y1 > 0) {
-    //   parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
-    //     if (j_beg+j < cells_y1) {
-    //       fields_main(l,k,j,i) = fields_precursor(l,k,j,i);
-    //     }
-    //   });
-    // }
-    // if (cells_y2 > 0) {
-    //   parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
-    //     if (ny_glob-1-(j_beg+j) < cells_y2) {
-    //       fields_main(l,k,j,i) = fields_precursor(l,k,j,i);
-    //     }
-    //   });
-    // }
 
   }
 }
