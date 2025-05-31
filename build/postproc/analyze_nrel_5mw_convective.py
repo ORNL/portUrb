@@ -316,7 +316,7 @@ for i in range(len(times)) :
   u0 = np.array(nc["u_samp_trace_turb_0"][:])
   v0 = np.array(nc["v_samp_trace_turb_0"][:])
   pwrloc  = np.array(nc["power_trace_turb_0"][:])
-  maghloc = np.sqrt(u*u+v*v)
+  maghloc = u*np.cos(30/180*np.pi) + v*np.sin(30/180*np.pi)
   uinfloc = np.mean(u0*np.cos(30/180*np.pi) + v0*np.sin(30/180*np.pi))
   pwr  = pwrloc  if i==0 else np.concatenate((pwr,pwrloc))
   magh = maghloc if i==0 else magh+maghloc

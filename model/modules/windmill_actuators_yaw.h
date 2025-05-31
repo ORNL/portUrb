@@ -592,7 +592,7 @@ namespace modules {
                                   ( dx*(63/rad) < 16 );
           float overhang        = turbine.ref_turbine.overhang;
           float hub_radius      = turbine.ref_turbine.hub_radius;
-          float decay = 3*dx/rad; // Length of decay of thrust after the end of the blade radius (relative)
+          float decay = dx/rad; // Length of decay of thrust after the end of the blade radius (relative)
 
           // First, apply tendencies due to immersed hub & hub flange
           if (turbine.apply_thrust && coupler.get_option<bool>("turbine_immerse_material",false)) {
@@ -689,7 +689,7 @@ namespace modules {
               float z = -rad*(1+decay) + (2*rad*(1+decay)*k)/(num_z-1);
               float rloc = std::sqrt(y*y+z*z);
               if (rloc <= rad*(1+decay)) {
-                float shp = rloc <= hub_radius ? 0 : thrust_shape(rloc/rad,1,1+decay,0.5)*proj_shape_1d(x,xr);
+                float shp = rloc <= hub_radius ? 0 : thrust_shape(rloc/rad,1-decay/2,1+decay/2,0.5)*proj_shape_1d(x,xr);
                 // Rotate about y-axis for shaft tilt
                 float x1 =  cos_tlt*(x+overhang) + sin_tlt*z;
                 float y1 =  y;

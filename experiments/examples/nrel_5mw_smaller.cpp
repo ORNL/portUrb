@@ -36,15 +36,15 @@ int main(int argc, char** argv) {
     {
       auto func_nranks  = [=] (int ind) { return 1; };
       auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        real f_TKE = ind/10.;
+        real f_TKE = 0.25;
         coupler.set_option<real>( "turbine_f_TKE" , f_TKE );
         ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("f_TKE-")+std::to_string(f_TKE));
         ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("f_TKE-")+std::to_string(f_TKE));
       };
-      ensembler.register_dimension( 11 , func_nranks , func_coupler );
+      ensembler.register_dimension( 1 , func_nranks , func_coupler );
     }
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_main , 4 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_main , 8 , MPI_COMM_WORLD );
     coupler_main.set_parallel_comm( par_comm );
     // // auto par_comm = ensembler.create_coupler_comm( coupler_main , 12 , MPI_COMM_WORLD );
 
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
       if (run_main) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_specified;
-        custom_modules::precursor_sponge( coupler_main , coupler_prec , {"uvel","vvel","wvel","temp"} ,
+        custom_modules::precursor_sponge( coupler_main , coupler_prec , {"uvel","vvel","wvel","temp","TKE"} ,
                                           (int) (0.1*nx_glob) , 0 , 0 , 0 );
         coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv);   } , "pg_forcing"     );
         // coupler_main.run_module( [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);} , "top_sponge"     );
