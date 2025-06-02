@@ -667,7 +667,8 @@ namespace modules {
       auto hy_theta_cells  = dm.get<real const,1>("hy_theta_cells");
 
       if (coupler.get_option<std::string>("bc_x1") == "periodic") { // Already handled in halo_exchange
-      } else if (coupler.get_option<std::string>("bc_x1") == "open") {
+      } else if (coupler.get_option<std::string>("bc_x1") == "open" ||
+                 coupler.get_option<std::string>("bc_x1") == "precursor" ) {
         if (coupler.get_px() == 0) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
@@ -684,7 +685,8 @@ namespace modules {
       }
 
       if (coupler.get_option<std::string>("bc_x2") == "periodic") { // Already handled in halo_exchange
-      } else if (coupler.get_option<std::string>("bc_x2") == "open") {
+      } else if (coupler.get_option<std::string>("bc_x2") == "open" ||
+                 coupler.get_option<std::string>("bc_x2") == "precursor" ) {
         if (coupler.get_px() == coupler.get_nproc_x()-1) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
@@ -701,7 +703,8 @@ namespace modules {
       }
 
       if (coupler.get_option<std::string>("bc_y1") == "periodic") { // Already handled in halo_exchange
-      } else if (coupler.get_option<std::string>("bc_y1") == "open") {
+      } else if (coupler.get_option<std::string>("bc_y1") == "open" ||
+                 coupler.get_option<std::string>("bc_y1") == "precursor" ) {
         if (coupler.get_py() == 0) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
@@ -718,7 +721,8 @@ namespace modules {
       }
 
       if (coupler.get_option<std::string>("bc_y2") == "periodic") { // Already handled in halo_exchange
-      } else if (coupler.get_option<std::string>("bc_y2") == "open") {
+      } else if (coupler.get_option<std::string>("bc_y2") == "open" ||
+                 coupler.get_option<std::string>("bc_y2") == "precursor" ) {
         if (coupler.get_py() == coupler.get_nproc_y()-1) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {

@@ -5,31 +5,53 @@
 
 namespace custom_modules {
   
-  inline void precursor_sponge( core::Coupler            & coupler_main      ,
-                                core::Coupler      const & coupler_precursor ,
-                                std::vector<std::string>   vnames            ,
-                                int                        cells_x1 = 0      ,
-                                int                        cells_x2 = 0      ,
-                                int                        cells_y1 = 0      ,
-                                int                        cells_y2 = 0      ) {
+  inline void precursor_sponge( core::Coupler            & coupler_main ,
+                                core::Coupler      const & coupler_prec ,
+                                std::vector<std::string>   vnames       ,
+                                int                        cells_x1 = 0 ,
+                                int                        cells_x2 = 0 ,
+                                int                        cells_y1 = 0 ,
+                                int                        cells_y2 = 0 ) {
     using yakl::c::parallel_for;
     using yakl::c::SimpleBounds;
-    auto nx            = coupler_main     .get_nx();
-    auto ny            = coupler_main     .get_ny();
-    auto nz            = coupler_main     .get_nz();
-    auto i_beg         = coupler_main     .get_i_beg();
-    auto j_beg         = coupler_main     .get_j_beg();
-    auto nx_glob       = coupler_main     .get_nx_glob();
-    auto ny_glob       = coupler_main     .get_ny_glob();
-    auto &dm_main      = coupler_main     .get_data_manager_readwrite();
-    auto &dm_precursor = coupler_precursor.get_data_manager_readonly();
+    using yakl::componentwise::operator/;
+    using yakl::componentwise::operator-;
+    auto nx       = coupler_main.get_nx();
+    auto ny       = coupler_main.get_ny();
+    auto nz       = coupler_main.get_nz();
+    auto i_beg    = coupler_main.get_i_beg();
+    auto j_beg    = coupler_main.get_j_beg();
+    auto nx_glob  = coupler_main.get_nx_glob();
+    auto ny_glob  = coupler_main.get_ny_glob();
+    auto &dm_main = coupler_main.get_data_manager_readwrite();
+    auto &dm_prec = coupler_prec.get_data_manager_readonly();
     core::MultiField<real      ,3> fields_main;
-    core::MultiField<real const,3> fields_precursor;
+    core::MultiField<real const,3> fields_prec;
     int numvars = vnames.size();
+    int idR = -1, idT=-1;
     for (int i=0; i < numvars; i++) {
-      fields_main     .add_field( dm_main     .get<real      ,3>(vnames.at(i)) );
-      fields_precursor.add_field( dm_precursor.get<real const,3>(vnames.at(i)) );
+      if (vnames.at(i) == "density_dry") idR = i;
+      if (vnames.at(i) == "temp"       ) idT = i;
+      fields_main.add_field( dm_main.get<real      ,3>(vnames.at(i)) );
+      fields_prec.add_field( dm_prec.get<real const,3>(vnames.at(i)) );
     }
+
+    // Get the mean column for main values
+    real2d col_main("main_col_mean",numvars,nz);
+    real2d col_prec("main_col_prec",numvars,nz);
+    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(numvars,nz) , KOKKOS_LAMBDA (int l, int k) {
+      col_main(l,k) = 0;
+      col_prec(l,k) = 0;
+      for (int j=0; j < ny; j++) {
+        for (int i=0; i < nx; i++) {
+          col_main(l,k) += fields_main(l,k,j,i);
+          col_prec(l,k) += fields_prec(l,k,j,i);
+        }
+      }
+    });
+
+    col_main = coupler_main.get_parallel_comm().all_reduce(col_main,MPI_SUM)/(nx_glob*ny_glob);
+    col_prec = coupler_prec.get_parallel_comm().all_reduce(col_prec,MPI_SUM)/(nx_glob*ny_glob);
 
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
       real weight = 0;
@@ -57,7 +79,11 @@ namespace custom_modules {
         if (ny_glob-1-(j_beg+j) < nfull) { weight = 1; }
         else                             { weight = std::max(weight,(1+std::cos(M_PI*(ny_glob-1-(j_beg+j)-nfull)/npart))/2); }
       }
-      fields_main(l,k,j,i) = weight*fields_precursor(l,k,j,i) + (1-weight)*fields_main(l,k,j,i);
+      if (l==idR || l==idT) {
+        fields_main(l,k,j,i) = weight*(fields_prec(l,k,j,i)-col_prec(l,k)+col_main(l,k)) + (1-weight)*fields_main(l,k,j,i);
+      } else {
+        fields_main(l,k,j,i) = weight*(fields_prec(l,k,j,i)                            ) + (1-weight)*fields_main(l,k,j,i);
+      }
     });
 
   }
