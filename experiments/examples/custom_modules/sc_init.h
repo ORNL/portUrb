@@ -676,6 +676,7 @@ namespace custom_modules {
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable_bvf") {
 
       real theta0 = 300;
+      real p0     = 1*R_d*theta0; // Assume a density of one
       auto bvf    = coupler.get_option<real>("bvf_freq",0.01);
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
         return theta0*std::exp(bvf*bvf/grav*z);
@@ -715,10 +716,11 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
 
-      real uref       = coupler.get_option<real>("hub_height_wind_mag",12); // Velocity at hub height
-      real theta0     = 300;
-      real href       = coupler.get_option<real>("turbine_hub_height",90);  // Height of hub / center of windmills
-      real slope = -grav*std::pow( p0 , R_d/cp_d ) / (cp_d*theta0);
+      real uref   = coupler.get_option<real>("hub_height_wind_mag",12); // Velocity at hub height
+      real theta0 = 300;
+      real p0     = 1*R_d*theta0; // Assume a density of one
+      real href   = coupler.get_option<real>("turbine_hub_height",90);  // Height of hub / center of windmills
+      real slope  = -grav*std::pow( p0 , R_d/cp_d ) / (cp_d*theta0);
       realHost1d press_host("press",nz);
       press_host(0) = std::pow( p0 , R_d/cp_d ) + slope*dz/2;
       for (int k=1; k < nz; k++) { press_host(k) = press_host(k-1) + slope*dz; }

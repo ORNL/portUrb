@@ -116,6 +116,11 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable_bvf") {
 
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
+        if ((k+0.5_fp)*dz <= 150) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
+      });
+
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {

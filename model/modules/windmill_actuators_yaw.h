@@ -920,13 +920,14 @@ namespace modules {
           float C_T       = interp( ref_velmag , ref_thrust_coef , inertial_mag0 ); // Interpolate thrust coefficient
           float C_P       = interp( ref_velmag , ref_power_coef  , inertial_mag0 ); // Interpolate power coefficient
           float pwr       = interp( ref_velmag , ref_power       , inertial_mag0 ); // Interpolate power generation
+          C_T = std::min(1.f,C_T);
           float rot_speed = 0;
           if (ref_rotation.initialized()) rot_speed = interp( ref_velmag , ref_rotation , inertial_mag0 );
           if (coupler.option_exists("turbine_rot_fixed")) rot_speed = coupler.get_option<real>("turbine_rot_fixed");
           if (inertial_mag0 > 1.e-10) {
             if ( ! coupler.get_option<bool>("turbine_orig_C_T",true) ) {
               float a = std::max( 0.f , std::min( 1.f , 1 - C_P / (C_T+1.e-10f) ) );
-              C_T    = 4*a*(1-a);
+              C_T     = 4*a*(1-a);
             }
             C_P = std::min( C_T , C_P );
           } else {
