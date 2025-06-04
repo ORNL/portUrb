@@ -111,10 +111,7 @@ namespace custom_modules {
 
       auto u_g = coupler.get_option<real>("geostrophic_u",10.);
       auto v_g = coupler.get_option<real>("geostrophic_v",0. );
-      real constexpr uref       = 10;   // Velocity at hub height
       real constexpr theta0     = 300;
-      real constexpr href       = 100;   // Height of hub / center of windmills
-      real constexpr von_karman = 0.40;
       real1d press("press",nz);
       if (enable_gravity) {
         real slope = -grav*std::pow( p0 , R_d/cp_d ) / (cp_d*theta0);

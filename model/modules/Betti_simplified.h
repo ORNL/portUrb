@@ -137,7 +137,6 @@ namespace modules {
       real constexpr C_dgper = 1       ;         // (-)      Perpendicular cylinder drag coefficient
       real constexpr C_dgpar = 0.006   ;         // (-)      Parallel cylinder drag coefficient
       real constexpr C_dgb   = 1.9     ;         // (-)      Floater bottom drag coefficient
-      real constexpr R       = 63      ;         // (m)      Radius of rotor
       real constexpr den_l   = 116.027 ;         // (kg/m)   the mass density of the mooring lines
       real constexpr dia_l   = 0.127   ;         // (m)      the diameter of the mooring lines
       real constexpr h_T     = 87.6    ;         // (m)      the height of the tower
