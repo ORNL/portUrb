@@ -88,8 +88,8 @@ int main(int argc, char** argv) {
                                                 << "] m/s" << std::endl;
       real        sim_time          = 3600*8+1;
       real        xlen              = 30*D;
-      real        ylen              = 8*D;
-      real        zlen              = 600;
+      real        ylen              = 10*D;
+      real        zlen              = 5*D;
       int         nx_glob           = (int) std::round(xlen/dx);
       int         ny_glob           = (int) std::round(ylen/dx);
       int         nz                = (int) std::round(zlen/dx);
@@ -178,8 +178,8 @@ int main(int argc, char** argv) {
 
       coupler_main.set_option<std::string>("bc_x1","precursor");
       coupler_main.set_option<std::string>("bc_x2","open");
-      coupler_main.set_option<std::string>("bc_y1","open");
-      coupler_main.set_option<std::string>("bc_y2","open");
+      coupler_main.set_option<std::string>("bc_y1","periodic");
+      coupler_main.set_option<std::string>("bc_y2","periodic");
       coupler_main.set_option<std::string>("bc_z1","wall_free_slip");
       coupler_main.set_option<std::string>("bc_z2","wall_free_slip");
 

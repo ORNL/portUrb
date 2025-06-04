@@ -596,7 +596,6 @@ namespace custom_modules {
         // if (k == 0) dm_surface_temp(j,i) = 300;
       });
 
-
     } else if (coupler.get_option<std::string>("init_data") == "ABL_convective") {
 
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
@@ -633,6 +632,46 @@ namespace custom_modules {
           dm_rho_v(k,j,i) += rho_v * wt;
         }
         // if (k == 0) dm_surface_temp(j,i) = 309;
+      });
+
+    } else if (coupler.get_option<std::string>("init_data") == "ABL_convective2") {
+
+      auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
+        if   (z <  500) { return 300-0.02*z;       }
+        else            { return 290+0.05*(z-500); }
+      };
+      real p0     = 1*R_d*300; // Assume a density of one
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
+      real uref     = coupler.get_option<real>("hub_height_wind_mag",12); // Velocity at hub height
+      real href     = coupler.get_option<real>("turbine_hub_height",90);  // Height of hub / center of windmills
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        dm_rho_d(k,j,i) = 0;
+        dm_uvel (k,j,i) = 0;
+        dm_vvel (k,j,i) = 0;
+        dm_wvel (k,j,i) = 0;
+        dm_temp (k,j,i) = 0;
+        dm_rho_v(k,j,i) = 0;
+        for (int kk=0; kk<nqpoints; kk++) {
+          real z         = (k+0.5)*dz + qpoints(kk)*dz;
+          real theta     = compute_theta(z);
+          real p         = pressGLL(k,kk);
+          real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
+          real rho       = rho_theta / theta;
+          real ustar     = uref / std::log((href+roughness)/roughness);
+          real u         = ustar * std::log((z+roughness)/roughness);
+          real v         = 0;
+          real w         = 0;
+          real T         = p/(rho*R_d);
+          real rho_v     = 0;
+          real wt = qweights(kk);
+          dm_rho_d(k,j,i) += rho   * wt;
+          dm_uvel (k,j,i) += u     * wt;
+          dm_vvel (k,j,i) += v     * wt;
+          dm_wvel (k,j,i) += w     * wt;
+          dm_temp (k,j,i) += T     * wt;
+          dm_rho_v(k,j,i) += rho_v * wt;
+        }
+        // if (k == 0) dm_surface_temp(j,i) = theta0;
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable") {
