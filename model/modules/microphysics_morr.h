@@ -144,7 +144,6 @@ namespace modules {
       real cv_v       = cp_v - R_v;
       real p0         = 1.e5;
       real grav       = 9.81;
-      real cp_l       = 4190;
       coupler.set_option<real>("R_d"    ,R_d    );
       coupler.set_option<real>("cp_d"   ,cp_d   );
       coupler.set_option<real>("cv_d"   ,cv_d   );

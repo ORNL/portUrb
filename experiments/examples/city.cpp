@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk.h"
+#include "dynamics_rk_simpler.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -131,10 +131,10 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
         using custom_modules::dump_vorticity;
-        real hr = 500;
-        real ur = 20*std::cos(29./180.*M_PI);
-        real vr = 20*std::sin(29./180.*M_PI);
-        real tr = dt*100;
+        // real hr = 500;
+        // real ur = 20*std::cos(29./180.*M_PI);
+        // real vr = 20*std::sin(29./180.*M_PI);
+        // real tr = dt*100;
         // coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );
         coupler.run_module( [&] (Coupler &c) { edge_sponge.apply            (c,0.01,0.01,0.01,0.01); } , "edge_sponge" );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt);         } , "dycore"         );

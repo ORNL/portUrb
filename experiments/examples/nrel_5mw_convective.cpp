@@ -5,7 +5,7 @@
 #include "sc_init.h"
 #include "sc_perturb.h"
 #include "les_closure.h"
-#include "windmill_actuators_yaw.h"
+#include "turbine_actuator_disc.h"
 #include "surface_flux.h"
 #include "surface_heat_flux.h"
 #include "precursor_sponge.h"
@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     custom_modules::Time_Averager              time_averager;
     modules::LES_Closure                       les_closure;
-    modules::WindmillActuators                 windmills;
+    modules::TurbineActuatorDisc               turbines;
     modules::ColumnNudger                      col_nudge_prec;
     modules::ColumnNudger                      col_nudge_main;
 
@@ -120,11 +120,11 @@ int main(int argc, char** argv) {
     coupler_main.get_data_manager_readwrite().get<real,3>("water_vapor") = 0;
 
     // These are set for init just for periodic case
-    coupler_main.set_option<real>("turbine_hub_height",hub_z);  // Height of hub / center of windmills
+    coupler_main.set_option<real>("turbine_hub_height",hub_z);  // Height of hub / center of turbines
     // Run the initialization modules
     custom_modules::sc_init   ( coupler_main );
     les_closure  .init        ( coupler_main );
-    dycore       .init        ( coupler_main ); // Important that dycore inits after windmills for base immersed boundaries
+    dycore       .init        ( coupler_main ); // Important that dycore inits after turbines for base immersed boundaries
 
     /////////////////////////////////////////////////////////////////////////
     // Everything previous to this is now replicated in coupler_precursor
@@ -149,12 +149,9 @@ int main(int argc, char** argv) {
     coupler_prec.set_option<std::string>("bc_z1","wall_free_slip");
     coupler_prec.set_option<std::string>("bc_z2","wall_free_slip");
 
-    windmills    .init( coupler_main );
+    turbines     .init( coupler_main );
     time_averager.init( coupler_main );
     time_averager.init( coupler_prec );
-
-    windmills.turbine_group.turbines[0].u_samp_inertial = coupler_prec.get_option<real>("hub_height_uvel");
-    windmills.turbine_group.turbines[0].v_samp_inertial = coupler_prec.get_option<real>("hub_height_vvel");
 
     // Get elapsed time (zero), and create counters for output and informing the user in stdout
     real etime = coupler_main.get_option<real>("elapsed_time");
@@ -245,7 +242,7 @@ int main(int argc, char** argv) {
         coupler_main.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
         coupler_main.run_module( [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);           } , "heat_fluxes"    );
-        coupler_main.run_module( [&] (Coupler &c) { windmills.apply                  (c,dt);           } , "windmills"      );
+        coupler_main.run_module( [&] (Coupler &c) { turbines.apply                   (c,dt);           } , "turbines"       );
         coupler_main.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
         coupler_main.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);           } , "time_averager"  );
       }

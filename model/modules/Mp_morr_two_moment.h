@@ -765,7 +765,6 @@ namespace modules {
           }
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
-          double dum;
           if (! skip_micro(i,k)) {
             if (t_ge_273(i,k)) {
               if (iinum==1) {
@@ -1932,7 +1931,6 @@ namespace modules {
           }
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
-          double dum;
           if (! skip_micro(i,k)) {
             if (! t_ge_273(i,k)) {
               if (igraup==0) {
