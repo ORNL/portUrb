@@ -96,16 +96,11 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
-        auto run_dycore    = [&] (Coupler &c) { dycore.time_step             (c,dt);            };
-        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer        (c,dt,dt,0.02);    };
-        auto run_les       = [&] (Coupler &c) { les_closure.apply            (c,dt);            };
-        auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate     (c,dt);            };
-        auto run_micro     = [&] (Coupler &c) { micro.time_step              (c,dt);            };
-        coupler.run_module( run_micro     , "microphysics"   );
-        coupler.run_module( run_dycore    , "dycore"         );
-        coupler.run_module( run_sponge    , "sponge"         );
-        coupler.run_module( run_les       , "les_closure"    );
-        coupler.run_module( run_tavg      , "time_averager"  );
+        // coupler.run_module( [&] (Coupler &c) { modules::sponge_layer   (c,dt,dt,0.02); } , "sponge"         );
+        coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt);         } , "dycore"         );
+        coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt);         } , "les_closure"    );
+        coupler.run_module( [&] (Coupler &c) { micro.time_step         (c,dt);         } , "microphysics"   );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt);         } , "time_averager"  );
       }
 
       // Update time step
