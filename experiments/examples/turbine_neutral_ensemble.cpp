@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
       real        sim_time          = 3600*8+1;
       real        xlen              = 30*D;
       real        ylen              = 10*D;
-      real        zlen              = 5*D;
+      real        zlen              = 800;
       int         nx_glob           = (int) std::round(xlen/dx);
       int         ny_glob           = (int) std::round(ylen/dx);
       int         nz                = (int) std::round(zlen/dx);
@@ -120,6 +120,8 @@ int main(int argc, char** argv) {
       coupler_main.set_option<real       >( "turbine_f_TKE"            , 0.25              );
       coupler_main.set_option<bool       >( "turbine_floating_sine"    , false             );
 
+      coupler_main.set_option<real       >( "cfl"                      , 1.00              );
+      coupler_main.set_option<real       >( "dycore_max_wind"          , 40                );
       real z0       = coupler_main.get_option<real>("roughness");
       real u19_5    = hub_wind*std::log(19.5/z0)/std::log(turbine_hubz/z0);
       real omega_pm = 0.877*9.81/u19_5;
@@ -230,11 +232,13 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
         using modules::uniform_pg_wind_forcing_specified;
+
         real pgu, pgv;
         {
           real h = turbine_hubz;
           real u = coupler_prec.get_option<real>("hub_height_wind_mag");
           real v = 0;
+
           coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,10); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"         );
           coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes" );
@@ -249,6 +253,7 @@ int main(int argc, char** argv) {
         if (run_main) {
           custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
                                             nx_glob/10 , 0 , 0 , 0 );
+
           coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
           coupler_main.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );

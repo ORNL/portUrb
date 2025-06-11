@@ -12,7 +12,6 @@
 #include "sponge_layer.h"
 #include "uniform_pg_wind_forcing.h"
 #include "column_nudging.h"
-#include "time_sponge.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -191,7 +190,6 @@ int main(int argc, char** argv) {
     real pgu_sum=0;
     real pgv_sum=0;
     int  n_pg=0;
-    std::vector<std::string> sp_vars = {"density_dry","uvel","vvel","wvel","temp","TKE"};
     while (etime < sim_time) {
       // If dt <= 0, then set it to the dynamical core's max stable time step
       if (dtphys_in <= 0.) { dt = dycore.compute_time_step(coupler_main)*dyn_cycle; }
@@ -219,8 +217,6 @@ int main(int argc, char** argv) {
           pgv = pgv_sum/n_pg;
           coupler_prec.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
         }
-        // coupler_prec.run_module( [&] (Coupler &c) { modules::time_sponge             (c,dt,dt*100,dt*100,sp_vars,
-        //                                                                               0,0,0,0,nz/10);  } , "sponge"         );
         coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
         coupler_prec.run_module( [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);           } , "heat_fluxes"    );
@@ -237,8 +233,6 @@ int main(int argc, char** argv) {
                                           (int) (0.1*nx_glob) , 0 , (int) (0.1*ny_glob) , 0 );
         coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv);   } , "pg_forcing"     );
         coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column   (c,dt,dt*100);    } , "col_nudge"      );
-        // coupler_main.run_module( [&] (Coupler &c) { modules::time_sponge             (c,dt,10,dt*50,sp_vars,
-        //                                                                               0,nx_glob/10,0,ny_glob/10,nz/10); } , "sponge" );
         coupler_main.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
         coupler_main.run_module( [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);           } , "heat_fluxes"    );
