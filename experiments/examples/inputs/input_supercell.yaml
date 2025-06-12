@@ -32,6 +32,6 @@ is_restart: false
 restart_file: none
 
 # CFL value for the dynamical core to use (typically 0.6-0.7)
-cfl: 1.1
+cfl: 0.95
 
 
