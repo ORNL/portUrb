@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
       coupler_main.set_option<real       >( "turbine_f_TKE"            , 0.25              );
       coupler_main.set_option<bool       >( "turbine_floating_sine"    , false             );
       coupler_main.set_option<real       >( "sfc_heat_flux"            , 0.05              );
-      coupler_main.set_option<real       >( "cfl"                      , 1.00              );
+      coupler_main.set_option<real       >( "cfl"                      , 0.70              );
       coupler_main.set_option<real       >( "dycore_max_wind"          , 40                );
       real z0       = coupler_main.get_option<real>("roughness");
       real u19_5    = hub_wind*std::log(19.5/z0)/std::log(turbine_hubz/z0);
@@ -253,6 +253,8 @@ int main(int argc, char** argv) {
         if (run_main) {
           custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
                                             nx_glob/10 , 0 , 0 , 0 );
+          custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
+                                            0 , nx_glob/10 , 0 , 0 );
           coupler_main.run_module( [&] (Coupler &c) { surface_heat_flux             (c,dt); } , "heat_flux"         );
           coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
