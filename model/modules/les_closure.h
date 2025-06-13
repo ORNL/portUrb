@@ -17,12 +17,64 @@ namespace modules {
 
 
     void init( core::Coupler &coupler ) const {
-      auto nx  = coupler.get_nx  ();
-      auto ny  = coupler.get_ny  ();
-      auto nz  = coupler.get_nz  ();
-      auto &dm = coupler.get_data_manager_readwrite();
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto nx      = coupler.get_nx  ();
+      auto ny      = coupler.get_ny  ();
+      auto nz      = coupler.get_nz  ();
+      auto dz      = coupler.get_dz  ();
+      auto nx_glob = coupler.get_nx_glob();
+      auto ny_glob = coupler.get_ny_glob();
+      auto gamma   = coupler.get_option<real>("gamma_d");
+      auto C0      = coupler.get_option<real>("C0"     );
+      auto grav    = coupler.get_option<real>("grav"   );
+      auto &dm     = coupler.get_data_manager_readwrite();
       coupler.add_tracer( "TKE" , "mass-weighted TKE" , true , false , false );
       dm.get<real,3>("TKE") = 0.1;
+      real4d state , tracers;
+      real3d tke;
+      convert_coupler_to_dynamics( coupler , state , tracers , tke );
+      dm.register_and_allocate<real>("les_hy_dens_cells" ,"",{nz+2*hs});
+      dm.register_and_allocate<real>("les_hy_theta_cells","",{nz+2*hs});
+      auto r = dm.get<real,1>("les_hy_dens_cells" );    r = 0;
+      auto t = dm.get<real,1>("les_hy_theta_cells");    t = 0;
+      parallel_for( YAKL_AUTO_LABEL() , nz+2*hs , KOKKOS_LAMBDA (int k) {
+        for (int j = 0; j < ny; j++) {
+          for (int i = 0; i < nx; i++) {
+            r(k) += state(idR,k,hs+j,hs+i);
+            t(k) += state(idT,k,hs+j,hs+i);
+          }
+        }
+      });
+      coupler.get_parallel_comm().all_reduce( r , MPI_SUM ).deep_copy_to(r);
+      coupler.get_parallel_comm().all_reduce( t , MPI_SUM ).deep_copy_to(t);
+      real r_nx_ny = 1./(nx_glob*ny_glob);
+      parallel_for( YAKL_AUTO_LABEL() , nz+2*hs , KOKKOS_LAMBDA (int k) {
+        r(k) *= r_nx_ny;
+        t(k) *= r_nx_ny;
+      });
+      parallel_for( YAKL_AUTO_LABEL() , hs , KOKKOS_LAMBDA (int kk) {
+        {
+          int  k0       = hs;
+          int  k        = k0-1-kk;
+          real rho0     = r(k0);
+          real theta0   = t(k0);
+          real rho0_gm1 = std::pow(rho0  ,gamma-1);
+          real theta0_g = std::pow(theta0,gamma  );
+          r(k) = std::pow( rho0_gm1 + grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
+          t(k) = theta0;
+        }
+        {
+          int  k0       = hs+nz-1;
+          int  k        = k0+1+kk;
+          real rho0     = r(k0);
+          real theta0   = t(k0);
+          real rho0_gm1 = std::pow(rho0  ,gamma-1);
+          real theta0_g = std::pow(theta0,gamma  );
+          r(k) = std::pow( rho0_gm1 - grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
+          t(k) = theta0;
+        }
+      });
     }
 
 
@@ -53,6 +105,10 @@ namespace modules {
       real3d tke;
       convert_coupler_to_dynamics( coupler , state , tracers , tke );
       auto num_tracers = tracers.extent(0);
+      auto hy_t = dm.get<real const,1>("les_hy_theta_cells");
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        state(idT,hs+k,hs+j,hs+i) -= hy_t(hs+k);
+      });
 
       core::MultiField<real,3> fields;
       for (int l=0; l < num_state  ; l++) { fields.add_field( state  .slice<3>(l,0,0,0) ); }
@@ -123,11 +179,12 @@ namespace modules {
             real dw_dx = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k,hs+j,hs+i-1))/dx;
             real dt_dx = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k,hs+j,hs+i-1))/dx;
             real dK_dx = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k,hs+j,hs+i-1))/dx;
+            real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(2*dz);
             // Quantities at interface i-1/2
             real rho         = 0.5_fp * ( state(idR,hs+k,hs+j,hs+i-1) + state(idR,hs+k,hs+j,hs+i) );
             real K           = 0.5_fp * ( tke      (hs+k,hs+j,hs+i-1) + tke      (hs+k,hs+j,hs+i) );
-            real t           = 0.5_fp * ( state(idT,hs+k,hs+j,hs+i-1) + state(idT,hs+k,hs+j,hs+i) );
-            real N           = dt_dz >= 0 ? std::sqrt(grav/t*dt_dz) : 0;
+            real t           = 0.5_fp * ( state(idT,hs+k,hs+j,hs+i-1) + state(idT,hs+k,hs+j,hs+i) )+hy_t(hs+k);
+            real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
             real ell         = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
             real km          = total_mult * 0.1_fp * ell * std::sqrt(K);
             real Pr_t        = delta / (1+2*ell);
@@ -169,11 +226,12 @@ namespace modules {
             real dw_dy = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k,hs+j-1,hs+i))/dy;
             real dt_dy = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k,hs+j-1,hs+i))/dy;
             real dK_dy = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k,hs+j-1,hs+i))/dy;
+            real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(2*dz);
             // Quantities at interface j-1/2
             real rho  = 0.5_fp * ( state(idR,hs+k,hs+j-1,hs+i) + state(idR,hs+k,hs+j,hs+i) );
             real K    = 0.5_fp * ( tke      (hs+k,hs+j-1,hs+i) + tke      (hs+k,hs+j,hs+i) );
-            real t    = 0.5_fp * ( state(idT,hs+k,hs+j-1,hs+i) + state(idT,hs+k,hs+j,hs+i) );
-            real N    = dt_dz >= 0 ? std::sqrt(grav/t*dt_dz) : 0;
+            real t    = 0.5_fp * ( state(idT,hs+k,hs+j-1,hs+i) + state(idT,hs+k,hs+j,hs+i) )+hy_t(hs+k);
+            real N    = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
             real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
             real km   = total_mult * 0.1_fp * ell * std::sqrt(K);
             real Pr_t = delta / (1+2*ell);
@@ -213,11 +271,12 @@ namespace modules {
             real dw_dz = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k-1,hs+j,hs+i))/dz;
             real dt_dz = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i))/dz;
             real dK_dz = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k-1,hs+j,hs+i))/dz;
+            real dth_dz = (hy_t(hs+k)-hy_t(hs+k-1))/dz;
             // Quantities at interface k-1/2
             real rho  = 0.5_fp * ( state(idR,hs+k-1,hs+j,hs+i) + state(idR,hs+k,hs+j,hs+i) );
             real K    = 0.5_fp * ( tke      (hs+k-1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
-            real t    = 0.5_fp * ( state(idT,hs+k-1,hs+j,hs+i) + state(idT,hs+k,hs+j,hs+i) );
-            real N    = dt_dz >= 0 ? std::sqrt(grav/t*dt_dz) : 0;
+            real t    = 0.5_fp * ( state(idT,hs+k-1,hs+j,hs+i) + state(idT,hs+k,hs+j,hs+i) + hy_t(hs+k-1) + hy_t(hs+k) );
+            real N    = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
             real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
             real km   = total_mult * 0.1_fp * ell * std::sqrt(K);
             real Pr_t = delta / (1+2*ell);
@@ -236,14 +295,13 @@ namespace modules {
         }
       });
 
-      halo_bcs( coupler , state , tracers , tke );
-
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real rho   = state(idR,hs+k,hs+j,hs+i);
         real K     = tke      (hs+k,hs+j,hs+i);
-        real t     = state(idT,hs+k,hs+j,hs+i);
+        real t     = state(idT,hs+k,hs+j,hs+i) + hy_t(hs+k);
         real dt_dz = ( state(idT,hs+k+1,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i) ) / (2*dz);
-        real N     = dt_dz >= 0 ? std::sqrt(grav/t*dt_dz) : 0;
+        real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(2*dz);
+        real N     = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
         real ell   = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
         real km    = 0.1_fp * ell * std::sqrt(K);
         real Pr_t  = delta / (1+2*ell);
@@ -252,7 +310,7 @@ namespace modules {
         if (immersed(hs+k,hs+j,hs+i) < 1) {
           // Buoyancy source
           if (enable_gravity) {
-            tke_source  (k,j,i) += -(grav*rho*km)/(t*Pr_t)*dt_dz;
+            tke_source  (k,j,i) += -(grav*rho*km)/(t*Pr_t)*(dt_dz+dth_dz);
           }
           // TKE dissipation
           tke_source  (k,j,i) -=  dissipation_mult*rho*(0.19_fp + 0.51_fp*ell/delta)/delta*std::pow(K,1.5_fp);
@@ -311,6 +369,7 @@ namespace modules {
         state(idW,hs+k,hs+j,hs+i) *= state(idR,hs+k,hs+j,hs+i);
         state(idW,hs+k,hs+j,hs+i) += dtphys * tend_rw ;
 
+        state(idT,hs+k,hs+j,hs+i) += hy_t(hs+k);
         state(idT,hs+k,hs+j,hs+i) *= state(idR,hs+k,hs+j,hs+i);
         state(idT,hs+k,hs+j,hs+i) += dtphys * tend_rt ;
 
@@ -444,6 +503,7 @@ namespace modules {
       auto gamma          = coupler.get_option<real>("gamma_d");
       auto C0             = coupler.get_option<real>("C0");
       auto enable_gravity = coupler.get_option<bool>("enable_gravity",true);
+      auto hy_t           = dm.get<real const,1>("les_hy_theta_cells");
       if (!enable_gravity) grav = 0;
 
       if (coupler.get_option<std::string>("bc_x1") == "open" && coupler.get_px() == 0                      ) {
@@ -491,7 +551,7 @@ namespace modules {
             int  k0       = hs;
             int  k        = k0-1-kk;
             real rho0     = state(idR,k0,j,i);
-            real theta0   = state(idT,k0,j,i);
+            real theta0   = state(idT,k0,j,i)+hy_t(k0);
             real rho0_gm1 = std::pow(rho0  ,gamma-1);
             real theta0_g = std::pow(theta0,gamma  );
             state(idR,k,j,i) = std::pow( rho0_gm1 + grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) ,
@@ -526,7 +586,7 @@ namespace modules {
             int  k0       = hs+nz-1;
             int  k        = k0+1+kk;
             real rho0     = state(idR,k0,j,i);
-            real theta0   = state(idT,k0,j,i);
+            real theta0   = state(idT,k0,j,i)+hy_t(k0);
             real rho0_gm1 = std::pow(rho0  ,gamma-1);
             real theta0_g = std::pow(theta0,gamma  );
             state(idR,k,j,i) = std::pow( rho0_gm1 - grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) ,

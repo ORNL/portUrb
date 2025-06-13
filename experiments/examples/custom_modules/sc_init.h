@@ -145,67 +145,9 @@ namespace custom_modules {
           dm_vvel         (k,j,i) = 0;
           dm_wvel         (k,j,i) = 0;
         }
-        if (k == 0) dm_surface_temp(j,i) = 300;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
-    } else if (coupler.get_option<std::string>("init_data") == "buildings_periodic") {
-
-      real h  = coupler.get_option<real>( "buildings_h"  );
-      real u0 = coupler.get_option<real>( "buildings_u0" );
-      auto compute_theta = KOKKOS_LAMBDA (real z) -> real { return 300; };
-      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        dm_rho_d        (k,j,i) = 0;
-        dm_uvel         (k,j,i) = 0;
-        dm_vvel         (k,j,i) = 0;
-        dm_wvel         (k,j,i) = 0;
-        dm_temp         (k,j,i) = 0;
-        dm_rho_v        (k,j,i) = 0;
-        dm_immersed_prop(k,j,i) = 0;
-        for (int kk=0; kk<nqpoints; kk++) {
-          for (int jj=0; jj<nqpoints; jj++) {
-            for (int ii=0; ii<nqpoints; ii++) {
-              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
-              real z         = (      k+0.5)*dz + qpoints(kk)*dz;
-              real theta     = compute_theta(z);
-              real p         = pressGLL(k,kk);
-              real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
-              real rho       = rho_theta / theta;
-              real u         = u0;
-              real v         = 0;
-              real w         = 0;
-              real T         = p/(rho*R_d);
-              real rho_v     = 0;
-              real imm       = 0;
-              real wt = qweights(kk)*qweights(jj)*qweights(ii);
-              if ( (x >= 1*h/2 && x <= 3*h/2 && y >= 1*h/2 && y <= 3*h/2 && z <= h) ||  // Cube 1
-                   (x >= 1*h/2 && x <= 3*h/2 && y >= 5*h/2 && y <= 7*h/2 && z <= h) ||  // Cube 2
-                   (x >= 5*h/2 && x <= 7*h/2 && y >= 3*h/2 && y <= 5*h/2 && z <= h) ||  // Cube 3
-                   (x >= 5*h/2 && x <= 7*h/2 && y >= 0*h/2 && y <= 1*h/2 && z <= h) ||  // Cube 4a
-                   (x >= 5*h/2 && x <= 7*h/2 && y >= 7*h/2 && y <= 8*h/2 && z <= h) ) { // Cube 4b
-                imm = 1;
-                u = 0;
-                v = 0;
-                w = 0;
-              }
-              dm_immersed_prop(k,j,i) += imm   * wt;
-              dm_rho_d        (k,j,i) += rho   * wt;
-              dm_uvel         (k,j,i) += u     * wt;
-              dm_vvel         (k,j,i) += v     * wt;
-              dm_wvel         (k,j,i) += w     * wt;
-              dm_temp         (k,j,i) += T     * wt;
-              dm_rho_v        (k,j,i) += rho_v * wt;
-            }
-          }
-        }
-        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if (dm_immersed_prop(k,j,i) == 0) {
-          dm_uvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
-          dm_vvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
-        }
-        if (k == 0) dm_surface_temp(j,i) = 300;
-      });
 
     } else if (coupler.get_option<std::string>("init_data") == "cubes_periodic") {
 
@@ -240,7 +182,7 @@ namespace custom_modules {
           dm_vvel         (k,j,i) = 0;
           dm_wvel         (k,j,i) = 0;
         }
-        if (k == 0) dm_surface_temp(j,i) = 300;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "constant") {
@@ -263,7 +205,7 @@ namespace custom_modules {
         dm_wvel (k,j,i) = w;
         dm_temp (k,j,i) = T;
         dm_rho_v(k,j,i) = 0;
-        if (k == 0) dm_surface_temp(j,i) = T;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "city") {
@@ -320,6 +262,7 @@ namespace custom_modules {
             }
           }
         }
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
       std::chrono::duration<double> dur = std::chrono::high_resolution_clock::now() - t1;
       if (coupler.is_mainproc()) std::cout << "*** Finished setup in [" << dur.count() << "] seconds ***" << std::endl;
@@ -364,7 +307,7 @@ namespace custom_modules {
         dm_wvel (k,j,i) = (1-dm_immersed_prop(k,j,i))*w;
         dm_temp (k,j,i) = T;
         dm_rho_v(k,j,i) = 0;
-        if (k == 0) dm_surface_temp(j,i) = T;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "bomex") {
@@ -445,7 +388,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = 300.4;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
@@ -484,7 +427,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = 300;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "nrel_5mw_convective") {
@@ -534,64 +477,9 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        // if (k == 0) dm_surface_temp(j,i) = 300;
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
-
-    } else if (coupler.get_option<std::string>("init_data") == "nrel_5mw_convective_bouss") {
-
-      auto enable_gravity = coupler.get_option<bool>("enable_gravity",false);
-
-      real z1 = 0;
-      real z2 = 750;
-      real z3 = 850;
-      real z4 = 2000;
-      real T1 = 300;
-      real T2 = 300;
-      real T3 = 308;
-      real T4 = 311.45;
-      auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
-        if      (z < z1) { return T1                         ; }
-        if      (z < z2) { return T1 + (z-z1)*(T2-T1)/(z2-z1); }
-        else if (z < z3) { return T2 + (z-z2)*(T3-T2)/(z3-z2); }
-        else if (z < z4) { return T3 + (z-z3)*(T4-T3)/(z4-z3); }
-        else             { return T4                         ; }
-      };
-      real rho0 = 1;
-      real p0 = rho0*R_d*T1; // Assume a density of one
-      coupler.set_option<real>("bouss_rho0",rho0);
-      auto hub_u = coupler.get_option<real>("hub_height_uvel");
-      auto hub_v = coupler.get_option<real>("hub_height_vvel");
-      auto hub_z = coupler.get_option<real>("turbine_hub_height");
-      dm.register_and_allocate<real>("temp_0_bouss","",{nz});
-      auto temp_0 = dm.get<real,1>("temp_0_bouss");
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        dm_rho_d(k,j,i) = 0;
-        dm_uvel (k,j,i) = 0;
-        dm_vvel (k,j,i) = 0;
-        dm_wvel (k,j,i) = 0;
-        dm_temp (k,j,i) = 0;
-        dm_rho_v(k,j,i) = 0;
-        for (int kk=0; kk<nqpoints; kk++) {
-          real z         = (k+0.5)*dz + qpoints(kk)*dz;
-          real p         = p0;
-          real T         = compute_theta(z);
-          real rho       = p/(R_d*T);
-          real u         = hub_u * std::log((z+roughness)/roughness) / std::log((hub_z+roughness)/roughness);
-          real v         = hub_v * std::log((z+roughness)/roughness) / std::log((hub_z+roughness)/roughness);
-          real w         = 0;
-          real rho_v     = 0;
-          real wt = qweights(kk);
-          dm_rho_d(k,j,i) += rho   * wt;
-          dm_uvel (k,j,i) += u     * wt;
-          dm_vvel (k,j,i) += v     * wt;
-          dm_wvel (k,j,i) += w     * wt;
-          dm_temp (k,j,i) += T     * wt;
-          dm_rho_v(k,j,i) += rho_v * wt;
-        }
-        if (i==0 && j==0) temp_0(k) = dm_temp(k,j,i);
-        // if (k == 0) dm_surface_temp(j,i) = 300;
-      });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_convective") {
 
@@ -628,7 +516,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        // if (k == 0) dm_surface_temp(j,i) = 309;
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_convective2") {
@@ -668,7 +556,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        // if (k == 0) dm_surface_temp(j,i) = theta0;
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable") {
@@ -706,7 +594,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = 265;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable_bvf") {
@@ -747,7 +635,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = theta0;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
@@ -788,7 +676,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        // if (k == 0) dm_surface_temp(j,i) = 300;
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "AWAKEN_neutral") {
@@ -818,7 +706,7 @@ namespace custom_modules {
         dm_wvel (k,j,i) = 0;
         dm_temp (k,j,i) = T;
         dm_rho_v(k,j,i) = 0;
-        if (k == 0) dm_surface_temp(j,i) = theta0;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "supercell") {
@@ -906,7 +794,7 @@ namespace custom_modules {
             }
           }
         }
-        if (k == 0) dm_surface_temp(j,i) = 300;
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } // if (init_data == ...)

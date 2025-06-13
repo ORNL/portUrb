@@ -599,6 +599,9 @@ namespace modules {
       float3d rv_y("rv_y",nz,ny+1,nx);
       float3d rw_z("rw_z",nz+1,ny,nx);
 
+      auto wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
+      auto wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
+
       float constexpr cs = 350;
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
@@ -655,6 +658,8 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idR,k+kk,hs+j,hs+i)*fields_loc(idW,k+kk,hs+j,hs+i); }
         float rw_L = 0;
         for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
+        if (wall_z1 && k == 0 ) rw_L = 0;
+        if (wall_z2 && k == nz) rw_L = 0;
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk+1,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk+1,hs+j,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
@@ -663,8 +668,12 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idR,k+kk+1,hs+j,hs+i)*fields_loc(idW,k+kk+1,hs+j,hs+i); }
         float rw_R = 0;
         for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
+        if (wall_z1 && k == 0 ) rw_R = 0;
+        if (wall_z2 && k == nz) rw_R = 0;
         p_z (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rw_R-rw_L)   );
         rw_z(k,j,i) = 0.5f*(rw_L + rw_R -    (p_R -p_L )/cs);
+        if (wall_z1 && k == 0 ) rw_z(k,j,i) = 0;
+        if (wall_z2 && k == nz) rw_z(k,j,i) = 0;
       });
 
       core::MultiField<float,3> advect_fields;

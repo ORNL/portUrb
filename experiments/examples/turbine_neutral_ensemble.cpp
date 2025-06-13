@@ -120,8 +120,8 @@ int main(int argc, char** argv) {
       coupler_main.set_option<real       >( "turbine_f_TKE"            , 0.25              );
       coupler_main.set_option<bool       >( "turbine_floating_sine"    , false             );
 
-      coupler_main.set_option<real       >( "cfl"                      , 0.70              );
-      coupler_main.set_option<real       >( "dycore_max_wind"          , 40                );
+      coupler_main.set_option<real       >( "cfl"                      , 0.95              );
+      coupler_main.set_option<real       >( "dycore_max_wind"          , 50                );
       real z0       = coupler_main.get_option<real>("roughness");
       real u19_5    = hub_wind*std::log(19.5/z0)/std::log(turbine_hubz/z0);
       real omega_pm = 0.877*9.81/u19_5;
