@@ -16,6 +16,25 @@ namespace modules {
     int static constexpr idT = 4;
 
 
+    std::tuple<real,real> compute_mass( core::Coupler & coupler , real4d const & state , bool mult_r ) const {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto nx = coupler.get_nx();
+      auto ny = coupler.get_ny();
+      auto nz = coupler.get_nz();
+      real3d r("r",nz,ny,nx);
+      real3d t("t",nz,ny,nx);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j , int i) {
+        r(k,j,i) = state(idR,hs+k,hs+j,hs+i);
+        t(k,j,i) = state(idT,hs+k,hs+j,hs+i);
+        if (mult_r) t(k,j,i) *= r(k,j,i);
+      });
+      real rmass = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(r) , MPI_SUM );
+      real tmass = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(t) , MPI_SUM );
+      return std::make_tuple(rmass,tmass);
+    }
+
+
     void init( core::Coupler &coupler ) const {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
@@ -104,6 +123,7 @@ namespace modules {
       real4d state , tracers;
       real3d tke;
       convert_coupler_to_dynamics( coupler , state , tracers , tke );
+      // auto mass1 = compute_mass( coupler , state , true );
       auto num_tracers = tracers.extent(0);
       auto hy_t = dm.get<real const,1>("les_hy_theta_cells");
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -386,6 +406,10 @@ namespace modules {
         }
       });
 
+      // auto mass2 = compute_mass( coupler , state , false );
+      // if (coupler.is_mainproc()) std::cout << "Mass change: "
+      //                                      << (std::get<0>(mass2)-std::get<0>(mass1))/std::get<0>(mass1) << " , "
+      //                                      << (std::get<1>(mass2)-std::get<1>(mass1))/std::get<1>(mass1) << std::endl;
       convert_dynamics_to_coupler( coupler , state , tracers , tke );
     }
 

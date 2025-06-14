@@ -603,7 +603,8 @@ namespace custom_modules {
       real p0     = 1*R_d*theta0; // Assume a density of one
       auto bvf    = coupler.get_option<real>("bvf_freq",0.01);
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
-        return theta0*std::exp(bvf*bvf/grav*z);
+        if   (z <  100) { return 300;              }
+        else            { return 300+0.01*(z-100); }
       };
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
       real uref     = coupler.get_option<real>("hub_height_wind_mag",12); // Velocity at hub height
@@ -635,7 +636,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {

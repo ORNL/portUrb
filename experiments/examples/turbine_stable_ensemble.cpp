@@ -12,6 +12,7 @@
 #include "uniform_pg_wind_forcing.h"
 #include "Ensembler.h"
 #include "column_nudging.h"
+#include "surface_cooling.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -32,12 +33,12 @@ int main(int argc, char** argv) {
     {
       auto func_nranks  = [=] (int ind) { return 1; };
       auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        real wind = ind*2+5;
+        real wind = ind*2+11;
         coupler.set_option<real>("hub_height_wind_mag",wind);
         ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("wind-")+std::to_string(wind));
         ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("wind-")+std::to_string(wind));
       };
-      ensembler.register_dimension( 10 , func_nranks , func_coupler );
+      ensembler.register_dimension( 1 , func_nranks , func_coupler );
     }
     // coupler_main.set_option<real>("hub_height_wind_mag",11);
 
@@ -55,11 +56,11 @@ int main(int argc, char** argv) {
           ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("floating-"));
         }
       };
-      ensembler.register_dimension( 2 , func_nranks , func_coupler );
+      ensembler.register_dimension( 1 , func_nranks , func_coupler );
     }
     // coupler_main.set_option<bool>( "turbine_floating_motions" , true );
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_main , 4 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_main , 64 , MPI_COMM_WORLD );
     coupler_main.set_parallel_comm( par_comm );
 
     auto orig_cout_buf = std::cout.rdbuf();
@@ -122,6 +123,7 @@ int main(int argc, char** argv) {
       coupler_main.set_option<real       >( "bvf_freq"                 , 0.03              );
       coupler_main.set_option<real       >( "cfl"                      , 0.95              );
       coupler_main.set_option<real       >( "dycore_max_wind"          , 50                );
+      coupler_main.set_option<real       >( "sfc_cool_rate"            , 0.25/3600.        );
       real z0       = coupler_main.get_option<real>("roughness");
       real u19_5    = hub_wind*std::log(19.5/z0)/std::log(turbine_hubz/z0);
       real omega_pm = 0.877*9.81/u19_5;
@@ -232,6 +234,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
         using modules::uniform_pg_wind_forcing_specified;
+        using custom_modules::surface_cooling;
 
         real pgu, pgv;
         {
@@ -240,10 +243,11 @@ int main(int argc, char** argv) {
           real v = 0;
 
           coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,10); } , "pg_forcing" );
-          coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"         );
-          coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes" );
-          coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt); } , "les_closure"    );
-          coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt); } , "time_averager"  );
+          coupler_prec.run_module( [&] (Coupler &c) { surface_cooling              (c,dt); } , "surface_cool"   );
+          coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
+          coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );
+          coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply            (c,dt); } , "les_closure"    );
+          coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate     (c,dt); } , "time_averager"  );
         }
 
         col_nudge_prec.set_column( coupler_prec , {"density_dry","temp"} );
@@ -258,6 +262,7 @@ int main(int argc, char** argv) {
 
           coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
+          coupler_prec.run_module( [&] (Coupler &c) { surface_cooling               (c,dt); } , "surface_cool"   );
           coupler_main.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
           coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
           coupler_main.run_module( [&] (Coupler &c) { windmills.apply               (c,dt); } , "windmillactuators" );

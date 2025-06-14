@@ -38,6 +38,27 @@ namespace modules {
     int  static constexpr idW = 3;  // w-momentum
     int  static constexpr idT = 4;  // Density * potential temperature
 
+    typedef float FLOC;
+
+
+
+    std::tuple<real,real> compute_mass( core::Coupler & coupler , real4d const & state ) const {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto nx = coupler.get_nx();
+      auto ny = coupler.get_ny();
+      auto nz = coupler.get_nz();
+      real3d r("r",nz,ny,nx);
+      real3d t("t",nz,ny,nx);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j , int i) {
+        r(k,j,i) = state(idR,hs+k,hs+j,hs+i);
+        t(k,j,i) = state(idT,hs+k,hs+j,hs+i);
+      });
+      real rmass = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(r) , MPI_SUM );
+      real tmass = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(t) , MPI_SUM );
+      return std::make_tuple(rmass,tmass);
+    }
+
 
 
     real compute_time_step( core::Coupler const &coupler ) const {
@@ -103,7 +124,12 @@ namespace modules {
       real dt_dyn = compute_time_step( coupler );
       int ncycles = (int) std::ceil( dt_phys / dt_dyn );
       dt_dyn = dt_phys / ncycles;
+      // auto mass1 = compute_mass( coupler , state );
       for (int icycle = 0; icycle < ncycles; icycle++) { time_step_rk4(coupler,state,tracers,dt_dyn); }
+      // auto mass2 = compute_mass( coupler , state );
+      // if (coupler.is_mainproc()) std::cout << "Mass change: "
+      //                                      << (std::get<0>(mass2)-std::get<0>(mass1))/std::get<0>(mass1) << " , "
+      //                                      << (std::get<1>(mass2)-std::get<1>(mass1))/std::get<1>(mass1) << std::endl;
       convert_dynamics_to_coupler( coupler , state , tracers );
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("time_step");
@@ -453,7 +479,7 @@ namespace modules {
 
 
 
-    real static KOKKOS_INLINE_FUNCTION hypervis( SArray<float,1,ord> const &s) {
+    real static KOKKOS_INLINE_FUNCTION hypervis( SArray<FLOC,1,ord> const &s) {
       if      constexpr (ord == 3 ) { return  ( 1.00000000f*s(0)-2.00000000f*s(1)+1.00000000f*s(2) )/4; }
       else if constexpr (ord == 5 ) { return -( 1.00000000f*s(0)-4.00000000f*s(1)+6.00000000f*s(2)-4.00000000f*s(3)+1.00000000f*s(4) )/16; }
       else if constexpr (ord == 7 ) { return  ( 1.00000000f*s(0)-6.00000000f*s(1)+15.0000000f*s(2)-20.0000000f*s(3)+15.0000000f*s(4)-6.00000000f*s(5)+1.00000000f*s(6) )/64; }
@@ -503,6 +529,7 @@ namespace modules {
       auto  hy_theta_edges    = dm.get<real const,1>("hy_theta_edges"           ); // Hydrostatic potential temperature
       auto  hy_pressure_edges = dm.get<real const,1>("hy_pressure_edges"        ); // Hydrostatic potential temperature
       auto  hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells"        ); // Hydrostatic pressure
+      auto  surface_temp      = dm.get<real const,2>("surface_temp"  );
       auto  weno_all          = coupler.get_option<bool>("weno_all",true);
       // Compute matrices to convert polynomial coefficients to 2 GLL points and stencil values to 2 GLL points
       // These matrices will be in column-row format. That performed better than row-column format in performance tests
@@ -513,7 +540,7 @@ namespace modules {
 
       int constexpr hsm1 = hs-1;
 
-      SArray<float,1,ord> wt;
+      SArray<FLOC,1,ord> wt;
       if      constexpr (ord == 3 ) {
         wt(0) =  0.333333333f;
         wt(1) = +0.833333333f;
@@ -556,7 +583,7 @@ namespace modules {
         wt(10) = -0.000360750361f;
       }
 
-      float4d fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
+      yakl::Array<FLOC,4> fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
 
       // Compute pressure
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -587,86 +614,86 @@ namespace modules {
       #endif
       halo_boundary_conditions( coupler , fields_loc );
 
-      float4d flux_x("flux_x",num_state+num_tracers,nz,ny,nx+1);
-      float4d flux_y("flux_y",num_state+num_tracers,nz,ny+1,nx);
-      float4d flux_z("flux_z",num_state+num_tracers,nz+1,ny,nx);
+      yakl::Array<FLOC,4> flux_x("flux_x",num_state+num_tracers,nz,ny,nx+1);
+      yakl::Array<FLOC,4> flux_y("flux_y",num_state+num_tracers,nz,ny+1,nx);
+      yakl::Array<FLOC,4> flux_z("flux_z",num_state+num_tracers,nz+1,ny,nx);
 
-      float3d p_x("p_x",nz,ny,nx+1);
-      float3d p_y("p_y",nz,ny+1,nx);
-      float3d p_z("p_z",nz+1,ny,nx);
+      yakl::Array<FLOC,3> p_x("p_x",nz,ny,nx+1);
+      yakl::Array<FLOC,3> p_y("p_y",nz,ny+1,nx);
+      yakl::Array<FLOC,3> p_z("p_z",nz+1,ny,nx);
 
-      float3d ru_x("ru_x",nz,ny,nx+1);
-      float3d rv_y("rv_y",nz,ny+1,nx);
-      float3d rw_z("rw_z",nz+1,ny,nx);
+      yakl::Array<FLOC,3> ru_x("ru_x",nz,ny,nx+1);
+      yakl::Array<FLOC,3> rv_y("rv_y",nz,ny+1,nx);
+      yakl::Array<FLOC,3> rw_z("rw_z",nz+1,ny,nx);
 
       auto wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
       auto wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
 
-      float constexpr cs = 350;
+      FLOC constexpr cs = 350;
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
-        SArray<float,1,ord> s;
+        SArray<FLOC,1,ord> s;
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_L = 0;
+        FLOC p_L = 0;
         for (int ii=0; ii < ord; ii++) { p_L += wt(ord-1-ii)*s(ii); }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii))*fields_loc(idU,hs+k,hs+j,i+ii); }
-        float ru_L = 0;
+        FLOC ru_L = 0;
         for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii+1); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_R = 0;
+        FLOC p_R = 0;
         for (int ii=0; ii < ord; ii++) { p_R += wt(ii)*s(ii); }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1))*fields_loc(idU,hs+k,hs+j,i+ii+1); }
-        float ru_R = 0;
+        FLOC ru_R = 0;
         for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
         p_x (k,j,i) = 0.5f*(p_L  + p_R  - cs*(ru_R-ru_L)   );
         ru_x(k,j,i) = 0.5f*(ru_L + ru_R -    (p_R -p_L )/cs);
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
-        SArray<float,1,ord> s;
+        SArray<FLOC,1,ord> s;
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_L = 0;
+        FLOC p_L = 0;
         for (int jj=0; jj < ord; jj++) { p_L += wt(ord-1-jj)*s(jj); }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idR,hs+k,j+jj,hs+i)*fields_loc(idV,hs+k,j+jj,hs+i); }
-        float rv_L = 0;
+        FLOC rv_L = 0;
         for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj+1,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_R = 0;
+        FLOC p_R = 0;
         for (int jj=0; jj < ord; jj++) { p_R += wt(jj)*s(jj); }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idR,hs+k,j+jj+1,hs+i)*fields_loc(idV,hs+k,j+jj+1,hs+i); }
-        float rv_R = 0;
+        FLOC rv_R = 0;
         for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
         p_y (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rv_R-rv_L)   );
         rv_y(k,j,i) = 0.5f*(rv_L + rv_R -    (p_R -p_L )/cs);
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
-        SArray<float,1,ord> s;
+        SArray<FLOC,1,ord> s;
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk,hs+j,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_L = 0;
+        FLOC p_L = 0;
         for (int kk=0; kk < ord; kk++) { p_L += wt(ord-1-kk)*s(kk); }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idR,k+kk,hs+j,hs+i)*fields_loc(idW,k+kk,hs+j,hs+i); }
-        float rw_L = 0;
+        FLOC rw_L = 0;
         for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
         if (wall_z1 && k == 0 ) rw_L = 0;
         if (wall_z2 && k == nz) rw_L = 0;
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk+1,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk+1,hs+j,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        float p_R = 0;
+        FLOC p_R = 0;
         for (int kk=0; kk < ord; kk++) { p_R += wt(kk)*s(kk); }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idR,k+kk+1,hs+j,hs+i)*fields_loc(idW,k+kk+1,hs+j,hs+i); }
-        float rw_R = 0;
+        FLOC rw_R = 0;
         for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
         if (wall_z1 && k == 0 ) rw_R = 0;
         if (wall_z2 && k == nz) rw_R = 0;
@@ -676,7 +703,7 @@ namespace modules {
         if (wall_z2 && k == nz) rw_z(k,j,i) = 0;
       });
 
-      core::MultiField<float,3> advect_fields;
+      core::MultiField<FLOC,3> advect_fields;
       advect_fields.add_field( fields_loc.slice<3>(idR,0,0,0) );
       advect_fields.add_field( fields_loc.slice<3>(idU,0,0,0) );
       advect_fields.add_field( fields_loc.slice<3>(idV,0,0,0) );
@@ -685,25 +712,25 @@ namespace modules {
       for (int tr=0; tr < num_tracers; tr++) { advect_fields.add_field( fields_loc.slice<3>(num_state+1+tr,0,0,0) ); }
       int num_fields = advect_fields.get_num_fields();
 
-      typedef limiter::WenoLimiter<float,ord> Limiter;
+      typedef limiter::WenoLimiter<FLOC,ord> Limiter;
 
       auto use_weno = coupler.get_option<bool>("dycore_use_weno",true);
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
-        float ru = ru_x(k,j,i);
+        FLOC ru = ru_x(k,j,i);
         int ind = ru > 0 ? 0 : 1;
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,i+ii+ind) > 0; }
         for (int l=1; l < num_fields; l++) {
-          SArray<float,1,ord> s;
+          SArray<FLOC,1,ord> s;
           for (int ii = 0; ii < ord; ii++) { s(ii) = advect_fields(l,hs+k,hs+j,i+ii+ind); }
           if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
-          float val;
+          FLOC val;
           if (l==idU || l==idV || l==idW || !use_weno) {
             val = 0;
             for (int ii=0; ii < ord; ii++) { val += wt(ru>0?ord-1-ii:ii)*s(ii); }
           } else {
-            float val_L, val_R;
+            FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { true , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = ru > 0 ? val_R : val_L;
           }
@@ -715,19 +742,19 @@ namespace modules {
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
-        float rv = rv_y(k,j,i);
+        FLOC rv = rv_y(k,j,i);
         int ind = rv > 0 ? 0 : 1;
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,j+jj+ind,hs+i) > 0; }
         for (int l=1; l < num_fields; l++) {
-          SArray<float,1,ord> s;
+          SArray<FLOC,1,ord> s;
           for (int jj = 0; jj < ord; jj++) { s(jj) = advect_fields(l,hs+k,j+jj+ind,hs+i); }
           if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
-          float val;
+          FLOC val;
           if (l==idU || l==idV || l==idW || !use_weno) {
             val = 0;
             for (int jj=0; jj < ord; jj++) { val += wt(rv>0?ord-1-jj:jj)*s(jj); }
           } else {
-            float val_L, val_R;
+            FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { true , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = rv > 0 ? val_R : val_L;
           }
@@ -739,23 +766,23 @@ namespace modules {
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
-        float rw = rw_z(k,j,i);
+        FLOC rw = rw_z(k,j,i);
         int ind = rw > 0 ? 0 : 1;
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(k+kk+ind,hs+j,hs+i) > 0; }
         for (int l=1; l < num_fields; l++) {
-          SArray<float,1,ord> s;
+          SArray<FLOC,1,ord> s;
           for (int kk = 0; kk < ord; kk++) { s(kk) = advect_fields(l,k+kk+ind,hs+j,hs+i); }
           if (l == idU || l == idV) modify_stencil_immersed_der0( s , immersed );
-          float val;
+          FLOC val;
           if (l==idU || l==idV || l==idW || !use_weno) {
             val = 0;
             for (int kk=0; kk < ord; kk++) { val += wt(rw>0?ord-1-kk:kk)*s(kk); }
           } else {
-            float val_L, val_R;
+            FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { true , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = rw > 0 ? val_R : val_L;
           }
-          if (l == idT) val += hy_theta_edges(k);
+          if (l == idT)  val += hy_theta_edges(k);
           flux_z(l,k,j,i) = rw*val;
         }
         flux_z(idR,k,j,i)  = rw;
@@ -783,12 +810,12 @@ namespace modules {
         }
       });
 
-      core::MultiField<float,3> fields_visc;
+      core::MultiField<FLOC,3> fields_visc;
       for (int l=0; l < num_state  ; l++) { fields_visc.add_field(fields_loc.slice<3>(            l,0,0,0)); }
       for (int l=0; l < num_tracers; l++) { fields_visc.add_field(fields_loc.slice<3>(num_state+1+l,0,0,0)); }
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        float hv_beta = 0;
+        FLOC hv_beta = 0;
         if      (any_immersed2 (k,j,i)) { hv_beta = 1.f/4.f/2.f;  }
         else if (any_immersed4 (k,j,i)) { hv_beta = 1.f/4.f/4.f;  }
         else if (any_immersed6 (k,j,i)) { hv_beta = 1.f/4.f/8.f;  }
@@ -798,7 +825,7 @@ namespace modules {
           SArray<bool ,1,ord> immersed;
           for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,1+i+ii) > 0; }
           for (int l=0; l < num_state+num_tracers; l++) {
-            SArray<float,1,ord> s;
+            SArray<FLOC,1,ord> s;
             for (int ii = 0; ii < ord; ii++) { s(ii) = fields_visc(l,hs+k,hs+j,1+i+ii); }
             if (l==idV || l==idW) modify_stencil_immersed_der0( s , immersed );
             if      (l == idR)      { state_tend  (l,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
@@ -807,7 +834,7 @@ namespace modules {
           }
           for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,1+j+jj,hs+i) > 0; }
           for (int l=0; l < num_state+num_tracers; l++) {
-            SArray<float,1,ord> s;
+            SArray<FLOC,1,ord> s;
             for (int jj = 0; jj < ord; jj++) { s(jj) = fields_visc(l,hs+k,1+j+jj,hs+i); }
             if (l==idU || l==idW) modify_stencil_immersed_der0( s , immersed );
             if      (l == idR)      { state_tend  (l,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
@@ -816,7 +843,7 @@ namespace modules {
           }
           for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(1+k+kk,hs+j,hs+i) > 0; }
           for (int l=0; l < num_state+num_tracers; l++) {
-            SArray<float,1,ord> s;
+            SArray<FLOC,1,ord> s;
             for (int kk = 0; kk < ord; kk++) { s(kk) = fields_visc(l,1+k+kk,hs+j,hs+i); }
             if (l==idU || l==idV) modify_stencil_immersed_der0( s , immersed );
             if      (l == idR)      { state_tend  (l,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
@@ -834,7 +861,7 @@ namespace modules {
 
 
     void halo_boundary_conditions( core::Coupler const & coupler ,
-                                   float4d       const & fields  ) const {
+                                   yakl::Array<FLOC,4> const & fields  ) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("halo_boundary_conditions");
       #endif
@@ -847,6 +874,7 @@ namespace modules {
       auto &dm             = coupler.get_data_manager_readonly();
       auto hy_dens_cells   = dm.get<real const,1>("hy_dens_cells" );
       auto hy_theta_cells  = dm.get<real const,1>("hy_theta_cells");
+      auto surface_temp    = dm.get<real const,2>("surface_temp"  );
 
       if (coupler.get_option<std::string>("bc_x1") == "periodic") { // Already handled in halo_exchange
       } else if (coupler.get_option<std::string>("bc_x1") == "open" ||
@@ -858,7 +886,7 @@ namespace modules {
                      -0.1*fields(l,hs+k,hs+j,hs+2) +
                       0.1*fields(l,hs+k,hs+j,hs+1) +
                       0.3*fields(l,hs+k,hs+j,hs+0);
-            fields(l,hs+k,hs+j,ii) = fields(l,hs+k,hs+j,hs+0) + (hs-1-ii)*d;
+            fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0) + (ii+1)*d;
           });
         }
       } else {
@@ -876,7 +904,7 @@ namespace modules {
                      -0.1*fields(l,hs+k,hs+j,hs+nx-3) +
                       0.1*fields(l,hs+k,hs+j,hs+nx-2) +
                       0.3*fields(l,hs+k,hs+j,hs+nx-1);
-            fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1) + ii*d;
+            fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1) + (ii+1)*d;
           });
         }
       } else {
@@ -894,7 +922,7 @@ namespace modules {
                      -0.1*fields(l,hs+k,hs+2,hs+i) +
                       0.1*fields(l,hs+k,hs+1,hs+i) +
                       0.3*fields(l,hs+k,hs+0,hs+i);
-            fields(l,hs+k,jj,hs+i) = fields(l,hs+k,hs+0,hs+i) + (hs-1-jj)*d;
+            fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i) + (jj+1)*d;
           });
         }
       } else {
@@ -912,7 +940,7 @@ namespace modules {
                      -0.1*fields(l,hs+k,hs+ny-3,hs+i) +
                       0.1*fields(l,hs+k,hs+ny-2,hs+i) +
                       0.3*fields(l,hs+k,hs+ny-1,hs+i);
-            fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i) + jj*d;
+            fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i) + (jj+1)*d;
           });
         }
       } else {
@@ -926,7 +954,12 @@ namespace modules {
           if (l == idW) {
             fields(l,kk,hs+j,hs+i) = 0;
           } else {
-            fields(l,kk,hs+j,hs+i) = fields(l,hs+0,hs+j,hs+i);
+            real d = -0.3*fields(l,hs+3,hs+j,hs+i) +
+                     -0.1*fields(l,hs+2,hs+j,hs+i) +
+                      0.1*fields(l,hs+1,hs+j,hs+i) +
+                      0.3*fields(l,hs+0,hs+j,hs+i);
+            fields(l,hs-1-kk,hs+j,hs+i) = fields(l,hs+0,hs+j,hs+i) + (kk+1)*d;
+            // fields(l,hs-1-kk,hs+j,hs+i) = fields(l,hs+0,hs+j,hs+i);
           }
         });
       } else if (coupler.get_option<std::string>("bc_z1") == "periodic") {
@@ -949,7 +982,7 @@ namespace modules {
                      -0.1*fields(l,hs+nz-3,hs+j,hs+i) +
                       0.1*fields(l,hs+nz-2,hs+j,hs+i) +
                       0.3*fields(l,hs+nz-1,hs+j,hs+i);
-            fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i) + kk*d;
+            fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i) + (kk+1)*d;
           }
         });
       } else if (coupler.get_option<std::string>("bc_z2") == "periodic") {
@@ -1049,7 +1082,7 @@ namespace modules {
           real rho0_gm1 = std::pow(rho0  ,gamma-1);
           real theta0_g = std::pow(theta0,gamma  );
           r(k) = std::pow( rho0_gm1 + grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
-          t(k) = theta0;
+          t(k) = theta0-(t(k0+1)-t(k0))*(kk+1);
           p(k) = C0*std::pow(r(k)*theta0,gamma);
         }
         {
@@ -1060,7 +1093,7 @@ namespace modules {
           real rho0_gm1 = std::pow(rho0  ,gamma-1);
           real theta0_g = std::pow(theta0,gamma  );
           r(k) = std::pow( rho0_gm1 - grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
-          t(k) = theta0;
+          t(k) = theta0+(t(k0)-t(k0-1))*(kk+1);
           p(k) = C0*std::pow(r(k)*theta0,gamma);
         }
       });
