@@ -125,7 +125,7 @@ namespace modules {
       int ncycles = (int) std::ceil( dt_phys / dt_dyn );
       dt_dyn = dt_phys / ncycles;
       // auto mass1 = compute_mass( coupler , state );
-      for (int icycle = 0; icycle < ncycles; icycle++) { time_step_rk4(coupler,state,tracers,dt_dyn); }
+      for (int icycle = 0; icycle < ncycles; icycle++) { time_step_ssprk3(coupler,state,tracers,dt_dyn); }
       // auto mass2 = compute_mass( coupler , state );
       // if (coupler.is_mainproc()) std::cout << "Mass change: "
       //                                      << (std::get<0>(mass2)-std::get<0>(mass1))/std::get<0>(mass1) << " , "

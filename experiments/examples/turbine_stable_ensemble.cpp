@@ -13,12 +13,17 @@
 #include "Ensembler.h"
 #include "column_nudging.h"
 #include "surface_cooling.h"
-
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
   Kokkos::initialize();
   yakl::init();
   {
+    std::string turbine_file      = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
+    YAML::Node  node              = YAML::LoadFile(turbine_file);
+    real        turbine_hubz      = node["hub_height"  ].as<real>();
+    real        turbine_rad       = node["blade_radius"].as<real>();
+    real        D                 = turbine_rad*2;
+
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler_main;
     core::Coupler coupler_prec;
@@ -33,12 +38,18 @@ int main(int argc, char** argv) {
     {
       auto func_nranks  = [=] (int ind) { return 1; };
       auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        real wind = ind*2+11;
+        real wind = ind*2+5;
         coupler.set_option<real>("hub_height_wind_mag",wind);
+        real z0 = 0.0001;
+        for (int iter=0; iter < 100; iter++) {
+          real ustar = 0.4*wind/std::log(turbine_hubz/z0);
+          z0 = 0.018*ustar*ustar/9.81;
+        }
+        coupler.set_option<real>("roughness",z0);
         ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("wind-")+std::to_string(wind));
         ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("wind-")+std::to_string(wind));
       };
-      ensembler.register_dimension( 1 , func_nranks , func_coupler );
+      ensembler.register_dimension( 10 , func_nranks , func_coupler );
     }
     // coupler_main.set_option<real>("hub_height_wind_mag",11);
 
@@ -56,11 +67,11 @@ int main(int argc, char** argv) {
           ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("floating-"));
         }
       };
-      ensembler.register_dimension( 1 , func_nranks , func_coupler );
+      ensembler.register_dimension( 2 , func_nranks , func_coupler );
     }
     // coupler_main.set_option<bool>( "turbine_floating_motions" , true );
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_main , 64 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_main , 4 , MPI_COMM_WORLD );
     coupler_main.set_parallel_comm( par_comm );
 
     auto orig_cout_buf = std::cout.rdbuf();
@@ -77,12 +88,6 @@ int main(int argc, char** argv) {
 
     if (par_comm.valid()) {
       yakl::timer_start("main");
-
-      std::string turbine_file      = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
-      YAML::Node  node              = YAML::LoadFile(turbine_file);
-      real        turbine_hubz      = node["hub_height"  ].as<real>();
-      real        turbine_rad       = node["blade_radius"].as<real>();
-      real        D                 = turbine_rad*2;
 
       if (coupler_main.is_mainproc()) std::cout << "Ensemble memeber using an initial hub wind speed of ["
                                                 << coupler_main.get_option<real>("hub_height_wind_mag")
@@ -110,7 +115,6 @@ int main(int argc, char** argv) {
       coupler_main.set_option<std::string>( "restart_file"             , restart_file      );
       coupler_main.set_option<std::string>( "restart_file_precursor"   , restart_file_prec );
       coupler_main.set_option<real       >( "latitude"                 , 0.                );
-      coupler_main.set_option<real       >( "roughness"                , 0.0002            );
       coupler_main.set_option<std::string>( "turbine_file"             , turbine_file      );
       coupler_main.set_option<bool       >( "turbine_do_blades"        , false             );
       coupler_main.set_option<real       >( "turbine_initial_yaw"      , 0                 );
@@ -120,10 +124,9 @@ int main(int argc, char** argv) {
       coupler_main.set_option<bool       >( "turbine_orig_C_T"         , true              );
       coupler_main.set_option<real       >( "turbine_f_TKE"            , 0.25              );
       coupler_main.set_option<bool       >( "turbine_floating_sine"    , false             );
-      coupler_main.set_option<real       >( "bvf_freq"                 , 0.03              );
-      coupler_main.set_option<real       >( "cfl"                      , 0.95              );
-      coupler_main.set_option<real       >( "dycore_max_wind"          , 50                );
       coupler_main.set_option<real       >( "sfc_cool_rate"            , 0.25/3600.        );
+      coupler_main.set_option<real       >( "cfl"                      , 0.70              );
+      coupler_main.set_option<real       >( "dycore_max_wind"          , 50                );
       real z0       = coupler_main.get_option<real>("roughness");
       real u19_5    = hub_wind*std::log(19.5/z0)/std::log(turbine_hubz/z0);
       real omega_pm = 0.877*9.81/u19_5;
@@ -235,15 +238,13 @@ int main(int argc, char** argv) {
         using modules::uniform_pg_wind_forcing_height;
         using modules::uniform_pg_wind_forcing_specified;
         using custom_modules::surface_cooling;
-
         real pgu, pgv;
         {
           real h = turbine_hubz;
           real u = coupler_prec.get_option<real>("hub_height_wind_mag");
           real v = 0;
-
-          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,10); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { surface_cooling              (c,dt); } , "surface_cool"   );
+          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,10); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
           coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );
           coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply            (c,dt); } , "les_closure"    );
@@ -259,10 +260,9 @@ int main(int argc, char** argv) {
                                             nx_glob/10 , 0 , 0 , 0 );
           custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
                                             0 , nx_glob/10 , 0 , 0 );
-
+          coupler_prec.run_module( [&] (Coupler &c) { surface_cooling               (c,dt); } , "surface_cool"   );
           coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
-          coupler_prec.run_module( [&] (Coupler &c) { surface_cooling               (c,dt); } , "surface_cool"   );
           coupler_main.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
           coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
           coupler_main.run_module( [&] (Coupler &c) { windmills.apply               (c,dt); } , "windmillactuators" );
