@@ -12,6 +12,7 @@
 #include "uniform_pg_wind_forcing.h"
 #include "Ensembler.h"
 #include "column_nudging.h"
+#include "fluctuation_scaling.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -125,7 +126,7 @@ int main(int argc, char** argv) {
       coupler_main.set_option<real       >( "turbine_f_TKE"            , 0.25              );
       coupler_main.set_option<bool       >( "turbine_floating_sine"    , false             );
 
-      coupler_main.set_option<real       >( "cfl"                      , 0.70              );
+      coupler_main.set_option<real       >( "cfl"                      , 0.7               );
       coupler_main.set_option<real       >( "dycore_max_wind"          , 50                );
       real z0       = coupler_main.get_option<real>("roughness");
       real u19_5    = hub_wind*std::log(19.5/z0)/std::log(turbine_hubz/z0);
@@ -237,6 +238,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
         using modules::uniform_pg_wind_forcing_specified;
+        using custom_modules::fluctuation_scaling;
 
         real pgu, pgv;
         {
@@ -244,6 +246,7 @@ int main(int argc, char** argv) {
           real u = coupler_prec.get_option<real>("hub_height_wind_mag");
           real v = 0;
 
+          // coupler_prec.run_module( [&] (Coupler &c) { fluctuation_scaling          (c,dt,0.5,100,{"uvel","vvel","wvel"}); } , "fluct_scaling"  );
           coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,10); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
           coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );
@@ -261,6 +264,7 @@ int main(int argc, char** argv) {
           custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
                                             0 , nx_glob/10 , 0 , 0 );
 
+          // coupler_prec.run_module( [&] (Coupler &c) { fluctuation_scaling          (c,dt,0.5,100,{"uvel","vvel","wvel"}); } , "fluct_scaling"  );
           coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
           coupler_main.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
@@ -275,8 +279,8 @@ int main(int argc, char** argv) {
         coupler_main.set_option<real>("elapsed_time",etime);
         coupler_prec.set_option<real>("elapsed_time",etime);
         if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
-          if (run_main) { coupler_main.inform_user(); }
-          else          { coupler_prec.inform_user(); }
+          if (run_main) { std::cout << "MAIN: "; coupler_main.inform_user(); }
+          std::cout << "PREC: "; coupler_prec.inform_user();
           inform_counter.reset();
         }
         if (out_freq    >= 0. && output_counter.update_and_check(dt)) {

@@ -134,9 +134,9 @@ int main(int argc, char** argv) {
     custom_modules::sc_perturb( coupler_prec );
     custom_modules::sc_perturb( coupler_main );
 
-    coupler_main.set_option<std::string>("bc_x1","open");
+    coupler_main.set_option<std::string>("bc_x1","precursor");
     coupler_main.set_option<std::string>("bc_x2","open");
-    coupler_main.set_option<std::string>("bc_y1","open");
+    coupler_main.set_option<std::string>("bc_y1","precursor");
     coupler_main.set_option<std::string>("bc_y2","open");
     coupler_main.set_option<std::string>("bc_z1","wall_free_slip");
     coupler_main.set_option<std::string>("bc_z2","wall_free_slip");
@@ -246,8 +246,8 @@ int main(int argc, char** argv) {
       coupler_main.set_option<real>("elapsed_time",etime);
       coupler_prec.set_option<real>("elapsed_time",etime);
       if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
-        if (run_main) { coupler_main.inform_user(); }
-        else          { coupler_prec.inform_user(); }
+        if (run_main) { std::cout << "MAIN: "; coupler_main.inform_user(); }
+        std::cout << "PREC: "; coupler_prec.inform_user();
         inform_counter.reset();
       }
       if (out_freq    >= 0. && output_counter.update_and_check(dt)) {

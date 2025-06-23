@@ -331,6 +331,7 @@ namespace modules {
       //////////////
       // Stage 1
       //////////////
+      coupler.set_option<bool>("dycore_use_weno",false);
       compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
@@ -365,6 +366,7 @@ namespace modules {
       //////////////
       // Stage 3
       //////////////
+      coupler.set_option<bool>("dycore_use_weno",true);
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn*2./3.);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
@@ -882,11 +884,7 @@ namespace modules {
         if (coupler.get_px() == 0) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            real d = -0.3*fields(l,hs+k,hs+j,hs+3) +
-                     -0.1*fields(l,hs+k,hs+j,hs+2) +
-                      0.1*fields(l,hs+k,hs+j,hs+1) +
-                      0.3*fields(l,hs+k,hs+j,hs+0);
-            fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0) + (ii+1)*d;
+            fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0);
           });
         }
       } else {
@@ -900,11 +898,7 @@ namespace modules {
         if (coupler.get_px() == coupler.get_nproc_x()-1) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            real d = -0.3*fields(l,hs+k,hs+j,hs+nx-4) +
-                     -0.1*fields(l,hs+k,hs+j,hs+nx-3) +
-                      0.1*fields(l,hs+k,hs+j,hs+nx-2) +
-                      0.3*fields(l,hs+k,hs+j,hs+nx-1);
-            fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1) + (ii+1)*d;
+            fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
           });
         }
       } else {
@@ -918,11 +912,7 @@ namespace modules {
         if (coupler.get_py() == 0) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            real d = -0.3*fields(l,hs+k,hs+3,hs+i) +
-                     -0.1*fields(l,hs+k,hs+2,hs+i) +
-                      0.1*fields(l,hs+k,hs+1,hs+i) +
-                      0.3*fields(l,hs+k,hs+0,hs+i);
-            fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i) + (jj+1)*d;
+            fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i);
           });
         }
       } else {
@@ -936,11 +926,7 @@ namespace modules {
         if (coupler.get_py() == coupler.get_nproc_y()-1) {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            real d = -0.3*fields(l,hs+k,hs+ny-4,hs+i) +
-                     -0.1*fields(l,hs+k,hs+ny-3,hs+i) +
-                      0.1*fields(l,hs+k,hs+ny-2,hs+i) +
-                      0.3*fields(l,hs+k,hs+ny-1,hs+i);
-            fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i) + (jj+1)*d;
+            fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
           });
         }
       } else {
@@ -954,12 +940,7 @@ namespace modules {
           if (l == idW) {
             fields(l,kk,hs+j,hs+i) = 0;
           } else {
-            real d = -0.3*fields(l,hs+3,hs+j,hs+i) +
-                     -0.1*fields(l,hs+2,hs+j,hs+i) +
-                      0.1*fields(l,hs+1,hs+j,hs+i) +
-                      0.3*fields(l,hs+0,hs+j,hs+i);
-            fields(l,hs-1-kk,hs+j,hs+i) = fields(l,hs+0,hs+j,hs+i) + (kk+1)*d;
-            // fields(l,hs-1-kk,hs+j,hs+i) = fields(l,hs+0,hs+j,hs+i);
+            fields(l,hs-1-kk,hs+j,hs+i) = fields(l,hs+0,hs+j,hs+i);
           }
         });
       } else if (coupler.get_option<std::string>("bc_z1") == "periodic") {
@@ -978,11 +959,7 @@ namespace modules {
           if (l == idW) {
             fields(l,hs+nz+kk,hs+j,hs+i) = 0;
           } else {
-            real d = -0.3*fields(l,hs+nz-4,hs+j,hs+i) +
-                     -0.1*fields(l,hs+nz-3,hs+j,hs+i) +
-                      0.1*fields(l,hs+nz-2,hs+j,hs+i) +
-                      0.3*fields(l,hs+nz-1,hs+j,hs+i);
-            fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i) + (kk+1)*d;
+            fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
           }
         });
       } else if (coupler.get_option<std::string>("bc_z2") == "periodic") {

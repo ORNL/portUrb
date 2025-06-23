@@ -67,20 +67,7 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if ((k+0.5)*dz <= 50) {
-          dm_uvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
-          dm_vvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
-          dm_temp(k,j,i) += rand.genFP<real>(-0.5,0.5);
-        }
-      });
-
-    } else if (coupler.get_option<std::string>("init_data") == "nrel_5mw_convective_bouss") {
-
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if ((k+0.5)*dz <= 50) {
-          dm_uvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
-          dm_vvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
+        if ((k+0.5)*dz <= 400) {
           dm_temp(k,j,i) += rand.genFP<real>(-0.5,0.5);
         }
       });
@@ -126,14 +113,17 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if ((k+0.5_fp)*dz <= 50) dm_temp(k,j,i) += rand.genFP<real>(-0.50,0.50);
+        if ((k+0.5_fp)*dz <= 80) dm_temp(k,j,i) += rand.genFP<real>(-0.5,0.5);
+        if ((k+0.5_fp)*dz <= 80) dm_uvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
+        if ((k+0.5_fp)*dz <= 80) dm_vvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
+        if ((k+0.5_fp)*dz <= 80) dm_wvel(k,j,i) += rand.genFP<real>(-0.1,0.1);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if ((k+0.5_fp)*dz <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
+        if ((k+0.5_fp)*dz <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.5,0.5);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "AWAKEN_neutral") {
