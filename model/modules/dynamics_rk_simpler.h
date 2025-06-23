@@ -594,7 +594,7 @@ namespace modules {
         fields_loc(idR,hs+k,hs+j,hs+i) = state(idR,hs+k,hs+j,hs+i);
         for (int l=1; l < num_state  ; l++) { fields_loc(            l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i)*r_r; }
         for (int l=0; l < num_tracers; l++) { fields_loc(num_state+1+l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i)*r_r; }
-        // fields_loc(idR,hs+k,hs+j,hs+i) -= hy_dens_cells (hs+k);
+        fields_loc(idR,hs+k,hs+j,hs+i) -= hy_dens_cells (hs+k);
         fields_loc(idT,hs+k,hs+j,hs+i) -= hy_theta_cells(hs+k);
       });
 
@@ -640,7 +640,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L = 0;
         for (int ii=0; ii < ord; ii++) { p_L += wt(ord-1-ii)*s(ii); }
-        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii))*fields_loc(idU,hs+k,hs+j,i+ii); }
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii); }
         FLOC ru_L = 0;
         for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > 0; }
@@ -648,7 +648,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R = 0;
         for (int ii=0; ii < ord; ii++) { p_R += wt(ii)*s(ii); }
-        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1))*fields_loc(idU,hs+k,hs+j,i+ii+1); }
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii+1); }
         FLOC ru_R = 0;
         for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
         p_x (k,j,i) = 0.5f*(p_L  + p_R  - cs*(ru_R-ru_L)   );
@@ -662,7 +662,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L = 0;
         for (int jj=0; jj < ord; jj++) { p_L += wt(ord-1-jj)*s(jj); }
-        for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idR,hs+k,j+jj,hs+i)*fields_loc(idV,hs+k,j+jj,hs+i); }
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj,hs+i); }
         FLOC rv_L = 0;
         for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > 0; }
@@ -670,7 +670,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R = 0;
         for (int jj=0; jj < ord; jj++) { p_R += wt(jj)*s(jj); }
-        for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idR,hs+k,j+jj+1,hs+i)*fields_loc(idV,hs+k,j+jj+1,hs+i); }
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj+1,hs+i); }
         FLOC rv_R = 0;
         for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
         p_y (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rv_R-rv_L)   );
@@ -684,7 +684,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L = 0;
         for (int kk=0; kk < ord; kk++) { p_L += wt(ord-1-kk)*s(kk); }
-        for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idR,k+kk,hs+j,hs+i)*fields_loc(idW,k+kk,hs+j,hs+i); }
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk,hs+j,hs+i)+hy_dens_cells(k+kk))*fields_loc(idW,k+kk,hs+j,hs+i); }
         FLOC rw_L = 0;
         for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
         if (wall_z1 && k == 0 ) rw_L = 0;
@@ -694,7 +694,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R = 0;
         for (int kk=0; kk < ord; kk++) { p_R += wt(kk)*s(kk); }
-        for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idR,k+kk+1,hs+j,hs+i)*fields_loc(idW,k+kk+1,hs+j,hs+i); }
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*fields_loc(idW,k+kk+1,hs+j,hs+i); }
         FLOC rw_R = 0;
         for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
         if (wall_z1 && k == 0 ) rw_R = 0;
@@ -800,7 +800,7 @@ namespace modules {
                                 -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) * r_dz;
           if (l == idV && sim2d) state_tend(l,k,j,i) = 0;
           if (l == idW && enable_gravity) {
-            state_tend(l,k,j,i) += -grav*(state(idR,hs+k,hs+j,hs+i) - hy_dens_cells(hs+k));
+            state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
           }
           if (latitude != 0 && !sim2d && l == idU) state_tend(l,k,j,i) += fcor*state(idV,hs+k,hs+j,hs+i);
           if (latitude != 0 && !sim2d && l == idV) state_tend(l,k,j,i) -= fcor*state(idU,hs+k,hs+j,hs+i);
