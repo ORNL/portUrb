@@ -331,7 +331,6 @@ namespace modules {
       //////////////
       // Stage 1
       //////////////
-      coupler.set_option<bool>("dycore_use_weno",false);
       compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
@@ -366,7 +365,6 @@ namespace modules {
       //////////////
       // Stage 3
       //////////////
-      coupler.set_option<bool>("dycore_use_weno",true);
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn*2./3.);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
