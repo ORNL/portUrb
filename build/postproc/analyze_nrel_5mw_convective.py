@@ -305,26 +305,26 @@ plt.close()
 
 
 
-t1=16
-t2=20
+t1=18
+t2=18
 times = range(t1,t2+1)
 for i in range(len(times)) :
   nc = Dataset(f"{workdir}/nrel_5mw_convective_{times[i]:08d}.nc","r")
   u  = np.array(nc["avg_u"][:,:,:])
   v  = np.array(nc["avg_v"][:,:,:])
   w  = np.array(nc["avg_w"][:,:,:])
-  u0 = np.array(nc["u_samp_trace_turb_0"][:])
-  v0 = np.array(nc["v_samp_trace_turb_0"][:])
+  # u0 = np.array(nc["u_samp_trace_turb_0"][:])
+  # v0 = np.array(nc["v_samp_trace_turb_0"][:])
   pwrloc  = np.array(nc["power_trace_turb_0"][:])
   maghloc = u*np.cos(30/180*np.pi) + v*np.sin(30/180*np.pi)
-  uinfloc = np.mean(u0*np.cos(30/180*np.pi) + v0*np.sin(30/180*np.pi))
+  # uinfloc = np.mean(u0*np.cos(30/180*np.pi) + v0*np.sin(30/180*np.pi))
   pwr  = pwrloc  if i==0 else np.concatenate((pwr,pwrloc))
   magh = maghloc if i==0 else magh+maghloc
-  uinf = uinfloc if i==0 else uinf+uinfloc
+  # uinf = uinfloc if i==0 else uinf+uinfloc
   wavg = w       if i==0 else wavg+w
   print(times[i],np.mean(pwrloc))
 magh /= len(times)
-uinf /= len(times)
+# uinf /= len(times)
 wavg /= len(times)
 uinf = 11.4
 mag_rot = rotate(magh,30,(1,2),False)

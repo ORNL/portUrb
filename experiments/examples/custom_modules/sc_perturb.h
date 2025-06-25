@@ -67,9 +67,18 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if ((k+0.5)*dz <= 400) {
-          dm_temp(k,j,i) += rand.genFP<real>(-0.5,0.5);
-        }
+        real x = (i_beg+i+0.5)*dx;
+        real y = (j_beg+j+0.5)*dy;
+        real z = (      k+0.5)*dz;
+        real ztop = 50;
+        real zl   = z / ztop;
+        real uper = 4;
+        real vper = 4;
+        real delu = 1;
+        real delv = 1;
+        dm_uvel(k,j,i) += delu*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(uper*2*M_PI*y/ylen);
+        dm_vvel(k,j,i) += delv*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(vper*2*M_PI*x/xlen);
+        if (z <= ztop)  dm_temp(k,j,i) += rand.genFP<real>(-1.4,1.4);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "bomex") {
@@ -121,9 +130,21 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
 
+
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if ((k+0.5_fp)*dz <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.5,0.5);
+        real x = (i_beg+i+0.5)*dx;
+        real y = (j_beg+j+0.5)*dy;
+        real z = (      k+0.5)*dz;
+        real ztop = 100;
+        real zl   = z / ztop;
+        real uper = 4;
+        real vper = 4;
+        real delu = 1;
+        real delv = 1;
+        dm_uvel(k,j,i) += delu*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(uper*2*M_PI*y/ylen);
+        dm_vvel(k,j,i) += delv*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(vper*2*M_PI*x/xlen);
+        if (z <= ztop)  dm_temp(k,j,i) += rand.genFP<real>(-1.4,1.4);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "AWAKEN_neutral") {
