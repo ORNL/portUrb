@@ -8,6 +8,9 @@
 #include "WenoLimiter.h"
 #include <random>
 #include <sstream>
+#define EIGEN_NO_CUDA
+#define EIGEN_DONT_VECTORIZE
+#include <Eigen/Dense>
 
 namespace modules {
 
@@ -46,6 +49,7 @@ namespace modules {
       auto opp_x = dm.get<int       ,1>("dycore_lbm_opp_x");
       auto opp_y = dm.get<int       ,1>("dycore_lbm_opp_y");
       auto opp_z = dm.get<int       ,1>("dycore_lbm_opp_z");
+      auto opp   = dm.get<int       ,1>("dycore_lbm_opp"  );
       auto imm   = dm.get<real      ,3>("immersed_proportion_halos");
 
       // Construct full f
@@ -57,7 +61,7 @@ namespace modules {
       });
 
       // Collision
-      auto fcoll = collision_trt( coupler , f , feq , 5.e-3 , 0.25 );
+      auto fcoll = collision_srt( coupler , f , feq , 0.505 );
 
       // Exchange halos, and apply boundary conditions
       coupler.halo_exchange( fcoll , hs );
@@ -79,17 +83,23 @@ namespace modules {
         int i0 = i-c(l,0);
         int j0 = j-c(l,1);
         int k0 = k-c(l,2);
-        if (imm(hs+k0,hs+j0,hs+i0) > 0.5) {
-          if (c(l,0) == -1) { i0--; l0 = opp_x(l0); }
-          if (c(l,0) ==  1) { i0++; l0 = opp_x(l0); }
-        }
-        if (imm(hs+k0,hs+j0,hs+i0) > 0.5) {
-          if (c(l,1) == -1) { j0--; l0 = opp_y(l0); }
-          if (c(l,1) ==  1) { j0++; l0 = opp_y(l0); }
-        }
-        if (imm(hs+k0,hs+j0,hs+i0) > 0.5) {
-          if (c(l,2) == -1) { k0--; l0 = opp_z(l0); }
-          if (c(l,2) ==  1) { k0++; l0 = opp_z(l0); }
+        // if (imm(hs+k0,hs+j0,hs+i0) > 0.5) {
+        //   if (c(l,0) == -1) { i0--; l0 = opp_x(l0); }
+        //   if (c(l,0) ==  1) { i0++; l0 = opp_x(l0); }
+        // }
+        // if (imm(hs+k0,hs+j0,hs+i0) > 0.5) {
+        //   if (c(l,1) == -1) { j0--; l0 = opp_y(l0); }
+        //   if (c(l,1) ==  1) { j0++; l0 = opp_y(l0); }
+        // }
+        // if (imm(hs+k0,hs+j0,hs+i0) > 0.5) {
+        //   if (c(l,2) == -1) { k0--; l0 = opp_z(l0); }
+        //   if (c(l,2) ==  1) { k0++; l0 = opp_z(l0); }
+        // }
+        if (imm(hs+k0, hs+j0, hs+i0) > 0.5) {
+          i0 = i;
+          j0 = j;
+          k0 = k;
+          l0 = opp(l);
         }
         f(l,k,j,i) = fcoll(l0,hs+k0,hs+j0,hs+i0);
       });
@@ -106,6 +116,8 @@ namespace modules {
     void init(core::Coupler &coupler) const {
       using yakl::intrinsics::sum;
       using yakl::componentwise::operator/;
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
       auto nx  = coupler.get_nx();
       auto ny  = coupler.get_ny();
       auto nz  = coupler.get_nz();
@@ -183,39 +195,6 @@ namespace modules {
       opp_y.deep_copy_to(dm.get<int,1>("dycore_lbm_opp_y"));
       opp_z.deep_copy_to(dm.get<int,1>("dycore_lbm_opp_z"));
       opp  .deep_copy_to(dm.get<int,1>("dycore_lbm_opp"  ));
-
-      realHost2d T("T",nq,nq);
-      for (int i = 0; i < nq; i++) {
-        int ind = 0;
-        T(ind,i) = 1; ind++; // 0
-        for (int ii=0; ii < 3; ii++) {  // 1-3
-          T(ind,i) = c(i,ii); ind++;
-        }
-        for (int ii=0; ii < 3; ii++) {  // 4-9
-          for (int jj=ii; jj < 3; jj++) {
-            T(ind,i) = c(i,ii)*c(i,jj); ind++;
-          }
-        }
-        for (int ii=0; ii < 3; ii++) {  // 10-19 (truncated early if nq=19)
-          for (int jj=ii; jj < 3; jj++) {
-            for (int kk=jj; kk < 3; kk++) {
-              T(ind,i) = c(i,ii)*c(i,jj)*c(i,kk); ind++;
-              if (ind == nq) goto end_loops;
-            }
-          }
-        }
-        for (int ii=0; ii < 3; ii++) {  // 20-34 (truncated early to nq=27)
-          for (int jj=ii; jj < 3; jj++) {
-            for (int kk=jj; kk < 3; kk++) {
-              for (int ll=kk; ll < 3; ll++) {
-                T(ind,i) = c(i,ii)*c(i,jj)*c(i,kk)*c(i,ll); ind++;
-                if (ind == nq) goto end_loops;
-              }
-            }
-          }
-        }
-        end_loops:;
-      }
     }
 
 
@@ -227,8 +206,8 @@ namespace modules {
                       real3d  const & wvel ,
                       int2d   const & c    ,
                       float1d const & wt   ,
-                      real            dx   ,
-                      real            dt   ,
+                      float            dx   ,
+                      float            dt   ,
                       int ord              ) const {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
@@ -238,12 +217,12 @@ namespace modules {
       auto nz = coupler.get_nz();
       auto nq = wt.size();
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        real r   = rho (k,j,i);
-        real u   = uvel(k,j,i)*dt/dx;
-        real v   = vvel(k,j,i)*dt/dx;
-        real w   = wvel(k,j,i)*dt/dx;
-        real u2  = u*u+v*v+w*w;
-        real cdu = c(l,0)*u+c(l,1)*v+c(l,2)*w;
+        float r   = rho (k,j,i);
+        float u   = uvel(k,j,i)*dt/dx;
+        float v   = vvel(k,j,i)*dt/dx;
+        float w   = wvel(k,j,i)*dt/dx;
+        float u2  = u*u+v*v+w*w;
+        float cdu = c(l,0)*u+c(l,1)*v+c(l,2)*w;
         feq(l,k,j,i) = 1 + cdu/cs2 + cdu*cdu/(2*cs2*cs2) - u2/(2*cs2);
         if (ord == 3) feq(l,k,j,i) += cdu*cdu*cdu/(6*cs2*cs2*cs2) - cdu*u2/(2*cs2*cs2);
         feq(l,k,j,i) *= r*wt(l);
@@ -258,8 +237,8 @@ namespace modules {
                           real3d  const & vvel ,
                           real3d  const & wvel ,
                           int2d   const & c    ,
-                          real            dx   ,
-                          real            dt   ,
+                          float            dx   ,
+                          float            dt   ,
                           int ord              ) const {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
@@ -269,10 +248,10 @@ namespace modules {
       auto nz = coupler.get_nz();
       auto nq = f.extent(0);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        real r  = 0;
-        real ru = 0;
-        real rv = 0;
-        real rw = 0;
+        float r  = 0;
+        float ru = 0;
+        float rv = 0;
+        float rw = 0;
         for (int l=0; l < nq; l++) {
           r  += f(l,k,j,i);
           ru += f(l,k,j,i)*c(l,0);
@@ -290,7 +269,7 @@ namespace modules {
     float4d collision_srt( core::Coupler const & coupler ,
                            float4d       const & f       ,
                            float4d       const & feq     ,
-                           real                  tau     ) const {
+                           float                 tau     ) const {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
       auto nx = coupler.get_nx();
@@ -309,25 +288,25 @@ namespace modules {
     float4d collision_trt( core::Coupler const & coupler ,
                            float4d       const & f       ,
                            float4d       const & feq     ,
-                           real                  nu      ,
-                           real                  Gamma   ) const {
+                           float                 tau_p   ,
+                           float                 Lambda  ) const {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      auto nx  = coupler.get_nx();
-      auto ny  = coupler.get_ny();
-      auto nz  = coupler.get_nz();
-      auto nq  = f.extent(0);
-      auto &dm = coupler.get_data_manager_readonly();
-      auto opp = dm.get<int const,1>("dycore_lbm_opp"  );
+      auto nx    = coupler.get_nx();
+      auto ny    = coupler.get_ny();
+      auto nz    = coupler.get_nz();
+      auto nq    = f.extent(0);
+      auto &dm   = coupler.get_data_manager_readonly();
+      auto opp   = dm.get<int  const,1>("dycore_lbm_opp"       );
+      float tau_m = Lambda/(tau_p-0.5)+0.5;
       float4d fcoll("fcoll",nq,nz+2*hs,ny+2*hs,nx+2*hs);
-      real tau_p = nu/cs2+0.5;
-      real tau_m = Gamma/(tau_p-0.5)+0.5;
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        real f_p   = 0.5*(f  (l,k,j,i)+f  (opp(l),k,j,i));
-        real f_m   = 0.5*(f  (l,k,j,i)-f  (opp(l),k,j,i));
-        real feq_p = 0.5*(feq(l,k,j,i)+feq(opp(l),k,j,i));
-        real feq_m = 0.5*(feq(l,k,j,i)-feq(opp(l),k,j,i));
+        int lo = opp(l);
+        float f_p   = 0.5*(f  (l,k,j,i)+f  (lo,k,j,i));
+        float f_m   = 0.5*(f  (l,k,j,i)-f  (lo,k,j,i));
+        float feq_p = 0.5*(feq(l,k,j,i)+feq(lo,k,j,i));
+        float feq_m = 0.5*(feq(l,k,j,i)-feq(lo,k,j,i));
         fcoll(l,hs+k,hs+j,hs+i) = f(l,k,j,i) - (f_p-feq_p)/tau_p - (f_m-feq_m)/tau_m;
       });
       return fcoll;

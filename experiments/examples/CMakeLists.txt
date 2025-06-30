@@ -25,7 +25,7 @@ add_subdirectory(${PORTURB_HOME}/model model)
 add_library(custom_modules INTERFACE)
 target_include_directories(custom_modules INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/custom_modules)
 
-set(mylibs modules custom_modules model core ponni yaml-cpp yakl "${PORTURB_LINK_FLAGS}")
+set(mylibs modules custom_modules model core ponni yaml-cpp yakl eigen "${PORTURB_LINK_FLAGS}")
 
 macro(process_target target_name)
   add_executable(${target_name} ${target_name}.cpp)

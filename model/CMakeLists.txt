@@ -21,6 +21,8 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../external/yaml-cpp ${CMAKE_CURREN
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../external/ponni ponni)
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../external/eigen eigen)
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(core     core   )

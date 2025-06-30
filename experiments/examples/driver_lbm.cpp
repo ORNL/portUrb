@@ -33,8 +33,8 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "out_prefix"      , out_prefix    );
     coupler.set_option<real       >( "out_freq"        , out_freq      );
     coupler.set_option<real       >( "dycore_max_wind" , 20            );
-    coupler.set_option<int        >( "dycore_nq"       , 27            );
-    coupler.set_option<int        >( "dycore_ord"      , 3             );
+    coupler.set_option<int        >( "dycore_nq"       , 19            );
+    coupler.set_option<int        >( "dycore_ord"      , 2             );
     coupler.set_option<real       >( "cfl"             , 0.6           );
     coupler.set_option<std::string>( "init_data"       , "LBM"         );
     coupler.set_option<bool       >( "enable_gravity"  , false         );
@@ -45,14 +45,14 @@ int main(int argc, char** argv) {
 
     modules::Dynamics_Euler_LBM                dycore_lbm;
     modules::Dynamics_Euler_Stratified_WenoFV  dycore_fv;
+    auto &dycore = dycore_fv;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
     coupler.get_data_manager_readwrite().get<real,3>("water_vapor") = 0;
 
     custom_modules::sc_init( coupler );
-    dycore_lbm.init        ( coupler );
-    dycore_fv.init         ( coupler );
+    dycore.init            ( coupler );
 
     custom_modules::sc_perturb( coupler );
 
@@ -63,7 +63,6 @@ int main(int argc, char** argv) {
     coupler.write_output_file( out_prefix );
 
     real dt = dtphys_in;
-    auto &dycore = dycore_fv;
     while (etime < sim_time) {
       if (dtphys_in <= 0.) { dt = dycore.compute_time_step(coupler); }
       if (etime + dt > sim_time) { dt = sim_time - etime; }
