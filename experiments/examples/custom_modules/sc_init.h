@@ -196,6 +196,16 @@ namespace custom_modules {
         dm_wvel (k,j,i) = 0;
         dm_temp (k,j,i) = 300;
         dm_rho_v(k,j,i) = 0;
+        real x0 = 0.2 *nx_glob;
+        real y0 = 0.5 *ny_glob;
+        real xr = 0.05*ny_glob;
+        real yr = 0.05*ny_glob;
+        if ( std::abs(i_beg+i-x0) <= xr && std::abs(j_beg+j-y0) <= yr && k <= 0.3*nz ) {
+          dm_immersed_prop(k,j,i) = 1;
+          dm_uvel         (k,j,i) = 0;
+          dm_vvel         (k,j,i) = 0;
+          dm_wvel         (k,j,i) = 0;
+        }
         // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 

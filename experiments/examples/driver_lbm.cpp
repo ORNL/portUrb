@@ -1,6 +1,7 @@
 
 #include "coupler.h"
 #include "dynamics_lbm.h"
+#include "dynamics_rk_simpler.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -17,9 +18,9 @@ int main(int argc, char** argv) {
     yakl::timer_start("main");
 
     real        sim_time    = 1000;
-    int         nx_glob     = 100;
-    int         ny_glob     = 100;
-    int         nz          = 100;
+    int         nx_glob     = 200;
+    int         ny_glob     = 200;
+    int         nz          = 200;
     real        xlen        = 1000;
     real        ylen        = 1000;
     real        zlen        = 1000;
@@ -31,21 +32,29 @@ int main(int argc, char** argv) {
     core::Coupler coupler;
     coupler.set_option<std::string>( "out_prefix"      , out_prefix    );
     coupler.set_option<real       >( "out_freq"        , out_freq      );
-    coupler.set_option<real       >( "dycore_max_wind" , 50            );
+    coupler.set_option<real       >( "dycore_max_wind" , 20            );
+    coupler.set_option<int        >( "dycore_nq"       , 27            );
+    coupler.set_option<int        >( "dycore_ord"      , 3             );
+    coupler.set_option<real       >( "cfl"             , 0.6           );
     coupler.set_option<std::string>( "init_data"       , "LBM"         );
+    coupler.set_option<bool       >( "enable_gravity"  , false         );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 
     coupler.set_grid( xlen , ylen , zlen );
 
-    modules::Dynamics_Euler_LBM     dycore;
+    modules::Dynamics_Euler_LBM                dycore_lbm;
+    modules::Dynamics_Euler_Stratified_WenoFV  dycore_fv;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
     coupler.get_data_manager_readwrite().get<real,3>("water_vapor") = 0;
 
     custom_modules::sc_init( coupler );
-    dycore.init            ( coupler );
+    dycore_lbm.init        ( coupler );
+    dycore_fv.init         ( coupler );
+
+    custom_modules::sc_perturb( coupler );
 
     real etime = coupler.get_option<real>("elapsed_time");
     core::Counter output_counter( out_freq    , etime );
@@ -54,6 +63,7 @@ int main(int argc, char** argv) {
     coupler.write_output_file( out_prefix );
 
     real dt = dtphys_in;
+    auto &dycore = dycore_fv;
     while (etime < sim_time) {
       if (dtphys_in <= 0.) { dt = dycore.compute_time_step(coupler); }
       if (etime + dt > sim_time) { dt = sim_time - etime; }

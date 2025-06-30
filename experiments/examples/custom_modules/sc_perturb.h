@@ -81,6 +81,14 @@ namespace custom_modules {
         if (z <= ztop)  dm_temp(k,j,i) += rand.genFP<real>(-1.4,1.4);
       });
 
+    } else if (coupler.get_option<std::string>("init_data") == "LBM") {
+
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
+        dm_uvel(k,j,i) += rand.genFP<real>(-1,1);
+        dm_vvel(k,j,i) += rand.genFP<real>(-1,1);
+      });
+
     } else if (coupler.get_option<std::string>("init_data") == "bomex") {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {

@@ -13,8 +13,8 @@ namespace modules {
 
   struct Dynamics_Euler_LBM {
 
-    int  static constexpr hs  = 1;
-    real static constexpr cs2 = 1./3.;
+    int   static constexpr hs  = 1;
+    float static constexpr cs2 = 1./3.;
 
     real compute_time_step( core::Coupler const &coupler ) const {
       auto dx    = coupler.get_dx();    // grid spacing
@@ -36,9 +36,9 @@ namespace modules {
       auto nq    = coupler.get_option<int>("dycore_nq" ,27);
       auto ord   = coupler.get_option<int>("dycore_ord",3 );
       auto &dm   = coupler.get_data_manager_readwrite();  // Grab read-only data manager
-      auto f     = dm.get<real      ,4>("dycore_lbm_f"    );
+      auto f     = dm.get<float     ,4>("dycore_lbm_f"    );
       auto c     = dm.get<int       ,2>("dycore_lbm_c"    );
-      auto wt    = dm.get<real      ,1>("dycore_lbm_w"    );
+      auto wt    = dm.get<float     ,1>("dycore_lbm_w"    );
       auto rho_d = dm.get<real      ,3>("density_dry"     );
       auto uvel  = dm.get<real      ,3>("uvel"            );
       auto vvel  = dm.get<real      ,3>("vvel"            );
@@ -46,79 +46,48 @@ namespace modules {
       auto opp_x = dm.get<int       ,1>("dycore_lbm_opp_x");
       auto opp_y = dm.get<int       ,1>("dycore_lbm_opp_y");
       auto opp_z = dm.get<int       ,1>("dycore_lbm_opp_z");
-      auto opp   = dm.get<int       ,1>("dycore_lbm_opp"  );
-
-      bool3d imm("imm",nz+2*hs,ny+2*hs,nx+2*hs);
+      auto imm   = dm.get<real      ,3>("immersed_proportion_halos");
 
       // Construct full f
-      real4d feq("feq",nq,nz,ny,nx);
+      float4d feq("feq",nq,nz,ny,nx);
       compute_equ( coupler , feq , rho_d , uvel , vvel , wvel , c , wt , dx , dt , ord );
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         f(l,k,j,i) += feq(l,k,j,i);
-        if (l==0) {
-          if (i_beg+i > 3*nx_glob/8 && i_beg+i < 5*nx_glob/9 &&
-              j_beg+j > 3*ny_glob/8 && j_beg+j < 5*ny_glob/9 &&
-              k < nz/4) {
-            imm(hs+k,hs+j,hs+i) = true;
-          } else {
-            imm(hs+k,hs+j,hs+i) = false;
-          }
-        }
       });
 
       // Collision
-      real4d fcoll("fcoll",nq,nz+2*hs,ny+2*hs,nx+2*hs);
-      real tau = 0.55;
-      real nu = 1.e-3;
-      real tau_p = nu/cs2+0.5;
-      real Gamma = 0.25;
-      real tau_m = Gamma/(tau_p-0.5)+0.5;
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
-                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        // // BGK
-        // fcoll(l,hs+k,hs+j,hs+i) = f(l,k,j,i) - (f(l,k,j,i)-feq(l,k,j,i))/tau;
-
-        // TRT
-        real f_p   = 0.5*(f  (l,k,j,i)+f  (opp(l),k,j,i));
-        real f_m   = 0.5*(f  (l,k,j,i)-f  (opp(l),k,j,i));
-        real feq_p = 0.5*(feq(l,k,j,i)+feq(opp(l),k,j,i));
-        real feq_m = 0.5*(feq(l,k,j,i)-feq(opp(l),k,j,i));
-        fcoll(l,hs+k,hs+j,hs+i) = f(l,k,j,i) - (f_p-feq_p)/tau_p - (f_m-feq_m)/tau_m;
-      });
+      auto fcoll = collision_trt( coupler , f , feq , 5.e-3 , 0.25 );
 
       // Exchange halos, and apply boundary conditions
-      coupler.halo_exchange( fcoll   , hs );
-      core::MultiField<bool,3> field;
-      field.add_field(imm);
-      coupler.halo_exchange( field , hs );
+      coupler.halo_exchange( fcoll , hs );
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny+2*hs,nx+2*hs) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         fcoll(l,hs+nz,j,i) = fcoll(l,hs+0   ,j,i);
         fcoll(l,0    ,j,i) = fcoll(l,hs+nz-1,j,i);
         if (l==0) {
-          imm(hs+nz,j,i) = true;
-          imm(0    ,j,i) = true;
+          imm(hs+nz,j,i) = 1;
+          imm(0    ,j,i) = 1;
         }
       });
 
       // Stream
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        if (imm(hs+k,hs+j,hs+i)) { return; }
+        if (imm(hs+k,hs+j,hs+i) > 0.5) { return; }
         int l0 = l;
         int i0 = i-c(l,0);
         int j0 = j-c(l,1);
         int k0 = k-c(l,2);
-        if (imm(hs+k0,hs+j0,hs+i0)) {
+        if (imm(hs+k0,hs+j0,hs+i0) > 0.5) {
           if (c(l,0) == -1) { i0--; l0 = opp_x(l0); }
           if (c(l,0) ==  1) { i0++; l0 = opp_x(l0); }
         }
-        if (imm(hs+k0,hs+j0,hs+i0)) {
+        if (imm(hs+k0,hs+j0,hs+i0) > 0.5) {
           if (c(l,1) == -1) { j0--; l0 = opp_y(l0); }
           if (c(l,1) ==  1) { j0++; l0 = opp_y(l0); }
         }
-        if (imm(hs+k0,hs+j0,hs+i0)) {
+        if (imm(hs+k0,hs+j0,hs+i0) > 0.5) {
           if (c(l,2) == -1) { k0--; l0 = opp_z(l0); }
           if (c(l,2) ==  1) { k0++; l0 = opp_z(l0); }
         }
@@ -143,16 +112,11 @@ namespace modules {
       auto nq  = coupler.get_option<int>("dycore_nq",27);
       if (nq != 19 && nq != 27) Kokkos::abort("ERROR: nq must be 19 or 27");
       auto &dm = coupler.get_data_manager_readwrite();
-      dm.register_and_allocate<real>("dycore_lbm_f","",{nq,nz,ny,nx});
-      dm.register_and_allocate<int >("dycore_lbm_c","",{nq,3});
-      dm.register_and_allocate<real>("dycore_lbm_w","",{nq});
-      dm.register_and_allocate<int >("dycore_lbm_opp_x","",{nq});
-      dm.register_and_allocate<int >("dycore_lbm_opp_y","",{nq});
-      dm.register_and_allocate<int >("dycore_lbm_opp_z","",{nq});
-      dm.register_and_allocate<int >("dycore_lbm_opp"  ,"",{nq});
 
-      dm.get<real,4>("dycore_lbm_f") = 0;
+      dm.register_and_allocate<float>("dycore_lbm_f","",{nq,nz,ny,nx});
+      dm.get<float,4>("dycore_lbm_f") = 0;
 
+      dm.register_and_allocate<int  >("dycore_lbm_c","",{nq,3});
       intHost2d c("lbm_c",nq,3);
       c(0 ,0) =  0;    c(0 ,1) =  0;    c(0 ,2) =  0;
       c(1 ,0) = +1;    c(1 ,1) =  0;    c(1 ,2) =  0;
@@ -185,7 +149,8 @@ namespace modules {
       }
       c.deep_copy_to(dm.get<int,2>("dycore_lbm_c"));
 
-      realHost1d w("lbm_w",nq);
+      dm.register_and_allocate<float>("dycore_lbm_w","",{nq});
+      floatHost1d w("lbm_w",nq);
       if (nq == 19) {
         w(0) = 1./3.;
         for (int i = 1; i <= 6 ; i++) { w(i) = 1./18.; }
@@ -196,8 +161,12 @@ namespace modules {
         for (int i = 7 ; i <= 18; i++) { w(i) = 1./54. ; }
         for (int i = 19; i <= 26; i++) { w(i) = 1./216.; }
       }
-      w.deep_copy_to(dm.get<real,1>("dycore_lbm_w"));
+      w.deep_copy_to(dm.get<float,1>("dycore_lbm_w"));
 
+      dm.register_and_allocate<int  >("dycore_lbm_opp_x","",{nq});
+      dm.register_and_allocate<int  >("dycore_lbm_opp_y","",{nq});
+      dm.register_and_allocate<int  >("dycore_lbm_opp_z","",{nq});
+      dm.register_and_allocate<int  >("dycore_lbm_opp"  ,"",{nq});
       intHost1d opp_x("opp_x",nq); opp_x = -1;
       intHost1d opp_y("opp_z",nq); opp_y = -1;
       intHost1d opp_z("opp_z",nq); opp_z = -1;
@@ -214,20 +183,53 @@ namespace modules {
       opp_y.deep_copy_to(dm.get<int,1>("dycore_lbm_opp_y"));
       opp_z.deep_copy_to(dm.get<int,1>("dycore_lbm_opp_z"));
       opp  .deep_copy_to(dm.get<int,1>("dycore_lbm_opp"  ));
+
+      realHost2d T("T",nq,nq);
+      for (int i = 0; i < nq; i++) {
+        int ind = 0;
+        T(ind,i) = 1; ind++; // 0
+        for (int ii=0; ii < 3; ii++) {  // 1-3
+          T(ind,i) = c(i,ii); ind++;
+        }
+        for (int ii=0; ii < 3; ii++) {  // 4-9
+          for (int jj=ii; jj < 3; jj++) {
+            T(ind,i) = c(i,ii)*c(i,jj); ind++;
+          }
+        }
+        for (int ii=0; ii < 3; ii++) {  // 10-19 (truncated early if nq=19)
+          for (int jj=ii; jj < 3; jj++) {
+            for (int kk=jj; kk < 3; kk++) {
+              T(ind,i) = c(i,ii)*c(i,jj)*c(i,kk); ind++;
+              if (ind == nq) goto end_loops;
+            }
+          }
+        }
+        for (int ii=0; ii < 3; ii++) {  // 20-34 (truncated early to nq=27)
+          for (int jj=ii; jj < 3; jj++) {
+            for (int kk=jj; kk < 3; kk++) {
+              for (int ll=kk; ll < 3; ll++) {
+                T(ind,i) = c(i,ii)*c(i,jj)*c(i,kk)*c(i,ll); ind++;
+                if (ind == nq) goto end_loops;
+              }
+            }
+          }
+        }
+        end_loops:;
+      }
     }
 
 
     void compute_equ( core::Coupler &coupler ,
-                      real4d const & feq  ,
-                      real3d const & rho  ,
-                      real3d const & uvel ,
-                      real3d const & vvel ,
-                      real3d const & wvel ,
-                      int2d  const & c    ,
-                      real1d const & wt   ,
-                      real           dx   ,
-                      real           dt   ,
-                      int ord             ) const {
+                      float4d const & feq  ,
+                      real3d  const & rho  ,
+                      real3d  const & uvel ,
+                      real3d  const & vvel ,
+                      real3d  const & wvel ,
+                      int2d   const & c    ,
+                      float1d const & wt   ,
+                      real            dx   ,
+                      real            dt   ,
+                      int ord              ) const {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
       if (ord != 2 && ord != 3) Kokkos::abort("ERROR: ord must be 2 or 3");
@@ -250,15 +252,15 @@ namespace modules {
 
 
     void compute_rho_vel( core::Coupler &coupler ,
-                          real4d const & f    ,
-                          real3d const & rho  ,
-                          real3d const & uvel ,
-                          real3d const & vvel ,
-                          real3d const & wvel ,
-                          int2d  const & c    ,
-                          real           dx   ,
-                          real           dt   ,
-                          int ord             ) const {
+                          float4d const & f    ,
+                          real3d  const & rho  ,
+                          real3d  const & uvel ,
+                          real3d  const & vvel ,
+                          real3d  const & wvel ,
+                          int2d   const & c    ,
+                          real            dx   ,
+                          real            dt   ,
+                          int ord              ) const {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
       if (ord != 2 && ord != 3) Kokkos::abort("ERROR: ord must be 2 or 3");
@@ -282,6 +284,53 @@ namespace modules {
         vvel(k,j,i) = (rv/r)*dx/dt;
         wvel(k,j,i) = (rw/r)*dx/dt;
       });
+    }
+
+
+    float4d collision_srt( core::Coupler const & coupler ,
+                           float4d       const & f       ,
+                           float4d       const & feq     ,
+                           real                  tau     ) const {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto nx = coupler.get_nx();
+      auto ny = coupler.get_ny();
+      auto nz = coupler.get_nz();
+      auto nq = f.extent(0);
+      float4d fcoll("fcoll",nq,nz+2*hs,ny+2*hs,nx+2*hs);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        fcoll(l,hs+k,hs+j,hs+i) = f(l,k,j,i) - (f(l,k,j,i)-feq(l,k,j,i))/tau;
+      });
+      return fcoll;
+    }
+
+
+    float4d collision_trt( core::Coupler const & coupler ,
+                           float4d       const & f       ,
+                           float4d       const & feq     ,
+                           real                  nu      ,
+                           real                  Gamma   ) const {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto nx  = coupler.get_nx();
+      auto ny  = coupler.get_ny();
+      auto nz  = coupler.get_nz();
+      auto nq  = f.extent(0);
+      auto &dm = coupler.get_data_manager_readonly();
+      auto opp = dm.get<int const,1>("dycore_lbm_opp"  );
+      float4d fcoll("fcoll",nq,nz+2*hs,ny+2*hs,nx+2*hs);
+      real tau_p = nu/cs2+0.5;
+      real tau_m = Gamma/(tau_p-0.5)+0.5;
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        real f_p   = 0.5*(f  (l,k,j,i)+f  (opp(l),k,j,i));
+        real f_m   = 0.5*(f  (l,k,j,i)-f  (opp(l),k,j,i));
+        real feq_p = 0.5*(feq(l,k,j,i)+feq(opp(l),k,j,i));
+        real feq_m = 0.5*(feq(l,k,j,i)-feq(opp(l),k,j,i));
+        fcoll(l,hs+k,hs+j,hs+i) = f(l,k,j,i) - (f_p-feq_p)/tau_p - (f_m-feq_m)/tau_m;
+      });
+      return fcoll;
     }
 
   };
