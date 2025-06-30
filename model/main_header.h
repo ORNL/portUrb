@@ -180,6 +180,40 @@ typedef Array<int const,7,memHost,styleC> intConstHost7d;
 
 
 
+typedef Array<char,1,memDevice,styleC> char1d;
+typedef Array<char,2,memDevice,styleC> char2d;
+typedef Array<char,3,memDevice,styleC> char3d;
+typedef Array<char,4,memDevice,styleC> char4d;
+typedef Array<char,5,memDevice,styleC> char5d;
+typedef Array<char,6,memDevice,styleC> char6d;
+typedef Array<char,7,memDevice,styleC> char7d;
+
+typedef Array<char const,1,memDevice,styleC> charConst1d;
+typedef Array<char const,2,memDevice,styleC> charConst2d;
+typedef Array<char const,3,memDevice,styleC> charConst3d;
+typedef Array<char const,4,memDevice,styleC> charConst4d;
+typedef Array<char const,5,memDevice,styleC> charConst5d;
+typedef Array<char const,6,memDevice,styleC> charConst6d;
+typedef Array<char const,7,memDevice,styleC> charConst7d;
+
+typedef Array<char,1,memHost,styleC> charHost1d;
+typedef Array<char,2,memHost,styleC> charHost2d;
+typedef Array<char,3,memHost,styleC> charHost3d;
+typedef Array<char,4,memHost,styleC> charHost4d;
+typedef Array<char,5,memHost,styleC> charHost5d;
+typedef Array<char,6,memHost,styleC> charHost6d;
+typedef Array<char,7,memHost,styleC> charHost7d;
+
+typedef Array<char const,1,memHost,styleC> charConstHost1d;
+typedef Array<char const,2,memHost,styleC> charConstHost2d;
+typedef Array<char const,3,memHost,styleC> charConstHost3d;
+typedef Array<char const,4,memHost,styleC> charConstHost4d;
+typedef Array<char const,5,memHost,styleC> charConstHost5d;
+typedef Array<char const,6,memHost,styleC> charConstHost6d;
+typedef Array<char const,7,memHost,styleC> charConstHost7d;
+
+
+
 typedef Array<bool,1,memDevice,styleC> bool1d;
 typedef Array<bool,2,memDevice,styleC> bool2d;
 typedef Array<bool,3,memDevice,styleC> bool3d;
