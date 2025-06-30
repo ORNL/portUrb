@@ -46,6 +46,7 @@ namespace modules {
       auto opp_x = dm.get<int       ,1>("dycore_lbm_opp_x");
       auto opp_y = dm.get<int       ,1>("dycore_lbm_opp_y");
       auto opp_z = dm.get<int       ,1>("dycore_lbm_opp_z");
+      auto opp   = dm.get<int       ,1>("dycore_lbm_opp"  );
 
       bool3d imm("imm",nz+2*hs,ny+2*hs,nx+2*hs);
 
@@ -54,7 +55,7 @@ namespace modules {
       compute_equ( coupler , feq , rho_d , uvel , vvel , wvel , c , wt , dx , dt , ord );
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        f(l,hs+k,hs+j,hs+i) += feq(l,k,j,i);
+        f(l,k,j,i) += feq(l,k,j,i);
         if (l==0) {
           if (i_beg+i > 3*nx_glob/8 && i_beg+i < 5*nx_glob/9 &&
               j_beg+j > 3*ny_glob/8 && j_beg+j < 5*ny_glob/9 &&
@@ -67,21 +68,34 @@ namespace modules {
       });
 
       // Collision
+      real4d fcoll("fcoll",nq,nz+2*hs,ny+2*hs,nx+2*hs);
       real tau = 0.55;
+      real nu = 1.e-3;
+      real tau_p = nu/cs2+0.5;
+      real Gamma = 0.25;
+      real tau_m = Gamma/(tau_p-0.5)+0.5;
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        f(l,hs+k,hs+j,hs+i) -= (f(l,hs+k,hs+j,hs+i)-feq(l,k,j,i))/tau;
+        // // BGK
+        // fcoll(l,hs+k,hs+j,hs+i) = f(l,k,j,i) - (f(l,k,j,i)-feq(l,k,j,i))/tau;
+
+        // TRT
+        real f_p   = 0.5*(f  (l,k,j,i)+f  (opp(l),k,j,i));
+        real f_m   = 0.5*(f  (l,k,j,i)-f  (opp(l),k,j,i));
+        real feq_p = 0.5*(feq(l,k,j,i)+feq(opp(l),k,j,i));
+        real feq_m = 0.5*(feq(l,k,j,i)-feq(opp(l),k,j,i));
+        fcoll(l,hs+k,hs+j,hs+i) = f(l,k,j,i) - (f_p-feq_p)/tau_p - (f_m-feq_m)/tau_m;
       });
 
       // Exchange halos, and apply boundary conditions
-      coupler.halo_exchange( f   , hs );
+      coupler.halo_exchange( fcoll   , hs );
       core::MultiField<bool,3> field;
       field.add_field(imm);
       coupler.halo_exchange( field , hs );
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny+2*hs,nx+2*hs) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        f  (l,hs+nz,j,i) = f  (l,hs+0   ,j,i);
-        f  (l,0    ,j,i) = f  (l,hs+nz-1,j,i);
+        fcoll(l,hs+nz,j,i) = fcoll(l,hs+0   ,j,i);
+        fcoll(l,0    ,j,i) = fcoll(l,hs+nz-1,j,i);
         if (l==0) {
           imm(hs+nz,j,i) = true;
           imm(0    ,j,i) = true;
@@ -89,10 +103,9 @@ namespace modules {
       });
 
       // Stream
-      auto ftmp = f.createDeviceObject();
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        if (imm(hs+k,hs+j,hs+i)) { ftmp(l,hs+k,hs+j,hs+i) = f(l,hs+k,hs+j,hs+i); return; }
+        if (imm(hs+k,hs+j,hs+i)) { return; }
         int l0 = l;
         int i0 = i-c(l,0);
         int j0 = j-c(l,1);
@@ -109,15 +122,14 @@ namespace modules {
           if (c(l,2) == -1) { k0--; l0 = opp_z(l0); }
           if (c(l,2) ==  1) { k0++; l0 = opp_z(l0); }
         }
-        ftmp(l,hs+k,hs+j,hs+i) = f(l0,hs+k0,hs+j0,hs+i0);
+        f(l,k,j,i) = fcoll(l0,hs+k0,hs+j0,hs+i0);
       });
-      ftmp.deep_copy_to(f);
 
       compute_rho_vel( coupler , f   , rho_d , uvel , vvel , wvel , c      , dx , dt , ord );
       compute_equ    ( coupler , feq , rho_d , uvel , vvel , wvel , c , wt , dx , dt , ord );
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nq,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        f(l,hs+k,hs+j,hs+i) -= feq(l,k,j,i);
+        f(l,k,j,i) -= feq(l,k,j,i);
       });
     }
 
@@ -131,12 +143,13 @@ namespace modules {
       auto nq  = coupler.get_option<int>("dycore_nq",27);
       if (nq != 19 && nq != 27) Kokkos::abort("ERROR: nq must be 19 or 27");
       auto &dm = coupler.get_data_manager_readwrite();
-      dm.register_and_allocate<real>("dycore_lbm_f","",{nq,nz+2*hs,ny+2*hs,nx+2*hs});
+      dm.register_and_allocate<real>("dycore_lbm_f","",{nq,nz,ny,nx});
       dm.register_and_allocate<int >("dycore_lbm_c","",{nq,3});
       dm.register_and_allocate<real>("dycore_lbm_w","",{nq});
       dm.register_and_allocate<int >("dycore_lbm_opp_x","",{nq});
       dm.register_and_allocate<int >("dycore_lbm_opp_y","",{nq});
       dm.register_and_allocate<int >("dycore_lbm_opp_z","",{nq});
+      dm.register_and_allocate<int >("dycore_lbm_opp"  ,"",{nq});
 
       dm.get<real,4>("dycore_lbm_f") = 0;
 
@@ -188,16 +201,19 @@ namespace modules {
       intHost1d opp_x("opp_x",nq); opp_x = -1;
       intHost1d opp_y("opp_z",nq); opp_y = -1;
       intHost1d opp_z("opp_z",nq); opp_z = -1;
+      intHost1d opp  ("opp"  ,nq); opp   = -1;
       for (int i=0; i < nq; i++) {
         for (int ii=0; ii < nq; ii++) {
           if ( c(i,0) == -c(ii,0) && c(i,1) ==  c(ii,1) && c(i,2) ==  c(ii,2) ) opp_x(i) = ii;
           if ( c(i,0) ==  c(ii,0) && c(i,1) == -c(ii,1) && c(i,2) ==  c(ii,2) ) opp_y(i) = ii;
           if ( c(i,0) ==  c(ii,0) && c(i,1) ==  c(ii,1) && c(i,2) == -c(ii,2) ) opp_z(i) = ii;
+          if ( c(i,0) == -c(ii,0) && c(i,1) == -c(ii,1) && c(i,2) == -c(ii,2) ) opp  (i) = ii;
         }
       }
       opp_x.deep_copy_to(dm.get<int,1>("dycore_lbm_opp_x"));
       opp_y.deep_copy_to(dm.get<int,1>("dycore_lbm_opp_y"));
       opp_z.deep_copy_to(dm.get<int,1>("dycore_lbm_opp_z"));
+      opp  .deep_copy_to(dm.get<int,1>("dycore_lbm_opp"  ));
     }
 
 
@@ -256,10 +272,10 @@ namespace modules {
         real rv = 0;
         real rw = 0;
         for (int l=0; l < nq; l++) {
-          r  += f(l,hs+k,hs+j,hs+i);
-          ru += f(l,hs+k,hs+j,hs+i)*c(l,0);
-          rv += f(l,hs+k,hs+j,hs+i)*c(l,1);
-          rw += f(l,hs+k,hs+j,hs+i)*c(l,2);
+          r  += f(l,k,j,i);
+          ru += f(l,k,j,i)*c(l,0);
+          rv += f(l,k,j,i)*c(l,1);
+          rw += f(l,k,j,i)*c(l,2);
         }
         rho (k,j,i) = r;
         uvel(k,j,i) = (ru/r)*dx/dt;
