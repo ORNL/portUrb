@@ -29,8 +29,8 @@ namespace modules {
     int constexpr nfld = 3;
 
     real z1 = (1-top_prop)*zlen;
-    real z2 = zlen;
-    real p  = 3;
+    real z2 = zlen-dz/2;
+    real p  = 2;
 
     int k1 = (int) std::floor(z1/dz-0.5);
     int nzloc = nz-k1;

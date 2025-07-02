@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "out_prefix"      , out_prefix    );
     coupler.set_option<real       >( "out_freq"        , out_freq      );
     coupler.set_option<real       >( "dycore_max_wind" , 20            );
-    coupler.set_option<int        >( "dycore_nq"       , 19            );
+    coupler.set_option<int        >( "dycore_nq"       , 27            );
     coupler.set_option<int        >( "dycore_ord"      , 2             );
     coupler.set_option<real       >( "cfl"             , 0.6           );
     coupler.set_option<std::string>( "init_data"       , "LBM"         );
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
 
     modules::Dynamics_Euler_LBM                dycore_lbm;
     modules::Dynamics_Euler_Stratified_WenoFV  dycore_fv;
-    auto &dycore = dycore_fv;
+    auto &dycore = dycore_lbm;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);

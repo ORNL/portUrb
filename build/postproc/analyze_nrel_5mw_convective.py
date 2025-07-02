@@ -8,7 +8,7 @@ import pandas as pd
 from scipy.ndimage import rotate
 
 # workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
-workdir = "/lustre/storm/nwp501/scratch/imn/portUrb/build"
+workdir = "/lustre/storm/nwp501/scratch/imn/floating_simulation_2025"
 # workdir = "/lustre/orion/stf006/scratch/imn/nrel_5mw_convective_bouss"
 amrwdir = "/ccs/home/imn/exawind-benchmarks/amr-wind/atmospheric_boundary_layer/convective_abl_nrel5mw/results"
 
@@ -305,7 +305,7 @@ plt.close()
 
 
 
-t1=18
+t1=17
 t2=18
 times = range(t1,t2+1)
 for i in range(len(times)) :

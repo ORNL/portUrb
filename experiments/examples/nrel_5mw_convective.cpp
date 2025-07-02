@@ -76,8 +76,8 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "hub_height_vvel"          , hub_v             );
     coupler_main.set_option<real       >( "sfc_heat_flux"            , 0.005             );
     coupler_main.set_option<real       >( "kinematic_viscosity"      , 0                 );
-    coupler_main.set_option<real       >( "dycore_max_wind"          , 40                );
-    coupler_main.set_option<real       >( "cfl"                      , 0.7               );
+    coupler_main.set_option<real       >( "dycore_max_wind"          , 50                );
+    coupler_main.set_option<real       >( "cfl"                      , 0.6               );
     coupler_main.set_option<bool       >( "turbine_orig_C_T"         , true              );
     coupler_main.set_option<real       >( "turbine_f_TKE"            , 0.25              );
 
@@ -197,11 +197,12 @@ int main(int argc, char** argv) {
       if (etime + dt > sim_time) { dt = sim_time - etime; }
 
       // Run modules
+      using core::Coupler;
+      using modules::uniform_pg_wind_forcing_height;
+      using modules::uniform_pg_wind_forcing_specified;
+      using modules::sponge_layer;
       real pgu, pgv;
       {
-        using core::Coupler;
-        using modules::uniform_pg_wind_forcing_height;
-        using modules::uniform_pg_wind_forcing_specified;
         real h = coupler_prec.get_option<real>("turbine_hub_height");
         real u = coupler_prec.get_option<real>("hub_height_uvel");
         real v = coupler_prec.get_option<real>("hub_height_vvel");
@@ -217,6 +218,7 @@ int main(int argc, char** argv) {
           pgv = pgv_sum/n_pg;
           coupler_prec.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
         }
+        coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
         coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
         coupler_prec.run_module( [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);           } , "heat_fluxes"    );
@@ -227,12 +229,11 @@ int main(int argc, char** argv) {
       col_nudge_main.column = col_nudge_prec.column;
       col_nudge_main.names  = col_nudge_prec.names;
       if (run_main) {
-        using core::Coupler;
-        using modules::uniform_pg_wind_forcing_specified;
         custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
                                           (int) (0.1*nx_glob) , 0 , (int) (0.1*ny_glob) , 0 );
         coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv);   } , "pg_forcing"     );
         coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column   (c,dt,dt*100);    } , "col_nudge"      );
+        coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
         coupler_main.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
         coupler_main.run_module( [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);           } , "heat_fluxes"    );
