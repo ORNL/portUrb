@@ -36,16 +36,17 @@ int main(int argc, char** argv) {
     auto cfl           = config["cfl"         ].as<real       >(0.7);
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"       , out_prefix  );
-    coupler.set_option<std::string>( "init_data"        , "supercell" );
-    coupler.set_option<real       >( "out_freq"         , out_freq    );
-    coupler.set_option<bool       >( "is_restart"       , is_restart  );
-    coupler.set_option<std::string>( "restart_file"     , restart_file);
-    coupler.set_option<real       >( "latitude"         , 0.          );
-    coupler.set_option<real       >( "cfl"              , cfl         );
-    coupler.set_option<bool       >( "enable_gravity"   , true        );
-    coupler.set_option<bool       >( "weno_all"         , true        );
-    coupler.set_option<int        >( "micro_morr_ihail" , 1           );
+    coupler.set_option<std::string>( "out_prefix"            , out_prefix  );
+    coupler.set_option<std::string>( "init_data"             , "supercell" );
+    coupler.set_option<real       >( "out_freq"              , out_freq    );
+    coupler.set_option<bool       >( "is_restart"            , is_restart  );
+    coupler.set_option<std::string>( "restart_file"          , restart_file);
+    coupler.set_option<real       >( "latitude"              , 0.          );
+    coupler.set_option<real       >( "cfl"                   , cfl         );
+    coupler.set_option<bool       >( "enable_gravity"        , true        );
+    coupler.set_option<bool       >( "weno_all"              , true        );
+    coupler.set_option<int        >( "micro_morr_ihail"      , 1           );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true        );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 

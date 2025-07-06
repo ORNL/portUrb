@@ -794,6 +794,7 @@ namespace modules {
       });
 
       // Compute tendencies as the flux divergence + gravity source term + coriolis
+      auto buoy_theta = coupler.get_option<bool>("dycore_buoyancy_theta",false);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
@@ -801,7 +802,12 @@ namespace modules {
                                 -( flux_y(l,k,j+1,i) - flux_y(l,k,j,i) ) * r_dy
                                 -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) * r_dz;
           if (l == idW && enable_gravity) {
-            state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
+            if (buoy_theta) {
+              real thetap = fields_loc(num_fields-1,hs+k,hs+j,hs+i);
+              state_tend(l,k,j,i) += grav*hy_dens_cells(hs+k)*thetap/hy_theta_cells(hs+k);
+            } else {
+              state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
+            }
           }
           if (latitude != 0 && l == idU) state_tend(l,k,j,i) += fcor*state(idV,k,j,i);
           if (latitude != 0 && l == idV) state_tend(l,k,j,i) -= fcor*state(idU,k,j,i);
