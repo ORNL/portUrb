@@ -61,7 +61,8 @@ namespace modules {
       auto dx = coupler.get_dx();
       auto dy = coupler.get_dy();
       auto dz = coupler.get_dz();
-      real maxwave = 350 + coupler.get_option<real>( "dycore_max_wind" , 100 );
+      auto cs = coupler.get_option<real>( "dycore_cs" , 350 );
+      real maxwave = cs + coupler.get_option<real>( "dycore_max_wind" , 100 );
       real cfl = coupler.get_option<real>("cfl",0.70);
       return cfl * std::min( std::min( dx , dy ) , dz ) / maxwave;
     }
@@ -627,7 +628,7 @@ namespace modules {
       auto wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
       auto wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
 
-      FLOC constexpr cs = 350;
+      FLOC cs = 350;
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
         SArray<FLOC,1,ord> s;
@@ -710,6 +711,8 @@ namespace modules {
       typedef limiter::WenoLimiter<FLOC,ord> Limiter;
 
       auto use_weno = coupler.get_option<bool>("dycore_use_weno",true);
+      auto qcomp    = coupler.get_option<bool>("dycore_quasi_compressible",false);
+      cs            = coupler.get_option<real>("dycore_cs",350);
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
@@ -794,7 +797,8 @@ namespace modules {
       });
 
       // Compute tendencies as the flux divergence + gravity source term + coriolis
-      auto buoy_theta = coupler.get_option<bool>("dycore_buoyancy_theta",false);
+      auto buoy_theta = coupler.get_option<bool>("dycore_buoyancy_theta"    ,false) ||
+                        coupler.get_option<bool>("dycore_quasi_compressible",false);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
@@ -1337,6 +1341,11 @@ namespace modules {
       auto  dm_wvel          = dm.get<real      ,3>("wvel"            );
       auto  dm_temp          = dm.get<real      ,3>("temp"            );
       auto  tracer_adds_mass = dm.get<bool const,1>("tracer_adds_mass");
+
+      auto qcomp = coupler.get_option<bool>("dycore_quasi_compressible",false);
+      real3d dycore_pp;
+      if (qcomp) dycore_pp = dm.get<real,3>("dycore_pressure_pert");
+
       core::MultiField<real,3> dm_tracers;
       auto tracer_names = coupler.get_tracer_names();
       for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real,3>(tracer_names.at(tr)) ); }
@@ -1357,6 +1366,7 @@ namespace modules {
         dm_wvel (k,j,i) = w;
         dm_temp (k,j,i) = temp;
         for (int tr=0; tr < num_tracers; tr++) { dm_tracers(tr,k,j,i) = tracers(tr,k,j,i); }
+        if (qcomp) { dycore_pp(k,j,i) = state(idT,k,j,i); }
       });
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("convert_dynamics_to_coupler");
@@ -1393,6 +1403,16 @@ namespace modules {
       auto tracer_adds_mass = dm.get<bool const,1>("tracer_adds_mass");
       auto tracer_positive  = dm.get<bool const,1>("tracer_positive" );
 
+      auto qcomp = coupler.get_option<bool>("dycore_quasi_compressible",false);
+      real3d dycore_pp;
+      if (qcomp) {
+        if (!dm.entry_exists("dycore_pressure_pert")) {
+          dm.register_and_allocate<real>("dycore_pressure_pert","",{nz,ny,nx});
+          dm.get<real,3>("dycore_pressure_pert") = 0;
+        }
+        dycore_pp = dm.get<real,3>("dycore_pressure_pert");
+      }
+
       state   = real4d("state"  ,num_state    ,nz,ny,nx);
       tracers = real4d("tracers",num_tracers+1,nz,ny,nx);
 
@@ -1422,7 +1442,8 @@ namespace modules {
         state(idU,k,j,i) = rho * u;
         state(idV,k,j,i) = rho * v;
         state(idW,k,j,i) = rho * w;
-        state(idT,k,j,i) = press;
+        if (qcomp) { state(idT,k,j,i) = dycore_pp(k,j,i); }
+        else       { state(idT,k,j,i) = press;            }
         for (int tr=0; tr < num_tracers; tr++) { tracers(tr,k,j,i) = dm_tracers(tr,k,j,i); }
         tracers(num_tracers,k,j,i) = rho * theta;
       });

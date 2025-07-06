@@ -44,8 +44,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "roughness"       , 0.1           );
     coupler.set_option<real       >( "cfl"             , 0.6           );
     coupler.set_option<bool       >( "enable_gravity"  , true          );
-    coupler.set_option<bool       >( "weno_all"        , true          );
-    coupler.get_option<real       >( "dycore_max_wind" , 30            );
+    coupler.set_option<real       >( "dycore_max_wind" , 30            );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 

@@ -80,6 +80,8 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "cfl"                      , 0.6               );
     coupler_main.set_option<bool       >( "turbine_orig_C_T"         , true              );
     coupler_main.set_option<real       >( "turbine_f_TKE"            , 0.25              );
+    coupler_main.set_option<bool       >( "dycore_quasi_compressible" , true );
+    coupler_main.set_option<real       >( "dycore_cs"                , 80 );
 
     coupler_main.set_parallel_comm( MPI_COMM_WORLD );
 
