@@ -803,8 +803,7 @@ namespace modules {
                                 -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) * r_dz;
           if (l == idW && enable_gravity) {
             if (buoy_theta) {
-              real thetap = fields_loc(num_fields-1,hs+k,hs+j,hs+i);
-              state_tend(l,k,j,i) += grav*hy_dens_cells(hs+k)*thetap/hy_theta_cells(hs+k);
+              state_tend(l,k,j,i) += grav*state(idR,k,j,i)*fields_loc(num_fields-1,hs+k,hs+j,hs+i)/hy_theta_cells(hs+k);
             } else {
               state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
             }
