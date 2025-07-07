@@ -165,9 +165,9 @@ namespace modules {
       real4d flux_tracers_z("flux_tracers_z",num_tracers,nz+1,ny  ,nx  );
       real3d tke_source    ("tke_source"                ,nz  ,ny  ,nx  );
 
-      real visc_max_x = 0.25_fp*dx*dx/dtphys;
-      real visc_max_y = 0.25_fp*dy*dy/dtphys;
-      real visc_max_z = 0.25_fp*dz*dz/dtphys;
+      real visc_max_x = 0.1_fp*dx*dx/dtphys;
+      real visc_max_y = 0.1_fp*dy*dy/dtphys;
+      real visc_max_z = 0.1_fp*dz*dz/dtphys;
 
       // Buoyancy source
       // TKE dissipation

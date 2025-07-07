@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
     std::string restart_file_prec = "";
     real        latitude          = 40;
     real        roughness         = 0.01;
-    int         dyn_cycle         = 4;
+    int         dyn_cycle         = 1;
     real        vort_freq         = -1;
     real        hub_u             = 9.8726896031426;
     real        hub_v             = 5.7;
@@ -76,12 +76,12 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "hub_height_vvel"           , hub_v             );
     coupler_main.set_option<real       >( "sfc_heat_flux"             , 0.005             );
     coupler_main.set_option<real       >( "kinematic_viscosity"       , 0                 );
-    coupler_main.set_option<real       >( "dycore_max_wind"           , 25                );
+    coupler_main.set_option<real       >( "dycore_max_wind"           , 20                );
     coupler_main.set_option<real       >( "cfl"                       , 0.6               );
     coupler_main.set_option<bool       >( "turbine_orig_C_T"          , true              );
     coupler_main.set_option<real       >( "turbine_f_TKE"             , 0.25              );
     coupler_main.set_option<bool       >( "dycore_quasi_compressible" , true              );
-    coupler_main.set_option<real       >( "dycore_cs"                 , 100               );
+    coupler_main.set_option<real       >( "dycore_cs"                 , 25                );
 
     coupler_main.set_parallel_comm( MPI_COMM_WORLD );
 

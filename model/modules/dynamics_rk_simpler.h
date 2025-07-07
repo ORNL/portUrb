@@ -629,7 +629,7 @@ namespace modules {
       auto wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
       auto wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
 
-      FLOC cs = 350;
+      FLOC cs = coupler.get_option<real>("dycore_cs",350);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
         SArray<FLOC,1,ord> s;
@@ -712,8 +712,6 @@ namespace modules {
       typedef limiter::WenoLimiter<FLOC,ord> Limiter;
 
       auto use_weno = coupler.get_option<bool>("dycore_use_weno",true);
-      auto qcomp    = coupler.get_option<bool>("dycore_quasi_compressible",false);
-      cs            = coupler.get_option<real>("dycore_cs",350);
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
