@@ -85,6 +85,7 @@ namespace modules {
     //   auto temp  = dm.get<real const,3>("temp"       );
     //   real3d dt3d("dt3d",nz,ny,nx);
     //   real cfl = coupler.get_option<real>("cfl",0.15);
+    //   real csconst = coupler.get_option<real>( "dycore_cs" , -1 );
     //   parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
     //     real r = rho_d(k,j,i);
     //     real u = uvel (k,j,i);
@@ -92,7 +93,7 @@ namespace modules {
     //     real w = wvel (k,j,i);
     //     real T = temp (k,j,i);
     //     real p = r*R_d*T;
-    //     real cs = std::sqrt(gamma*p/r);
+    //     real cs = csconst < 0 ? std::sqrt(gamma*p/r) : csconst;
     //     real dtx = cfl*dx/(std::abs(u)+cs);
     //     real dty = cfl*dy/(std::abs(v)+cs);
     //     real dtz = cfl*dz/(std::abs(w)+cs);

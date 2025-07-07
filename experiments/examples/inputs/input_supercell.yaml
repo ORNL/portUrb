@@ -8,9 +8,9 @@ ylen: 200000
 zlen: 20000
 
 # Number of cells to use in the CRMs
-nx_glob: 400
-ny_glob: 400
-nz     : 40
+nx_glob: 1000
+ny_glob: 1000
+nz     : 100
 
 # Output filename
 out_prefix: supercell

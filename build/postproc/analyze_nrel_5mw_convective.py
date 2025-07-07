@@ -7,8 +7,8 @@ import xarray
 import pandas as pd
 from scipy.ndimage import rotate
 
-# workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
-workdir = "/lustre/storm/nwp501/scratch/imn/floating_simulation_2025"
+workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+# workdir = "/lustre/storm/nwp501/scratch/imn/floating_simulation_2025"
 # workdir = "/lustre/orion/stf006/scratch/imn/nrel_5mw_convective_bouss"
 amrwdir = "/ccs/home/imn/exawind-benchmarks/amr-wind/atmospheric_boundary_layer/convective_abl_nrel5mw/results"
 amrwdir_turb = "/ccs/home/imn/exawind-benchmarks/amr-wind/actuator_line/NREL5MW_ALM_BD/results"

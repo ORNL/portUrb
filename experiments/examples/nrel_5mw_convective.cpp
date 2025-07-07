@@ -58,30 +58,30 @@ int main(int argc, char** argv) {
     real        hub_v             = 5.7;
 
     // Things the coupler_main might need to know about
-    coupler_main.set_option<std::string>( "out_prefix"               , out_prefix        );
-    coupler_main.set_option<std::string>( "init_data"                , init_data         );
-    coupler_main.set_option<real       >( "out_freq"                 , out_freq          );
-    coupler_main.set_option<bool       >( "is_restart"               , is_restart        );
-    coupler_main.set_option<std::string>( "restart_file"             , restart_file      );
-    coupler_main.set_option<std::string>( "restart_file_precursor"   , restart_file_prec );
-    coupler_main.set_option<real       >( "latitude"                 , latitude          );
-    coupler_main.set_option<real       >( "roughness"                , roughness         );
-    coupler_main.set_option<std::string>( "turbine_file"             , turbine_file      );
-    coupler_main.set_option<bool       >( "turbine_do_blades"        , false             );
-    coupler_main.set_option<real       >( "turbine_initial_yaw"      , 30./180.*M_PI     );
-    coupler_main.set_option<bool       >( "turbine_fixed_yaw"        , true              );
-    coupler_main.set_option<bool       >( "turbine_floating_motions" , false             );
-    coupler_main.set_option<bool       >( "turbine_immerse_material" , false             );
-    coupler_main.set_option<real       >( "hub_height_uvel"          , hub_u             );
-    coupler_main.set_option<real       >( "hub_height_vvel"          , hub_v             );
-    coupler_main.set_option<real       >( "sfc_heat_flux"            , 0.005             );
-    coupler_main.set_option<real       >( "kinematic_viscosity"      , 0                 );
-    coupler_main.set_option<real       >( "dycore_max_wind"          , 50                );
-    coupler_main.set_option<real       >( "cfl"                      , 0.6               );
-    coupler_main.set_option<bool       >( "turbine_orig_C_T"         , true              );
-    coupler_main.set_option<real       >( "turbine_f_TKE"            , 0.25              );
-    coupler_main.set_option<bool       >( "dycore_quasi_compressible" , true );
-    coupler_main.set_option<real       >( "dycore_cs"                , 80 );
+    coupler_main.set_option<std::string>( "out_prefix"                , out_prefix        );
+    coupler_main.set_option<std::string>( "init_data"                 , init_data         );
+    coupler_main.set_option<real       >( "out_freq"                  , out_freq          );
+    coupler_main.set_option<bool       >( "is_restart"                , is_restart        );
+    coupler_main.set_option<std::string>( "restart_file"              , restart_file      );
+    coupler_main.set_option<std::string>( "restart_file_precursor"    , restart_file_prec );
+    coupler_main.set_option<real       >( "latitude"                  , latitude          );
+    coupler_main.set_option<real       >( "roughness"                 , roughness         );
+    coupler_main.set_option<std::string>( "turbine_file"              , turbine_file      );
+    coupler_main.set_option<bool       >( "turbine_do_blades"         , false             );
+    coupler_main.set_option<real       >( "turbine_initial_yaw"       , 30./180.*M_PI     );
+    coupler_main.set_option<bool       >( "turbine_fixed_yaw"         , true              );
+    coupler_main.set_option<bool       >( "turbine_floating_motions"  , false             );
+    coupler_main.set_option<bool       >( "turbine_immerse_material"  , false             );
+    coupler_main.set_option<real       >( "hub_height_uvel"           , hub_u             );
+    coupler_main.set_option<real       >( "hub_height_vvel"           , hub_v             );
+    coupler_main.set_option<real       >( "sfc_heat_flux"             , 0.005             );
+    coupler_main.set_option<real       >( "kinematic_viscosity"       , 0                 );
+    coupler_main.set_option<real       >( "dycore_max_wind"           , 25                );
+    coupler_main.set_option<real       >( "cfl"                       , 0.6               );
+    coupler_main.set_option<bool       >( "turbine_orig_C_T"          , true              );
+    coupler_main.set_option<real       >( "turbine_f_TKE"             , 0.25              );
+    coupler_main.set_option<bool       >( "dycore_quasi_compressible" , true              );
+    coupler_main.set_option<real       >( "dycore_cs"                 , 100               );
 
     coupler_main.set_parallel_comm( MPI_COMM_WORLD );
 
@@ -249,8 +249,12 @@ int main(int argc, char** argv) {
       coupler_main.set_option<real>("elapsed_time",etime);
       coupler_prec.set_option<real>("elapsed_time",etime);
       if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
-        if (run_main) { std::cout << "MAIN: "; coupler_main.inform_user(); }
-        std::cout << "PREC: "; coupler_prec.inform_user();
+        if (run_main) {
+          if (coupler_main.is_mainproc()) std::cout << "MAIN: ";
+          coupler_main.inform_user();
+        }
+        if (coupler_prec.is_mainproc()) std::cout << "PREC: ";
+        coupler_prec.inform_user();
         inform_counter.reset();
       }
       if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
