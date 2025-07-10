@@ -20,13 +20,13 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    bool run_main = true ;
+    bool run_main = false;
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler_main;
     core::Coupler coupler_prec;
 
-    real dx = 10;
+    real dx = 20;
 
     std::string turbine_file = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
     YAML::Node config = YAML::LoadFile( turbine_file );
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     std::string init_data         = "nrel_5mw_convective";
     real        out_freq          = 1000;
     real        inform_freq       = 10;
-    std::string out_prefix        = "nrel_5mw_convective";
+    std::string out_prefix        = "nrel_5mw_convective_orig_rho_350";
     std::string out_prefix_prec   = out_prefix+std::string("_precursor");
     bool        is_restart        = false;
     std::string restart_file      = "";
@@ -76,12 +76,12 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "hub_height_vvel"           , hub_v             );
     coupler_main.set_option<real       >( "sfc_heat_flux"             , 0.005             );
     coupler_main.set_option<real       >( "kinematic_viscosity"       , 0                 );
-    coupler_main.set_option<real       >( "dycore_max_wind"           , 20                );
     coupler_main.set_option<real       >( "cfl"                       , 0.6               );
     coupler_main.set_option<bool       >( "turbine_orig_C_T"          , true              );
     coupler_main.set_option<real       >( "turbine_f_TKE"             , 0.25              );
-    coupler_main.set_option<bool       >( "dycore_quasi_compressible" , true              );
-    coupler_main.set_option<real       >( "dycore_cs"                 , 25                );
+    coupler_main.set_option<real       >( "dycore_max_wind"           , 20                );
+    coupler_main.set_option<bool       >( "dycore_buoyancy_theta"     , false             );
+    coupler_main.set_option<real       >( "dycore_cs"                 , 350               );
 
     coupler_main.set_parallel_comm( MPI_COMM_WORLD );
 
@@ -208,6 +208,7 @@ int main(int argc, char** argv) {
         real h = coupler_prec.get_option<real>("turbine_hub_height");
         real u = coupler_prec.get_option<real>("hub_height_uvel");
         real v = coupler_prec.get_option<real>("hub_height_vvel");
+        coupler_prec.track_max_wind();
         if (etime < 15000) {
           coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,10); } , "pg_forcing" );
           if (etime >= 14000) {
@@ -253,7 +254,7 @@ int main(int argc, char** argv) {
           if (coupler_main.is_mainproc()) std::cout << "MAIN: ";
           coupler_main.inform_user();
         }
-        if (coupler_prec.is_mainproc()) std::cout << "PREC: ";
+        if (coupler_prec.is_mainproc()) std::cout << "PREC: MaxWind [" << coupler_prec.get_option<real>("coupler_max_wind") << "] , ";
         coupler_prec.inform_user();
         inform_counter.reset();
       }

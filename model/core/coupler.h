@@ -504,6 +504,22 @@ namespace core {
     };
 
 
+    real track_max_wind() {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto u = get_data_manager_readonly().get_collapsed<real const>("uvel");
+      auto v = get_data_manager_readonly().get_collapsed<real const>("vvel");
+      auto w = get_data_manager_readonly().get_collapsed<real const>("wvel");
+      auto mag = u.createDeviceObject();
+      parallel_for( YAKL_AUTO_LABEL() , mag.size() , KOKKOS_LAMBDA (int i) {
+        mag(i) = std::sqrt( u(i)*u(i) + v(i)*v(i) + w(i)*w(i) );
+      });
+      auto mx = par_comm.reduce( yakl::intrinsics::maxval(mag) , MPI_MAX , 0 );
+      set_option<real>("coupler_max_wind",std::max(mx,get_option<real>("coupler_max_wind",0.)));
+      return get_option<real>("coupler_max_wind");
+    }
+
+
     void inform_user( ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;

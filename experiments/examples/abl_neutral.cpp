@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_rk_rsst.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -17,17 +17,17 @@ int main(int argc, char** argv) {
     yakl::timer_start("main");
 
     real        sim_time    = 3600*10+1;
-    int         nx_glob     = 400;
-    int         ny_glob     = 400;
-    int         nz          = 100;
+    int         nx_glob     = 200;
+    int         ny_glob     = 200;
+    int         nz          = 50;
     real        xlen        = 4000;
     real        ylen        = 4000;
     real        zlen        = 1000;
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 10;
+    int         dyn_cycle   = 1;
     real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_neutral";
+    std::string out_prefix  = "ABL_neutral_rss_20";
     bool        is_restart  = false;
     real        u_g         = 10;
     real        v_g         = 0 ;
@@ -35,16 +35,18 @@ int main(int argc, char** argv) {
                                              // Most studies use f=10^-4 which means lat=43.289
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"      , out_prefix    );
-    coupler.set_option<std::string>( "init_data"       , "ABL_neutral" );
-    coupler.set_option<real       >( "out_freq"        , out_freq      );
-    coupler.set_option<bool       >( "is_restart"      , is_restart    );
-    coupler.set_option<std::string>( "restart_file"    , ""            );
-    coupler.set_option<real       >( "latitude"        , 0.            );
-    coupler.set_option<real       >( "roughness"       , 0.1           );
-    coupler.set_option<real       >( "cfl"             , 0.6           );
-    coupler.set_option<bool       >( "enable_gravity"  , true          );
-    coupler.set_option<real       >( "dycore_max_wind" , 30            );
+    coupler.set_option<std::string>( "out_prefix"            , out_prefix    );
+    coupler.set_option<std::string>( "init_data"             , "ABL_neutral" );
+    coupler.set_option<real       >( "out_freq"              , out_freq      );
+    coupler.set_option<bool       >( "is_restart"            , is_restart    );
+    coupler.set_option<std::string>( "restart_file"          , ""            );
+    coupler.set_option<real       >( "latitude"              , 0.            );
+    coupler.set_option<real       >( "roughness"             , 0.1           );
+    coupler.set_option<real       >( "cfl"                   , 0.6           );
+    coupler.set_option<bool       >( "enable_gravity"        , true          );
+    coupler.set_option<real       >( "dycore_max_wind"       , 15            );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
+    coupler.set_option<real       >( "dycore_cs"             , 20            );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 
@@ -90,9 +92,10 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
+        coupler.track_max_wind();
         auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
         auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
-        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);    };
+        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,100,0.1);       };
         auto run_surf_flux = [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);               };
         auto run_les       = [&] (Coupler &c) { les_closure.apply                (c,dt);               };
         auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate         (c,dt);               };
@@ -108,6 +111,7 @@ int main(int argc, char** argv) {
       etime += dt; // Advance elapsed time
       coupler.set_option<real>("elapsed_time",etime);
       if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
+        if (coupler.is_mainproc()) std::cout << "MaxWind [" << coupler.get_option<real>("coupler_max_wind") << "] , ";
         coupler.inform_user();
         inform_counter.reset();
       }

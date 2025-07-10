@@ -5,7 +5,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
 import xarray
 
-workdir = "/lustre/storm/nwp501/scratch/imn/ABL_neutral"
+workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
 
 def spectra(T,dx = 1) :
   spd  = np.abs( np.fft.rfft(T[0,0,:]) )**2

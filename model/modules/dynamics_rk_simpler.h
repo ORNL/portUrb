@@ -737,7 +737,7 @@ namespace modules {
           }
         }
         flux_x(idR,k,j,i)  = ru;
-        flux_x(idT,k,j,i)  = flux_x(num_fields-1,k,j,i);
+        flux_x(idT,k,j,i)  = cs*cs*ru;
         flux_x(idU,k,j,i) += p_x(k,j,i);
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -764,7 +764,7 @@ namespace modules {
           }
         }
         flux_y(idR,k,j,i)  = rv;
-        flux_y(idT,k,j,i)  = flux_y(num_fields-1,k,j,i);
+        flux_y(idT,k,j,i)  = cs*cs*rv;
         flux_y(idV,k,j,i) += p_y(k,j,i);
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -791,7 +791,7 @@ namespace modules {
           }
         }
         flux_z(idR,k,j,i)  = rw;
-        flux_z(idT,k,j,i)  = flux_z(num_fields-1,k,j,i);
+        flux_z(idT,k,j,i)  = cs*cs*rw;
         flux_z(idW,k,j,i) += p_z(k,j,i);
       });
 
@@ -813,9 +813,6 @@ namespace modules {
           }
           if (latitude != 0 && l == idU) state_tend(l,k,j,i) += fcor*state(idV,k,j,i);
           if (latitude != 0 && l == idV) state_tend(l,k,j,i) -= fcor*state(idU,k,j,i);
-          if (l == idT) {
-            state_tend(idT,k,j,i) *= cs*cs/(fields_loc(num_fields-1,hs+k,hs+j,hs+i)+hy_theta_cells(hs+k));
-          }
         } else {
           tracers_tend(l-num_state,k,j,i) = -( flux_x(l,k,j,i+1) - flux_x(l,k,j,i) ) * r_dx
                                             -( flux_y(l,k,j+1,i) - flux_y(l,k,j,i) ) * r_dy 

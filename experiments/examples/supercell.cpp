@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_rk_rsst.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -34,17 +34,22 @@ int main(int argc, char** argv) {
     auto is_restart    = config["is_restart"  ].as<bool       >(false);
     auto restart_file  = config["restart_file"].as<std::string>("");
     auto cfl           = config["cfl"         ].as<real       >(0.6);
+    auto cs            = config["cs"          ].as<real       >(350);
+    auto buoy_theta    = config["buoy_theta"  ].as<bool       >(false);
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"            , out_prefix  );
-    coupler.set_option<std::string>( "init_data"             , "supercell" );
-    coupler.set_option<real       >( "out_freq"              , out_freq    );
-    coupler.set_option<bool       >( "is_restart"            , is_restart  );
-    coupler.set_option<std::string>( "restart_file"          , restart_file);
-    coupler.set_option<real       >( "latitude"              , 0.          );
-    coupler.set_option<real       >( "cfl"                   , cfl         );
-    coupler.set_option<bool       >( "enable_gravity"        , true        );
-    coupler.set_option<int        >( "micro_morr_ihail"      , 1           );
+    coupler.set_option<std::string>( "out_prefix"                , out_prefix  );
+    coupler.set_option<std::string>( "init_data"                 , "supercell" );
+    coupler.set_option<real       >( "out_freq"                  , out_freq    );
+    coupler.set_option<bool       >( "is_restart"                , is_restart  );
+    coupler.set_option<std::string>( "restart_file"              , restart_file);
+    coupler.set_option<real       >( "latitude"                  , 0.          );
+    coupler.set_option<real       >( "cfl"                       , cfl         );
+    coupler.set_option<bool       >( "enable_gravity"            , true        );
+    coupler.set_option<int        >( "micro_morr_ihail"          , 1           );
+    coupler.set_option<real       >( "dycore_max_wind"           , 90          );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"     , buoy_theta  );
+    coupler.set_option<real       >( "dycore_cs"                 , cs          );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 
@@ -95,6 +100,7 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
+        coupler.track_max_wind();
         // coupler.run_module( [&] (Coupler &c) { modules::sponge_layer   (c,dt,dt,0.02); } , "sponge"         );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt);         } , "dycore"         );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt);         } , "les_closure"    );
@@ -106,6 +112,7 @@ int main(int argc, char** argv) {
       etime += dt; // Advance elapsed time
       coupler.set_option<real>("elapsed_time",etime);
       if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
+        if (coupler.is_mainproc()) std::cout << "MaxWind [" << coupler.get_option<real>("coupler_max_wind") << "] , ";
         coupler.inform_user();
         inform_counter.reset();
       }
