@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     int         dyn_cycle   = 10;
     real        out_freq    = 900;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_convective_orig_rho_350";
+    std::string out_prefix  = "ABL_convective_orig_theta_350";
     bool        is_restart  = false;
     real        u_g         = 10;
     real        v_g         = 0;
@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "enable_gravity"        , true             );
     coupler.set_option<real       >( "sfc_heat_flux"         , shf              );
     coupler.set_option<real       >( "dycore_max_wind"       , 20               );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta" , false            );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true             );
     coupler.set_option<real       >( "dycore_cs"             , 350              );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);

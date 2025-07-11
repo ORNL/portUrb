@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --cluster miller
+#SBATCH --cluster fawbush
 #SBATCH --partition ampere
 #SBATCH --cluster-constraint=green
 #SBATCH --exclusive
@@ -7,7 +7,7 @@
 #SBATCH -J portUrb
 #SBATCH -o %x-%j.out
 #SBATCH -t 24:00:00
-#SBATCH -N 16
+#SBATCH -N 32
 
 export GATOR_INITIAL_MB=39000
 

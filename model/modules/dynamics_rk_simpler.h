@@ -800,7 +800,7 @@ namespace modules {
           if (l == idV && sim2d) state_tend(l,k,j,i) = 0;
           if (l == idW && enable_gravity) {
             if (buoy_theta) {
-              state_tend(l,k,j,i) += grav*state(idR,k,j,i)*fields_loc(num_fields-1,hs+k,hs+j,hs+i)/hy_theta_cells(hs+k);
+              state_tend(l,k,j,i) += grav*state(idR,k,j,i)*fields_loc(idT,hs+k,hs+j,hs+i)/hy_theta_cells(hs+k);
             } else {
               state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
             }
