@@ -1420,11 +1420,7 @@ namespace modules {
       }
       auto dc_tracer_positive = dm.get<bool,1>("dycore_tracer_positive");
       core::MultiField<real const,3> dm_tracers;
-      for (int tr=0; tr < num_tracers; tr++) {
-        dm_tracers.add_field( dm.get<real const,3>(tracer_names.at(tr)) );
-        dc_tracer_positive(tr) = tracer_positive(tr);
-      }
-      dc_tracer_positive(num_tracers) = true;
+      for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real const,3>(tracer_names.at(tr)) ); }
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real rho_d = dm_rho_d(k,j,i);
@@ -1445,6 +1441,10 @@ namespace modules {
         else       { state(idT,k,j,i) = press;            }
         for (int tr=0; tr < num_tracers; tr++) { tracers(tr,k,j,i) = dm_tracers(tr,k,j,i); }
         tracers(num_tracers,k,j,i) = rho * theta;
+        if (k==0 && j==0 && i==0) {
+          for (int tr=0; tr < num_tracers; tr++)  dc_tracer_positive(tr) = tracer_positive(tr);
+          dc_tracer_positive(num_tracers) = true;
+        }
       });
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("convert_coupler_to_dynamics");

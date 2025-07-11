@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_rsst.h"
+#include "dynamics_rk_simpler.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -45,8 +45,8 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "cfl"                   , 0.6           );
     coupler.set_option<bool       >( "enable_gravity"        , true          );
     coupler.set_option<real       >( "dycore_max_wind"       , 15            );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
-    coupler.set_option<real       >( "dycore_cs"             , 20            );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta" , false         );
+    coupler.set_option<real       >( "dycore_cs"             , 350           );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 

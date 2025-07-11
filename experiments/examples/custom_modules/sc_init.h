@@ -190,7 +190,6 @@ namespace custom_modules {
         real x  = (i_beg+i+0.5_fp)*dx;
         real y  = (j_beg+j+0.5_fp)*dy;
         real z  = (      k+0.5_fp)*dz;
-        int per = 16;
         dm_rho_d(k,j,i) = 1;
         dm_uvel (k,j,i) = 10;
         dm_vvel (k,j,i) = 0;
@@ -452,7 +451,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "nrel_5mw_convective") {
