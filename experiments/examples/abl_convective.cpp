@@ -18,17 +18,17 @@ int main(int argc, char** argv) {
     yakl::timer_start("main");
 
     real        sim_time    = 3600*3+1;
-    int         nx_glob     = 600;
-    int         ny_glob     = 600;
-    int         nz          = 300;
+    int         nx_glob     = 300;
+    int         ny_glob     = 300;
+    int         nz          = 150;
     real        xlen        = 6000;
     real        ylen        = 6000;
     real        zlen        = 3000;
     real        dtphys_in   = 0;    // Use dycore time step
     int         dyn_cycle   = 10;
-    real        out_freq    = 1800;
+    real        out_freq    = 900;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_convective";
+    std::string out_prefix  = "ABL_convective_orig_rho_350";
     bool        is_restart  = false;
     real        u_g         = 10;
     real        v_g         = 0;
@@ -36,17 +36,19 @@ int main(int argc, char** argv) {
     real        shf         = 0.40;  // sfc heat flux in K m / s
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"     , out_prefix       );
-    coupler.set_option<std::string>( "init_data"      , "ABL_convective" );
-    coupler.set_option<real       >( "out_freq"       , out_freq         );
-    coupler.set_option<bool       >( "is_restart"     , is_restart       );
-    coupler.set_option<std::string>( "restart_file"   , ""               );
-    coupler.set_option<real       >( "latitude"       , 0.               );
-    coupler.set_option<real       >( "roughness"      , 0.05             );
-    coupler.set_option<real       >( "cfl"            , 0.6              );
-    coupler.set_option<bool       >( "enable_gravity" , true             );
-    coupler.set_option<bool       >( "weno_all"       , true             );
-    coupler.set_option<real       >( "sfc_heat_flux"  , shf              );
+    coupler.set_option<std::string>( "out_prefix"            , out_prefix       );
+    coupler.set_option<std::string>( "init_data"             , "ABL_convective" );
+    coupler.set_option<real       >( "out_freq"              , out_freq         );
+    coupler.set_option<bool       >( "is_restart"            , is_restart       );
+    coupler.set_option<std::string>( "restart_file"          , ""               );
+    coupler.set_option<real       >( "latitude"              , 0.               );
+    coupler.set_option<real       >( "roughness"             , 0.05             );
+    coupler.set_option<real       >( "cfl"                   , 0.6              );
+    coupler.set_option<bool       >( "enable_gravity"        , true             );
+    coupler.set_option<real       >( "sfc_heat_flux"         , shf              );
+    coupler.set_option<real       >( "dycore_max_wind"       , 20               );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta" , false            );
+    coupler.set_option<real       >( "dycore_cs"             , 350              );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 
@@ -92,6 +94,7 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
+        coupler.track_max_wind();
         auto run_shf       = [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);               };
         auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
         auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
@@ -112,6 +115,7 @@ int main(int argc, char** argv) {
       etime += dt; // Advance elapsed time
       coupler.set_option<real>("elapsed_time",etime);
       if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
+        if (coupler.is_mainproc()) std::cout << "MaxWind [" << coupler.get_option<real>("coupler_max_wind") << "] , ";
         coupler.inform_user();
         inform_counter.reset();
       }

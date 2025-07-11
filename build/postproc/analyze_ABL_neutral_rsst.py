@@ -5,15 +5,15 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
 import xarray
 
-workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build/NEUT"
+workdir = "/lustre/storm/nwp501/scratch/imn/portUrb/build/NEUT"
 files    = [f"{workdir}/ABL_neutral_orig_rho_350",
             f"{workdir}/ABL_neutral_orig_theta_350",
-            f"{workdir}/ABL_neutral_rss_350",
             f"{workdir}/ABL_neutral_rss_100",
-            f"{workdir}/ABL_neutral_rss_50",
-            f"{workdir}/ABL_neutral_rss_25",
-            f"{workdir}/ABL_neutral_rss_20"]
-labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_350","RSS_100","RSS_50","RSS_25","RSS_20"]
+            f"{workdir}/ABL_neutral_rss_050",
+            f"{workdir}/ABL_neutral_rss_020",
+            f"{workdir}/ABL_neutral_rss_012",
+            f"{workdir}/ABL_neutral_rss_010"]
+labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_100","RSS_50","RSS_20","RSS_12","RSS_10"]
 colors = ["black","red","green","blue","cyan","magenta","orange"]
 styles = ["-","-","-","-","-","-","-"]
 nexp = 7

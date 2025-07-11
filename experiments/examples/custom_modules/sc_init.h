@@ -145,7 +145,7 @@ namespace custom_modules {
           dm_vvel         (k,j,i) = 0;
           dm_wvel         (k,j,i) = 0;
         }
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "cubes_periodic") {
@@ -181,7 +181,7 @@ namespace custom_modules {
           dm_vvel         (k,j,i) = 0;
           dm_wvel         (k,j,i) = 0;
         }
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "LBM") {
@@ -229,7 +229,7 @@ namespace custom_modules {
         dm_wvel (k,j,i) = w;
         dm_temp (k,j,i) = T;
         dm_rho_v(k,j,i) = 0;
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "city") {
@@ -286,7 +286,7 @@ namespace custom_modules {
             }
           }
         }
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
       std::chrono::duration<double> dur = std::chrono::high_resolution_clock::now() - t1;
       if (coupler.is_mainproc()) std::cout << "*** Finished setup in [" << dur.count() << "] seconds ***" << std::endl;
@@ -331,7 +331,7 @@ namespace custom_modules {
         dm_wvel (k,j,i) = (1-dm_immersed_prop(k,j,i))*w;
         dm_temp (k,j,i) = T;
         dm_rho_v(k,j,i) = 0;
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "bomex") {
@@ -412,7 +412,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
@@ -731,7 +731,7 @@ namespace custom_modules {
         dm_wvel (k,j,i) = 0;
         dm_temp (k,j,i) = T;
         dm_rho_v(k,j,i) = 0;
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "supercell") {
@@ -819,7 +819,7 @@ namespace custom_modules {
             }
           }
         }
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } // if (init_data == ...)
