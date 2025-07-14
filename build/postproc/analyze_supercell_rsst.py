@@ -10,7 +10,7 @@ def get_ind(arr,val) :
 nfiles = 41
 times = np.array([120*i/(nfiles-1) for i in range(nfiles)])
 
-workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+workdir = "/lustre/orion/stf006/scratch/imn/RSST"
 
 nexp = 6
 files = [[f"{workdir}/CELL_ORIG_RHO_350/supercell_orig_rho_350_{i:08}.nc"     for i in range(nfiles)],

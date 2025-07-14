@@ -788,7 +788,8 @@ namespace modules {
                                 -( flux_y(l,k,j+1,i) - flux_y(l,k,j,i) ) * r_dy
                                 -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) * r_dz;
           if (l == idW && enable_gravity) {
-            state_tend(l,k,j,i) += grav*state(idR,k,j,i)*fields_loc(num_fields-1,hs+k,hs+j,hs+i)/hy_theta_cells(hs+k);
+            state_tend(l,k,j,i) += grav*state(idR,k,j,i)*fields_loc(num_fields-1,hs+k,hs+j,hs+i)/
+                                   (hy_theta_cells(hs+k)+fields_loc(num_fields-1,hs+k,hs+j,hs+i));
           }
           if (latitude != 0 && l == idU) state_tend(l,k,j,i) += fcor*state(idV,k,j,i);
           if (latitude != 0 && l == idV) state_tend(l,k,j,i) -= fcor*state(idU,k,j,i);

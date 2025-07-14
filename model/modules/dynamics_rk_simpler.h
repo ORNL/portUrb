@@ -514,6 +514,7 @@ namespace modules {
       auto  grav              = coupler.get_option<real>("grav"   );  // Gravity
       auto  gamma             = coupler.get_option<real>("gamma_d");  // cp_dry / cv_dry (about 1.4)
       auto  latitude          = coupler.get_option<real>("latitude",0); // For coriolis
+      auto  idWV              = coupler.get_option<int >("idWV"   );
       auto  num_tracers       = coupler.get_num_tracers();            // Number of tracers
       auto  &dm               = coupler.get_data_manager_readonly();  // Grab read-only data manager
       auto  tracer_positive   = dm.get<bool const,1>("tracer_positive"          ); // Is a tracer positive-definite?
@@ -530,7 +531,7 @@ namespace modules {
       auto  hy_pressure_edges = dm.get<real const,1>("hy_pressure_edges"        ); // Hydrostatic potential temperature
       auto  hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells"        ); // Hydrostatic pressure
       auto  surface_temp      = dm.get<real const,2>("surface_temp"  );
-      auto  weno_all          = coupler.get_option<bool>("weno_all",true);
+      auto  tracer_adds_mass  = dm.get<bool const,1>("tracer_adds_mass");
       // Compute matrices to convert polynomial coefficients to 2 GLL points and stencil values to 2 GLL points
       // These matrices will be in column-row format. That performed better than row-column format in performance tests
       real r_dx = 1./dx; // reciprocal of grid spacing
@@ -800,7 +801,10 @@ namespace modules {
           if (l == idV && sim2d) state_tend(l,k,j,i) = 0;
           if (l == idW && enable_gravity) {
             if (buoy_theta) {
-              state_tend(l,k,j,i) += grav*state(idR,k,j,i)*fields_loc(idT,hs+k,hs+j,hs+i)/hy_theta_cells(hs+k);
+              real thetap = fields_loc(idT,hs+k,hs+j,hs+i);
+              real rho    = state(idR,hs+k,hs+j,hs+i);
+              real theta  = hy_theta_cells(hs+k)+thetap;
+              state_tend(l,k,j,i) += grav*rho*thetap/theta;
             } else {
               state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
             }
