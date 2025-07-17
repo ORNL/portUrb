@@ -8,7 +8,7 @@
 #include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
-#include "microphysics_morr.h"
+#include "microphysics_kessler.h"
 #include "column_nudging.h"
 
 int main(int argc, char** argv) {
@@ -22,8 +22,8 @@ int main(int argc, char** argv) {
     real        out_freq    = 1800;
     std::string out_prefix  = "shallow_convection";
     real        inform_freq = 10;
-    real        xlen        = 25000;
-    real        ylen        = 25000;
+    real        xlen        = 50000;
+    real        ylen        = 50000;
     real        zlen        = 3000;
     real        dx          = 50;
     real        dtphys_in   = 0.;
@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     custom_modules::Time_Averager              time_averager;
     modules::LES_Closure                       les_closure;
-    modules::Microphysics_Morrison             micro;
+    modules::Microphysics_Kessler              micro;
     modules::ColumnNudger                      col_nudge;
 
     micro        .init        ( coupler );
@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
     time_averager.init        ( coupler );
-    col_nudge.set_column      ( coupler , {"density_dry","temp"} );
+    col_nudge.set_column      ( coupler , {"water_vapor","temp"} );
     custom_modules::sc_perturb( coupler );
 
     coupler.set_option<std::string>("bc_x1","periodic");
