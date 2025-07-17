@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
     time_averager.init        ( coupler );
-    col_nudge.set_column      ( coupler , {"density_dry","temp","water_vapor"} );
+    col_nudge.set_column      ( coupler , {"density_dry","temp"} );
     custom_modules::sc_perturb( coupler );
 
     coupler.set_option<std::string>("bc_x1","periodic");
@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
         using modules::apply_surface_fluxes;
         coupler.track_max_wind();
         // coupler.run_module( [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); } , "geo"  );
-        coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column_strict (c,dt,3600); } , "col_nudge"     );
+        coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column_strict (c,dt,1000); } , "col_nudge"     );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);      } , "dycore"        );
         coupler.run_module( [&] (Coupler &c) { apply_surface_fluxes             (c,dt);      } , "surface_flux"  );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);      } , "les_closure"   );
