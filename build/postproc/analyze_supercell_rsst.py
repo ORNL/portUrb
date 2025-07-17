@@ -10,15 +10,17 @@ def get_ind(arr,val) :
 nfiles = 41
 times = np.array([120*i/(nfiles-1) for i in range(nfiles)])
 
-workdir = "/lustre/orion/stf006/scratch/imn/RSST"
+workdir = "/lustre/orion/stf006/scratch/imn/RSST/CELL"
 
+nens = 8
+files_ens = [ [f"{workdir}/supercell_ens{j}_{i:08}.nc" for i in range(nfiles)] for j in range(1,nens+1)]
 nexp = 6
-files = [[f"{workdir}/CELL_ORIG_RHO_350/supercell_orig_rho_350_{i:08}.nc"     for i in range(nfiles)],
-         [f"{workdir}/CELL_ORIG_THETA_350/supercell_orig_theta_350_{i:08}.nc" for i in range(nfiles)],
-         [f"{workdir}/CELL_RSS_350/supercell_rsst_350_{i:08}.nc"              for i in range(nfiles)],
-         [f"{workdir}/CELL_RSS_262/supercell_rsst_262_{i:08}.nc"              for i in range(nfiles)],
-         [f"{workdir}/CELL_RSS_174/supercell_rsst_174_{i:08}.nc"              for i in range(nfiles)],
-         [f"{workdir}/CELL_RSS_86/supercell_rsst_86_{i:08}.nc"                for i in range(nfiles)],]
+files = [[f"{workdir}/supercell_orig_rho_350_{i:08}.nc"   for i in range(nfiles)],
+         [f"{workdir}/supercell_orig_theta_350_{i:08}.nc" for i in range(nfiles)],
+         [f"{workdir}/supercell_rsst_350_{i:08}.nc"       for i in range(nfiles)],
+         [f"{workdir}/supercell_rsst_262_{i:08}.nc"       for i in range(nfiles)],
+         [f"{workdir}/supercell_rsst_174_{i:08}.nc"       for i in range(nfiles)],
+         [f"{workdir}/supercell_rsst_86_{i:08}.nc"        for i in range(nfiles)],]
 labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_350","RSS_262","RSS_174","RSS_86"]
 colors = ["black","red","green","blue","cyan","magenta"]
 z = np.array(Dataset(files[0][0],"r")["z"])
@@ -138,131 +140,12 @@ plt.savefig("supercell_max_w.png",dpi=600)
 plt.show()
 plt.close()
 
-orig_x1 = [0.64444,
-1.44444,
-2.15556,
-2.57778,
-2.91111,
-3.2,
-3.42222,
-3.75556,
-4.06667,
-4.48889,
-4.95556,
-5.62222,
-6.28889,
-6.84444,
-7.4,
-8,
-8.37778,
-8.93333,
-9.6,
-10.44444,
-10.91111,
-11.42222,
-11.8,
-12.11111,
-12.66667,
-12.97778,
-13.37778,
-13.91111,
-14.57778,
-15.26667,
-]
-
-orig_y1 = [9.70E-04,
-2.91E-03,
-1.07E-02,
-2.33E-02,
-4.65E-02,
-8.33E-02,
-1.17E-01,
-1.55E-01,
-1.75E-01,
-0.20155,
-0.22771,
-0.25678,
-0.28585,
-0.31395,
-0.33915,
-0.36047,
-0.36725,
-0.36531,
-0.35078,
-0.31298,
-0.28198,
-0.24322,
-0.20543,
-0.17345,
-0.12791,
-0.10174,
-0.0688,
-0.03585,
-0.0126,
-0,
-]
-
-orig_x2 = [4.44E-01,
-7.33E-01,
-1.29E+00,
-1.87E+00,
-2.49E+00,
-3.31E+00,
-4.11E+00,
-5.24E+00,
-6.53E+00,
-7.87E+00,
-8.73333,
-9.46667,
-10.26667,
-10.66667,
-11.15556,
-11.77778,
-12.37778,
-12.84444,
-13.57778,
-14.04444,
-14.44444,
-14.82222,
-15.42222,
-]
-
-orig_y2 = [0.00194,
-0.00388,
-0.00678,
-0.01453,
-0.02713,
-0.06686,
-0.11047,
-0.15504,
-0.2064,
-0.24903,
-0.26163,
-0.2626,
-0.25,
-0.23643,
-0.21318,
-0.16957,
-0.12597,
-0.09012,
-0.03876,
-0.01357,
-0.00388,
-0.00097,
-0,
-]
-
-morr_x = np.arange(0,20,0.5)
-morr_y1 = np.interp(morr_x,orig_x1,orig_y1,left=0,right=0)
-morr_y2 = np.interp(morr_x,orig_x2,orig_y2,left=0,right=0)
 
 for i in [20,40] :
   for j in range(nexp) :
     nc = Dataset(files[j][i],"r")
-    qc = (np.array(nc["graupel"]))/np.array(nc["density_dry"])
+    qc = (np.array(nc["graupel"])+np.array(nc["snow"])+np.array(nc["rain_water"]))# /np.array(nc["density_dry"])
     plt.plot(np.mean(qc ,axis=(1,2))*1000,z/1000,label=labels[j],linewidth=2,color=colors[j])
-  if i == 40 :
-    plt.fill_betweenx(morr_x,morr_y1,morr_y2,color="lightskyblue")
   plt.xlim(left=0)
   plt.ylim(0,15)
   plt.legend()

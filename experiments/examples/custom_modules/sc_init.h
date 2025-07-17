@@ -334,7 +334,7 @@ namespace custom_modules {
         // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
-    } else if (coupler.get_option<std::string>("init_data") == "bomex") {
+    } else if (coupler.get_option<std::string>("init_data") == "shallow_convection") {
 
       auto compute_u = KOKKOS_LAMBDA (real z) -> real {
         real constexpr z0 = 0;
@@ -343,8 +343,8 @@ namespace custom_modules {
         real constexpr v0 = -8.75;
         real constexpr v1 = -8.75;
         real constexpr v2 = -4.61;
-        if      (z >= z0 && z <= z1) { return v0+(v1-v0)/(z1-z0)*z; }
-        else if (z >  z1 && z <= z2) { return v1+(v2-v1)/(z2-z1)*z; }
+        if      (z >= z0 && z <= z1) { return v0+(v1-v0)/(z1-z0)*(z-z0); }
+        else if (z >  z1 && z <= z2) { return v1+(v2-v1)/(z2-z1)*(z-z1); }
         return 0;
       };
       auto compute_qv = KOKKOS_LAMBDA (real z) -> real {
@@ -356,12 +356,12 @@ namespace custom_modules {
         real constexpr v0 = 17.0e-3;
         real constexpr v1 = 16.3e-3;
         real constexpr v2 = 10.7e-3;
-        real constexpr v3 = 4.2e-3;
-        real constexpr v4 = 3.0e-3;
-        if      (z >= z0 && z <= z1) { return v0+(v1-v0)/(z1-z0)*z; }
-        else if (z >  z1 && z <= z2) { return v1+(v2-v1)/(z2-z1)*z; }
-        else if (z >  z2 && z <= z3) { return v2+(v3-v2)/(z3-z2)*z; }
-        else if (z >  z3 && z <= z4) { return v3+(v4-v3)/(z4-z3)*z; }
+        real constexpr v3 = 4.2e-3 ;
+        real constexpr v4 = 3.0e-3 ;
+        if      (z >= z0 && z <= z1) { return v0+(v1-v0)/(z1-z0)*(z-z0); }
+        else if (z >  z1 && z <= z2) { return v1+(v2-v1)/(z2-z1)*(z-z1); }
+        else if (z >  z2 && z <= z3) { return v2+(v3-v2)/(z3-z2)*(z-z2); }
+        else if (z >  z3 && z <= z4) { return v3+(v4-v3)/(z4-z3)*(z-z3); }
         return 0;
       };
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
@@ -375,10 +375,10 @@ namespace custom_modules {
         real constexpr v2 = 302.4;
         real constexpr v3 = 308.2;
         real constexpr v4 = 311.85;
-        if      (z >= z0 && z <= z1) { return v0+(v1-v0)/(z1-z0)*z; }
-        else if (z >  z1 && z <= z2) { return v1+(v2-v1)/(z2-z1)*z; }
-        else if (z >  z2 && z <= z3) { return v2+(v3-v2)/(z3-z2)*z; }
-        else if (z >  z3 && z <= z4) { return v3+(v4-v3)/(z4-z3)*z; }
+        if      (z >= z0 && z <= z1) { return v0+(v1-v0)/(z1-z0)*(z-z0); }
+        else if (z >  z1 && z <= z2) { return v1+(v2-v1)/(z2-z1)*(z-z1); }
+        else if (z >  z2 && z <= z3) { return v2+(v3-v2)/(z3-z2)*(z-z2); }
+        else if (z >  z3 && z <= z4) { return v3+(v4-v3)/(z4-z3)*(z-z3); }
         return 0;
       };
       auto p0 = 1.015e5;
@@ -400,7 +400,7 @@ namespace custom_modules {
           real rho       = rho_theta / theta;
           real rho_d     = rho / (1 + qv);
           real rho_v     = rho - rho_d;
-          real u         = compute_u(z);
+          real u         = 0; // compute_u(z);
           real v         = 0;
           real w         = 0;
           real T         = p/(rho_d*R_d+rho_v*R_v);
@@ -412,6 +412,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
+        real z = (k+0.5)*dz;
         // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 

@@ -31,8 +31,7 @@ int main(int argc, char** argv) {
     bool        is_restart  = false;
     real        u_g         = 10;
     real        v_g         = 0 ;
-    real        lat_g       = 43.289340204;  // 54 deg in fast eddy probably should've been 45?
-                                             // Most studies use f=10^-4 which means lat=43.289
+    real        lat_g       = 43.289340204;
 
     core::Coupler coupler;
     coupler.set_option<std::string>( "out_prefix"            , out_prefix    );

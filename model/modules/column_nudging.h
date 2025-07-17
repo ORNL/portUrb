@@ -48,6 +48,26 @@ namespace modules {
     }
 
 
+    void nudge_to_column_strict( core::Coupler &coupler , real dt , real time_scale = 900 ) {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      int nx   = coupler.get_nx();
+      int ny   = coupler.get_ny();
+      int nz   = coupler.get_nz();
+      auto &dm = coupler.get_data_manager_readwrite();
+      auto immersed = dm.get<real const,3>("immersed_proportion");
+      core::MultiField<real,3> state;
+      for (int i=0; i < names.size(); i++) { state.add_field( dm.get<real,3>(names.at(i)) ); }
+      YAKL_SCOPE( column , this->column );
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        if (immersed(k,j,i) == 0) {
+          state(l,k,j,i) += dt * ( column(l,k) - state(l,k,j,i) ) / time_scale;
+        }
+      });
+    }
+
+
     template <class T>
     real2d get_column_average( core::Coupler const &coupler , core::MultiField<T,3> &state ) const {
       using yakl::c::parallel_for;

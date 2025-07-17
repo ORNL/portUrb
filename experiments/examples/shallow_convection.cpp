@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_rsst.h"
+#include "dynamics_rk_simpler.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -9,6 +9,7 @@
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
 #include "microphysics_morr.h"
+#include "column_nudging.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -17,41 +18,38 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
-    if ( !config ) { endrun("ERROR: Invalid supercell input file"); }
-    auto sim_time      = config["sim_time"    ].as<real       >(7201);
-    auto xlen          = config["xlen"        ].as<real       >(200000);
-    auto ylen          = config["ylen"        ].as<real       >(200000);
-    auto zlen          = config["zlen"        ].as<real       >(20000);
-    auto nx_glob       = config["nx_glob"     ].as<int        >(400);
-    auto ny_glob       = config["ny_glob"     ].as<int        >(400);
-    auto nz            = config["nz"          ].as<int        >(40);
-    auto out_prefix    = config["out_prefix"  ].as<std::string>("supercell");
-    auto dtphys_in     = config["dt_phys"     ].as<real       >(0);
-    auto dyn_cycle     = config["dyn_cycle"   ].as<int        >(10);
-    auto out_freq      = config["out_freq"    ].as<real       >(900);
-    auto inform_freq   = config["inform_freq" ].as<real       >(10);
-    auto is_restart    = config["is_restart"  ].as<bool       >(false);
-    auto restart_file  = config["restart_file"].as<std::string>("");
-    auto cfl           = config["cfl"         ].as<real       >(0.6);
-    auto cs            = config["cs"          ].as<real       >(350);
-    auto buoy_theta    = config["buoy_theta"  ].as<bool       >(false);
+    real        sim_time    = 3600*24+1;
+    real        out_freq    = 1800;
+    std::string out_prefix  = "shallow_convection";
+    real        inform_freq = 10;
+    real        xlen        = 25000;
+    real        ylen        = 25000;
+    real        zlen        = 3000;
+    real        dx          = 50;
+    real        dtphys_in   = 0.;
+    real        dyn_cycle   = 1;
+    bool        is_restart  = false;
+    real        u_g         = 10;
+    real        v_g         = 0 ;
+    real        lat_g       = 43.289340204;
 
     core::Coupler coupler;
     coupler.set_option<std::string>( "out_prefix"                , out_prefix  );
-    coupler.set_option<std::string>( "init_data"                 , "supercell" );
+    coupler.set_option<std::string>( "init_data"                 , "shallow_convection" );
     coupler.set_option<real       >( "out_freq"                  , out_freq    );
     coupler.set_option<bool       >( "is_restart"                , is_restart  );
-    coupler.set_option<std::string>( "restart_file"              , restart_file);
+    coupler.set_option<std::string>( "restart_file"              , ""          );
     coupler.set_option<real       >( "latitude"                  , 0.          );
-    coupler.set_option<real       >( "cfl"                       , cfl         );
+    coupler.set_option<real       >( "cfl"                       , 0.6         );
     coupler.set_option<bool       >( "enable_gravity"            , true        );
-    coupler.set_option<int        >( "micro_morr_ihail"          , 1           );
-    coupler.set_option<real       >( "dycore_max_wind"           , 90          );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta"     , buoy_theta  );
-    coupler.set_option<real       >( "dycore_cs"                 , cs          );
+    coupler.set_option<int        >( "micro_morr_ihail"          , 0           );
+    coupler.set_option<real       >( "dycore_max_wind"           , 15          );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"     , false       );
+    coupler.set_option<real       >( "dycore_cs"                 , 350         );
+    coupler.set_option<real       >( "roughness"                 , 2.5e-5      );
+    coupler.set_option<bool       >( "kessler_no_rain"           , true        );
 
-    coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
+    coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , zlen/dx, ylen/dx, xlen/dx);
 
     coupler.set_grid( xlen , ylen , zlen );
 
@@ -59,12 +57,14 @@ int main(int argc, char** argv) {
     custom_modules::Time_Averager              time_averager;
     modules::LES_Closure                       les_closure;
     modules::Microphysics_Morrison             micro;
+    modules::ColumnNudger                      col_nudge;
 
     micro        .init        ( coupler );
     custom_modules::sc_init   ( coupler );
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
     time_averager.init        ( coupler );
+    col_nudge.set_column      ( coupler , {"density_dry","temp","water_vapor"} );
     custom_modules::sc_perturb( coupler );
 
     coupler.set_option<std::string>("bc_x1","periodic");
@@ -100,12 +100,15 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
+        using modules::apply_surface_fluxes;
         coupler.track_max_wind();
-        // coupler.run_module( [&] (Coupler &c) { modules::sponge_layer   (c,dt,dt,0.02); } , "sponge"         );
-        coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt);         } , "dycore"         );
-        coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt);         } , "les_closure"    );
-        coupler.run_module( [&] (Coupler &c) { micro.time_step         (c,dt);         } , "microphysics"   );
-        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt);         } , "time_averager"  );
+        // coupler.run_module( [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); } , "geo"  );
+        coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column_strict (c,dt,3600); } , "col_nudge"     );
+        coupler.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);      } , "dycore"        );
+        coupler.run_module( [&] (Coupler &c) { apply_surface_fluxes             (c,dt);      } , "surface_flux"  );
+        coupler.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);      } , "les_closure"   );
+        coupler.run_module( [&] (Coupler &c) { micro.time_step                  (c,dt);      } , "microphysics"  );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);      } , "time_averager" );
       }
 
       // Update time step

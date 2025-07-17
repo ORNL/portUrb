@@ -146,7 +146,8 @@ namespace modules {
       ////////////////////////////////////////////
       // Call Kessler code
       ////////////////////////////////////////////
-      kessler(theta, qv, qc, qr, rho_dry, precl, zmid, exner, dt, R_d, cp_d, p0);
+      auto no_rain = coupler.get_option<bool>("kessler_no_rain",false);
+      kessler(theta, qv, qc, qr, rho_dry, precl, zmid, exner, dt, R_d, cp_d, p0, no_rain);
 
       // Post-process microphysics changes back to the coupler state
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
@@ -231,7 +232,7 @@ namespace modules {
     void kessler(real2d const &theta, real2d const &qv, real2d const &qc,
                  real2d const &qr, realConst2d rho,
                  real1d const &precl, realConst2d z, realConst2d pk, real dt,
-                 real Rd, real cp, real p0) const {
+                 real Rd, real cp, real p0, bool no_rain) const {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
 
@@ -302,6 +303,7 @@ namespace modules {
           // Autoconversion and accretion rates following KW eq. 2.13a,b
           real qrprod = qc(k,i) - ( qc(k,i)-dt0*std::max( 0.001_fp * (qc(k,i)-0.001_fp) , 0._fp ) ) /
                                   ( 1 + dt0 * 2.2_fp * pow( qr(k,i) , 0.875_fp ) );
+          if (no_rain) qrprod = 0;
           qc(k,i) = std::max( qc(k,i)-qrprod , 0._fp );
           qr(k,i) = std::max( qr(k,i)+qrprod+sed(k,i) , 0._fp );
 

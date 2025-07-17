@@ -13,13 +13,13 @@ ny_glob: 500
 nz     : 50
 
 # Output filename
-out_prefix: supercell_orig_theta_350
+out_prefix: supercell_rsst_86
 
 # Physics time step (zero means use dynamics time step)
 dt_phys: 0.
 
 # Dynamics subcycling (if dt_phys == 0)
-dyn_cycle: 5
+dyn_cycle: 2
 
 # Output frequency in seconds (negative number turns off all file I/O)
 out_freq: 180.
@@ -34,7 +34,7 @@ restart_file: none
 # CFL value for the dynamical core to use (typically 0.6-0.7)
 cfl: 0.6
 
-cs: 350
+cs: 86
 
 buoy_theta: true
 
