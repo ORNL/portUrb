@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     int         dyn_cycle   = 1;
     real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_neutral_rss_010";
+    std::string out_prefix  = "ABL_neutral_rss_10";
     bool        is_restart  = false;
     real        u_g         = 10;
     real        v_g         = 0 ;

@@ -50,69 +50,99 @@ namespace modules {
       int indk, indj, indi;
       indk = hs+k;  indj = hs+j;  indi = hs+i-1;
       if (imm_prop(indk,indj,indi) > 0) {
-        real roughness = imm_rough(indk,indj,indi);
-        real lgx  = std::log((dx/2+roughness)/roughness);
+        real z0   = imm_rough(indk,indj,indi);
+        real lgx  = std::log((dx/2+z0)/z0);
         real c_dx = vk*vk/(lgx*lgx);
-        real T0  = imm_temp(indk,indj,indi);
-        real mag = std::sqrt(v*v+w*w);
+        real T0   = imm_temp(indk,indj,indi);
+        real mag  = std::sqrt(v*v+w*w);
         tend_v(k,j,i) += -c_dx*(v-0 )*mag/dx;
         tend_w(k,j,i) += -c_dx*(w-0 )*mag/dx;
-        if (T0 != 0) tend_T(k,j,i) += -c_dx*(T-T0)*mag/dx;
+        if (T0 != 0) {
+          real z0T  = 0.1*z0;
+          real lgxT = std::log((dx/2+z0T)/z0T);
+          real c_dxT = vk*vk/(lgx*lgxT);
+          tend_T(k,j,i) += -c_dxT*(T-T0)*mag/dx;
+        }
       }
       indk = hs+k;  indj = hs+j;  indi = hs+i+1;
       if (imm_prop(indk,indj,indi) > 0) {
-        real roughness = imm_rough(indk,indj,indi);
-        real lgx  = std::log((dx/2+roughness)/roughness);
+        real z0   = imm_rough(indk,indj,indi);
+        real lgx  = std::log((dx/2+z0)/z0);
         real c_dx = vk*vk/(lgx*lgx);
-        real T0  = imm_temp(indk,indj,indi);
-        real mag = std::sqrt(v*v+w*w);
+        real T0   = imm_temp(indk,indj,indi);
+        real mag  = std::sqrt(v*v+w*w);
         tend_v(k,j,i) += -c_dx*(v-0 )*mag/dx;
         tend_w(k,j,i) += -c_dx*(w-0 )*mag/dx;
-        if (T0 != 0) tend_T(k,j,i) += -c_dx*(T-T0)*mag/dx;
+        if (T0 != 0) {
+          real z0T  = 0.1*z0;
+          real lgxT = std::log((dx/2+z0T)/z0T);
+          real c_dxT = vk*vk/(lgx*lgxT);
+          tend_T(k,j,i) += -c_dxT*(T-T0)*mag/dx;
+        }
       }
       indk = hs+k;  indj = hs+j-1;  indi = hs+i;
       if (imm_prop(indk,indj,indi) > 0) {
-        real roughness = imm_rough(indk,indj,indi);
-        real lgy  = std::log((dy/2+roughness)/roughness);
+        real z0   = imm_rough(indk,indj,indi);
+        real lgy  = std::log((dy/2+z0)/z0);
         real c_dy = vk*vk/(lgy*lgy);
-        real T0  = imm_temp(indk,indj,indi);
-        real mag = std::sqrt(u*u+w*w);
+        real T0   = imm_temp(indk,indj,indi);
+        real mag  = std::sqrt(u*u+w*w);
         tend_u(k,j,i) += -c_dy*(u-0 )*mag/dy;
         tend_w(k,j,i) += -c_dy*(w-0 )*mag/dy;
-        if (T0 != 0) tend_T(k,j,i) += -c_dy*(T-T0)*mag/dy;
+        if (T0 != 0) {
+          real z0T  = 0.1*z0;
+          real lgyT = std::log((dy/2+z0T)/z0T);
+          real c_dyT = vk*vk/(lgy*lgyT);
+          tend_T(k,j,i) += -c_dyT*(T-T0)*mag/dy;
+        }
       }
       indk = hs+k;  indj = hs+j+1;  indi = hs+i;
       if (imm_prop(indk,indj,indi) > 0) {
-        real roughness = imm_rough(indk,indj,indi);
-        real lgy  = std::log((dy/2+roughness)/roughness);
+        real z0   = imm_rough(indk,indj,indi);
+        real lgy  = std::log((dy/2+z0)/z0);
         real c_dy = vk*vk/(lgy*lgy);
-        real T0  = imm_temp(indk,indj,indi);
-        real mag = std::sqrt(u*u+w*w);
+        real T0   = imm_temp(indk,indj,indi);
+        real mag  = std::sqrt(u*u+w*w);
         tend_u(k,j,i) += -c_dy*(u-0 )*mag/dy;
         tend_w(k,j,i) += -c_dy*(w-0 )*mag/dy;
-        if (T0 != 0) tend_T(k,j,i) += -c_dy*(T-T0)*mag/dy;
+        if (T0 != 0) {
+          real z0T  = 0.1*z0;
+          real lgyT = std::log((dy/2+z0T)/z0T);
+          real c_dyT = vk*vk/(lgy*lgyT);
+          tend_T(k,j,i) += -c_dyT*(T-T0)*mag/dy;
+        }
       }
       indk = hs+k-1;  indj = hs+j;  indi = hs+i;
       if (imm_prop(indk,indj,indi) > 0) {
-        real roughness = imm_rough(indk,indj,indi);
-        real lgz  = std::log((dz/2+roughness)/roughness);
+        real z0   = imm_rough(indk,indj,indi);
+        real lgz  = std::log((dz/2+z0)/z0);
         real c_dz = vk*vk/(lgz*lgz);
-        real T0  = imm_temp(indk,indj,indi);
-        real mag = std::sqrt(u*u+v*v);
+        real T0   = imm_temp(indk,indj,indi);
+        real mag  = std::sqrt(u*u+v*v);
         tend_u(k,j,i) += -c_dz*(u-0 )*mag/dz;
         tend_v(k,j,i) += -c_dz*(v-0 )*mag/dz;
-        if (T0 != 0) tend_T(k,j,i) += -c_dz*(T-T0)*mag/dz;
+        if (T0 != 0) {
+          real z0T  = 0.1*z0;
+          real lgzT = std::log((dz/2+z0T)/z0T);
+          real c_dzT = vk*vk/(lgz*lgzT);
+          tend_T(k,j,i) += -c_dzT*(T-T0)*mag/dz;
+        }
       }
       indk = hs+k+1;  indj = hs+j;  indi = hs+i;
       if (imm_prop(indk,indj,indi) > 0) {
-        real roughness = imm_rough(indk,indj,indi);
-        real lgz  = std::log((dz/2+roughness)/roughness);
+        real z0   = imm_rough(indk,indj,indi);
+        real lgz  = std::log((dz/2+z0)/z0);
         real c_dz = vk*vk/(lgz*lgz);
-        real T0  = imm_temp(indk,indj,indi);
-        real mag = std::sqrt(u*u+v*v);
+        real T0   = imm_temp(indk,indj,indi);
+        real mag  = std::sqrt(u*u+v*v);
         tend_u(k,j,i) += -c_dz*(u-0 )*mag/dz;
         tend_v(k,j,i) += -c_dz*(v-0 )*mag/dz;
-        if (T0 != 0) tend_T(k,j,i) += -c_dz*(T-T0)*mag/dz;
+        if (T0 != 0) {
+          real z0T  = 0.1*z0;
+          real lgzT = std::log((dz/2+z0T)/z0T);
+          real c_dzT = vk*vk/(lgz*lgzT);
+          tend_T(k,j,i) += -c_dzT*(T-T0)*mag/dz;
+        }
       }
     });
 

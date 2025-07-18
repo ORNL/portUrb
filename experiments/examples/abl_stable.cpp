@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_rk_rsst.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -17,18 +17,18 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real        sim_time    = 3600*9+1;
-    int         nx_glob     = 200;
-    int         ny_glob     = 200;
-    int         nz          = 200;
-    real        xlen        = 400;
-    real        ylen        = 400;
-    real        zlen        = 400;
+    real        sim_time    = 3600*4+1;
+    int         nx_glob     = 100;
+    int         ny_glob     = 100;
+    int         nz          = 150;
+    real        xlen        = 200;
+    real        ylen        = 200;
+    real        zlen        = 300;
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 10;
-    real        out_freq    = 1800;
+    int         dyn_cycle   = 1;
+    real        out_freq    = 720;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_stable";
+    std::string out_prefix  = "ABL_stable_rss_10";
     bool        is_restart  = false;
     real        u_g         = 8;
     real        v_g         = 0;
@@ -45,8 +45,10 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "roughness"      , 0.05             );
     coupler.set_option<real       >( "cfl"            , 0.6              );
     coupler.set_option<bool       >( "enable_gravity" , true             );
-    coupler.set_option<bool       >( "weno_all"       , true             );
     coupler.set_option<real       >( "sfc_cool_rate"  , scr              );
+    coupler.set_option<real       >( "dycore_max_wind"       , 15        );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true      );
+    coupler.set_option<real       >( "dycore_cs"             , 10        );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 
@@ -92,6 +94,7 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
+        coupler.track_max_wind();
         auto run_scr       = [&] (Coupler &c) { custom_modules::surface_cooling  (c,dt);               };
         auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
         auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
@@ -112,6 +115,7 @@ int main(int argc, char** argv) {
       etime += dt; // Advance elapsed time
       coupler.set_option<real>("elapsed_time",etime);
       if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
+        if (coupler.is_mainproc()) std::cout << "MaxWind [" << coupler.get_option<real>("coupler_max_wind") << "] , ";
         coupler.inform_user();
         inform_counter.reset();
       }

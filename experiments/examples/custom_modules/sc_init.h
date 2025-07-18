@@ -619,7 +619,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable_bvf") {

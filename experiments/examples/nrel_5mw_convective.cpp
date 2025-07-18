@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_rk_rsst.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     std::string init_data         = "nrel_5mw_convective";
     real        out_freq          = 1000;
     real        inform_freq       = 10;
-    std::string out_prefix        = "nrel_5mw_convective_orig_rho_350";
+    std::string out_prefix        = "nrel_5mw_convective_rss_18";
     std::string out_prefix_prec   = out_prefix+std::string("_precursor");
     bool        is_restart        = false;
     std::string restart_file      = "";
@@ -80,8 +80,8 @@ int main(int argc, char** argv) {
     coupler_main.set_option<bool       >( "turbine_orig_C_T"          , true              );
     coupler_main.set_option<real       >( "turbine_f_TKE"             , 0.25              );
     coupler_main.set_option<real       >( "dycore_max_wind"           , 20                );
-    coupler_main.set_option<bool       >( "dycore_buoyancy_theta"     , false             );
-    coupler_main.set_option<real       >( "dycore_cs"                 , 350               );
+    coupler_main.set_option<bool       >( "dycore_buoyancy_theta"     , true              );
+    coupler_main.set_option<real       >( "dycore_cs"                 , 18                );
 
     coupler_main.set_parallel_comm( MPI_COMM_WORLD );
 
