@@ -7,7 +7,7 @@
 #SBATCH -J portUrb
 #SBATCH -o %x-%j.out
 #SBATCH -t 24:00:00
-#SBATCH -N 2
+#SBATCH -N 4
 
 export GATOR_INITIAL_MB=39000
 

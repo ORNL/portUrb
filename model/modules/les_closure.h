@@ -49,7 +49,7 @@ namespace modules {
       auto grav    = coupler.get_option<real>("grav"   );
       auto &dm     = coupler.get_data_manager_readwrite();
       coupler.add_tracer( "TKE" , "mass-weighted TKE" , true , false , false );
-      dm.get<real,3>("TKE") = 0.1;
+      dm.get<real,3>("TKE") = 1.e-6;
       real4d state , tracers;
       real3d tke;
       convert_coupler_to_dynamics( coupler , state , tracers , tke );
@@ -207,7 +207,7 @@ namespace modules {
             real K           = 0.5_fp * ( tke      (hs+k,hs+j,hs+i-1) + tke      (hs+k,hs+j,hs+i) );
             real t           = 0.5_fp * ( state(idT,hs+k,hs+j,hs+i-1) + state(idT,hs+k,hs+j,hs+i) )+hy_t(hs+k);
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
-            real ell         = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
+            real ell         = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-6_fp) , delta );
             real km          = total_mult * 0.1_fp * ell * std::sqrt(K);
             real Pr_t        = delta / (1+2*ell);
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_x );
@@ -255,7 +255,7 @@ namespace modules {
             real K    = 0.5_fp * ( tke      (hs+k,hs+j-1,hs+i) + tke      (hs+k,hs+j,hs+i) );
             real t    = 0.5_fp * ( state(idT,hs+k,hs+j-1,hs+i) + state(idT,hs+k,hs+j,hs+i) )+hy_t(hs+k);
             real N    = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
-            real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
+            real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-6_fp) , delta );
             real km   = total_mult * 0.1_fp * ell * std::sqrt(K);
             real Pr_t = delta / (1+2*ell);
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_y );
@@ -301,7 +301,7 @@ namespace modules {
             real K    = 0.5_fp * ( tke      (hs+k-1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
             real t    = 0.5_fp * ( state(idT,hs+k-1,hs+j,hs+i) + state(idT,hs+k,hs+j,hs+i) + hy_t(hs+k-1) + hy_t(hs+k) );
             real N    = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
-            real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
+            real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-6_fp) , delta );
             real km   = total_mult * 0.1_fp * ell * std::sqrt(K);
             real Pr_t = delta / (1+2*ell);
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_z );
@@ -329,7 +329,7 @@ namespace modules {
         real dt_dz = ( state(idT,hs+k+1,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i) ) / (2*dz);
         real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(2*dz);
         real N     = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
-        real ell   = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-20_fp) , delta );
+        real ell   = std::min( std::min( 0.76_fp*std::sqrt(K)/(N+1.e-6_fp) , delta ) , (k+0.5)*dz*0.4 );
         real km    = 0.1_fp * ell * std::sqrt(K);
         real Pr_t  = delta / (1+2*ell);
         // Compute tke cell-averaged source
@@ -340,7 +340,8 @@ namespace modules {
             tke_source  (k,j,i) += -(grav*rho*km)/(t*Pr_t)*(dt_dz+dth_dz);
           }
           // TKE dissipation
-          tke_source  (k,j,i) -=  dissipation_mult*rho*(0.19_fp + 0.51_fp*ell/delta)/delta*std::pow(K,1.5_fp);
+          // tke_source(k,j,i) -= dissipation_mult*rho*(0.19_fp + 0.51_fp*ell/delta)/delta*std::pow(K,1.5_fp);
+          tke_source(k,j,i) -= dissipation_mult*0.85*rho*std::pow(K,1.5_fp)/(ell+1.e-6_fp);
           // Shear production
           int im1 = immersed(hs+k,hs+j,hs+i-1) > 0 ? i : i-1;
           int ip1 = immersed(hs+k,hs+j,hs+i+1) > 0 ? i : i+1;
@@ -357,16 +358,24 @@ namespace modules {
           real du_dz = ( state(idU,hs+kp1,hs+j,hs+i) - state(idU,hs+km1,hs+j,hs+i) ) / (2*dz);
           real dv_dz = ( state(idV,hs+kp1,hs+j,hs+i) - state(idV,hs+km1,hs+j,hs+i) ) / (2*dz);
           real dw_dz = ( state(idW,hs+k+1,hs+j,hs+i) - state(idW,hs+k-1,hs+j,hs+i) ) / (2*dz);
-          real j1_i1 = (du_dx + du_dx) * du_dx;
-          real j1_i2 = (dv_dx + du_dy) * dv_dx;
-          real j1_i3 = (dw_dx + du_dz) * dw_dx;
-          real j2_i1 = (du_dy + dv_dx) * du_dy;
-          real j2_i2 = (dv_dy + dv_dy) * dv_dy;
-          real j2_i3 = (dw_dy + dv_dz) * dw_dy;
-          real j3_i1 = (du_dz + dw_dx) * du_dz;
-          real j3_i2 = (dv_dz + dw_dy) * dv_dz;
-          real j3_i3 = (dw_dz + dw_dz) * dw_dz;
-          tke_source   (k,j,i) += shear_prod_mult*rho*km*(j1_i1 + j1_i2 + j1_i3 + j2_i1 + j2_i2 + j2_i3 + j3_i1 + j3_i2 + j3_i3);
+          // real j1_i1 = (du_dx + du_dx) * du_dx;
+          // real j1_i2 = (dv_dx + du_dy) * dv_dx;
+          // real j1_i3 = (dw_dx + du_dz) * dw_dx;
+          // real j2_i1 = (du_dy + dv_dx) * du_dy;
+          // real j2_i2 = (dv_dy + dv_dy) * dv_dy;
+          // real j2_i3 = (dw_dy + dv_dz) * dw_dy;
+          // real j3_i1 = (du_dz + dw_dx) * du_dz;
+          // real j3_i2 = (dv_dz + dw_dy) * dv_dz;
+          // real j3_i3 = (dw_dz + dw_dz) * dw_dz;
+          // tke_source(k,j,i) += shear_prod_mult*rho*km*(j1_i1 + j1_i2 + j1_i3 + j2_i1 + j2_i2 + j2_i3 + j3_i1 + j3_i2 + j3_i3);
+          real S11 = du_dx;
+          real S22 = dv_dy;
+          real S33 = dw_dz;
+          real S12 = 0.5 * (du_dy + dv_dx);
+          real S13 = 0.5 * (du_dz + dw_dx);
+          real S23 = 0.5 * (dv_dz + dw_dy);
+          real S_mag2 = S11*S11 + S22*S22 + S33*S33 + 2.0 * (S12*S12 + S13*S13 + S23*S23);
+          tke_source(k,j,i) += shear_prod_mult*rho*km*S_mag2;
         }
       });
 
