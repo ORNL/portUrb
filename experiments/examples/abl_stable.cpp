@@ -26,9 +26,9 @@ int main(int argc, char** argv) {
     real        zlen        = 300;
     real        dtphys_in   = 0;    // Use dycore time step
     int         dyn_cycle   = 1;
-    real        out_freq    = 720;
+    real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_stable_rss_20";
+    std::string out_prefix  = "ABL_stable_rss_15";
     bool        is_restart  = false;
     real        u_g         = 8;
     real        v_g         = 0;
@@ -46,9 +46,9 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "cfl"            , 0.6              );
     coupler.set_option<bool       >( "enable_gravity" , true             );
     coupler.set_option<real       >( "sfc_cool_rate"  , scr              );
-    coupler.set_option<real       >( "dycore_max_wind"       , 15        );
+    coupler.set_option<real       >( "dycore_max_wind"       , 10        );
     coupler.set_option<bool       >( "dycore_buoyancy_theta" , true      );
-    coupler.set_option<real       >( "dycore_cs"             , 20        );
+    coupler.set_option<real       >( "dycore_cs"             , 15        );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 

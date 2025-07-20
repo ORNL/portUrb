@@ -5,7 +5,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
 import xarray
 
-workdir = "/lustre/storm/nwp501/scratch/imn/portUrb/build"
+workdir = "/lustre/storm/nwp501/scratch/imn/rsst_paper"
 files    = [f"{workdir}/nrel_5mw_convective_orig_rho_350_precursor",
             f"{workdir}/nrel_5mw_convective_orig_theta_350_precursor",
             f"{workdir}/nrel_5mw_convective_rss_350_precursor",
@@ -47,7 +47,7 @@ for j in range(nexp) :
 ax.set_xlabel("velocity magnitude (m/s)")
 ax.set_ylabel("z-location (km)")
 ax.set_yscale("log")
-ax.legend(loc="upper left")
+ax.legend(loc="lower right")
 # ax.set_xlim(left=0)
 ax.margins(x=0)
 plt.grid()
