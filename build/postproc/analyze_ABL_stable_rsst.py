@@ -11,14 +11,13 @@ files    = [f"{workdir}/ABL_stable_orig_rho_350",
             f"{workdir}/ABL_stable_rss_350",
             f"{workdir}/ABL_stable_rss_100",
             f"{workdir}/ABL_stable_rss_50",
-            f"{workdir}/ABL_stable_rss_20",
-            f"{workdir}/ABL_stable_rss_15",
-            f"{workdir}/ABL_stable_rss_10"]
-labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_350","RSS_100","RSS_50","rss_20","rss_15","rss_10"]
+            f"{workdir}/ABL_stable_rss_20"]
+cs     = [350,350,350,100,50,20]
+labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_350","RSS_100","RSS_50","rss_20"]
 colors = ["black","red","green","blue","cyan","magenta","orange","brown"]
 styles = ["-","-","-","-","-","-","-","-"]
-nexp = 8
-times = [11,12,13,14,15,16,17,18]
+nexp = 6
+times = [10,11,12,13,14,15,16,17,18]
 
 def spectra(T,dx = 1) :
   spd  = np.abs( np.fft.rfft(T[0,0,:]) )**2
@@ -34,6 +33,49 @@ def spectra(T,dx = 1) :
 def get_ind(arr,val) :
     return np.argmin(np.abs(arr-val))
 
+
+fig = plt.figure(figsize=(4,6))
+ax = fig.gca()
+for j in range(nexp) :
+  nc   = Dataset(f"{files[j]}_00000010.nc","r")
+  z    = np.array(nc["z"])/1000
+  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
+  pert = np.mean(pert,axis=(1,2))
+  pert = pert - np.mean(pert)
+  z2 = get_ind(z,1.25)
+  ax.plot(pert[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
+ax.set_xlabel("pressure perturbation (Pa)")
+ax.set_ylabel("z-location (km)")
+ax.legend(loc="upper right")
+# ax.set_xlim(left=0)
+ax.margins(x=0)
+plt.grid()
+plt.tight_layout()
+plt.savefig("ABL_stable_pp_rhop_allcs_5hr.png",dpi=600)
+plt.show()
+plt.close()
+
+fig = plt.figure(figsize=(4,6))
+ax = fig.gca()
+for j in range(nexp) :
+  nc   = Dataset(f"{files[j]}_00000018.nc","r")
+  z    = np.array(nc["z"])/1000
+  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
+  pert = np.mean(pert,axis=(1,2))
+  pert = pert - np.mean(pert)
+  z2 = get_ind(z,1.25)
+  ax.plot(pert[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
+ax.set_xlabel("pressure perturbation (Pa)")
+ax.set_ylabel("z-location (km)")
+ax.legend(loc="upper right")
+# ax.set_xlim(left=0)
+ax.margins(x=0)
+plt.grid()
+plt.tight_layout()
+plt.savefig("ABL_stable_pp_rhop_allcs_9hr.png",dpi=600)
+plt.show()
+plt.close()
+
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
@@ -42,8 +84,6 @@ for j in range(nexp) :
   uvel = np.array(nc["uvel"][:,:,:])
   vvel = np.array(nc["vvel"][:,:,:])
   wvel = np.array(nc["wvel"][:,:,:])
-  rhop = np.array(nc["density_pert"][:,:,:])
-  print(f"{files[j]}: max(abs(rho'))={np.max(np.abs(rhop))}")
   mag  = np.sqrt(uvel*uvel+vvel*vvel+wvel*wvel)
   umean = np.mean(mag,axis=(1,2))
   z2 = get_ind(z,1.25)

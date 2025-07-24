@@ -13,6 +13,7 @@ files    = [f"{workdir}/ABL_neutral_orig_rho_350",
             f"{workdir}/ABL_neutral_rss_50",
             f"{workdir}/ABL_neutral_rss_12",
             f"{workdir}/ABL_neutral_rss_10"]
+cs     = [350,350,350,100,50,12,10]
 labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_350","RSS_100","RSS_50","RSS_12","RSS_10"]
 colors = ["black","red","green","blue","cyan","magenta","orange"]
 styles = ["-","-","-","-","-","-","-"]
@@ -32,6 +33,48 @@ def spectra(T,dx = 1) :
 
 def get_ind(arr,val) :
     return np.argmin(np.abs(arr-val))
+
+fig = plt.figure(figsize=(4,6))
+ax = fig.gca()
+for j in range(nexp) :
+  nc   = Dataset(f"{files[j]}_00000010.nc","r")
+  z    = np.array(nc["z"])/1000
+  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
+  pert = np.mean(pert,axis=(1,2))
+  pert = pert - np.mean(pert)
+  z2 = get_ind(z,1.25)
+  ax.plot(pert[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
+ax.set_xlabel("pressure perturbation (Pa)")
+ax.set_ylabel("z-location (km)")
+ax.legend(loc="upper right")
+# ax.set_xlim(left=0)
+ax.margins(x=0)
+plt.grid()
+plt.tight_layout()
+plt.savefig("ABL_neutral_pp_rhop_allcs_5hr.png",dpi=600)
+plt.show()
+plt.close()
+
+fig = plt.figure(figsize=(4,6))
+ax = fig.gca()
+for j in range(nexp) :
+  nc   = Dataset(f"{files[j]}_00000020.nc","r")
+  z    = np.array(nc["z"])/1000
+  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
+  pert = np.mean(pert,axis=(1,2))
+  pert = pert - np.mean(pert)
+  z2 = get_ind(z,1.25)
+  ax.plot(pert[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
+ax.set_xlabel("pressure perturbation (Pa)")
+ax.set_ylabel("z-location (km)")
+ax.legend(loc="upper right")
+# ax.set_xlim(left=0)
+ax.margins(x=0)
+plt.grid()
+plt.tight_layout()
+plt.savefig("ABL_neutral_pp_rhop_allcs_10hr.png",dpi=600)
+plt.show()
+plt.close()
 
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()

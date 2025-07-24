@@ -109,41 +109,50 @@ namespace custom_modules {
 
     if (coupler.get_option<std::string>("init_data") == "building") {
 
-      auto u_g = coupler.get_option<real>("geostrophic_u",10.);
-      auto v_g = coupler.get_option<real>("geostrophic_v",0. );
-      real constexpr theta0     = 300;
-      real1d press("press",nz);
-      if (enable_gravity) {
-        real slope = -grav*std::pow( p0 , R_d/cp_d ) / (cp_d*theta0);
-        realHost1d press_host("press",nz);
-        press_host(0) = std::pow( p0 , R_d/cp_d ) + slope*dz/2;
-        for (int k=1; k < nz; k++) { press_host(k) = press_host(k-1) + slope*dz; }
-        for (int k=0; k < nz; k++) { press_host(k) = std::pow( press_host(k) , cp_d/R_d ); }
-        press = press_host.createDeviceCopy();
-      } else {
-        press = p0;
-      }
+      real uref = 10;
+      real href = 300;
+      auto compute_theta = KOKKOS_LAMBDA (real z) -> real { return 300; };
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
+      real x0 = xlen/3;
+      real y0 = ylen/2;
+      real xr = xlen/8;
+      real yr = ylen/8;
+      real z2 = zlen/4;
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        real zloc = (k+0.5_fp)*dz;
-        real p     = press(k);
-        real rt    = std::pow( p/C0 , 1._fp/gamma_d );
-        real r     = rt / theta0;
-        real T     = p/R_d/r;
-        dm_rho_d(k,j,i) = rt / theta0;
-        dm_uvel (k,j,i) = u_g;
-        dm_vvel (k,j,i) = v_g;
-        dm_wvel (k,j,i) = 0;
-        dm_temp (k,j,i) = T;
-        dm_rho_v(k,j,i) = 0;
-        real x0 = 0.2 *nx_glob;
-        real y0 = 0.5 *ny_glob;
-        real xr = 0.05*ny_glob;
-        real yr = 0.05*ny_glob;
-        if ( std::abs(i_beg+i-x0) <= xr && std::abs(j_beg+j-y0) <= yr && k <= 0.3*nz ) {
-          dm_immersed_prop(k,j,i) = 1;
-          dm_uvel         (k,j,i) = 0;
-          dm_vvel         (k,j,i) = 0;
-          dm_wvel         (k,j,i) = 0;
+        dm_rho_d        (k,j,i) = 0;
+        dm_uvel         (k,j,i) = 0;
+        dm_vvel         (k,j,i) = 0;
+        dm_wvel         (k,j,i) = 0;
+        dm_temp         (k,j,i) = 0;
+        dm_rho_v        (k,j,i) = 0;
+        dm_immersed_prop(k,j,i) = 0;
+        for (int kk=0; kk<nqpoints; kk++) {
+          for (int jj=0; jj<nqpoints; jj++) {
+            for (int ii=0; ii<nqpoints; ii++) {
+              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real z         = (      k+0.5)*dz + qpoints(kk)*dz;
+              real theta     = compute_theta(z);
+              real p         = pressGLL(k,kk);
+              real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
+              real rho       = rho_theta / theta;
+              real umag      = uref*std::log((z+roughness)/roughness)/std::log((href+roughness)/roughness);
+              real u         = umag;
+              real v         = 0;
+              real w         = 0;
+              real T         = p/(rho*R_d);
+              real rho_v     = 0;
+              real wt        = qweights(kk)*qweights(jj)*qweights(ii);
+              bool imm       = x >= x0-xr && x <= x0+xr && y >= y0-yr && y <= y0+yr && z <= z2;
+              dm_immersed_prop(k,j,i) += (imm ? 1 : 0) * wt;
+              dm_rho_d        (k,j,i) += rho           * wt;
+              dm_uvel         (k,j,i) += (imm ? 0 : u) * wt;
+              dm_vvel         (k,j,i) += (imm ? 0 : v) * wt;
+              dm_wvel         (k,j,i) += (imm ? 0 : w) * wt;
+              dm_temp         (k,j,i) += T             * wt;
+              dm_rho_v        (k,j,i) += rho_v         * wt;
+            }
+          }
         }
         // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
@@ -619,7 +628,7 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable_bvf") {

@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
     time_averager.init        ( coupler );
-    col_nudge.set_column      ( coupler , {"density_dry","temp"} );
+    col_nudge.set_column      ( coupler , {"water_vapor","temp"} );
     custom_modules::sc_perturb( coupler );
 
     coupler.set_option<std::string>("bc_x1","periodic");

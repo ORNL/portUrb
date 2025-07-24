@@ -10,10 +10,8 @@ def get_ind(arr,val) :
 nfiles = 41
 times = np.array([120*i/(nfiles-1) for i in range(nfiles)])
 
-workdir = "/lustre/orion/stf006/scratch/imn/RSST/CELL"
+workdir = "/lustre/storm/nwp501/scratch/imn/rsst_paper/supercell"
 
-nens = 8
-files_ens = [ [f"{workdir}/supercell_ens{j}_{i:08}.nc" for i in range(nfiles)] for j in range(1,nens+1)]
 nexp = 6
 files = [[f"{workdir}/supercell_orig_rho_350_{i:08}.nc"   for i in range(nfiles)],
          [f"{workdir}/supercell_orig_theta_350_{i:08}.nc" for i in range(nfiles)],
@@ -21,8 +19,53 @@ files = [[f"{workdir}/supercell_orig_rho_350_{i:08}.nc"   for i in range(nfiles)
          [f"{workdir}/supercell_rsst_262_{i:08}.nc"       for i in range(nfiles)],
          [f"{workdir}/supercell_rsst_174_{i:08}.nc"       for i in range(nfiles)],
          [f"{workdir}/supercell_rsst_86_{i:08}.nc"        for i in range(nfiles)],]
+cs = [350,350,350,262,174,86]
 labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_350","RSS_262","RSS_174","RSS_86"]
 colors = ["black","red","green","blue","cyan","magenta"]
+
+
+
+fig = plt.figure(figsize=(4,6))
+ax = fig.gca()
+for j in range(nexp) :
+  nc   = Dataset(f"{files[j][20]}","r")
+  z    = np.array(nc["z"])/1000
+  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
+  pert = np.mean(pert,axis=(1,2))
+  pert = pert - np.mean(pert)
+  ax.plot(pert,z,color=colors[j],label=labels[j])
+ax.set_xlabel("pressure perturbation (Pa)")
+ax.set_ylabel("z-location (km)")
+ax.legend(loc="upper left")
+# ax.set_xlim(left=0)
+ax.margins(x=0)
+plt.grid()
+plt.tight_layout()
+plt.savefig("supercell_pp_rhop_allcs_1hr.png",dpi=600)
+plt.show()
+plt.close()
+
+fig = plt.figure(figsize=(4,6))
+ax = fig.gca()
+for j in range(nexp) :
+  nc   = Dataset(f"{files[j][40]}","r")
+  z    = np.array(nc["z"])/1000
+  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
+  pert = np.mean(pert,axis=(1,2))
+  pert = pert - np.mean(pert)
+  ax.plot(pert,z,color=colors[j],label=labels[j])
+ax.set_xlabel("pressure perturbation (Pa)")
+ax.set_ylabel("z-location (km)")
+ax.legend(loc="upper left")
+# ax.set_xlim(left=0)
+ax.margins(x=0)
+plt.grid()
+plt.tight_layout()
+plt.savefig("supercell_pp_rhop_allcs_2hr.png",dpi=600)
+plt.show()
+plt.close()
+
+
 z = np.array(Dataset(files[0][0],"r")["z"])
 sfc_theta_min  = np.array([[0. for i in range(nfiles)] for j in range(nexp)])
 cold_pool_frac = np.array([[0. for i in range(nfiles)] for j in range(nexp)])

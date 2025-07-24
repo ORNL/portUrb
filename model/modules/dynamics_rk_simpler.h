@@ -803,8 +803,7 @@ namespace modules {
             if (buoy_theta) {
               real thetap = fields_loc(idT,hs+k,hs+j,hs+i);
               real rho    = state(idR,hs+k,hs+j,hs+i);
-              real theta  = hy_theta_cells(hs+k)+thetap;
-              state_tend(l,k,j,i) += grav*rho*thetap/theta;
+              state_tend(l,k,j,i) += grav*rho*thetap/hy_theta_cells(hs+k);
             } else {
               state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
             }
@@ -837,27 +836,27 @@ namespace modules {
             SArray<FLOC,1,ord> s;
             for (int ii = 0; ii < ord; ii++) { s(ii) = fields_visc(l,hs+k,hs+j,1+i+ii); }
             if (l==idV || l==idW) modify_stencil_immersed_der0( s , immersed );
-            if      (l == idR)      { state_tend  (l,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
-            else if (l < num_state) { state_tend  (l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
-            else                    { tracers_tend(l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
+            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
           }
           for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,1+j+jj,hs+i) > 0; }
           for (int l=0; l < num_state+num_tracers; l++) {
             SArray<FLOC,1,ord> s;
             for (int jj = 0; jj < ord; jj++) { s(jj) = fields_visc(l,hs+k,1+j+jj,hs+i); }
             if (l==idU || l==idW) modify_stencil_immersed_der0( s , immersed );
-            if      (l == idR)      { state_tend  (l,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
-            else if (l < num_state) { state_tend  (l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
-            else                    { tracers_tend(l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
+            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
           }
           for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(1+k+kk,hs+j,hs+i) > 0; }
           for (int l=0; l < num_state+num_tracers; l++) {
             SArray<FLOC,1,ord> s;
             for (int kk = 0; kk < ord; kk++) { s(kk) = fields_visc(l,1+k+kk,hs+j,hs+i); }
             if (l==idU || l==idV) modify_stencil_immersed_der0( s , immersed );
-            if      (l == idR)      { state_tend  (l,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
-            else if (l < num_state) { state_tend  (l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
-            else                    { tracers_tend(l,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
+            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
           }
         }
       });
