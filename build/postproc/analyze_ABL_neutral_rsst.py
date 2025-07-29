@@ -5,7 +5,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
 import xarray
 
-workdir = "/lustre/storm/nwp501/scratch/imn/rsst_paper"
+workdir = "/lustre/storm/nwp501/scratch/imn/rsst_paper/neutral"
 files    = [f"{workdir}/ABL_neutral_orig_rho_350",
             f"{workdir}/ABL_neutral_orig_theta_350",
             f"{workdir}/ABL_neutral_rss_350",
@@ -427,50 +427,3 @@ plt.savefig("ABL_neutral_theta_height_times.png",dpi=600)
 plt.show()
 plt.close()
 
-
-
-# # fig = plt.figure(figsize=(6,6))
-# # ax = fig.gca()
-# # X,Y = np.meshgrid(x,y)
-# # print(z[get_ind(z,.0786)])
-# # mn  = np.mean(mag[get_ind(z,.0786),:,:])
-# # std = np.std (mag[get_ind(z,.0786),:,:])
-# # t1 = 4
-# # t2 = 12
-# # CS = ax.contourf(X,Y,mag[get_ind(z,.0786),:,:],levels=np.arange(t1,t2,(t2-t1)/100),cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
-# # ax.axis('scaled')
-# # ax.set_xlabel("x-location (km)")
-# # ax.set_ylabel("y-location (km)")
-# # ax.margins(x=0)
-# # divider = make_axes_locatable(plt.gca())
-# # cax = divider.append_axes("bottom", size="4%", pad=0.5)
-# # plt.colorbar(CS,orientation="horizontal",cax=cax)
-# # plt.margins(x=0)
-# # plt.tight_layout()
-# # plt.savefig("ABL_neutral_contour_xy.png",dpi=600)
-# # plt.show()
-# # plt.close()
-# # 
-# # 
-# # fig = plt.figure(figsize=(8,4))
-# # ax = fig.gca()
-# # z2 = get_ind(z,0.7)
-# # yind = int(ny/2)
-# # X,Z = np.meshgrid(x,z[:z2])
-# # mn  = np.mean(mag[:z2,yind,:])
-# # std = np.std (mag[:z2,yind,:])
-# # t1 = 4
-# # t2 = 12
-# # CS = ax.contourf(X,Z,mag[:z2,yind,:],levels=np.arange(t1,t2,(t2-t1)/100),cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
-# # ax.axis('scaled')
-# # ax.set_xlabel("x-location (km)")
-# # ax.set_ylabel("z-location (km)")
-# # ax.margins(x=0)
-# # divider = make_axes_locatable(plt.gca())
-# # cax = divider.append_axes("bottom", size="4%", pad=0.5)
-# # plt.colorbar(CS,orientation="horizontal",cax=cax)
-# # plt.margins(x=0)
-# # plt.tight_layout()
-# # plt.savefig("ABL_neutral_contour_xz.png",dpi=600)
-# # plt.show()
-# # plt.close()
