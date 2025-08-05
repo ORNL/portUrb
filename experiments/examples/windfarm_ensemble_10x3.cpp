@@ -243,18 +243,18 @@ int main(int argc, char** argv) {
         col_nudge_main.names  = col_nudge_prec.names;
 
         if (run_main) {
-          auto &dm_prec = coupler_prec.get_data_manager_readwrite();
-          auto u0 = dm_prec.get<real const,3>("uvel").createDeviceCopy();
-          auto v0 = dm_prec.get<real const,3>("vvel").createDeviceCopy();
-          auto w0 = dm_prec.get<real const,3>("wvel").createDeviceCopy();
-          coupler_prec.run_module( [&] (Coupler &c) { fluctuation_scaling(c,dt,0.25,dt,{"uvel","vvel","wvel"}); } , "fluct_scaling"  );
+          // auto &dm_prec = coupler_prec.get_data_manager_readwrite();
+          // auto u0 = dm_prec.get<real const,3>("uvel").createDeviceCopy();
+          // auto v0 = dm_prec.get<real const,3>("vvel").createDeviceCopy();
+          // auto w0 = dm_prec.get<real const,3>("wvel").createDeviceCopy();
+          // coupler_prec.run_module( [&] (Coupler &c) { fluctuation_scaling(c,dt,0.25,dt,{"uvel","vvel","wvel"}); } , "fluct_scaling"  );
           custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
-                                            nx_glob/10 , 0 , 0 , 0 );
+                                            nx_glob/20 , 0 , 0 , 0 );
           custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
-                                            0 , nx_glob/10 , 0 , 0 );
-          u0.deep_copy_to(dm_prec.get<real,3>("uvel"));
-          v0.deep_copy_to(dm_prec.get<real,3>("vvel"));
-          w0.deep_copy_to(dm_prec.get<real,3>("wvel"));
+                                            0 , nx_glob/20 , 0 , 0 );
+          // u0.deep_copy_to(dm_prec.get<real,3>("uvel"));
+          // v0.deep_copy_to(dm_prec.get<real,3>("vvel"));
+          // w0.deep_copy_to(dm_prec.get<real,3>("wvel"));
           coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
           coupler_main.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );

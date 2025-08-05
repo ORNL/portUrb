@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_rk_rsst.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
 
-    real dx = 10;
+    real dx = 1;
     coupler.set_option<bool>("turbine_orig_C_T",true);
 
     std::string turbine_file = "./inputs/NREL_5MW_126_RWT.yaml";
@@ -27,17 +27,17 @@ int main(int argc, char** argv) {
     if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
     real D = config["blade_radius"].as<real>()*2;
 
-    real        sim_time     = 1800;
-    real        xlen         = D*14;
-    real        ylen         = D*2;
-    real        zlen         = D*2;
+    real        sim_time     = 150.1;
+    real        xlen         = D*15;
+    real        ylen         = D*3;
+    real        zlen         = D*3;
     int         nx_glob      = std::ceil(xlen/dx);    xlen = nx_glob * dx;
     int         ny_glob      = std::ceil(ylen/dx);    ylen = ny_glob * dx;
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 60;
-    real        inform_freq  = 10;
+    real        out_freq     = 0.5;
+    real        inform_freq  = 0.1;
     std::string out_prefix   = "test";
     bool        is_restart   = false;
     std::string restart_file = "";
@@ -48,7 +48,6 @@ int main(int argc, char** argv) {
 
     // Things the coupler might need to know about
     coupler.set_option<real>       ( "cfl"            , 0.7          );
-    coupler.set_option<real>       ( "dycore_max_wind", 20           );
     coupler.set_option<std::string>( "out_prefix"     , out_prefix   );
     coupler.set_option<std::string>( "init_data"      , init_data    );
     coupler.set_option<real       >( "out_freq"       , out_freq     );
@@ -56,16 +55,19 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "restart_file"   , restart_file );
     coupler.set_option<real       >( "latitude"       , latitude     );
     coupler.set_option<real       >( "roughness"      , roughness    );
-    coupler.set_option<real       >( "constant_uvel"  , 11.4         );
+    coupler.set_option<real       >( "constant_uvel"  , 10.0         );
     coupler.set_option<real       >( "constant_vvel"  , 0            );
     coupler.set_option<real       >( "constant_temp"  , 300          );
     coupler.set_option<real       >( "constant_press" , 1.e5         );
     coupler.set_option<std::string>( "turbine_file"             , turbine_file );
-    coupler.set_option<bool       >( "turbine_do_blades"        , false  );
+    coupler.set_option<bool       >( "turbine_do_blades"        , true   );
     coupler.set_option<real       >( "turbine_initial_yaw"      , 0./180.*M_PI );
-    coupler.set_option<bool       >( "turbine_fixed_yaw"        , false  );
+    coupler.set_option<bool       >( "turbine_fixed_yaw"        , true   );
     coupler.set_option<bool       >( "turbine_floating_motions" , false  );
     coupler.set_option<bool       >( "turbine_immerse_material" , true   );
+    coupler.set_option<real       >( "dycore_max_wind"       , 20            );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
+    coupler.set_option<real       >( "dycore_cs"             , 100           );
 
     // Set the turbine
     coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{2.5*D });
