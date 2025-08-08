@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
 
-    real dx = 1;
+    real dx = 0.5;
     coupler.set_option<bool>("turbine_orig_C_T",true);
 
     std::string turbine_file = "./inputs/NREL_5MW_126_RWT.yaml";
@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 0.5;
+    real        out_freq     = 0.2;
     real        inform_freq  = 0.1;
     std::string out_prefix   = "test";
     bool        is_restart   = false;
@@ -47,27 +47,27 @@ int main(int argc, char** argv) {
     real        vort_freq    = -1.;
 
     // Things the coupler might need to know about
-    coupler.set_option<real>       ( "cfl"            , 0.7          );
-    coupler.set_option<std::string>( "out_prefix"     , out_prefix   );
-    coupler.set_option<std::string>( "init_data"      , init_data    );
-    coupler.set_option<real       >( "out_freq"       , out_freq     );
-    coupler.set_option<bool       >( "is_restart"     , is_restart   );
-    coupler.set_option<std::string>( "restart_file"   , restart_file );
-    coupler.set_option<real       >( "latitude"       , latitude     );
-    coupler.set_option<real       >( "roughness"      , roughness    );
-    coupler.set_option<real       >( "constant_uvel"  , 10.0         );
-    coupler.set_option<real       >( "constant_vvel"  , 0            );
-    coupler.set_option<real       >( "constant_temp"  , 300          );
-    coupler.set_option<real       >( "constant_press" , 1.e5         );
+    coupler.set_option<real>       ( "cfl"                      , 0.6          );
+    coupler.set_option<std::string>( "out_prefix"               , out_prefix   );
+    coupler.set_option<std::string>( "init_data"                , init_data    );
+    coupler.set_option<real       >( "out_freq"                 , out_freq     );
+    coupler.set_option<bool       >( "is_restart"               , is_restart   );
+    coupler.set_option<std::string>( "restart_file"             , restart_file );
+    coupler.set_option<real       >( "latitude"                 , latitude     );
+    coupler.set_option<real       >( "roughness"                , roughness    );
+    coupler.set_option<real       >( "constant_uvel"            , 10.0         );
+    coupler.set_option<real       >( "constant_vvel"            , 0            );
+    coupler.set_option<real       >( "constant_temp"            , 300          );
+    coupler.set_option<real       >( "constant_press"           , 1.e5         );
     coupler.set_option<std::string>( "turbine_file"             , turbine_file );
-    coupler.set_option<bool       >( "turbine_do_blades"        , true   );
+    coupler.set_option<bool       >( "turbine_do_blades"        , true         );
     coupler.set_option<real       >( "turbine_initial_yaw"      , 0./180.*M_PI );
-    coupler.set_option<bool       >( "turbine_fixed_yaw"        , true   );
-    coupler.set_option<bool       >( "turbine_floating_motions" , false  );
-    coupler.set_option<bool       >( "turbine_immerse_material" , true   );
-    coupler.set_option<real       >( "dycore_max_wind"       , 20            );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
-    coupler.set_option<real       >( "dycore_cs"             , 100           );
+    coupler.set_option<bool       >( "turbine_fixed_yaw"        , true         );
+    coupler.set_option<bool       >( "turbine_floating_motions" , false        );
+    coupler.set_option<bool       >( "turbine_immerse_material" , true         );
+    coupler.set_option<real       >( "dycore_max_wind"          , 20           );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
+    coupler.set_option<real       >( "dycore_cs"                , 80           );
 
     // Set the turbine
     coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{2.5*D });
@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
 
     // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-    custom_modules::Time_Averager              time_averager;
+    // custom_modules::Time_Averager              time_averager;
     modules::LES_Closure                       les_closure;
     modules::WindmillActuators                 windmills;
     custom_modules::EdgeSponge                 edge_sponge;
@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
     les_closure  .init        ( coupler );
     windmills    .init        ( coupler );
     dycore       .init        ( coupler ); // Important that dycore inits after windmills for base immersed boundaries
-    time_averager.init        ( coupler );
+    // time_averager.init        ( coupler );
     edge_sponge  .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
 
@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"        );
         coupler.run_module( [&] (Coupler &c) { windmills.apply         (c,dt); } , "windmills"     );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"   );
-        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager" );
+        // coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager" );
       }
 
       // Update time step
@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
       }
       if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
         coupler.write_output_file( out_prefix , true );
-        time_averager.reset(coupler);
+        // time_averager.reset(coupler);
         output_counter.reset();
       }
       if (vort_freq   >= 0. && vort_counter  .update_and_check(dt)) {

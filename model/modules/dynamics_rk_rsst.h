@@ -1249,12 +1249,12 @@ namespace modules {
         yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           data(k,j,i) = state(idR,k,j,i) - hy_dens_cells(hs+k);
         });
-        nc.write_all(data,"density_pert",start_3d);
+        nc.write_all(data.as<float>(),"density_pert",start_3d);
         auto hy_theta_cells = dm.get<real const,1>("hy_theta_cells");
         yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           data(k,j,i) = tracers(num_tracers-1,k,j,i) / state(idR,k,j,i) - hy_theta_cells(hs+k);
         });
-        nc.write_all(data,"theta_pert",start_3d);
+        nc.write_all(data.as<float>(),"theta_pert",start_3d);
       } );
       coupler.register_overwrite_with_restart_module( [=] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
         auto &dm = coupler.get_data_manager_readwrite();
