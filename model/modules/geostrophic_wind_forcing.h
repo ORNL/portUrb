@@ -5,7 +5,7 @@
 
 namespace modules {
 
-  inline void geostrophic_wind_forcing( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ) {
+  inline real2d geostrophic_wind_forcing( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ) {
     using yakl::c::parallel_for;
     using yakl::c::SimpleBounds;
     auto nz      = coupler.get_nz();
@@ -32,6 +32,28 @@ namespace modules {
       }
     });
     col = coupler.get_parallel_comm().all_reduce( col , MPI_SUM , "" );
+    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      uvel(k,j,i) += dt*( fcor*(col(idV,k)-v_g));
+      vvel(k,j,i) += dt*(-fcor*(col(idU,k)-u_g));
+    });
+    return col;
+  }
+
+  inline void geostrophic_wind_forcing_specified( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ,
+                                                  real2d const &col ) {
+    using yakl::c::parallel_for;
+    using yakl::c::SimpleBounds;
+    auto nz      = coupler.get_nz();
+    auto ny      = coupler.get_ny();
+    auto nx      = coupler.get_nx();
+    auto ny_glob = coupler.get_ny_glob();
+    auto nx_glob = coupler.get_nx_glob();
+    auto &dm     = coupler.get_data_manager_readwrite();
+    auto uvel    = dm.get<real,3>("uvel");
+    auto vvel    = dm.get<real,3>("vvel");
+    real fcor    = 2*7.2921e-5*std::sin(lat_g/180*M_PI);
+    int constexpr idU  = 0;
+    int constexpr idV  = 1;
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       uvel(k,j,i) += dt*( fcor*(col(idV,k)-v_g));
       vvel(k,j,i) += dt*(-fcor*(col(idU,k)-u_g));

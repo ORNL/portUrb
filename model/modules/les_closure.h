@@ -116,10 +116,6 @@ namespace modules {
       auto immersed       = dm.get<real const,3>("immersed_proportion_halos");
       real constexpr Pr = 0.7;
 
-      auto total_mult       = coupler.get_option<real>("les_total_mult"      ,1.);
-      auto dissipation_mult = coupler.get_option<real>("les_dissipation_mult",1.);
-      auto shear_prod_mult  = coupler.get_option<real>("les_shear_prod_mult" ,1.);
-
       real4d state , tracers;
       real3d tke;
       convert_coupler_to_dynamics( coupler , state , tracers , tke );
@@ -205,22 +201,22 @@ namespace modules {
             // Quantities at interface i-1/2
             real rho         = 0.5_fp * ( state(idR,hs+k,hs+j,hs+i-1) + state(idR,hs+k,hs+j,hs+i) );
             real K           = 0.5_fp * ( tke      (hs+k,hs+j,hs+i-1) + tke      (hs+k,hs+j,hs+i) );
-            real t           = 0.5_fp * ( state(idT,hs+k,hs+j,hs+i-1) + state(idT,hs+k,hs+j,hs+i) )+hy_t(hs+k);
-            real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
-            real ell         = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-6_fp) , delta );
-            real km          = total_mult * 0.1_fp * ell * std::sqrt(K);
-            real Pr_t        = delta / (1+2*ell);
+            real tref        = hy_t(hs+k);
+            real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
+            real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
+            real km          = 0.1_fp * ell * std::sqrt(K);
+            real Pr_t        = 0.8_fp;
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_x );
             real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_x );
             if (visc_tot == visc_max_x || visc_tot_th == visc_max_x) max_triggered = true;
-            flux_ru_x (k,j,i) = -rho*visc_tot   *(du_dx + du_dx - 2._fp/3._fp*(du_dx+dv_dy+dw_dz));
+            flux_ru_x (k,j,i) = -rho*visc_tot   *(du_dx + du_dx - 2._fp/3._fp*(du_dx+dv_dy+dw_dz))+2._fp/3._fp*rho*K;
             flux_rv_x (k,j,i) = -rho*visc_tot   *(dv_dx + du_dy                                  );
             flux_rw_x (k,j,i) = -rho*visc_tot   *(dw_dx + du_dz                                  );
             flux_rt_x (k,j,i) = -rho*visc_tot_th*(dt_dx                                          );
-            flux_tke_x(k,j,i) = -rho*visc_tot*2 *(dK_dx                                          );
+            flux_tke_x(k,j,i) = -rho*visc_tot   *(dK_dx                                          );
             for (int tr=0; tr < num_tracers; tr++) {
               dt_dx = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k,hs+j,hs+i-1))/dx;
-              flux_tracers_x(tr,k,j,i) = -rho*visc_tot*dt_dx;
+              flux_tracers_x(tr,k,j,i) = -rho*visc_tot_th*dt_dx;
             }
           }
         }
@@ -251,24 +247,24 @@ namespace modules {
             real dK_dy = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k,hs+j-1,hs+i))/dy;
             real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(2*dz);
             // Quantities at interface j-1/2
-            real rho  = 0.5_fp * ( state(idR,hs+k,hs+j-1,hs+i) + state(idR,hs+k,hs+j,hs+i) );
-            real K    = 0.5_fp * ( tke      (hs+k,hs+j-1,hs+i) + tke      (hs+k,hs+j,hs+i) );
-            real t    = 0.5_fp * ( state(idT,hs+k,hs+j-1,hs+i) + state(idT,hs+k,hs+j,hs+i) )+hy_t(hs+k);
-            real N    = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
-            real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-6_fp) , delta );
-            real km   = total_mult * 0.1_fp * ell * std::sqrt(K);
-            real Pr_t = delta / (1+2*ell);
+            real rho         = 0.5_fp * ( state(idR,hs+k,hs+j-1,hs+i) + state(idR,hs+k,hs+j,hs+i) );
+            real K           = 0.5_fp * ( tke      (hs+k,hs+j-1,hs+i) + tke      (hs+k,hs+j,hs+i) );
+            real tref        = hy_t(hs+k);
+            real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
+            real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
+            real km          = 0.1_fp * ell * std::sqrt(K);
+            real Pr_t        = 0.8_fp;
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_y );
             real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_y );
             if (visc_tot == visc_max_y || visc_tot_th == visc_max_y) max_triggered = true;
             flux_ru_y (k,j,i) = -rho*visc_tot   *(du_dy + dv_dx                                  );
-            flux_rv_y (k,j,i) = -rho*visc_tot   *(dv_dy + dv_dy - 2._fp/3._fp*(du_dx+dv_dy+dw_dz));
+            flux_rv_y (k,j,i) = -rho*visc_tot   *(dv_dy + dv_dy - 2._fp/3._fp*(du_dx+dv_dy+dw_dz))+2._fp/3._fp*rho*K;
             flux_rw_y (k,j,i) = -rho*visc_tot   *(dw_dy + dv_dz                                  );
             flux_rt_y (k,j,i) = -rho*visc_tot_th*(dt_dy                                          );
-            flux_tke_y(k,j,i) = -rho*visc_tot*2 *(dK_dy                                          );
+            flux_tke_y(k,j,i) = -rho*visc_tot   *(dK_dy                                          );
             for (int tr=0; tr < num_tracers; tr++) {
               dt_dy = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k,hs+j-1,hs+i))/dy;
-              flux_tracers_y(tr,k,j,i) = -rho*visc_tot*dt_dy;
+              flux_tracers_y(tr,k,j,i) = -rho*visc_tot_th*dt_dy;
             }
           }
         }
@@ -297,24 +293,24 @@ namespace modules {
             real dK_dz = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k-1,hs+j,hs+i))/dz;
             real dth_dz = (hy_t(hs+k)-hy_t(hs+k-1))/dz;
             // Quantities at interface k-1/2
-            real rho  = 0.5_fp * ( state(idR,hs+k-1,hs+j,hs+i) + state(idR,hs+k,hs+j,hs+i) );
-            real K    = 0.5_fp * ( tke      (hs+k-1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
-            real t    = 0.5_fp * ( state(idT,hs+k-1,hs+j,hs+i) + state(idT,hs+k,hs+j,hs+i) + hy_t(hs+k-1) + hy_t(hs+k) );
-            real N    = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
-            real ell  = std::min( 0.76_fp*std::sqrt(K)/(N+1.e-6_fp) , delta );
-            real km   = total_mult * 0.1_fp * ell * std::sqrt(K);
-            real Pr_t = delta / (1+2*ell);
+            real rho         = 0.5_fp * ( state(idR,hs+k-1,hs+j,hs+i) + state(idR,hs+k,hs+j,hs+i) );
+            real K           = 0.5_fp * ( tke      (hs+k-1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
+            real tref        = 0.5_fp * ( hy_t(hs+k-1) + hy_t(hs+k) );
+            real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
+            real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
+            real km          = 0.1_fp * ell * std::sqrt(K);
+            real Pr_t        = 0.8_fp;
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_z );
             real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_z );
             if (visc_tot == visc_max_z || visc_tot_th == visc_max_z) max_triggered = true;
             flux_ru_z (k,j,i) = -rho*visc_tot   *(du_dz + dw_dx                                  );
             flux_rv_z (k,j,i) = -rho*visc_tot   *(dv_dz + dw_dy                                  );
-            flux_rw_z (k,j,i) = -rho*visc_tot   *(dw_dz + dw_dz - 2._fp/3._fp*(du_dx+dv_dy+dw_dz));
+            flux_rw_z (k,j,i) = -rho*visc_tot   *(dw_dz + dw_dz - 2._fp/3._fp*(du_dx+dv_dy+dw_dz))+2._fp/3._fp*rho*K;
             flux_rt_z (k,j,i) = -rho*visc_tot_th*(dt_dz                                          );
-            flux_tke_z(k,j,i) = -rho*visc_tot*2 *(dK_dz                                          );
+            flux_tke_z(k,j,i) = -rho*visc_tot   *(dK_dz                                          );
             for (int tr=0; tr < num_tracers; tr++) {
               dt_dz = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k-1,hs+j,hs+i))/dz;
-              flux_tracers_z(tr,k,j,i) = -rho*visc_tot*dt_dz;
+              flux_tracers_z(tr,k,j,i) = -rho*visc_tot_th*dt_dz;
             }
           }
         }
@@ -323,25 +319,24 @@ namespace modules {
       if (max_triggered.hostRead()) std::cout << "WARNING: les_closure max triggered" << std::endl;
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        real rho   = state(idR,hs+k,hs+j,hs+i);
-        real K     = tke      (hs+k,hs+j,hs+i);
-        real t     = state(idT,hs+k,hs+j,hs+i) + hy_t(hs+k);
-        real dt_dz = ( state(idT,hs+k+1,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i) ) / (2*dz);
+        real rho    = state(idR,hs+k,hs+j,hs+i);
+        real K      = tke      (hs+k,hs+j,hs+i);
+        real t      = state(idT,hs+k,hs+j,hs+i) + hy_t(hs+k);
+        real dt_dz  = ( state(idT,hs+k+1,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i) ) / (2*dz);
         real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(2*dz);
-        real N     = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
-        real ell   = std::min( std::min( 0.76_fp*std::sqrt(K)/(N+1.e-6_fp) , delta ) , (k+0.5)*dz*0.4 );
-        real km    = 0.1_fp * ell * std::sqrt(K);
-        real Pr_t  = delta / (1+2*ell);
+        real N      = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
+        real ell    = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
+        real km     = 0.1_fp * ell * std::sqrt(K);
+        real Pr_t   = 0.8_fp;
         // Compute tke cell-averaged source
         tke_source(k,j,i) = 0;
         if (immersed(hs+k,hs+j,hs+i) < 1) {
           // Buoyancy source
           if (enable_gravity) {
-            tke_source  (k,j,i) += -(grav*rho*km)/(t*Pr_t)*(dt_dz+dth_dz);
+            tke_source(k,j,i) += -(grav*rho*km)/(t*Pr_t)*(dt_dz+dth_dz);
           }
           // TKE dissipation
-          // tke_source(k,j,i) -= dissipation_mult*rho*(0.19_fp + 0.51_fp*ell/delta)/delta*std::pow(K,1.5_fp);
-          tke_source(k,j,i) -= dissipation_mult*0.85*rho*std::pow(K,1.5_fp)/(ell+1.e-6_fp);
+          tke_source(k,j,i) -= 0.85*rho*std::pow(K,1.5_fp)/std::max(ell,1.e-10);
           // Shear production
           int im1 = immersed(hs+k,hs+j,hs+i-1) > 0 ? i : i-1;
           int ip1 = immersed(hs+k,hs+j,hs+i+1) > 0 ? i : i+1;
@@ -358,24 +353,14 @@ namespace modules {
           real du_dz = ( state(idU,hs+kp1,hs+j,hs+i) - state(idU,hs+km1,hs+j,hs+i) ) / (2*dz);
           real dv_dz = ( state(idV,hs+kp1,hs+j,hs+i) - state(idV,hs+km1,hs+j,hs+i) ) / (2*dz);
           real dw_dz = ( state(idW,hs+k+1,hs+j,hs+i) - state(idW,hs+k-1,hs+j,hs+i) ) / (2*dz);
-          // real j1_i1 = (du_dx + du_dx) * du_dx;
-          // real j1_i2 = (dv_dx + du_dy) * dv_dx;
-          // real j1_i3 = (dw_dx + du_dz) * dw_dx;
-          // real j2_i1 = (du_dy + dv_dx) * du_dy;
-          // real j2_i2 = (dv_dy + dv_dy) * dv_dy;
-          // real j2_i3 = (dw_dy + dv_dz) * dw_dy;
-          // real j3_i1 = (du_dz + dw_dx) * du_dz;
-          // real j3_i2 = (dv_dz + dw_dy) * dv_dz;
-          // real j3_i3 = (dw_dz + dw_dz) * dw_dz;
-          // tke_source(k,j,i) += shear_prod_mult*rho*km*(j1_i1 + j1_i2 + j1_i3 + j2_i1 + j2_i2 + j2_i3 + j3_i1 + j3_i2 + j3_i3);
           real S11 = du_dx;
           real S22 = dv_dy;
           real S33 = dw_dz;
           real S12 = 0.5 * (du_dy + dv_dx);
           real S13 = 0.5 * (du_dz + dw_dx);
           real S23 = 0.5 * (dv_dz + dw_dy);
-          real S_mag2 = S11*S11 + S22*S22 + S33*S33 + 2.0 * (S12*S12 + S13*S13 + S23*S23);
-          tke_source(k,j,i) += shear_prod_mult*rho*km*S_mag2;
+          real S2  = 2*(S11*S11 + S22*S22 + S33*S33) + 4*(S12*S12 + S13*S13 + S23*S23);
+          tke_source(k,j,i) += rho * km * S2 - 2._fp/3._fp*rho*K*(du_dx+dv_dy+dw_dz);
         }
       });
 

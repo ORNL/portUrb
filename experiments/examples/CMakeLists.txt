@@ -47,6 +47,7 @@ process_target(shallow_convection)
 process_target(sphere)
 process_target(supercell)
 process_target(turbine_neutral_ensemble)
+process_target(turbine_neutral_ensemble2)
 process_target(turbine_simplest)
 process_target(windfarm_ensemble_10x3)
 
