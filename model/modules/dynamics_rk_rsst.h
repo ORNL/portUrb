@@ -616,6 +616,8 @@ namespace modules {
 
       auto wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
       auto wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
+      typedef limiter::WenoLimiter<FLOC,ord> Limiter;
+      auto use_weno = coupler.get_option<bool>("dycore_use_weno",true);
 
       FLOC cs = coupler.get_option<real>("dycore_cs",350);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -624,8 +626,8 @@ namespace modules {
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = cs*cs*fields_loc(idR,hs+k,hs+j,i+ii); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_L = 0;
-        for (int ii=0; ii < ord; ii++) { p_L += wt(ord-1-ii)*s(ii); }
+        FLOC p_L, dummy;
+        Limiter::compute_limited_edges( s , dummy , p_L , { false , false , false } );
         for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*
                                                           fields_loc (idU,hs+k,hs+j,i+ii); }
         FLOC ru_L = 0;
@@ -633,8 +635,8 @@ namespace modules {
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = cs*cs*fields_loc(idR,hs+k,hs+j,i+ii+1); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_R = 0;
-        for (int ii=0; ii < ord; ii++) { p_R += wt(ii)*s(ii); }
+        FLOC p_R;
+        Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
         for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*
                                                           fields_loc (idU,hs+k,hs+j,i+ii+1); }
         FLOC ru_R = 0;
@@ -648,8 +650,8 @@ namespace modules {
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = cs*cs*fields_loc(idR,hs+k,j+jj,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_L = 0;
-        for (int jj=0; jj < ord; jj++) { p_L += wt(ord-1-jj)*s(jj); }
+        FLOC p_L, dummy;
+        Limiter::compute_limited_edges( s , dummy , p_L , { false , false , false } );
         for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*
                                                           fields_loc (idV,hs+k,j+jj,hs+i); }
         FLOC rv_L = 0;
@@ -657,8 +659,8 @@ namespace modules {
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = cs*cs*fields_loc(idR,hs+k,j+jj+1,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_R = 0;
-        for (int jj=0; jj < ord; jj++) { p_R += wt(jj)*s(jj); }
+        FLOC p_R;
+        Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
         for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*
                                                           fields_loc (idV,hs+k,j+jj+1,hs+i); }
         FLOC rv_R = 0;
@@ -672,8 +674,8 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = cs*cs*fields_loc(idR,k+kk,hs+j,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_L = 0;
-        for (int kk=0; kk < ord; kk++) { p_L += wt(ord-1-kk)*s(kk); }
+        FLOC p_L, dummy;
+        Limiter::compute_limited_edges( s , dummy , p_L , { false , false , false } );
         for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk,hs+j,hs+i)+hy_dens_cells(k+kk))*
                                                           fields_loc (idW,k+kk,hs+j,hs+i); }
         FLOC rw_L = 0;
@@ -683,8 +685,8 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk+1,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = cs*cs*fields_loc(idR,k+kk+1,hs+j,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_R = 0;
-        for (int kk=0; kk < ord; kk++) { p_R += wt(kk)*s(kk); }
+        FLOC p_R;
+        Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
         for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*
                                                           fields_loc (idW,k+kk+1,hs+j,hs+i); }
         FLOC rw_R = 0;
@@ -696,10 +698,6 @@ namespace modules {
         if (wall_z1 && k == 0 ) rw_z(k,j,i) = 0;
         if (wall_z2 && k == nz) rw_z(k,j,i) = 0;
       });
-
-      typedef limiter::WenoLimiter<FLOC,ord> Limiter;
-
-      auto use_weno = coupler.get_option<bool>("dycore_use_weno",true);
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;

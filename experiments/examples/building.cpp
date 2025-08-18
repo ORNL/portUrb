@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
     real        zlen        = 400;
     real        dtphys_in   = 0;    // Use dycore time step
     int         dyn_cycle   = 1;
-    real        out_freq    = 1800;
+    real        out_freq    = 100;
     real        inform_freq = 10;
     std::string out_prefix  = "building_rss_20";
     bool        is_restart  = false;
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "enable_gravity"        , true          );
     coupler.set_option<real       >( "dycore_max_wind"       , 25            );
     coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
-    coupler.set_option<real       >( "dycore_cs"             , 20            );
+    coupler.set_option<real       >( "dycore_cs"             , 100           );
 
     coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
 
