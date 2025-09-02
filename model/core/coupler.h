@@ -709,7 +709,9 @@ namespace core {
       nc.read_all(dm.get<real,3>("wvel"       ),"wvel"       ,start_3d);
       nc.read_all(dm.get<real,3>("temp"       ),"temperature",start_3d);
       for (int i=0; i < tracer_names.size(); i++) {
-        nc.read_all(dm.get<real,3>(tracer_names.at(i)),tracer_names.at(i),start_3d);
+        if (nc.var_exists(tracer_names.at(i))) {
+          nc.read_all(dm.get<real,3>(tracer_names.at(i)),tracer_names.at(i),start_3d);
+        }
       }
       for (int ivar = 0; ivar < output_vars.size(); ivar++) {
         auto name = output_vars.at(ivar).name;
