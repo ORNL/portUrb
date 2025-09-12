@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
 
     // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-    custom_modules::Time_Averager              time_averager;
+    modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::TurbineActuatorDisc               turbines;
     modules::ColumnNudger                      col_nudge_prec;
@@ -224,7 +224,7 @@ int main(int argc, char** argv) {
         coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
         coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
-        coupler_prec.run_module( [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);           } , "heat_fluxes"    );
+        coupler_prec.run_module( [&] (Coupler &c) { modules::surface_heat_flux       (c,dt);           } , "heat_fluxes"    );
         coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
         coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);           } , "time_averager"  );
       }
@@ -232,14 +232,14 @@ int main(int argc, char** argv) {
       col_nudge_main.column = col_nudge_prec.column;
       col_nudge_main.names  = col_nudge_prec.names;
       if (run_main) {
-        custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
-                                          (int) (0.1*nx_glob) , 0 , (int) (0.1*ny_glob) , 0 );
+        modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
+                                   nx_glob/10 , 0 , ny_glob/10 , 0 );
         coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv);   } , "pg_forcing"     );
         coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column   (c,dt,dt*100);    } , "col_nudge"      );
         coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
         coupler_main.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
-        coupler_main.run_module( [&] (Coupler &c) { custom_modules::surface_heat_flux(c,dt);           } , "heat_fluxes"    );
+        coupler_main.run_module( [&] (Coupler &c) { modules::surface_heat_flux       (c,dt);           } , "heat_fluxes"    );
         coupler_main.run_module( [&] (Coupler &c) { turbines.apply                   (c,dt);           } , "turbines"       );
         coupler_main.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
         coupler_main.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);           } , "time_averager"  );

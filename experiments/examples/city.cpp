@@ -9,8 +9,6 @@
 #include "sponge_layer.h"
 #include "uniform_pg_wind_forcing.h"
 #include "TriMesh.h"
-#include "edge_sponge.h"
-#include "dump_vorticity.h"
 
 /*
 In blender, delete the initial objects.
@@ -54,7 +52,6 @@ int main(int argc, char** argv) {
     real        inform_freq = 1;
     std::string out_prefix  = "city_2m";
     bool        is_restart  = true;
-    real        vort_freq    = 1./10.;
 
     mesh.add_offset(pad_x1,pad_y1);
 
@@ -82,9 +79,8 @@ int main(int argc, char** argv) {
     if (coupler.is_mainproc()) std::cout << mesh;
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-    custom_modules::Time_Averager              time_averager;
+    modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
-    custom_modules::EdgeSponge                 edge_sponge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -94,7 +90,6 @@ int main(int argc, char** argv) {
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
     time_averager.init        ( coupler );
-    edge_sponge  .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
 
     coupler.set_option<std::string>("bc_x1","open");
@@ -105,7 +100,6 @@ int main(int argc, char** argv) {
     real etime = coupler.get_option<real>("elapsed_time");
     core::Counter output_counter( out_freq    , etime );
     core::Counter inform_counter( inform_freq , etime );
-    core::Counter vort_counter  ( vort_freq   , etime );
 
     // if restart, overwrite with restart data, and set the counters appropriately. Otherwise, write initial output
     if (is_restart) {
@@ -130,13 +124,11 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
-        using custom_modules::dump_vorticity;
-        // real hr = 500;
-        // real ur = 20*std::cos(29./180.*M_PI);
-        // real vr = 20*std::sin(29./180.*M_PI);
-        // real tr = dt*100;
-        // coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );
-        coupler.run_module( [&] (Coupler &c) { edge_sponge.apply            (c,0.01,0.01,0.01,0.01); } , "edge_sponge" );
+        real hr = 500;
+        real ur = 20*std::cos(29./180.*M_PI);
+        real vr = 20*std::sin(29./180.*M_PI);
+        real tr = dt*100;
+        coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt);         } , "dycore"         );
         coupler.run_module( [&] (Coupler &c) { modules::sponge_layer        (c,dt,dt,0.02); } , "sponge"         );
         coupler.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt);         } , "surface_fluxes" );
@@ -155,10 +147,6 @@ int main(int argc, char** argv) {
         coupler.write_output_file( out_prefix , true );
         time_averager.reset(coupler);
         output_counter.reset();
-      }
-      if (vort_freq   >= 0. && vort_counter  .update_and_check(dt)) {
-        custom_modules::dump_vorticity( coupler );
-        vort_counter.reset();
       }
     } // End main simulation loop
 

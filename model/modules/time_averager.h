@@ -2,7 +2,7 @@
 
 #include "coupler.h"
 
-namespace custom_modules {
+namespace modules {
   
   struct Time_Averager {
 

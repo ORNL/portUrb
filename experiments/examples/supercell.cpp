@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     coupler.set_grid( xlen , ylen , zlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-    custom_modules::Time_Averager              time_averager;
+    modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::Microphysics_Morrison             micro;
 

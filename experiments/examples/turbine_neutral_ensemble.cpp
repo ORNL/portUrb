@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
       // Classes that can work on multiple couplers without issue (no internal state)
       modules::LES_Closure                       les_closure;
       modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-      custom_modules::Time_Averager              time_averager;
+      modules::Time_Averager                     time_averager;
       modules::WindmillActuators                 windmills;
       modules::ColumnNudger                      col_nudge_prec;
       modules::ColumnNudger                      col_nudge_main;
@@ -238,7 +238,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
         using modules::uniform_pg_wind_forcing_specified;
-        using custom_modules::fluctuation_scaling;
+        using modules::fluctuation_scaling;
 
         real pgu, pgv;
         {
@@ -263,10 +263,10 @@ int main(int argc, char** argv) {
           // auto v0 = dm_prec.get<real const,3>("vvel").createDeviceCopy();
           // auto w0 = dm_prec.get<real const,3>("wvel").createDeviceCopy();
           // coupler_prec.run_module( [&] (Coupler &c) { fluctuation_scaling(c,dt,2.0,dt,{"uvel","vvel","wvel"}); } , "fluct_scaling"  );
-          custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
-                                            nx_glob/10 , 0 , 0 , 0 );
-          custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
-                                            0 , nx_glob/10 , 0 , 0 );
+          modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
+                                     nx_glob/10 , 0 , 0 , 0 );
+          modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
+                                     0 , nx_glob/10 , 0 , 0 );
           // u0.deep_copy_to(dm_prec.get<real,3>("uvel"));
           // v0.deep_copy_to(dm_prec.get<real,3>("vvel"));
           // w0.deep_copy_to(dm_prec.get<real,3>("wvel"));

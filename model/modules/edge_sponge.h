@@ -4,7 +4,7 @@
 #include "coupler.h"
 #include "MultipleFields.h"
 
-namespace custom_modules {
+namespace modules {
 
 
   class EdgeSponge {

@@ -3,7 +3,7 @@
 
 #include "coupler.h"
 
-namespace custom_modules {
+namespace modules {
   
   inline void precursor_sponge( core::Coupler            & coupler_main ,
                                 core::Coupler      const & coupler_prec ,

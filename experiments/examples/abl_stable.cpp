@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
     coupler.set_grid( xlen , ylen , zlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV     dycore;
-    custom_modules::Time_Averager                 time_averager;
+    modules::Time_Averager                        time_averager;
     modules::LES_Closure                          les_closure;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         coupler.track_max_wind();
-        auto run_scr       = [&] (Coupler &c) { custom_modules::surface_cooling  (c,dt);               };
+        auto run_scr       = [&] (Coupler &c) { modules::surface_cooling         (c,dt);               };
         auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
         auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
         auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);    };

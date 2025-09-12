@@ -2,7 +2,7 @@
 
 #include "coupler.h"
 
-namespace custom_modules {
+namespace modules {
   
   inline void surface_cooling( core::Coupler &coupler , real dt ) {
     using yakl::c::parallel_for;

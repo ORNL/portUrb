@@ -6,7 +6,6 @@
 #include "sc_perturb.h"
 #include "les_closure.h"
 #include "windmill_actuators_yaw.h"
-#include "dump_vorticity.h"
 #include "edge_sponge.h"
 
 int main(int argc, char** argv) {
@@ -44,7 +43,6 @@ int main(int argc, char** argv) {
     real        latitude     = 0;
     real        roughness    = 0;
     int         dyn_cycle    = 1;
-    real        vort_freq    = -1.;
 
     // Things the coupler might need to know about
     coupler.set_option<real>       ( "cfl"                      , 0.6          );
@@ -83,10 +81,10 @@ int main(int argc, char** argv) {
 
     // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-    // custom_modules::Time_Averager              time_averager;
+    // modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::WindmillActuators                 windmills;
-    custom_modules::EdgeSponge                 edge_sponge;
+    modules::EdgeSponge                        edge_sponge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -110,7 +108,6 @@ int main(int argc, char** argv) {
     real etime = coupler.get_option<real>("elapsed_time");
     core::Counter output_counter( out_freq    , etime );
     core::Counter inform_counter( inform_freq , etime );
-    core::Counter vort_counter  ( vort_freq   , etime );
 
     // if restart, overwrite with restart data, and set the counters appropriately. Otherwise, write initial output
     if (is_restart) {
@@ -153,10 +150,6 @@ int main(int argc, char** argv) {
         coupler.write_output_file( out_prefix , true );
         // time_averager.reset(coupler);
         output_counter.reset();
-      }
-      if (vort_freq   >= 0. && vort_counter  .update_and_check(dt)) {
-        custom_modules::dump_vorticity( coupler );
-        vort_counter.reset();
       }
     } // End main simulation loop
 

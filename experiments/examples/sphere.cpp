@@ -59,9 +59,9 @@ int main(int argc, char** argv) {
 
     // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-    custom_modules::Time_Averager              time_averager;
+    modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
-    custom_modules::EdgeSponge                 edge_sponge;
+    modules::EdgeSponge                        edge_sponge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);

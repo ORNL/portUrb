@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
       // Classes that can work on multiple couplers without issue (no internal state)
       modules::LES_Closure                       les_closure;
       modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-      custom_modules::Time_Averager              time_averager;
+      modules::Time_Averager                     time_averager;
       modules::WindmillActuators                 windmills;
       modules::ColumnNudger                      col_nudge_prec;
 
@@ -197,7 +197,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::geostrophic_wind_forcing;
         using modules::geostrophic_wind_forcing_specified;
-        using custom_modules::fluctuation_scaling;
+        using modules::fluctuation_scaling;
         auto u_g = coupler_prec.get_option<real>("geostrophic_u");
         auto v_g = coupler_prec.get_option<real>("geostrophic_v");
 
@@ -216,10 +216,10 @@ int main(int argc, char** argv) {
         col_nudge_main.names  = col_nudge_prec.names;
 
         {
-          custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
-                                            nx_glob/20 , 0 , ny_glob/20 , 0 );
-          custom_modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
-                                            0 , nx_glob/20 , 0 , ny_glob/20 );
+          modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
+                                     nx_glob/20 , 0 , ny_glob/20 , 0 );
+          modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
+                                     0 , nx_glob/20 , 0 , ny_glob/20 );
           coupler_main.run_module( [&] (Coupler &c) { geostrophic_wind_forcing_specified(c,dt,lat_g,u_g,v_g,col); } , "geo_forcing" );
           coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
           coupler_main.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
@@ -233,10 +233,10 @@ int main(int argc, char** argv) {
         col_nudge_turb.names  = col_nudge_prec.names;
 
         {
-          custom_modules::precursor_sponge( coupler_turb , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
-                                            nx_glob/20 , 0 , ny_glob/20 , 0 );
-          custom_modules::precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temp"} ,
-                                            0 , nx_glob/20 , 0 , ny_glob/20 );
+          modules::precursor_sponge( coupler_turb , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
+                                     nx_glob/20 , 0 , ny_glob/20 , 0 );
+          modules::precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temp"} ,
+                                     0 , nx_glob/20 , 0 , ny_glob/20 );
           coupler_turb.run_module( [&] (Coupler &c) { geostrophic_wind_forcing_specified(c,dt,lat_g,u_g,v_g,col); } , "geo_forcing" );
           coupler_turb.run_module( [&] (Coupler &c) { col_nudge_turb.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
           coupler_turb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );

@@ -3,7 +3,7 @@
 
 #include "coupler.h"
 
-namespace custom_modules {
+namespace modules {
   
   inline void fluctuation_scaling( core::Coupler            & coupler ,
                                    real dt                            ,
