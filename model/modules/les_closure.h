@@ -205,7 +205,7 @@ namespace modules {
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
             real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
             real km          = 0.1_fp * ell * std::sqrt(K);
-            real Pr_t        = 0.8_fp;
+            real Pr_t        = 0.85_fp;
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_x );
             real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_x );
             if (visc_tot == visc_max_x || visc_tot_th == visc_max_x) max_triggered = true;
@@ -253,7 +253,7 @@ namespace modules {
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
             real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
             real km          = 0.1_fp * ell * std::sqrt(K);
-            real Pr_t        = 0.8_fp;
+            real Pr_t        = 0.85_fp;
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_y );
             real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_y );
             if (visc_tot == visc_max_y || visc_tot_th == visc_max_y) max_triggered = true;
@@ -299,7 +299,7 @@ namespace modules {
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
             real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
             real km          = 0.1_fp * ell * std::sqrt(K);
-            real Pr_t        = 0.8_fp;
+            real Pr_t        = 0.85_fp;
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_z );
             real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_z );
             if (visc_tot == visc_max_z || visc_tot_th == visc_max_z) max_triggered = true;
@@ -327,7 +327,7 @@ namespace modules {
         real N      = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
         real ell    = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
         real km     = 0.1_fp * ell * std::sqrt(K);
-        real Pr_t   = 0.8_fp;
+        real Pr_t   = 0.85_fp;
         // Compute tke cell-averaged source
         tke_source(k,j,i) = 0;
         if (immersed(hs+k,hs+j,hs+i) < 1) {
