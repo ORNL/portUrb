@@ -7,7 +7,6 @@
 #include "les_closure.h"
 #include "windmill_actuators_yaw.h"
 #include "surface_flux.h"
-#include "perturb_temperature.h"
 #include "precursor_sponge.h"
 #include "uniform_pg_wind_forcing.h"
 #include "Ensembler.h"
