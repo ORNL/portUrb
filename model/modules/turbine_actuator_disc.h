@@ -236,7 +236,7 @@ namespace modules {
           {
             //////// PROJECT SAMPLING AND THRUST PROJECTION DISKS
             // Reference space is centered about the origin with the turbine disk facing toward the west
-            float decay = dx/rad; // Length of decay of thrust after the end of the blade radius (relative)
+            float decay = 2*dx/rad; // Length of decay of thrust after the end of the blade radius (relative)
             float xr    = std::max(5.,5*dx);  // Thickness of the disk in the x-direction in reference space
             int num_x   = std::ceil(20/dx*xr             *2); // # cells to sample over in x-direction
             int num_y   = std::ceil(20/dx*rad*(1+decay/2)*2); // # cells to sample over in y-direction
@@ -266,9 +266,9 @@ namespace modules {
                 float zp = hub_height + z;
                 // If it's in this task's domain, atomically add to the cell's total shape function sum for projection
                 //     Also, add the average angle for torque application later
-                int ti = static_cast<int>(std::round(xp/dx-0.5-i_beg));
-                int tj = static_cast<int>(std::round(yp/dy-0.5-j_beg));
-                int tk = static_cast<int>(std::round(zp/dz-0.5      ));
+                int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
+                int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                int tk = static_cast<int>(std::floor(zp/dz))      ;
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_angle(tk,tj,ti) , shp*std::atan2(z,-y) );
                   Kokkos::atomic_add( &disk_weight_proj (tk,tj,ti) , shp );
@@ -276,9 +276,9 @@ namespace modules {
                 // Now do the same thing for the upwind sampling disk for computing inflow velocity
                 xp += up_x_offset;
                 yp += up_y_offset;
-                ti = static_cast<int>(std::round(xp/dx-0.5-i_beg));
-                tj = static_cast<int>(std::round(yp/dy-0.5-j_beg));
-                tk = static_cast<int>(std::round(zp/dz-0.5      ));
+                ti = static_cast<int>(std::floor(xp/dx))-i_beg;
+                tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                tk = static_cast<int>(std::floor(zp/dz))      ;
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_samp(tk,tj,ti) , shp );
                 }
