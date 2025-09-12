@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     {
       auto func_nranks  = [=] (int ind) { return 1; };
       auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        real wind = ind*5+5;
+        real wind = ind==0 ? 5 : 20;
         coupler.set_option<real>("hub_height_wind_mag",wind);
         real z0 = 0.0001;
         for (int iter=0; iter < 100; iter++) {
@@ -50,11 +50,11 @@ int main(int argc, char** argv) {
         ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("wind-")+std::to_string(wind));
         ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("wind-")+std::to_string(wind));
       };
-      ensembler.register_dimension( 4 , func_nranks , func_coupler );
+      ensembler.register_dimension( 2 , func_nranks , func_coupler );
     }
     // coupler_main.set_option<real>("hub_height_wind_mag",11);
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_main , 2 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_main , 4 , MPI_COMM_WORLD );
     coupler_main.set_parallel_comm( par_comm );
 
     auto orig_cout_buf = std::cout.rdbuf();
