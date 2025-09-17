@@ -21,6 +21,7 @@ namespace custom_modules {
     auto dx        = coupler.get_dx();
     auto dy        = coupler.get_dy();
     auto dz        = coupler.get_dz();
+    auto zint      = coupler.get_zint();
     auto xlen      = coupler.get_xlen();
     auto ylen      = coupler.get_ylen();
     auto zlen      = coupler.get_zlen();
@@ -28,7 +29,6 @@ namespace custom_modules {
     auto j_beg     = coupler.get_j_beg();
     auto nx_glob   = coupler.get_nx_glob();
     auto ny_glob   = coupler.get_ny_glob();
-    auto sim2d     = coupler.is_sim2d();
     auto roughness = coupler.get_option<real>("roughness",0.1);
     auto idWV      = coupler.get_option<int >("idWV"     ,-1 );
     if (idWV == -1) {
@@ -114,7 +114,7 @@ namespace custom_modules {
       real href = 500;
       auto faces = coupler.get_data_manager_readwrite().get<float,3>("mesh_faces");
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real { return 300; };
-      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
       auto t1 = std::chrono::high_resolution_clock::now();
       if (coupler.is_mainproc()) std::cout << "*** Beginning setup ***" << std::endl;
       float4d zmesh("zmesh",ny,nx,nqpoints,nqpoints);
@@ -136,9 +136,9 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
-              real z         = (      k+0.5)*dz + qpoints(kk)*dz;
+              real x         = (i_beg+i+0.5)*dx      + qpoints(ii)*dx;
+              real y         = (j_beg+j+0.5)*dy      + qpoints(jj)*dy;
+              real z         = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
               real theta     = compute_theta(z);
               real p         = pressGLL(k,kk);
               real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
@@ -172,7 +172,7 @@ namespace custom_modules {
         if   (z <  600) { return 309;               }
         else            { return 309+0.004*(z-600); }
       };
-      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
       auto u_g = coupler.get_option<real>("geostrophic_u",10.);
       auto v_g = coupler.get_option<real>("geostrophic_v",0.);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -183,7 +183,7 @@ namespace custom_modules {
         dm_temp (k,j,i) = 0;
         dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
-          real z         = (k+0.5)*dz + qpoints(kk)*dz;
+          real z         = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
@@ -210,7 +210,7 @@ namespace custom_modules {
         if   (z <  100) { return 265;              }
         else            { return 265+0.01*(z-100); }
       };
-      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
       auto u_g = coupler.get_option<real>("geostrophic_u",8.);
       auto v_g = coupler.get_option<real>("geostrophic_v",0.);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -221,7 +221,7 @@ namespace custom_modules {
         dm_temp (k,j,i) = 0;
         dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
-          real z         = (k+0.5)*dz + qpoints(kk)*dz;
+          real z         = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
@@ -252,7 +252,7 @@ namespace custom_modules {
       real p0       = 1*R_d*300; // Assume a density of one
       real uref     = coupler.get_option<real>("hub_height_wind_mag",12); // Velocity at hub height
       real href     = coupler.get_option<real>("turbine_hub_height",90);  // Height of hub / center of windmills
-      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,nz,zlen,p0,grav,R_d,cp_d).createDeviceCopy();
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = 0;
         dm_uvel (k,j,i) = 0;
@@ -261,7 +261,7 @@ namespace custom_modules {
         dm_temp (k,j,i) = 0;
         dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
-          real z         = (k+0.5)*dz + qpoints(kk)*dz;
+          real z         = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
@@ -336,7 +336,7 @@ namespace custom_modules {
       };
       auto c_qv = KOKKOS_LAMBDA (real z) -> real { return interp_host( shost_height , shost_qv , z ); };
       using modules::integrate_hydrostatic_pressure_gll_temp_qv;
-      auto pressGLL = integrate_hydrostatic_pressure_gll_temp_qv(c_T,c_qv,nz,zlen,p0,grav,R_d,R_v).createDeviceCopy();
+      auto pressGLL = integrate_hydrostatic_pressure_gll_temp_qv(c_T,c_qv,zint,dz,p0,grav,R_d,R_v).createDeviceCopy();
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = 0;
         dm_uvel (k,j,i) = 0;
@@ -347,9 +347,9 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x     = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y     = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
-              real z     = (      k+0.5)*dz + qpoints(kk)*dz;
+              real x     = (i_beg+i+0.5)*dx      + qpoints(ii)*dx;
+              real y     = (j_beg+j+0.5)*dy      + qpoints(jj)*dy;
+              real z     = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
               real T     = c_T(z);
               real qv    = interp( s_height , s_qv    , z );
               real u     = interp( s_height , s_uvel  , z );

@@ -10,26 +10,26 @@ namespace modules {
   typedef std::function<real(real)> FUNC_Z;
 
   template <size_t nq = 9>
-  inline realHost2d integrate_hydrostatic_pressure_gll_temp_qv( FUNC_Z  func_T      ,
-                                                                FUNC_Z  func_qv     ,
-                                                                int     nz          ,
-                                                                real    zlen        ,
-                                                                real    p0   = 1.e5 ,
-                                                                real    grav = 9.81 ,
-                                                                real    R_d  = 287  ,
-                                                                real    R_v  = 461  ) {
+  inline realHost2d integrate_hydrostatic_pressure_gll_temp_qv( FUNC_Z         func_T      ,
+                                                                FUNC_Z         func_qv     ,
+                                                                real1d const & zint        ,
+                                                                real1d const & dz          ,
+                                                                real           p0   = 1.e5 ,
+                                                                real           grav = 9.81 ,
+                                                                real           R_d  = 287  ,
+                                                                real           R_v  = 461  ) {
     SArray<real,1,nq> qpoints;
     SArray<real,1,nq> qweights;
     TransformMatrices::get_gll_points (qpoints );
     TransformMatrices::get_gll_weights(qweights);
-    real dz = zlen/nz;
+    int nz = dz.size();
     realHost2d pgll("pressure_hydrostatic_gll",nz,nq);
     for (int k1=0; k1 < nz; k1++) {
       if (k1 == 0) { pgll(k1,0) = p0;              }
       else         { pgll(k1,0) = pgll(k1-1,nq-1); }
       for (int k2=1; k2 < nq; k2++) {
-        real z1    = (k1+0.5)*dz + qpoints(k2-1)*dz;
-        real z2    = (k1+0.5)*dz + qpoints(k2  )*dz;
+        real z1    = (zint(k1)+zint(k1+1))/2 + qpoints(k2-1)*dz(k);
+        real z2    = (zint(k1)+zint(k1+1))/2 + qpoints(k2  )*dz(k);
         real dzloc = z2-z1;
         real tot   = 0;
         for (int k3=0; k3 < nq; k3++) {
@@ -47,18 +47,18 @@ namespace modules {
 
 
   template <size_t nq = 9>
-  inline realHost2d integrate_hydrostatic_pressure_gll_theta( FUNC_Z  func_th     ,
-                                                              int     nz          ,
-                                                              real    zlen        ,
-                                                              real    p0   = 1.e5 ,
-                                                              real    grav = 9.81 ,
-                                                              real    R_d  = 287  ,
-                                                              real    c_p  = 1003 ) {
+  inline realHost2d integrate_hydrostatic_pressure_gll_theta( FUNC_Z         func_th     ,
+                                                              real1d const & zint        ,
+                                                              real1d const & dz          ,
+                                                              real           p0   = 1.e5 ,
+                                                              real           grav = 9.81 ,
+                                                              real           R_d  = 287  ,
+                                                              real           c_p  = 1003 ) {
     SArray<real,1,nq> qpoints;
     SArray<real,1,nq> qweights;
     TransformMatrices::get_gll_points (qpoints );
     TransformMatrices::get_gll_weights(qweights);
-    real dz    = zlen/nz;
+    int  nz    = dz.size();
     real c_v   = c_p - R_d;
     real gamma = c_p / c_v;
     real C0    = std::pow(R_d,c_p/c_v)*std::pow(p0,-R_d/c_v);
@@ -68,8 +68,8 @@ namespace modules {
       if (k1 == 0) { pgll(k1,0) = std::pow(p0,(gamma-1)/gamma); }
       else         { pgll(k1,0) = pgll(k1-1,nq-1);      }
       for (int k2=1; k2 < nq; k2++) {
-        real z1    = (k1+0.5)*dz + qpoints(k2-1)*dz;
-        real z2    = (k1+0.5)*dz + qpoints(k2  )*dz;
+        real z1    = (zint(k1)+zint(k1+1))/2 + qpoints(k2-1)*dz(k);
+        real z2    = (zint(k1)+zint(k1+1))/2 + qpoints(k2  )*dz(k);
         real dzloc = z2-z1;
         real tot   = 0;
         for (int k3=0; k3 < nq; k3++) {

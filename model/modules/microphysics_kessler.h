@@ -109,7 +109,7 @@ namespace modules {
       auto temp    = dm.get_lev_col<real      >("temp"         );
 
       // Grab the dimension sizes
-      real dz   = coupler.get_dz();
+      real zint = coupler.get_zint();
       int  nz   = coupler.get_nz();
       int  ny   = coupler.get_ny();
       int  nx   = coupler.get_nx();
@@ -132,7 +132,7 @@ namespace modules {
 
       // Save initial state, and compute inputs for kessler(...)
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
-        zmid    (k,i) = (k+0.5_fp) * dz;
+        zmid    (k,i) = (zint(k)+zint(k+1))/2;
         qv      (k,i) = rho_v(k,i) / rho_dry(k,i);
         qc      (k,i) = rho_c(k,i) / rho_dry(k,i);
         qr      (k,i) = rho_r(k,i) / rho_dry(k,i);

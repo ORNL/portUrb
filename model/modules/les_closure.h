@@ -80,7 +80,7 @@ namespace modules {
           real theta0   = t(k0);
           real rho0_gm1 = std::pow(rho0  ,gamma-1);
           real theta0_g = std::pow(theta0,gamma  );
-          r(k) = std::pow( rho0_gm1 + grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
+          r(k) = std::pow( rho0_gm1 + grav*(gamma-1)*dz(0)*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
           t(k) = theta0;
         }
         {
@@ -90,7 +90,7 @@ namespace modules {
           real theta0   = t(k0);
           real rho0_gm1 = std::pow(rho0  ,gamma-1);
           real theta0_g = std::pow(theta0,gamma  );
-          r(k) = std::pow( rho0_gm1 - grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
+          r(k) = std::pow( rho0_gm1 - grav*(gamma-1)*dz(nz-1)*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
           t(k) = theta0;
         }
       });
@@ -112,7 +112,6 @@ namespace modules {
       auto nu             = coupler.get_option<real>("kinematic_viscosity",0);
       auto dns            = coupler.get_option<bool>("dns",false);
       auto &dm            = coupler.get_data_manager_readwrite();
-      real delta          = std::pow( dx*dy*dz , 1._fp/3._fp );
       auto immersed       = dm.get<real const,3>("immersed_proportion_halos");
       real constexpr Pr = 0.7;
 
@@ -163,7 +162,7 @@ namespace modules {
 
       real visc_max_x = 0.1_fp*dx*dx/dtphys;
       real visc_max_y = 0.1_fp*dy*dy/dtphys;
-      real visc_max_z = 0.1_fp*dz*dz/dtphys;
+
 
       yakl::ScalarLiveOut<bool> max_triggered(false);
 
@@ -182,12 +181,13 @@ namespace modules {
             for (int tr=0; tr < num_tracers; tr++) { flux_tracers_x(tr,k,j,i) = 0; }
           } else {
             // Derivatives valid at interface i-1/2
-            real du_dz = 0.5_fp * ( (state(idU,hs+k+1,hs+j,hs+i-1)-state(idU,hs+k-1,hs+j,hs+i-1))/(2*dz) +
-                                    (state(idU,hs+k+1,hs+j,hs+i  )-state(idU,hs+k-1,hs+j,hs+i  ))/(2*dz) );
-            real dw_dz = 0.5_fp * ( (state(idW,hs+k+1,hs+j,hs+i-1)-state(idW,hs+k-1,hs+j,hs+i-1))/(2*dz) +
-                                    (state(idW,hs+k+1,hs+j,hs+i  )-state(idW,hs+k-1,hs+j,hs+i  ))/(2*dz) );
-            real dt_dz = 0.5_fp * ( (state(idT,hs+k+1,hs+j,hs+i-1)-state(idT,hs+k-1,hs+j,hs+i-1))/(2*dz) +
-                                    (state(idT,hs+k+1,hs+j,hs+i  )-state(idT,hs+k-1,hs+j,hs+i  ))/(2*dz) );
+            real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
+            real du_dz = 0.5_fp * ( (state(idU,hs+k+1,hs+j,hs+i-1)-state(idU,hs+k-1,hs+j,hs+i-1))/(dz2 ) +
+                                    (state(idU,hs+k+1,hs+j,hs+i  )-state(idU,hs+k-1,hs+j,hs+i  ))/(dz2 ) );
+            real dw_dz = 0.5_fp * ( (state(idW,hs+k+1,hs+j,hs+i-1)-state(idW,hs+k-1,hs+j,hs+i-1))/(dz2 ) +
+                                    (state(idW,hs+k+1,hs+j,hs+i  )-state(idW,hs+k-1,hs+j,hs+i  ))/(dz2 ) );
+            real dt_dz = 0.5_fp * ( (state(idT,hs+k+1,hs+j,hs+i-1)-state(idT,hs+k-1,hs+j,hs+i-1))/(dz2 ) +
+                                    (state(idT,hs+k+1,hs+j,hs+i  )-state(idT,hs+k-1,hs+j,hs+i  ))/(dz2 ) );
             real du_dy = 0.5_fp * ( (state(idU,hs+k,hs+j+1,hs+i-1)-state(idU,hs+k,hs+j-1,hs+i-1))/(2*dy) +
                                     (state(idU,hs+k,hs+j+1,hs+i  )-state(idU,hs+k,hs+j-1,hs+i  ))/(2*dy) );
             real dv_dy = 0.5_fp * ( (state(idV,hs+k,hs+j+1,hs+i-1)-state(idV,hs+k,hs+j-1,hs+i-1))/(2*dy) +
@@ -197,12 +197,13 @@ namespace modules {
             real dw_dx = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k,hs+j,hs+i-1))/dx;
             real dt_dx = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k,hs+j,hs+i-1))/dx;
             real dK_dx = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k,hs+j,hs+i-1))/dx;
-            real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(2*dz);
+            real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(dz2);
             // Quantities at interface i-1/2
             real rho         = 0.5_fp * ( state(idR,hs+k,hs+j,hs+i-1) + state(idR,hs+k,hs+j,hs+i) );
             real K           = 0.5_fp * ( tke      (hs+k,hs+j,hs+i-1) + tke      (hs+k,hs+j,hs+i) );
             real tref        = hy_t(hs+k);
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
+            real delta       = std::pow( dx*dy*dz(k) , 1._fp/3._fp );
             real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
             real km          = 0.1_fp * ell * std::sqrt(K);
             real Pr_t        = 0.85_fp;
@@ -230,12 +231,13 @@ namespace modules {
             for (int tr=0; tr < num_tracers; tr++) { flux_tracers_y(tr,k,j,i) = 0; }
           } else {
             // Derivatives valid at interface j-1/2
-            real dv_dz = 0.5_fp * ( (state(idV,hs+k+1,hs+j-1,hs+i)-state(idV,hs+k-1,hs+j-1,hs+i))/(2*dz) +
-                                    (state(idV,hs+k+1,hs+j  ,hs+i)-state(idV,hs+k-1,hs+j  ,hs+i))/(2*dz) );
-            real dw_dz = 0.5_fp * ( (state(idW,hs+k+1,hs+j-1,hs+i)-state(idW,hs+k-1,hs+j-1,hs+i))/(2*dz) +
-                                    (state(idW,hs+k+1,hs+j  ,hs+i)-state(idW,hs+k-1,hs+j  ,hs+i))/(2*dz) );
-            real dt_dz = 0.5_fp * ( (state(idT,hs+k+1,hs+j-1,hs+i)-state(idT,hs+k-1,hs+j-1,hs+i))/(2*dz) +
-                                    (state(idT,hs+k+1,hs+j  ,hs+i)-state(idT,hs+k-1,hs+j  ,hs+i))/(2*dz) );
+            real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
+            real dv_dz = 0.5_fp * ( (state(idV,hs+k+1,hs+j-1,hs+i)-state(idV,hs+k-1,hs+j-1,hs+i))/(dz2 ) +
+                                    (state(idV,hs+k+1,hs+j  ,hs+i)-state(idV,hs+k-1,hs+j  ,hs+i))/(dz2 ) );
+            real dw_dz = 0.5_fp * ( (state(idW,hs+k+1,hs+j-1,hs+i)-state(idW,hs+k-1,hs+j-1,hs+i))/(dz2 ) +
+                                    (state(idW,hs+k+1,hs+j  ,hs+i)-state(idW,hs+k-1,hs+j  ,hs+i))/(dz2 ) );
+            real dt_dz = 0.5_fp * ( (state(idT,hs+k+1,hs+j-1,hs+i)-state(idT,hs+k-1,hs+j-1,hs+i))/(dz2 ) +
+                                    (state(idT,hs+k+1,hs+j  ,hs+i)-state(idT,hs+k-1,hs+j  ,hs+i))/(dz2 ) );
             real du_dx = 0.5_fp * ( (state(idU,hs+k,hs+j-1,hs+i+1)-state(idU,hs+k,hs+j-1,hs+i-1))/(2*dx) +
                                     (state(idU,hs+k,hs+j  ,hs+i+1)-state(idU,hs+k,hs+j  ,hs+i-1))/(2*dx) );
             real dv_dx = 0.5_fp * ( (state(idV,hs+k,hs+j-1,hs+i+1)-state(idV,hs+k,hs+j-1,hs+i-1))/(2*dx) +
@@ -245,12 +247,13 @@ namespace modules {
             real dw_dy = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k,hs+j-1,hs+i))/dy;
             real dt_dy = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k,hs+j-1,hs+i))/dy;
             real dK_dy = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k,hs+j-1,hs+i))/dy;
-            real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(2*dz);
+            real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(dz2);
             // Quantities at interface j-1/2
             real rho         = 0.5_fp * ( state(idR,hs+k,hs+j-1,hs+i) + state(idR,hs+k,hs+j,hs+i) );
             real K           = 0.5_fp * ( tke      (hs+k,hs+j-1,hs+i) + tke      (hs+k,hs+j,hs+i) );
             real tref        = hy_t(hs+k);
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
+            real delta       = std::pow( dx*dy*dz(k) , 1._fp/3._fp );
             real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
             real km          = 0.1_fp * ell * std::sqrt(K);
             real Pr_t        = 0.85_fp;
@@ -278,6 +281,7 @@ namespace modules {
             for (int tr=0; tr < num_tracers; tr++) { flux_tracers_z(tr,k,j,i) = 0; }
           } else {
             // Derivatives valid at interface k-1/2
+            real dzloc = dz(std::max(0,k-1))/2 + dz(k)/2;
             real du_dx = 0.5_fp * ( (state(idU,hs+k-1,hs+j,hs+i+1) - state(idU,hs+k-1,hs+j,hs+i-1))/(2*dx) +
                                     (state(idU,hs+k  ,hs+j,hs+i+1) - state(idU,hs+k  ,hs+j,hs+i-1))/(2*dx) );
             real dw_dx = 0.5_fp * ( (state(idW,hs+k-1,hs+j,hs+i+1) - state(idW,hs+k-1,hs+j,hs+i-1))/(2*dx) +
@@ -286,20 +290,22 @@ namespace modules {
                                     (state(idV,hs+k  ,hs+j+1,hs+i) - state(idV,hs+k  ,hs+j-1,hs+i))/(2*dy) );
             real dw_dy = 0.5_fp * ( (state(idW,hs+k-1,hs+j+1,hs+i) - state(idW,hs+k-1,hs+j-1,hs+i))/(2*dy) +
                                     (state(idW,hs+k  ,hs+j+1,hs+i) - state(idW,hs+k  ,hs+j-1,hs+i))/(2*dy) );
-            real du_dz = (state(idU,hs+k,hs+j,hs+i) - state(idU,hs+k-1,hs+j,hs+i))/dz;
-            real dv_dz = (state(idV,hs+k,hs+j,hs+i) - state(idV,hs+k-1,hs+j,hs+i))/dz;
-            real dw_dz = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k-1,hs+j,hs+i))/dz;
-            real dt_dz = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i))/dz;
-            real dK_dz = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k-1,hs+j,hs+i))/dz;
-            real dth_dz = (hy_t(hs+k)-hy_t(hs+k-1))/dz;
+            real du_dz = (state(idU,hs+k,hs+j,hs+i) - state(idU,hs+k-1,hs+j,hs+i))/dzloc;
+            real dv_dz = (state(idV,hs+k,hs+j,hs+i) - state(idV,hs+k-1,hs+j,hs+i))/dzloc;
+            real dw_dz = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k-1,hs+j,hs+i))/dzloc;
+            real dt_dz = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i))/dzloc;
+            real dK_dz = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k-1,hs+j,hs+i))/dzloc;
+            real dth_dz = (hy_t(hs+k)-hy_t(hs+k-1))/dzloc;
             // Quantities at interface k-1/2
             real rho         = 0.5_fp * ( state(idR,hs+k-1,hs+j,hs+i) + state(idR,hs+k,hs+j,hs+i) );
             real K           = 0.5_fp * ( tke      (hs+k-1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
             real tref        = 0.5_fp * ( hy_t(hs+k-1) + hy_t(hs+k) );
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
+            real delta       = std::pow( dx*dy*dz(k) , 1._fp/3._fp );
             real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
             real km          = 0.1_fp * ell * std::sqrt(K);
             real Pr_t        = 0.85_fp;
+            real visc_max_z  = 0.1_fp*dz(k)*dz(k)/dtphys;
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_z );
             real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_z );
             if (visc_tot == visc_max_z || visc_tot_th == visc_max_z) max_triggered = true;
@@ -309,7 +315,7 @@ namespace modules {
             flux_rt_z (k,j,i) = -rho*visc_tot_th*(dt_dz                                          );
             flux_tke_z(k,j,i) = -rho*visc_tot   *(dK_dz                                          );
             for (int tr=0; tr < num_tracers; tr++) {
-              dt_dz = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k-1,hs+j,hs+i))/dz;
+              dt_dz = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k-1,hs+j,hs+i))/dzloc;
               flux_tracers_z(tr,k,j,i) = -rho*visc_tot_th*dt_dz;
             }
           }
@@ -319,12 +325,14 @@ namespace modules {
       if (max_triggered.hostRead()) std::cout << "WARNING: les_closure max triggered" << std::endl;
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        real dz2    = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
         real rho    = state(idR,hs+k,hs+j,hs+i);
         real K      = tke      (hs+k,hs+j,hs+i);
         real t      = state(idT,hs+k,hs+j,hs+i) + hy_t(hs+k);
-        real dt_dz  = ( state(idT,hs+k+1,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i) ) / (2*dz);
-        real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(2*dz);
+        real dt_dz  = ( state(idT,hs+k+1,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i) ) / (dz2);
+        real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(dz2);
         real N      = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
+        real delta  = std::pow( dx*dy*dz(k) , 1._fp/3._fp );
         real ell    = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
         real km     = 0.1_fp * ell * std::sqrt(K);
         real Pr_t   = 0.85_fp;
@@ -350,9 +358,9 @@ namespace modules {
           real du_dy = ( state(idU,hs+k,hs+jp1,hs+i) - state(idU,hs+k,hs+jm1,hs+i) ) / (2*dy);
           real dv_dy = ( state(idV,hs+k,hs+j+1,hs+i) - state(idV,hs+k,hs+j-1,hs+i) ) / (2*dy);
           real dw_dy = ( state(idW,hs+k,hs+jp1,hs+i) - state(idW,hs+k,hs+jm1,hs+i) ) / (2*dy);
-          real du_dz = ( state(idU,hs+kp1,hs+j,hs+i) - state(idU,hs+km1,hs+j,hs+i) ) / (2*dz);
-          real dv_dz = ( state(idV,hs+kp1,hs+j,hs+i) - state(idV,hs+km1,hs+j,hs+i) ) / (2*dz);
-          real dw_dz = ( state(idW,hs+k+1,hs+j,hs+i) - state(idW,hs+k-1,hs+j,hs+i) ) / (2*dz);
+          real du_dz = ( state(idU,hs+kp1,hs+j,hs+i) - state(idU,hs+km1,hs+j,hs+i) ) / (dz2 );
+          real dv_dz = ( state(idV,hs+kp1,hs+j,hs+i) - state(idV,hs+km1,hs+j,hs+i) ) / (dz2 );
+          real dw_dz = ( state(idW,hs+k+1,hs+j,hs+i) - state(idW,hs+k-1,hs+j,hs+i) ) / (dz2 );
           real S11 = du_dx;
           real S22 = dv_dy;
           real S33 = dw_dz;
@@ -367,19 +375,19 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real tend_ru  = -(flux_ru_x (k,j,i+1) - flux_ru_x (k,j,i)) / dx -
                          (flux_ru_y (k,j+1,i) - flux_ru_y (k,j,i)) / dy -
-                         (flux_ru_z (k+1,j,i) - flux_ru_z (k,j,i)) / dz;
+                         (flux_ru_z (k+1,j,i) - flux_ru_z (k,j,i)) / dz(k);
         real tend_rv  = -(flux_rv_x (k,j,i+1) - flux_rv_x (k,j,i)) / dx -
                          (flux_rv_y (k,j+1,i) - flux_rv_y (k,j,i)) / dy -
-                         (flux_rv_z (k+1,j,i) - flux_rv_z (k,j,i)) / dz;
+                         (flux_rv_z (k+1,j,i) - flux_rv_z (k,j,i)) / dz(k);
         real tend_rw  = -(flux_rw_x (k,j,i+1) - flux_rw_x (k,j,i)) / dx -
                          (flux_rw_y (k,j+1,i) - flux_rw_y (k,j,i)) / dy -
-                         (flux_rw_z (k+1,j,i) - flux_rw_z (k,j,i)) / dz;
+                         (flux_rw_z (k+1,j,i) - flux_rw_z (k,j,i)) / dz(k);
         real tend_rt  = -(flux_rt_x (k,j,i+1) - flux_rt_x (k,j,i)) / dx -
                          (flux_rt_y (k,j+1,i) - flux_rt_y (k,j,i)) / dy -
-                         (flux_rt_z (k+1,j,i) - flux_rt_z (k,j,i)) / dz;
+                         (flux_rt_z (k+1,j,i) - flux_rt_z (k,j,i)) / dz(k);
         real tend_tke = -(flux_tke_x(k,j,i+1) - flux_tke_x(k,j,i)) / dx -
                          (flux_tke_y(k,j+1,i) - flux_tke_y(k,j,i)) / dy -
-                         (flux_tke_z(k+1,j,i) - flux_tke_z(k,j,i)) / dz + tke_source(k,j,i);
+                         (flux_tke_z(k+1,j,i) - flux_tke_z(k,j,i)) / dz(k) + tke_source(k,j,i);
 
         state(idU,hs+k,hs+j,hs+i) *= state(idR,hs+k,hs+j,hs+i);
         state(idU,hs+k,hs+j,hs+i) += dtphys * tend_ru ;
@@ -401,7 +409,7 @@ namespace modules {
         for (int tr=0; tr < num_tracers; tr++) {
           real tend_tracer = -(flux_tracers_x(tr,k,j,i+1) - flux_tracers_x(tr,k,j,i)) / dx -
                               (flux_tracers_y(tr,k,j+1,i) - flux_tracers_y(tr,k,j,i)) / dy -
-                              (flux_tracers_z(tr,k+1,j,i) - flux_tracers_z(tr,k,j,i)) / dz;
+                              (flux_tracers_z(tr,k+1,j,i) - flux_tracers_z(tr,k,j,i)) / dz(k);
           tracers(tr,hs+k,hs+j,hs+i) *= state(idR,hs+k,hs+j,hs+i);
           tracers(tr,hs+k,hs+j,hs+i) += dtphys * tend_tracer;
         }
@@ -579,7 +587,7 @@ namespace modules {
             real theta0   = state(idT,k0,j,i)+hy_t(k0);
             real rho0_gm1 = std::pow(rho0  ,gamma-1);
             real theta0_g = std::pow(theta0,gamma  );
-            state(idR,k,j,i) = std::pow( rho0_gm1 + grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) ,
+            state(idR,k,j,i) = std::pow( rho0_gm1 + grav*(gamma-1)*dz(0)*(kk+1)/(gamma*C0*theta0_g) ,
                                          1._fp/(gamma-1) );
           }
         });
@@ -614,7 +622,7 @@ namespace modules {
             real theta0   = state(idT,k0,j,i)+hy_t(k0);
             real rho0_gm1 = std::pow(rho0  ,gamma-1);
             real theta0_g = std::pow(theta0,gamma  );
-            state(idR,k,j,i) = std::pow( rho0_gm1 - grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) ,
+            state(idR,k,j,i) = std::pow( rho0_gm1 - grav*(gamma-1)*dz(nz-1)*(kk+1)/(gamma*C0*theta0_g) ,
                                          1._fp/(gamma-1) );
           }
         });

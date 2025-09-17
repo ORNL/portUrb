@@ -271,7 +271,7 @@ namespace modules {
       auto dm_rainnc    = dm.get_collapsed<real>("micro_rainnc"   );
       auto dm_snownc    = dm.get_collapsed<real>("micro_snownc"   );
       auto dm_graupelnc = dm.get_collapsed<real>("micro_graupelnc");
-      real dz = coupler.get_dz();
+      auto dz = coupler.get_dz();
 
       // Allocates inputs and outputs
       double dt_in = dt;
@@ -328,7 +328,7 @@ namespace modules {
         qrcuten(i+1,k+1) = 0;
         qscuten(i+1,k+1) = 0;
         qicuten(i+1,k+1) = 0;
-        dz_arr (i+1,k+1) = dz;
+        dz_arr (i+1,k+1) = dz(k);
         if (k == 0) {
           rainnc   (i+1) = dm_rainnc   (i);
           snownc   (i+1) = dm_snownc   (i);

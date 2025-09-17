@@ -10,12 +10,12 @@ namespace modules {
     using yakl::c::parallel_for;
     using yakl::c::SimpleBounds;
     using yakl::c::Bounds;
-    auto nx        = coupler.get_nx  ();
-    auto ny        = coupler.get_ny  ();
-    auto nz        = coupler.get_nz  ();
-    auto dx        = coupler.get_dx  ();
-    auto dy        = coupler.get_dy  ();
-    auto dz        = coupler.get_dz  ();
+    auto nx        = coupler.get_nx();
+    auto ny        = coupler.get_ny();
+    auto nz        = coupler.get_nz();
+    auto dx        = coupler.get_dx();
+    auto dy        = coupler.get_dy();
+    auto dz        = coupler.get_dz();
     auto p0        = coupler.get_option<real>("p0");
     auto R_d       = coupler.get_option<real>("R_d");
     auto cp_d      = coupler.get_option<real>("cp_d");
@@ -115,33 +115,33 @@ namespace modules {
       indk = hs+k-1;  indj = hs+j;  indi = hs+i;
       if (imm_prop(indk,indj,indi) > 0) {
         real z0   = imm_rough(indk,indj,indi);
-        real lgz  = std::log((dz/2+z0)/z0);
+        real lgz  = std::log((dz(k)/2+z0)/z0);
         real c_dz = vk*vk/(lgz*lgz);
         real T0   = imm_temp(indk,indj,indi);
         real mag  = std::sqrt(u*u+v*v);
-        tend_u(k,j,i) += -c_dz*(u-0 )*mag/dz;
-        tend_v(k,j,i) += -c_dz*(v-0 )*mag/dz;
+        tend_u(k,j,i) += -c_dz*(u-0 )*mag/dz(k);
+        tend_v(k,j,i) += -c_dz*(v-0 )*mag/dz(k);
         if (T0 != 0) {
           real z0T  = 0.1*z0;
-          real lgzT = std::log((dz/2+z0T)/z0T);
+          real lgzT = std::log((dz(k)/2+z0T)/z0T);
           real c_dzT = vk*vk/(lgz*lgzT);
-          tend_T(k,j,i) += -c_dzT*(T-T0)*mag/dz;
+          tend_T(k,j,i) += -c_dzT*(T-T0)*mag/dz(k);
         }
       }
       indk = hs+k+1;  indj = hs+j;  indi = hs+i;
       if (imm_prop(indk,indj,indi) > 0) {
         real z0   = imm_rough(indk,indj,indi);
-        real lgz  = std::log((dz/2+z0)/z0);
+        real lgz  = std::log((dz(k)/2+z0)/z0);
         real c_dz = vk*vk/(lgz*lgz);
         real T0   = imm_temp(indk,indj,indi);
         real mag  = std::sqrt(u*u+v*v);
-        tend_u(k,j,i) += -c_dz*(u-0 )*mag/dz;
-        tend_v(k,j,i) += -c_dz*(v-0 )*mag/dz;
+        tend_u(k,j,i) += -c_dz*(u-0 )*mag/dz(k);
+        tend_v(k,j,i) += -c_dz*(v-0 )*mag/dz(k);
         if (T0 != 0) {
           real z0T  = 0.1*z0;
-          real lgzT = std::log((dz/2+z0T)/z0T);
+          real lgzT = std::log((dz(k)/2+z0T)/z0T);
           real c_dzT = vk*vk/(lgz*lgzT);
-          tend_T(k,j,i) += -c_dzT*(T-T0)*mag/dz;
+          tend_T(k,j,i) += -c_dzT*(T-T0)*mag/dz(k);
         }
       }
     });
