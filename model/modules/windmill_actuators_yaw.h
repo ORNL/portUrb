@@ -33,7 +33,7 @@ namespace modules {
       real       tower_base_rad;    // Radius of the tower base at ground or water level (m)
       real       tower_top_rad;     // Radius of the tower top connected to hub flange (m)
       real       shaft_tilt;        // Shaft tilt in radians
-      void init( std::string fname , real dx , real dy , real dz ) {
+      void init( std::string fname ) {
         YAML::Node config = YAML::LoadFile( fname );
         if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
         auto velmag_vec      = config["velocity_magnitude"].as<std::vector<real>>();
@@ -156,6 +156,7 @@ namespace modules {
         auto dx     = coupler.get_dx();
         auto dy     = coupler.get_dy();
         auto dz     = coupler.get_dz();
+        auto zint   = coupler.get_zint();
         auto myrank = coupler.get_myrank();
         auto imm    = coupler.get_data_manager_readwrite().get<real,3>("immersed_proportion");
         auto imm_h  = coupler.get_data_manager_readwrite().get<real,3>("immersed_proportion_halos");
@@ -224,9 +225,9 @@ namespace modules {
             for (int kk=0; kk < N; kk++) {
               for (int jj=0; jj < N; jj++) {
                 for (int ii=0; ii < N; ii++) {
-                  int x = (i_beg+i)*dx + ii*dx/(N-1);
-                  int y = (j_beg+j)*dy + jj*dy/(N-1);
-                  int z = (      k)*dz + kk*dz/(N-1);
+                  int x = (i_beg+i)*dx          + ii*dx   /(N-1);
+                  int y = (j_beg+j)*dy          + jj*dy   /(N-1);
+                  int z = (zint(k)+zint(k+1))/2 + kk*dz(k)/(N-1);
                   auto bx  = base_loc_x;
                   auto by  = base_loc_y;
                   auto rad = tower_base_rad + (tower_top_rad-tower_base_rad)*(z/tower_top);
@@ -301,9 +302,6 @@ namespace modules {
       auto nx   = coupler.get_nx  ();
       auto ny   = coupler.get_ny  ();
       auto nz   = coupler.get_nz  ();
-      auto dx   = coupler.get_dx  ();
-      auto dy   = coupler.get_dy  ();
-      auto dz   = coupler.get_dz  ();
       auto xlen = coupler.get_xlen();
       auto ylen = coupler.get_ylen();
       auto &dm  = coupler.get_data_manager_readwrite();
@@ -311,7 +309,7 @@ namespace modules {
       trace_size = 0;
       
       RefTurbine ref_turbine;
-      ref_turbine.init( coupler.get_option<std::string>("turbine_file") , dx , dy , dz );
+      ref_turbine.init( coupler.get_option<std::string>("turbine_file") );
       if (coupler.option_exists("override_shaft_tilt_deg")) {
         ref_turbine.shaft_tilt = coupler.get_option<real>("override_shaft_tilt_deg");
       }
@@ -475,6 +473,7 @@ namespace modules {
       auto dx              = coupler.get_dx   ();
       auto dy              = coupler.get_dy   ();
       auto dz              = coupler.get_dz   ();
+      auto zint            = coupler.get_zint ();
       auto i_beg           = coupler.get_i_beg();
       auto j_beg           = coupler.get_j_beg();
       auto &dm             = coupler.get_data_manager_readwrite();
@@ -546,9 +545,9 @@ namespace modules {
               for (int kk=0; kk < N; kk++) {
                 for (int jj=0; jj < N; jj++) {
                   for (int ii=0; ii < N; ii++) {
-                    F x = (i_beg+i)*dx + ii*dx/(N-1);
-                    F y = (j_beg+j)*dy + jj*dy/(N-1);
-                    F z =        k *dz + kk*dz/(N-1);
+                    F x = (i_beg+i)*dx          + ii*dx   /(N-1);
+                    F y = (j_beg+j)*dy          + jj*dy   /(N-1);
+                    F z = (zint(k)+zint(k+1))/2 + kk*dz(k)/(N-1);
                     // Rotate in (-yaw) direction to compare against vanilla x and y
                     F cos_nyaw =  cos_yaw;
                     F sin_nyaw = -sin_yaw;
@@ -586,7 +585,7 @@ namespace modules {
             blade_weight_proj(k,j,i) = 0;
             F x = (i_beg+i+0.5f)*dx;
             F y = (j_beg+j+0.5f)*dy;
-            F z = (      k+0.5f)*dz;
+            F z = (zint(k)+zint(k+1))/2;
             if ( z >= hub_height-rad && z <= hub_height+rad &&
                  y >= base_y    -rad && y <= base_y    +rad &&
                  x >= base_x    -rad && x <= base_x    +rad ) {
@@ -645,7 +644,13 @@ namespace modules {
                 //     Also, add the average angle for torque application later
                 int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
                 int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
-                int tk = static_cast<int>(std::floor(zp/dz))      ;
+                int tk = 0;
+                for (int kk=0; kk < nz; kk++) {
+                  if (zp >= zint(k) && zp < zint(k+1)) {
+                    tk = kk;
+                    break;
+                  }
+                }
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_angle(tk,tj,ti) , shp*std::atan2(z,-y) );
                   Kokkos::atomic_add( &disk_weight_proj (tk,tj,ti) , shp );
@@ -655,7 +660,7 @@ namespace modules {
                 yp += upstream_y_offset;
                 ti = static_cast<int>(std::floor(xp/dx))-i_beg;
                 tj = static_cast<int>(std::floor(yp/dy))-j_beg;
-                tk = static_cast<int>(std::floor(zp/dz))      ;
+                // tk is the same because only a horizontal translation was applied
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_samp(tk,tj,ti) , shp );
                 }
@@ -716,7 +721,13 @@ namespace modules {
                     // if it's in this task's domain, then atomically add shape to this cell's total
                     int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
                     int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
-                    int tk = static_cast<int>(std::floor(zp/dz))      ;
+                    int tk = 0;
+                    for (int kk=0; kk < nz; kk++) {
+                      if (zp >= zint(k) && zp < zint(k+1)) {
+                        tk = kk;
+                        break;
+                      }
+                    }
                     if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                       Kokkos::atomic_add( &blade_1(tk,tj,ti) , shp );
                     }
@@ -738,7 +749,13 @@ namespace modules {
                     // if it's in this task's domain, then atomically add shape to this cell's total
                     int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
                     int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
-                    int tk = static_cast<int>(std::floor(zp/dz))      ;
+                    int tk = 0;
+                    for (int kk=0; kk < nz; kk++) {
+                      if (zp >= zint(k) && zp < zint(k+1)) {
+                        tk = kk;
+                        break;
+                      }
+                    }
                     if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                       Kokkos::atomic_add( &blade_2(tk,tj,ti) , shp );
                     }
@@ -760,7 +777,13 @@ namespace modules {
                     // if it's in this task's domain, then atomically add shape to this cell's total
                     int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
                     int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
-                    int tk = static_cast<int>(std::floor(zp/dz))      ;
+                    int tk = 0;
+                    for (int kk=0; kk < nz; kk++) {
+                      if (zp >= zint(k) && zp < zint(k+1)) {
+                        tk = kk;
+                        break;
+                      }
+                    }
                     if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                       Kokkos::atomic_add( &blade_3(tk,tj,ti) , shp );
                     }
@@ -790,7 +813,14 @@ namespace modules {
               F x = (i_beg+i+0.5f)*dx;
               F y = (j_beg+j+0.5f)*dy;
               if (std::abs(x-(base_x+upstream_x_offset)) <= rad && std::abs(y-(base_y+upstream_y_offset)) <= rad) {
-                int k19_5 = std::max( 0._fp , std::round(19.5/dz-0.5) );
+                real zp = 19.5;
+                int k19_5 = 0;
+                for (int kk=0; kk < nz; kk++) {
+                  if (zp >= zint(k) && zp < zint(k+1)) {
+                    k19_5 = kk;
+                    break;
+                  }
+                }
                 F u = uvel(k19_5,j,i);
                 F v = vvel(k19_5,j,i);
                 umag_19_5m_2d(j,i) = std::sqrt(u*u + v*v);
@@ -949,7 +979,7 @@ namespace modules {
           turbine.cp_trace   .push_back( C_P               );
           turbine.ct_trace   .push_back( C_T               );
           // This is needed to compute the thrust force based on windmill proportion in each cell
-          F turb_factor = M_PI*rad*rad/(dx*dy*dz);
+          F turb_factor = M_PI*rad*rad/(dx*dy*dz(k));
           // Fraction of thrust that didn't generate power to send into TKE
           F f_TKE = coupler.get_option<real>("turbine_f_TKE",0.25);
           F C_TKE = f_TKE * (C_T - C_P);
@@ -970,8 +1000,8 @@ namespace modules {
                   F t_tke  =  0.5f*rho_d(k,j,i)*C_TKE*instant_mag0*instant_mag0*instant_mag0*(1-blade_wt)*wt;
                   // Compute tendencies for swirl
                   F t_w    =  0.5f             *C_Q  *instant_mag0*instant_mag0*std::cos(az)         *wt;
-                        t_u   += -0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*sin_yaw *wt;
-                        t_v   +=  0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*cos_yaw *wt;
+                    t_u   += -0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*sin_yaw *wt;
+                    t_v   +=  0.5f             *C_Q  *instant_mag0*instant_mag0*std::sin(az)*cos_yaw *wt;
                   tend_u  (k,j,i) += t_u;
                   tend_v  (k,j,i) += t_v;
                   tend_w  (k,j,i) += t_w;

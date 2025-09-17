@@ -162,6 +162,7 @@ namespace modules {
       auto dx    = coupler.get_dx   ();
       auto dy    = coupler.get_dy   ();
       auto dz    = coupler.get_dz   ();
+      auto zint  = coupler.get_zint ();
       auto i_beg = coupler.get_i_beg();
       auto j_beg = coupler.get_j_beg();
       auto &dm   = coupler.get_data_manager_readwrite();
@@ -212,7 +213,7 @@ namespace modules {
             disk_weight_samp (k,j,i) = 0;
             float x = (i_beg+i+0.5f)*dx;
             float y = (j_beg+j+0.5f)*dy;
-            float z = (      k+0.5f)*dz;
+            float z = (zint(k)+zint(k+1))/2;
             if ( z >= hub_height-rad && z <= hub_height+rad &&
                  y >= base_y    -rad && y <= base_y    +rad &&
                  x >= base_x    -rad && x <= base_x    +rad ) {
@@ -268,7 +269,13 @@ namespace modules {
                 //     Also, add the average angle for torque application later
                 int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
                 int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
-                int tk = static_cast<int>(std::floor(zp/dz))      ;
+                int tk = 0;
+                for (int kk=0; kk < nz; kk++) {
+                  if (zp >= zint(k) && zp < zint(k+1)) {
+                    tk = kk;
+                    break;
+                  }
+                }
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_angle(tk,tj,ti) , shp*std::atan2(z,-y) );
                   Kokkos::atomic_add( &disk_weight_proj (tk,tj,ti) , shp );
@@ -278,7 +285,7 @@ namespace modules {
                 yp += up_y_offset;
                 ti = static_cast<int>(std::floor(xp/dx))-i_beg;
                 tj = static_cast<int>(std::floor(yp/dy))-j_beg;
-                tk = static_cast<int>(std::floor(zp/dz))      ;
+                // tk is the same because only the horizontal location is translated
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_samp(tk,tj,ti) , shp );
                 }
@@ -330,7 +337,7 @@ namespace modules {
             if (disk_weight_proj(k,j,i) > 0) {
               // If normal wind is negative, don't do anything.
               if (uvel(k,j,i)*cos_yaw + vvel(k,j,i)*sin_yaw > 0) {
-                float wt = disk_weight_proj(k,j,i)*M_PI*rad*rad/(dx*dy*dz);
+                float wt = disk_weight_proj(k,j,i)*M_PI*rad*rad/(dx*dy*dz(k));
                 float az = disk_weight_angle(k,j,i);
                 // Compute tendencies implied by actuator disk thoery; Only apply TKE for disk, not blades
                 float t_u    = -0.5f             *C_T  *mag0*mag0*cos_yaw*wt;
