@@ -36,6 +36,7 @@ endmacro()
 process_target(abl_convective)
 process_target(abl_stable)
 process_target(city)
-process_target(supercell)
+process_target(supercell_kessler)
+process_target(supercell_morr2mom)
 process_target(turbine_neutral_ensemble)
 

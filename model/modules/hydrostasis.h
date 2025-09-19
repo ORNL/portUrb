@@ -28,8 +28,8 @@ namespace modules {
       if (k1 == 0) { pgll(k1,0) = p0;              }
       else         { pgll(k1,0) = pgll(k1-1,nq-1); }
       for (int k2=1; k2 < nq; k2++) {
-        real z1    = (zint(k1)+zint(k1+1))/2 + qpoints(k2-1)*dz(k);
-        real z2    = (zint(k1)+zint(k1+1))/2 + qpoints(k2  )*dz(k);
+        real z1    = (zint(k1)+zint(k1+1))/2 + qpoints(k2-1)*dz(k1);
+        real z2    = (zint(k1)+zint(k1+1))/2 + qpoints(k2  )*dz(k1);
         real dzloc = z2-z1;
         real tot   = 0;
         for (int k3=0; k3 < nq; k3++) {
@@ -68,8 +68,8 @@ namespace modules {
       if (k1 == 0) { pgll(k1,0) = std::pow(p0,(gamma-1)/gamma); }
       else         { pgll(k1,0) = pgll(k1-1,nq-1);      }
       for (int k2=1; k2 < nq; k2++) {
-        real z1    = (zint(k1)+zint(k1+1))/2 + qpoints(k2-1)*dz(k);
-        real z2    = (zint(k1)+zint(k1+1))/2 + qpoints(k2  )*dz(k);
+        real z1    = (zint(k1)+zint(k1+1))/2 + qpoints(k2-1)*dz(k1);
+        real z2    = (zint(k1)+zint(k1+1))/2 + qpoints(k2  )*dz(k1);
         real dzloc = z2-z1;
         real tot   = 0;
         for (int k3=0; k3 < nq; k3++) {

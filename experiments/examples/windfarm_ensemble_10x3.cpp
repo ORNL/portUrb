@@ -128,12 +128,9 @@ int main(int argc, char** argv) {
       coupler_main.set_option<std::vector<real>>("turbine_y_locs"      ,turbine_y_locs);
       coupler_main.set_option<std::vector<bool>>("turbine_apply_thrust",turbine_thrust);
 
-      // Coupler state is: (1) dry density;  (2) u-velocity;  (3) v-velocity;  (4) w-velocity;  (5) temperature
-      //                   (6+) tracer masses (*not* mixing ratios!); and Option elapsed_time init to zero
-      coupler_main.distribute_mpi_and_allocate_coupled_state( par_comm , nz, ny_glob, nx_glob);
-
-      // Just tells the coupler how big the domain is in each dimensions
-      coupler_main.set_grid( xlen , ylen , zlen );
+      coupler_main.init( core::ParallelComm(MPI_COMM_WORLD) ,
+                         coupler_main.generate_levels_equal(nz,zlen) ,
+                         ny_glob , nx_glob , ylen , xlen );
 
       // No microphysics specified, so create a water_vapor tracer required by the dycore
       coupler_main.add_tracer("water_vapor","water_vapor",true,true ,true);

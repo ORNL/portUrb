@@ -178,8 +178,8 @@ namespace custom_modules {
         dm_temp (k,j,i) = T;
         dm_rho_v(k,j,i) = 0;
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if ((k+0.5_fp)*dz <= 400) dm_uvel(k,j,i) += rand.genFP<real>(-0.1,0.1);
-        if ((k+0.5_fp)*dz <= 400) dm_vvel(k,j,i) += rand.genFP<real>(-0.1,0.1);
+        if (z <= 400) dm_uvel(k,j,i) += rand.genFP<real>(-0.1,0.1);
+        if (z <= 400) dm_vvel(k,j,i) += rand.genFP<real>(-0.1,0.1);
         if ( (x >= 1*h/2 && x <= 3*h/2 && y >= 1*h/2 && y <= 3*h/2 && z <= h) ||  // Cube 1
              (x >= 1*h/2 && x <= 3*h/2 && y >= 5*h/2 && y <= 7*h/2 && z <= h) ||  // Cube 2
              (x >= 5*h/2 && x <= 7*h/2 && y >= 3*h/2 && y <= 5*h/2 && z <= h) ||  // Cube 3
@@ -396,7 +396,6 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        real z = (k+0.5)*dz;
         // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
@@ -698,8 +697,9 @@ namespace custom_modules {
       real pwr    = 0.116;
       real slope  = -grav*std::pow( p0 , R_d/cp_d ) / (cp_d*theta0);
       realHost1d press_host("press",nz);
-      press_host(0) = std::pow( p0 , R_d/cp_d ) + slope*dz/2;
-      for (int k=1; k < nz; k++) { press_host(k) = press_host(k-1) + slope*dz; }
+      auto dz_host = dz.createHostCopy();
+      press_host(0) = std::pow( p0 , R_d/cp_d ) + slope*dz_host(0)/2;
+      for (int k=1; k < nz; k++) { press_host(k) = press_host(k-1) + slope*(dz_host(k-1)+dz_host(k))/2; }
       for (int k=0; k < nz; k++) { press_host(k) = std::pow( press_host(k) , cp_d/R_d ); }
       auto press = press_host.createDeviceCopy();
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {

@@ -93,12 +93,9 @@ int main(int argc, char** argv) {
     if (par_comm.valid()) {
       yakl::timer_start("main");
 
-      // Coupler state is: (1) dry density;  (2) u-velocity;  (3) v-velocity;  (4) w-velocity;  (5) temperature
-      //                   (6+) tracer masses (*not* mixing ratios!); and Option elapsed_time init to zero
-      coupler.distribute_mpi_and_allocate_coupled_state( par_comm , nz, ny_glob, nx_glob);
-
-      // Just tells the coupler how big the domain is in each dimensions
-      coupler.set_grid( xlen , ylen , zlen );
+      coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
+                    coupler.generate_levels_equal(nz,zlen) ,
+                    ny_glob , nx_glob , ylen , xlen );
 
       // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
       modules::Dynamics_Euler_Stratified_WenoFV  dycore;

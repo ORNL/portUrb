@@ -11,6 +11,7 @@ namespace modules {
                                                                real            tau = 10 ) {
     using yakl::c::parallel_for;
     using yakl::c::SimpleBounds;
+    auto dz      = coupler.get_dz  ().createHostCopy();
     auto zint    = coupler.get_zint().createHostCopy();
     auto nz      = coupler.get_nz();
     auto ny      = coupler.get_ny();
@@ -53,8 +54,8 @@ namespace modules {
     } else {
       real z1 = zint(k2)-dz(k1)/2;
       real z2 = zint(k2)+dz(k2)/2;
-      real w1 = (z2-height)/dz;
-      real w2 = (height-z1)/dz;
+      real w1 = (z2-height)/((dz(k1)+dz(k2))/2);
+      real w2 = (height-z1)/((dz(k1)+dz(k2))/2);
       real u  = w1*u1 + w2*u2;
       real v  = w1*v1 + w2*v2;
     }

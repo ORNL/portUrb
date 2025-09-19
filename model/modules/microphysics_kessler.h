@@ -109,7 +109,7 @@ namespace modules {
       auto temp    = dm.get_lev_col<real      >("temp"         );
 
       // Grab the dimension sizes
-      real zint = coupler.get_zint();
+      auto zint = coupler.get_zint();
       int  nz   = coupler.get_nz();
       int  ny   = coupler.get_ny();
       int  nx   = coupler.get_nx();

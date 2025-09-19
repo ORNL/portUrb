@@ -57,13 +57,14 @@ namespace modules {
 
 
     real compute_time_step( core::Coupler const &coupler ) const {
+      using yakl::intrinsics::minval;
       auto dx = coupler.get_dx();
       auto dy = coupler.get_dy();
       auto dz = coupler.get_dz();
       auto cs = coupler.get_option<real>( "dycore_cs" , 350 );
       real maxwave = cs + coupler.get_option<real>( "dycore_max_wind" , 100 );
       real cfl = coupler.get_option<real>("cfl",0.70);
-      return cfl * std::min( std::min( dx , dy ) , dz ) / maxwave;
+      return cfl * std::min( std::min( dx , dy ) , minval(dz) ) / maxwave;
     }
     // real compute_time_step( core::Coupler const &coupler ) const {
     //   using yakl::c::parallel_for;
@@ -93,9 +94,9 @@ namespace modules {
     //     real T = temp (k,j,i);
     //     real p = r*R_d*T;
     //     real cs = csconst < 0 ? std::sqrt(gamma*p/r) : csconst;
-    //     real dtx = cfl*dx/(std::abs(u)+cs);
-    //     real dty = cfl*dy/(std::abs(v)+cs);
-    //     real dtz = cfl*dz/(std::abs(w)+cs);
+    //     real dtx = cfl*dx   /(std::abs(u)+cs);
+    //     real dty = cfl*dy   /(std::abs(v)+cs);
+    //     real dtz = cfl*dz(k)/(std::abs(w)+cs);
     //     dt3d(k,j,i) = std::min(std::min(dtx,dty),dtz);
     //   });
     //   real maxwave = yakl::intrinsics::minval(dt3d);
@@ -520,7 +521,6 @@ namespace modules {
       // These matrices will be in column-row format. That performed better than row-column format in performance tests
       real r_dx = 1./dx; // reciprocal of grid spacing
       real r_dy = 1./dy; // reciprocal of grid spacing
-      real r_dz = 1./dz; // reciprocal of grid spacing
       real fcor = 2*7.2921e-5*std::sin(latitude/180*M_PI);      // For coriolis: 2*Omega*sin(latitude)
 
       int constexpr hsm1 = hs-1;
@@ -784,7 +784,7 @@ namespace modules {
         if (l < num_state) {
           state_tend(l,k,j,i) = -( flux_x(l,k,j,i+1) - flux_x(l,k,j,i) ) * r_dx
                                 -( flux_y(l,k,j+1,i) - flux_y(l,k,j,i) ) * r_dy
-                                -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) * r_dz;
+                                -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) / dz(k);
           if (l == idW && enable_gravity) {
             state_tend(l,k,j,i) += grav*state(idR,k,j,i)*fields_loc(num_fields-1,hs+k,hs+j,hs+i)/
                                    hy_theta_cells(hs+k);
@@ -794,7 +794,7 @@ namespace modules {
         } else {
           tracers_tend(l-num_state,k,j,i) = -( flux_x(l,k,j,i+1) - flux_x(l,k,j,i) ) * r_dx
                                             -( flux_y(l,k,j+1,i) - flux_y(l,k,j,i) ) * r_dy 
-                                            -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) * r_dz;
+                                            -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) / dz(k);
         }
       });
 
@@ -1031,7 +1031,7 @@ namespace modules {
           real theta0   = t(k0);
           real rho0_gm1 = std::pow(rho0  ,gamma-1);
           real theta0_g = std::pow(theta0,gamma  );
-          r(k) = std::pow( rho0_gm1 + grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
+          r(k) = std::pow( rho0_gm1 + grav*(gamma-1)*dz(0)*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
           t(k) = theta0-(t(k0+1)-t(k0))*(kk+1);
         }
         {
@@ -1041,7 +1041,7 @@ namespace modules {
           real theta0   = t(k0);
           real rho0_gm1 = std::pow(rho0  ,gamma-1);
           real theta0_g = std::pow(theta0,gamma  );
-          r(k) = std::pow( rho0_gm1 - grav*(gamma-1)*dz*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
+          r(k) = std::pow( rho0_gm1 - grav*(gamma-1)*dz(nz-1)*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
           t(k) = theta0+(t(k0)-t(k0-1))*(kk+1);
         }
       });

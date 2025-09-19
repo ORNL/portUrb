@@ -32,6 +32,9 @@ int main(int argc, char** argv) {
     real        u_g         = 10;
     real        v_g         = 0 ;
     real        lat_g       = 43.289340204;
+    int         nx_glob     = (int) std::ceil(xlen/dx);
+    int         ny_glob     = (int) std::ceil(ylen/dx);
+    int         nz          = (int) std::ceil(zlen/dx);
 
     core::Coupler coupler;
     coupler.set_option<std::string>( "out_prefix"                , out_prefix  );
@@ -49,9 +52,9 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "roughness"                 , 2.5e-5      );
     coupler.set_option<bool       >( "kessler_no_rain"           , true        );
 
-    coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , zlen/dx, ylen/dx, xlen/dx);
-
-    coupler.set_grid( xlen , ylen , zlen );
+    coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
+                  coupler.generate_levels_equal(nz,zlen) ,
+                  ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     modules::Time_Averager                     time_averager;

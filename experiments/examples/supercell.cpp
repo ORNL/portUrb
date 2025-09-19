@@ -51,9 +51,9 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_buoyancy_theta"     , buoy_theta  );
     coupler.set_option<real       >( "dycore_cs"                 , cs          );
 
-    coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
-
-    coupler.set_grid( xlen , ylen , zlen );
+    coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
+                  coupler.generate_levels_equal(nz,zlen) ,
+                  ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     modules::Time_Averager                     time_averager;

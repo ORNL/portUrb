@@ -175,8 +175,9 @@ namespace core {
       this->nz       = zint.size()-1;
       this->xlen     = xlen;
       this->ylen     = ylen;
-      this->zlen     = zint.createHostCopy()[nz];
+      this->zlen     = zint.createHostCopy()(nz);
       this->dz       = real1d("dz",nz);
+      YAKL_SCOPE(dz,this->dz);
       parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
         dz(k) = zint(k+1) - zint(k);
       });
@@ -558,6 +559,13 @@ namespace core {
                   << std::scientific << std::setw(10) << wind_mag                         << " m/s] , max(abs(w)) ["
                   << std::scientific << std::setw(10) << w_mag                            << " m/s]" << std::endl;
       }
+    }
+
+
+    real1d generate_levels_equal( int nz , real zlen ) const {
+      realHost1d zint("zint",nz+1);
+      for (int i=0; i < nz+1; i++) { zint(i) = i*zlen/nz; }
+      return zint.createDeviceCopy();
     }
 
 

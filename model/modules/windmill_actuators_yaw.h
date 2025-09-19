@@ -816,7 +816,7 @@ namespace modules {
                 real zp = 19.5;
                 int k19_5 = 0;
                 for (int kk=0; kk < nz; kk++) {
-                  if (zp >= zint(k) && zp < zint(k+1)) {
+                  if (zp >= zint(kk) && zp < zint(kk+1)) {
                     k19_5 = kk;
                     break;
                   }
@@ -978,8 +978,6 @@ namespace modules {
           turbine.power_trace.push_back( pwr               );
           turbine.cp_trace   .push_back( C_P               );
           turbine.ct_trace   .push_back( C_T               );
-          // This is needed to compute the thrust force based on windmill proportion in each cell
-          F turb_factor = M_PI*rad*rad/(dx*dy*dz(k));
           // Fraction of thrust that didn't generate power to send into TKE
           F f_TKE = coupler.get_option<real>("turbine_f_TKE",0.25);
           F C_TKE = f_TKE * (C_T - C_P);
@@ -989,6 +987,8 @@ namespace modules {
           if (turbine.apply_thrust) {
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               if (disk_weight_proj(k,j,i) > 0) {
+                // This is needed to compute the thrust force based on windmill proportion in each cell
+                F turb_factor = M_PI*rad*rad/(dx*dy*dz(k));
                 F az = disk_weight_angle(k,j,i);
                 F wt = disk_weight_proj(k,j,i)*turb_factor;
                 F un = uvel(k,j,i)*cos_yaw + vvel(k,j,i)*sin_yaw;

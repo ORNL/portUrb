@@ -124,9 +124,9 @@ int main(int argc, char** argv) {
     std::cerr.rdbuf(ostr.rdbuf());
 
     if (par_comm.valid()) {
-      coupler.distribute_mpi_and_allocate_coupled_state( par_comm , nz, ny_glob, nx_glob);
-
-      coupler.set_grid( xlen , ylen , zlen );
+      coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
+                    coupler.generate_levels_equal(nz,zlen) ,
+                    ny_glob , nx_glob , ylen , xlen );
 
       int nfaces = mesh.faces.extent(0);
       coupler.get_data_manager_readwrite().register_and_allocate<float>("mesh_faces","",{nfaces,3,3});

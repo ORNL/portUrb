@@ -8,7 +8,7 @@
 #include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
-#include "microphysics_morr.h"
+#include "microphysics_kessler.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -49,14 +49,14 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_buoyancy_theta"     , buoy_theta  );
     coupler.set_option<real       >( "dycore_cs"                 , cs          );
 
-    coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
-
-    coupler.set_grid( xlen , ylen , zlen );
+    coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
+                  coupler.generate_levels_equal(nz,zlen) ,
+                  ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
-    modules::Microphysics_Morrison             micro;
+    modules::Microphysics_Kessler              micro;
 
     micro        .init        ( coupler );
     custom_modules::sc_init   ( coupler );
