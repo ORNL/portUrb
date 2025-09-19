@@ -281,7 +281,7 @@ namespace modules {
             for (int tr=0; tr < num_tracers; tr++) { flux_tracers_z(tr,k,j,i) = 0; }
           } else {
             // Derivatives valid at interface k-1/2
-            real dzloc = dz(std::max(0,k-1))/2 + dz(k)/2;
+            real dzloc = dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k))/2;
             real du_dx = 0.5_fp * ( (state(idU,hs+k-1,hs+j,hs+i+1) - state(idU,hs+k-1,hs+j,hs+i-1))/(2*dx) +
                                     (state(idU,hs+k  ,hs+j,hs+i+1) - state(idU,hs+k  ,hs+j,hs+i-1))/(2*dx) );
             real dw_dx = 0.5_fp * ( (state(idW,hs+k-1,hs+j,hs+i+1) - state(idW,hs+k-1,hs+j,hs+i-1))/(2*dx) +
@@ -301,11 +301,11 @@ namespace modules {
             real K           = 0.5_fp * ( tke      (hs+k-1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
             real tref        = 0.5_fp * ( hy_t(hs+k-1) + hy_t(hs+k) );
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
-            real delta       = std::pow( dx*dy*dz(k) , 1._fp/3._fp );
+            real delta       = std::pow( dx*dy*dzloc , 1._fp/3._fp );
             real ell         = std::min( 0.76_fp*std::sqrt(K)/std::max(N,1.e-10_fp) , delta );
             real km          = 0.1_fp * ell * std::sqrt(K);
             real Pr_t        = 0.85_fp;
-            real visc_max_z  = 0.1_fp*dz(k)*dz(k)/dtphys;
+            real visc_max_z  = 0.1_fp*dzloc*dzloc/dtphys;
             real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_z );
             real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_z );
             if (visc_tot == visc_max_z || visc_tot_th == visc_max_z) max_triggered = true;

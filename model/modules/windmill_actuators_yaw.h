@@ -646,7 +646,7 @@ namespace modules {
                 int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
                 int tk = 0;
                 for (int kk=0; kk < nz; kk++) {
-                  if (zp >= zint(k) && zp < zint(k+1)) {
+                  if (zp >= zint(kk) && zp < zint(kk+1)) {
                     tk = kk;
                     break;
                   }
@@ -723,7 +723,7 @@ namespace modules {
                     int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
                     int tk = 0;
                     for (int kk=0; kk < nz; kk++) {
-                      if (zp >= zint(k) && zp < zint(k+1)) {
+                      if (zp >= zint(kk) && zp < zint(kk+1)) {
                         tk = kk;
                         break;
                       }
@@ -751,7 +751,7 @@ namespace modules {
                     int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
                     int tk = 0;
                     for (int kk=0; kk < nz; kk++) {
-                      if (zp >= zint(k) && zp < zint(k+1)) {
+                      if (zp >= zint(kk) && zp < zint(kk+1)) {
                         tk = kk;
                         break;
                       }
@@ -779,7 +779,7 @@ namespace modules {
                     int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
                     int tk = 0;
                     for (int kk=0; kk < nz; kk++) {
-                      if (zp >= zint(k) && zp < zint(k+1)) {
+                      if (zp >= zint(kk) && zp < zint(kk+1)) {
                         tk = kk;
                         break;
                       }

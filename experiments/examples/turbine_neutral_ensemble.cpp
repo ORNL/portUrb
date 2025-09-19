@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
                                                 << "omega_pm: " << omega_pm << "\n"
                                                 << "h_1_3:    " << h_1_3    << std::endl;
 
-      coupler_main.init( core::ParallelComm(MPI_COMM_WORLD) ,
+      coupler_main.init( par_comm ,
                          coupler_main.generate_levels_equal(nz,zlen) ,
                          ny_glob , nx_glob , ylen , xlen );
 

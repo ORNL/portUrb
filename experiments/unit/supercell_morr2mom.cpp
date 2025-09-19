@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
     int         nx_glob       = 200;
     int         ny_glob       = 200;
     int         nz            = 40;
-    std::string out_prefix    = "supercell";
+    std::string out_prefix    = "supercell_morr2mom";
     real        dtphys_in     = 0;
     int         dyn_cycle     = 1;
     real        out_freq      = 7200;

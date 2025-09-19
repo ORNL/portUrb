@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
     std::cerr.rdbuf(ostr.rdbuf());
 
     if (par_comm.valid()) {
-      coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
+      coupler.init( par_comm ,
                     coupler.generate_levels_equal(nz,zlen) ,
                     ny_glob , nx_glob , ylen , xlen );
 

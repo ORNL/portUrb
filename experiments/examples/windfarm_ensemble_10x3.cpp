@@ -128,7 +128,7 @@ int main(int argc, char** argv) {
       coupler_main.set_option<std::vector<real>>("turbine_y_locs"      ,turbine_y_locs);
       coupler_main.set_option<std::vector<bool>>("turbine_apply_thrust",turbine_thrust);
 
-      coupler_main.init( core::ParallelComm(MPI_COMM_WORLD) ,
+      coupler_main.init( par_comm ,
                          coupler_main.generate_levels_equal(nz,zlen) ,
                          ny_glob , nx_glob , ylen , xlen );
 

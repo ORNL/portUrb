@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
       if (coupler_prec.is_mainproc()) std::cout << "z0:   " << z0       << "\n"
                                                 << "uhub: " << hub_wind << std::endl;
 
-      coupler_prec.init( core::ParallelComm(MPI_COMM_WORLD) ,
+      coupler_prec.init( par_comm ,
                          coupler_prec.generate_levels_equal(nz,zlen) ,
                          ny_glob , nx_glob , ylen , xlen );
 

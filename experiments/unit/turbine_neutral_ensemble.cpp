@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
                                                 << "omega_pm: " << omega_pm << "\n"
                                                 << "h_1_3:    " << h_1_3    << std::endl;
 
-      coupler_main.init( core::ParallelComm(MPI_COMM_WORLD) ,
+      coupler_main.init( par_comm ,
                          coupler_main.generate_levels_equal(nz,zlen) ,
                          ny_glob , nx_glob , ylen , xlen );
 
@@ -189,7 +189,7 @@ int main(int argc, char** argv) {
         coupler_prec.set_option<std::string>("restart_file",restart_file_prec);
         coupler_prec.overwrite_with_restart();
         auto &dm_prec = coupler_prec.get_data_manager_readonly();
-        auto &dm_main = coupler_main     .get_data_manager_readwrite();
+        auto &dm_main = coupler_main.get_data_manager_readwrite();
         dm_prec.get<real const,3>("density_dry").deep_copy_to(dm_main.get<real,3>("density_dry"));
         dm_prec.get<real const,3>("uvel"       ).deep_copy_to(dm_main.get<real,3>("uvel"       ));
         dm_prec.get<real const,3>("vvel"       ).deep_copy_to(dm_main.get<real,3>("vvel"       ));

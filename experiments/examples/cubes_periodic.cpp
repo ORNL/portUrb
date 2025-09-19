@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
     if (par_comm.valid()) {
       yakl::timer_start("main");
 
-      coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
+      coupler.init( par_comm ,
                     coupler.generate_levels_equal(nz,zlen) ,
                     ny_glob , nx_glob , ylen , xlen );
 
