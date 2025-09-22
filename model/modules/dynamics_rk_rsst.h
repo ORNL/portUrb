@@ -1018,7 +1018,6 @@ namespace modules {
         metjac_edges(k+1,0) = ( 3*s(0)-30*s(1)-20*s(2)+60*s(3)-15*s(4)+2*s(5))/60.;
         metjac_edges(k+1,1) = (-2*s(0)+15*s(1)-60*s(2)+20*s(3)+30*s(4)-3*s(5))/60.;
       });
-      if (coupler.is_mainproc()) std::cout << metjac_edges;
 
       coupler.set_option<int>("dycore_hs",hs);
 

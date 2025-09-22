@@ -275,11 +275,11 @@ namespace core {
                                                        << get_dy() << "m in the x and y directions" << std::endl;
         std::cout << "The vertical grid spacing is (in meters): ";
         auto dzhost = dz.createHostCopy();
-        for (int k=0; k < nz; k++) { std::cout << dzhost(k); if (k < nz-1) std::cout << ", "; }
+        for (int k=0; k < nz; k++) { std::cout << dzhost(k); if (k < nz-1) std::cout << " , "; }
         std::cout << std::endl;
         auto zinthost = zint.createHostCopy();
         std::cout << "The vertical grid interfaces are (in meters): ";
-        for (int k=0; k < nz+1; k++) { std::cout << zinthost(k); if (k < nz) std::cout << ", "; }
+        for (int k=0; k < nz+1; k++) { std::cout << zinthost(k); if (k < nz) std::cout << " , "; }
         std::cout << std::endl;
       }
     }
@@ -576,6 +576,69 @@ namespace core {
     real1d generate_levels_equal( int nz , real zlen ) const {
       realHost1d zint("zint",nz+1);
       for (int i=0; i < nz+1; i++) { zint(i) = i*zlen/nz; }
+      return zint.createDeviceCopy();
+    }
+
+
+    real1d generate_levels_exp( int nz , real zlen , real dz0 ) const {
+      using yakl::intrinsics::sum;
+      using yakl::componentwise::operator-;
+      using yakl::componentwise::operator*;
+      if (dz0 > zlen / nz) dz0 = zlen/nz;
+      realHost1d dz("dz",nz);
+      real f1 = 0;
+      real f2 = 5;
+      // Perform iterations
+      while (f2-f1 >= 1.e-13) {
+        real f = (f1+f2)/2;
+        dz(0) = dz0;
+        for (int k=1; k < nz; k++) { dz(k) = dz(k-1)*f; }
+        if (sum(dz) > zlen) { f2 = f; }
+        else                { f1 = f; }
+      }
+      realHost1d zint("zint",nz+1);
+      zint(0) = 0;
+      for (int k=0; k < nz; k++) { zint(k+1) = zint(k) + dz(k); }
+      zint = zint * (zlen / zint(nz));
+      return zint.createDeviceCopy();
+    }
+
+
+    // var('dz0,dz1')
+    // N      = 5
+    // coefs  = coefs_1d(N,0,'a')
+    // p      = poly_1d(N,coefs,x)
+    // constr = vector([ p.subs(x=0) , p.diff(x).subs(x=0) , p.subs(x=1) , p.diff(x).subs(x=1) , p.diff(x,2).subs(x=1) ])
+    // p      = poly_1d(N,jacobian(constr,coefs)^-1*vector([dz0,0,dz1,0,0]),x)
+    // print(p)
+    real1d generate_levels_const_high( real zlen , real dz0 , real z1 , real dz1 ) const {
+      using yakl::intrinsics::sum;
+      using yakl::componentwise::operator-;
+      using yakl::componentwise::operator*;
+      int nzmax = (int) std::ceil(zlen/std::min(dz0,dz1));
+      realHost1d dz("dz",nzmax);
+      dz = dz0;
+      // Perform iterations
+      for (int iter=0; iter < 100; iter++) {
+        real z = 0;
+        for (int k=0; k < nzmax; k++) {
+          real zn = (z+dz(k)/2)/z1;
+          if (zn <= 1) { dz(k) = -3*(dz0-dz1)*zn*zn*zn*zn+8*(dz0-dz1)*zn*zn*zn-6*(dz0-dz1)*zn*zn+dz0; }
+          else         { dz(k) = dz1;                                                                 }
+          z += dz(k);
+        }
+      }
+      // Find actual number of vertical levels
+      real z = 0;
+      int nz = 0;
+      for (int k=0; k < nzmax; k++) {
+        z += dz(k);
+        if (z >= zlen) { nz = k+1; break; }
+      }
+      realHost1d zint("zint",nz+1);
+      zint(0) = 0;
+      for (int k=0; k < nz; k++) { zint(k+1) = zint(k) + dz(k); }
+      zint = zint * (zlen / zint(nz));
       return zint.createDeviceCopy();
     }
 

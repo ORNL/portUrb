@@ -20,7 +20,6 @@ int main(int argc, char** argv) {
     real        sim_time    = 3600*3+1;
     int         nx_glob     = 150;
     int         ny_glob     = 150;
-    int         nz          = 75;
     real        xlen        = 6000;
     real        ylen        = 6000;
     real        zlen        = 3000;
@@ -51,7 +50,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "dycore_cs"             , 50               );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
-                  coupler.generate_levels_equal(nz,zlen) ,
+                  coupler.generate_levels_const_high(zlen,20,500,40) ,
                   ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV     dycore;
