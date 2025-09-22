@@ -16,6 +16,7 @@ namespace modules {
     auto nx      = coupler.get_nx  ();
     auto zlen    = coupler.get_zlen();
     auto zint    = coupler.get_zint();
+    auto zmid    = coupler.get_zmid();
     auto &dm     = coupler.get_data_manager_readwrite();
 
     auto dm_u = dm.get<real,3>("uvel");
@@ -58,7 +59,7 @@ namespace modules {
     col = coupler.get_parallel_comm().all_reduce( col , MPI_SUM , "" );
 
     parallel_for( YAKL_AUTO_LABEL() , Bounds<3>({k1,nz-1},ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      real z = (zint(k)+zint(k+1))/2;
+      real z = zmid(k);
       if (z > z1) {
         real factor = std::pow((z-z1)/(z2-z1),p) * dt / time_scale;
         dm_u(k,j,i) = factor*col(idU,k-k1) + (1-factor)*dm_u(k,j,i);

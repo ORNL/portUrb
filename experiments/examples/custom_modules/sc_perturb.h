@@ -20,6 +20,7 @@ namespace custom_modules {
     auto dy       = coupler.get_dy();
     auto dz       = coupler.get_dz();
     auto zint     = coupler.get_zint();
+    auto zmid     = coupler.get_zmid();
     auto xlen     = coupler.get_xlen();
     auto ylen     = coupler.get_ylen();
     auto i_beg    = coupler.get_i_beg();
@@ -69,7 +70,7 @@ namespace custom_modules {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real x    = (i_beg+i+0.5)*dx;
         real y    = (j_beg+j+0.5)*dy;
-        real z    = (zint(k)+zint(k+1))/2;
+        real z    = zmid(k);
         real ztop = 50;
         real zl   = z / ztop;
         real uper = 4;
@@ -85,7 +86,7 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real z = (zint(k)+zint(k+1))/2;
+        real z = zmid(k);
         if (z <= 1600) dm_temp (k,j,i) += rand.genFP<real>(-0.1,0.1);
         if (z <= 1600) dm_rho_v(k,j,i) += rand.genFP<real>(-2.5e-5,2.5e-5)*dm_rho_d(k,j,i);
       });
@@ -94,7 +95,7 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real z = (zint(k)+zint(k+1))/2;
+        real z = zmid(k);
         if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
       });
 
@@ -102,7 +103,7 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real z = (zint(k)+zint(k+1))/2;
+        real z = zmid(k);
         if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
       });
 
@@ -110,7 +111,7 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real z = (zint(k)+zint(k+1))/2;
+        real z = zmid(k);
         if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
       });
 
@@ -119,7 +120,7 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real z = (zint(k)+zint(k+1))/2;
+        real z = zmid(k);
         if (z <= 50) dm_temp(k,j,i) += rand.genFP<real>(-0.10,0.10);
       });
 
@@ -127,7 +128,7 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real z = (zint(k)+zint(k+1))/2;
+        real z = zmid(k);
         if (z <= 80) dm_temp(k,j,i) += rand.genFP<real>(-0.5,0.5);
         if (z <= 80) dm_uvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
         if (z <= 80) dm_vvel(k,j,i) += rand.genFP<real>(-0.5,0.5);
@@ -141,7 +142,7 @@ namespace custom_modules {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real x    = (i_beg+i+0.5)*dx;
         real y    = (j_beg+j+0.5)*dy;
-        real z    = (zint(k)+zint(k+1))/2;
+        real z    = zmid(k);
         real ztop = 100;
         real zl   = z / ztop;
         real uper = 4;
@@ -169,9 +170,9 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x    = (i_beg+i+0.5)*dx      + qpoints(ii)*dx;
-              real y    = (j_beg+j+0.5)*dy      + qpoints(jj)*dy;
-              real z    = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
+              real x    = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y    = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real z    = zmid(k)          + qpoints(kk)*dz(k);
               real xn   = (x-x0)/radx;
               real yn   = (y-y0)/rady;
               real zn   = (z-z0)/radz;

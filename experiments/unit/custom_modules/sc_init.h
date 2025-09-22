@@ -22,6 +22,7 @@ namespace custom_modules {
     auto dy        = coupler.get_dy();
     auto dz        = coupler.get_dz();
     auto zint      = coupler.get_zint();
+    auto zmid      = coupler.get_zmid();
     auto xlen      = coupler.get_xlen();
     auto ylen      = coupler.get_ylen();
     auto zlen      = coupler.get_zlen();
@@ -136,9 +137,9 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x         = (i_beg+i+0.5)*dx      + qpoints(ii)*dx;
-              real y         = (j_beg+j+0.5)*dy      + qpoints(jj)*dy;
-              real z         = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
+              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real z         = zmid(k)          + qpoints(kk)*dz(k);
               real theta     = compute_theta(z);
               real p         = pressGLL(k,kk);
               real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
@@ -183,7 +184,7 @@ namespace custom_modules {
         dm_temp (k,j,i) = 0;
         dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
-          real z         = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
+          real z         = zmid(k) + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
@@ -221,7 +222,7 @@ namespace custom_modules {
         dm_temp (k,j,i) = 0;
         dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
-          real z         = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
+          real z         = zmid(k) + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
@@ -261,7 +262,7 @@ namespace custom_modules {
         dm_temp (k,j,i) = 0;
         dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
-          real z         = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
+          real z         = zmid(k) + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
@@ -347,9 +348,9 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x     = (i_beg+i+0.5)*dx      + qpoints(ii)*dx;
-              real y     = (j_beg+j+0.5)*dy      + qpoints(jj)*dy;
-              real z     = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
+              real x     = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y     = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real z     = zmid(k)          + qpoints(kk)*dz(k);
               real T     = c_T(z);
               real qv    = interp( s_height , s_qv    , z );
               real u     = interp( s_height , s_uvel  , z );

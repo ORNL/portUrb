@@ -36,6 +36,7 @@ namespace core {
     real        zlen;          // Domain length in the z-direction in meters
     int         file_counter;  // Number of files that have been written so far
     real1d      zint;          // Interface heights of z levels (variable vertical grid)
+    real1d      zmid;          // Interface heights of z levels (variable vertical grid)
     real1d      dz;            // Grid spacing of vertical cells (variable vertical grid)
     Options     options;       // Organizes shared scalar options
     DataManager dm;            // Organizes shared variables
@@ -149,6 +150,7 @@ namespace core {
       coupler.restart_read_funcs = this->restart_read_funcs;
       coupler.inform_timer       = this->inform_timer      ;
       coupler.zint               = this->zint              ;
+      coupler.zmid               = this->zmid              ;
       coupler.dz                 = this->dz                ;
       this->dm     .clone_into( coupler.dm      );
       this->options.clone_into( coupler.options );
@@ -176,10 +178,13 @@ namespace core {
       this->xlen     = xlen;
       this->ylen     = ylen;
       this->zlen     = zint.createHostCopy()(nz);
-      this->dz       = real1d("dz",nz);
-      YAKL_SCOPE(dz,this->dz);
+      this->dz       = real1d("dz"  ,nz);
+      this->zmid     = real1d("zmid",nz);
+      YAKL_SCOPE( dz   , this->dz   );
+      YAKL_SCOPE( zmid , this->zmid );
       parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
-        dz(k) = zint(k+1) - zint(k);
+        dz  (k) =  zint(k+1) - zint(k);
+        zmid(k) = (zint(k+1) + zint(k))/2;
       });
 
       int nranks = par_comm.get_size();
@@ -268,8 +273,13 @@ namespace core {
                                       << get_zlen()/1000 << "km in the x, y, and z directions" << std::endl;
         std::cout << "The horizontal grid spacing is " << get_dx() << "m and "
                                                        << get_dy() << "m in the x and y directions" << std::endl;
-        std::cout << "The vertical grid spacing is (in meters): " << dz;
-        std::cout << "The vertical grid interfaces are (in meters): " << zint;
+        std::cout << "The vertical grid spacing is (in meters): ";
+        auto dzhost = dz.createHostCopy();
+        for (int k=0; k < nz; k++) { std::cout << dzhost(k); if (k < nz-1) std::cout << ", "; }
+        std::cout << std::endl;
+        auto zinthost = zint.createHostCopy();
+        std::cout << "The vertical grid interfaces are (in meters): ";
+        for (int k=0; k < nz+1; k++) { std::cout << zinthost(k); if (k < nz) std::cout << ", "; }
         std::cout << std::endl;
       }
     }
@@ -301,6 +311,7 @@ namespace core {
     real                      get_dy                    () const { return get_ylen() / get_ny_glob()  ; }
     real1d                    get_dz                    () const { return this->dz                    ; }
     real1d                    get_zint                  () const { return this->zint                  ; }
+    real1d                    get_zmid                  () const { return this->zmid                  ; }
     int                       get_num_tracers           () const { return tracers.size()              ; }
 
 
@@ -648,11 +659,8 @@ namespace core {
       float1d yloc("yloc",ny);
       parallel_for( YAKL_AUTO_LABEL() , ny , KOKKOS_LAMBDA (int j) { yloc(j) = (j+j_beg+0.5)*dy; });
       nc.write_all( yloc , "y" , {j_beg} );
-      // z-coordinate
-      float1d zloc("zloc",nz);
-      parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) { zloc(k) = (zint(k)+zint(k+1))/2.; });
       nc.begin_indep_data();
-      if (is_mainproc()) nc.write( zloc         , "z"            );
+      if (is_mainproc()) nc.write( zmid         , "z"            );
       if (is_mainproc()) nc.write( zint         , "zi"           );
       if (is_mainproc()) nc.write( (float)etime , "etime"        );
       if (is_mainproc()) nc.write( file_counter , "file_counter" );

@@ -157,6 +157,7 @@ namespace modules {
         auto dy     = coupler.get_dy();
         auto dz     = coupler.get_dz();
         auto zint   = coupler.get_zint();
+        auto zmid   = coupler.get_zmid();
         auto myrank = coupler.get_myrank();
         auto imm    = coupler.get_data_manager_readwrite().get<real,3>("immersed_proportion");
         auto imm_h  = coupler.get_data_manager_readwrite().get<real,3>("immersed_proportion_halos");
@@ -225,9 +226,9 @@ namespace modules {
             for (int kk=0; kk < N; kk++) {
               for (int jj=0; jj < N; jj++) {
                 for (int ii=0; ii < N; ii++) {
-                  int x = (i_beg+i)*dx          + ii*dx   /(N-1);
-                  int y = (j_beg+j)*dy          + jj*dy   /(N-1);
-                  int z = (zint(k)+zint(k+1))/2 + kk*dz(k)/(N-1);
+                  int x = (i_beg+i)*dx + ii*dx   /(N-1);
+                  int y = (j_beg+j)*dy + jj*dy   /(N-1);
+                  int z = zmid(k)      + kk*dz(k)/(N-1);
                   auto bx  = base_loc_x;
                   auto by  = base_loc_y;
                   auto rad = tower_base_rad + (tower_top_rad-tower_base_rad)*(z/tower_top);
@@ -474,6 +475,7 @@ namespace modules {
       auto dy              = coupler.get_dy   ();
       auto dz              = coupler.get_dz   ();
       auto zint            = coupler.get_zint ();
+      auto zmid            = coupler.get_zmid();
       auto i_beg           = coupler.get_i_beg();
       auto j_beg           = coupler.get_j_beg();
       auto &dm             = coupler.get_data_manager_readwrite();
@@ -545,9 +547,9 @@ namespace modules {
               for (int kk=0; kk < N; kk++) {
                 for (int jj=0; jj < N; jj++) {
                   for (int ii=0; ii < N; ii++) {
-                    F x = (i_beg+i)*dx          + ii*dx   /(N-1);
-                    F y = (j_beg+j)*dy          + jj*dy   /(N-1);
-                    F z = (zint(k)+zint(k+1))/2 + kk*dz(k)/(N-1);
+                    F x = (i_beg+i)*dx + ii*dx   /(N-1);
+                    F y = (j_beg+j)*dy + jj*dy   /(N-1);
+                    F z = zmid(k)      + kk*dz(k)/(N-1);
                     // Rotate in (-yaw) direction to compare against vanilla x and y
                     F cos_nyaw =  cos_yaw;
                     F sin_nyaw = -sin_yaw;
@@ -585,7 +587,7 @@ namespace modules {
             blade_weight_proj(k,j,i) = 0;
             F x = (i_beg+i+0.5f)*dx;
             F y = (j_beg+j+0.5f)*dy;
-            F z = (zint(k)+zint(k+1))/2;
+            F z = zmid(k);
             if ( z >= hub_height-rad && z <= hub_height+rad &&
                  y >= base_y    -rad && y <= base_y    +rad &&
                  x >= base_x    -rad && x <= base_x    +rad ) {

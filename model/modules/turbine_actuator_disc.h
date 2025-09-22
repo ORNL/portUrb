@@ -163,6 +163,7 @@ namespace modules {
       auto dy    = coupler.get_dy   ();
       auto dz    = coupler.get_dz   ();
       auto zint  = coupler.get_zint ();
+      auto zmid  = coupler.get_zmid ();
       auto i_beg = coupler.get_i_beg();
       auto j_beg = coupler.get_j_beg();
       auto &dm   = coupler.get_data_manager_readwrite();
@@ -213,7 +214,7 @@ namespace modules {
             disk_weight_samp (k,j,i) = 0;
             float x = (i_beg+i+0.5f)*dx;
             float y = (j_beg+j+0.5f)*dy;
-            float z = (zint(k)+zint(k+1))/2;
+            float z = zmid(k);
             if ( z >= hub_height-rad && z <= hub_height+rad &&
                  y >= base_y    -rad && y <= base_y    +rad &&
                  x >= base_x    -rad && x <= base_x    +rad ) {

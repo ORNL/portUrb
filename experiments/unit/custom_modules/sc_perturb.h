@@ -20,6 +20,7 @@ namespace custom_modules {
     auto dy       = coupler.get_dy();
     auto dz       = coupler.get_dz();
     auto zint     = coupler.get_zint();
+    auto zmid     = coupler.get_zmid();
     auto xlen     = coupler.get_xlen();
     auto ylen     = coupler.get_ylen();
     auto i_beg    = coupler.get_i_beg();
@@ -59,7 +60,7 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real z = (zint(k)+zint(k+1))/2;
+        real z = zmid(k);
         if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
       });
 
@@ -67,7 +68,7 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real z = (zint(k)+zint(k+1))/2;
+        real z = zmid(k);
         if (z <= 50) dm_temp(k,j,i) += rand.genFP<real>(-0.10,0.10);
       });
 
@@ -78,7 +79,7 @@ namespace custom_modules {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real x = (i_beg+i+0.5)*dx;
         real y = (j_beg+j+0.5)*dy;
-        real z = (zint(k)+zint(k+1))/2;
+        real z = zmid(k);
         real ztop = 100;
         real zl   = z / ztop;
         real uper = 4;
@@ -106,7 +107,7 @@ namespace custom_modules {
             for (int ii=0; ii<nqpoints; ii++) {
               real x    = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
               real y    = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
-              real z    = (zint(k)+zint(k+1))/2 + qpoints(kk)*dz(k);
+              real z    = zmid(k)          + qpoints(kk)*dz(k);
               real xn   = (x-x0)/radx;
               real yn   = (y-y0)/rady;
               real zn   = (z-z0)/radz;
