@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
     int         nx_glob       = 200;
     int         ny_glob       = 200;
     int         nz            = 40;
-    std::string out_prefix    = "supercell_kessler";
+    std::string out_prefix    = "supercell_kessler_fixed";
     real        dtphys_in     = 0;
     int         dyn_cycle     = 1;
     real        out_freq      = 7200;
@@ -51,7 +51,6 @@ int main(int argc, char** argv) {
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
-                  // coupler.generate_levels_const_high(zlen,250,5000,500) ,
                   ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;

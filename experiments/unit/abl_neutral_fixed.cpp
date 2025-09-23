@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real        sim_time    = 3600*10+1;
+    real        sim_time    = 3600*2+1;
     int         nx_glob     = 200;
     int         ny_glob     = 200;
     int         nz          = 50;
@@ -24,10 +24,10 @@ int main(int argc, char** argv) {
     real        ylen        = 4000;
     real        zlen        = 1000;
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 1;
-    real        out_freq    = 1800;
+    int         dyn_cycle   = 4;
+    real        out_freq    = 7200;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_neutral_variable";
+    std::string out_prefix  = "ABL_neutral_fixed";
     bool        is_restart  = false;
     real        u_g         = 10;
     real        v_g         = 0 ;
@@ -48,8 +48,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "dycore_cs"             , 20            );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
-                  // coupler.generate_levels_equal(25,zlen) ,
-                  coupler.generate_levels_const_high(zlen,20,500,40) ,
+                  coupler.generate_levels_equal(nz,zlen) ,
                   ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV     dycore;

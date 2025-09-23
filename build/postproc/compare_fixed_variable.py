@@ -18,7 +18,7 @@ def plot_var_std(f,vname,col,lab) :
 
 vnames = ["uvel","vvel","wvel","TKE","theta_pert","density_pert"]
 
-time = 9
+time = 20
 
 for vname in vnames :
   plot_var_mean(f"ABL_neutral_fixed_{time:08d}.nc"   ,vname,"black","fixed 20")
