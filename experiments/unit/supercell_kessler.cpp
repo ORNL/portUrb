@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
+                  // coupler.generate_levels_const_high(zlen,250,5000,500) ,
                   ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;

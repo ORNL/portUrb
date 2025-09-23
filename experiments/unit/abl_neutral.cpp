@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "enable_gravity"        , true          );
     coupler.set_option<real       >( "dycore_max_wind"       , 15            );
     coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
-    coupler.set_option<real       >( "dycore_cs"             , 20            );
+    coupler.set_option<real       >( "dycore_cs"             , 40            );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   // coupler.generate_levels_equal(nz,zlen) ,

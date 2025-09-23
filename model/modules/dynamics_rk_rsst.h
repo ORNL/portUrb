@@ -693,13 +693,13 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R;
         Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
-        p_L /= metjac_edges(1+k,0);
+        p_R /= metjac_edges(1+k,0);
         for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*
                                                           fields_loc (idW,k+kk+1,hs+j,hs+i); }
         for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
         FLOC rw_R = 0;
         for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
-        rw_L /= metjac_edges(1+k,0);
+        rw_R /= metjac_edges(1+k,0);
         if (wall_z1 && k == 0 ) rw_R = 0;
         if (wall_z2 && k == nz) rw_R = 0;
         p_z (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rw_R-rw_L)   );
