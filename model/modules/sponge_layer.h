@@ -15,7 +15,8 @@ namespace modules {
     auto ny      = coupler.get_ny  ();
     auto nx      = coupler.get_nx  ();
     auto zlen    = coupler.get_zlen();
-    auto dz      = coupler.get_dz  ();
+    auto zint    = coupler.get_zint();
+    auto zmid    = coupler.get_zmid();
     auto &dm     = coupler.get_data_manager_readwrite();
 
     auto dm_u = dm.get<real,3>("uvel");
@@ -28,11 +29,18 @@ namespace modules {
     int constexpr idT  = 2;
     int constexpr nfld = 3;
 
-    real z1 = (1-top_prop)*zlen;
-    real z2 = zlen-dz/2;
+    real z1 = zlen*(1-top_prop);
+    real z2 = zlen;
     real p  = 2;
 
-    int k1 = (int) std::floor(z1/dz-0.5);
+    int k1 = -1;
+    for (int k=nz-1; k >= 0; k--) {
+      if (z1 >= zint(k)) {
+        k1 = k;
+        break;
+      }
+    }
+    if (k1 == -1) k1 = 0;
     int nzloc = nz-k1;
 
     real2d col("col",nfld,nzloc);
@@ -51,7 +59,7 @@ namespace modules {
     col = coupler.get_parallel_comm().all_reduce( col , MPI_SUM , "" );
 
     parallel_for( YAKL_AUTO_LABEL() , Bounds<3>({k1,nz-1},ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      real z = (k+0.5_fp)*dz;
+      real z = zmid(k);
       if (z > z1) {
         real factor = std::pow((z-z1)/(z2-z1),p) * dt / time_scale;
         dm_u(k,j,i) = factor*col(idU,k-k1) + (1-factor)*dm_u(k,j,i);

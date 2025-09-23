@@ -8,7 +8,7 @@
 #include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
-#include "microphysics_morr.h"
+#include "microphysics_kessler.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -17,25 +17,23 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
-    if ( !config ) { endrun("ERROR: Invalid supercell input file"); }
-    auto sim_time      = config["sim_time"    ].as<real       >(7201);
-    auto xlen          = config["xlen"        ].as<real       >(200000);
-    auto ylen          = config["ylen"        ].as<real       >(200000);
-    auto zlen          = config["zlen"        ].as<real       >(20000);
-    auto nx_glob       = config["nx_glob"     ].as<int        >(400);
-    auto ny_glob       = config["ny_glob"     ].as<int        >(400);
-    auto nz            = config["nz"          ].as<int        >(40);
-    auto out_prefix    = config["out_prefix"  ].as<std::string>("supercell");
-    auto dtphys_in     = config["dt_phys"     ].as<real       >(0);
-    auto dyn_cycle     = config["dyn_cycle"   ].as<int        >(10);
-    auto out_freq      = config["out_freq"    ].as<real       >(900);
-    auto inform_freq   = config["inform_freq" ].as<real       >(10);
-    auto is_restart    = config["is_restart"  ].as<bool       >(false);
-    auto restart_file  = config["restart_file"].as<std::string>("");
-    auto cfl           = config["cfl"         ].as<real       >(0.6);
-    auto cs            = config["cs"          ].as<real       >(350);
-    auto buoy_theta    = config["buoy_theta"  ].as<bool       >(false);
+    real        sim_time      = 7201;
+    real        xlen          = 100000;
+    real        ylen          = 100000;
+    real        zlen          = 20000;
+    int         nx_glob       = 200;
+    int         ny_glob       = 200;
+    int         nz            = 40;
+    std::string out_prefix    = "supercell_kessler_variable";
+    real        dtphys_in     = 0;
+    int         dyn_cycle     = 1;
+    real        out_freq      = 7200;
+    real        inform_freq   = 10;
+    bool        is_restart    = false;
+    std::string restart_file  = "";
+    real        cfl           = 0.6;
+    real        cs            = 350;
+    real        buoy_theta    = false;
 
     core::Coupler coupler;
     coupler.set_option<std::string>( "out_prefix"                , out_prefix  );
@@ -47,18 +45,18 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "cfl"                       , cfl         );
     coupler.set_option<bool       >( "enable_gravity"            , true        );
     coupler.set_option<int        >( "micro_morr_ihail"          , 1           );
-    coupler.set_option<real       >( "dycore_max_wind"           , 90          );
+    coupler.set_option<real       >( "dycore_max_wind"           , 100         );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"     , buoy_theta  );
     coupler.set_option<real       >( "dycore_cs"                 , cs          );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
-                  coupler.generate_levels_equal(nz,zlen) ,
+                  coupler.generate_levels_const_high(zlen,250,5000,500) ,
                   ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
-    modules::Microphysics_Morrison             micro;
+    modules::Microphysics_Kessler              micro;
 
     micro        .init        ( coupler );
     custom_modules::sc_init   ( coupler );

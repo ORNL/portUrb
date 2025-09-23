@@ -8,7 +8,6 @@
 #include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
-#include "surface_cooling.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -17,38 +16,36 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real        sim_time    = 901;
-    int         nx_glob     = 100;
-    int         ny_glob     = 100;
-    int         nz          = 100;
-    real        xlen        = 400;
-    real        ylen        = 400;
-    real        zlen        = 400;
+    real        sim_time    = 3600*2+1;
+    int         nx_glob     = 200;
+    int         ny_glob     = 200;
+    int         nz          = 50;
+    real        xlen        = 4000;
+    real        ylen        = 4000;
+    real        zlen        = 1000;
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 1;
-    real        out_freq    = 900;
+    int         dyn_cycle   = 4;
+    real        out_freq    = 7200;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_stable";
+    std::string out_prefix  = "ABL_neutral_fixed";
     bool        is_restart  = false;
-    real        u_g         = 8;
-    real        v_g         = 0;
-    real        lat_g       = 73.0;
-    real        scr         = 8./3600.;  // sfc cooling rate in K / hr
+    real        u_g         = 10;
+    real        v_g         = 0 ;
+    real        lat_g       = 43.289340204;
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"     , out_prefix       );
-    coupler.set_option<std::string>( "init_data"      , "ABL_stable"     );
-    coupler.set_option<real       >( "out_freq"       , out_freq         );
-    coupler.set_option<bool       >( "is_restart"     , is_restart       );
-    coupler.set_option<std::string>( "restart_file"   , ""               );
-    coupler.set_option<real       >( "latitude"       , 0.               );
-    coupler.set_option<real       >( "roughness"      , 0.05             );
-    coupler.set_option<real       >( "cfl"            , 0.6              );
-    coupler.set_option<bool       >( "enable_gravity" , true             );
-    coupler.set_option<real       >( "sfc_cool_rate"  , scr              );
-    coupler.set_option<real       >( "dycore_max_wind"       , 10        );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true      );
-    coupler.set_option<real       >( "dycore_cs"             , 100       );
+    coupler.set_option<std::string>( "out_prefix"            , out_prefix    );
+    coupler.set_option<std::string>( "init_data"             , "ABL_neutral" );
+    coupler.set_option<real       >( "out_freq"              , out_freq      );
+    coupler.set_option<bool       >( "is_restart"            , is_restart    );
+    coupler.set_option<std::string>( "restart_file"          , ""            );
+    coupler.set_option<real       >( "latitude"              , 0.            );
+    coupler.set_option<real       >( "roughness"             , 0.1           );
+    coupler.set_option<real       >( "cfl"                   , 0.6           );
+    coupler.set_option<bool       >( "enable_gravity"        , true          );
+    coupler.set_option<real       >( "dycore_max_wind"       , 15            );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
+    coupler.set_option<real       >( "dycore_cs"             , 20            );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
@@ -95,14 +92,12 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         coupler.track_max_wind();
-        auto run_scr       = [&] (Coupler &c) { modules::surface_cooling         (c,dt);               };
         auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
         auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
-        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);    };
+        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,100,0.1);       };
         auto run_surf_flux = [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);               };
         auto run_les       = [&] (Coupler &c) { les_closure.apply                (c,dt);               };
         auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate         (c,dt);               };
-        coupler.run_module( run_scr       , "sfc_cooling"         );
         coupler.run_module( run_geo       , "geostrophic_forcing" );
         coupler.run_module( run_dycore    , "dycore"              );
         coupler.run_module( run_sponge    , "sponge"              );

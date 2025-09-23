@@ -143,12 +143,9 @@ int main(int argc, char** argv) {
                                                 << "omega_pm: " << omega_pm << "\n"
                                                 << "h_1_3:    " << h_1_3    << std::endl;
 
-      // Coupler state is: (1) dry density;  (2) u-velocity;  (3) v-velocity;  (4) w-velocity;  (5) temperature
-      //                   (6+) tracer masses (*not* mixing ratios!); and Option elapsed_time init to zero
-      coupler_main.distribute_mpi_and_allocate_coupled_state( par_comm , nz, ny_glob, nx_glob);
-
-      // Just tells the coupler how big the domain is in each dimensions
-      coupler_main.set_grid( xlen , ylen , zlen );
+      coupler_main.init( par_comm ,
+                         coupler_main.generate_levels_equal(nz,zlen) ,
+                         ny_glob , nx_glob , ylen , xlen );
 
       // No microphysics specified, so create a water_vapor tracer required by the dycore
       coupler_main.add_tracer("water_vapor","water_vapor",true,true ,true);

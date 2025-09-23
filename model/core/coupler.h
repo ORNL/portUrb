@@ -16,20 +16,47 @@ namespace core {
 
   class Coupler {
   protected:
-    Options options;
 
-    real xlen;   // Domain length in the x-direction in meters
-    real ylen;   // Domain length in the y-direction in meters
-    real zlen;   // Domain length in the z-direction in meters
-    real dt_gcm; // Time step of the GCM for this MMF invocation
+    struct Tracer {
+      std::string name;
+      std::string desc;
+      bool        positive;
+      bool        adds_mass;
+      bool        diffuse;
+    };
 
+    struct OutputVar {
+      std::string name;
+      int         dims;
+      size_t      type_hash;
+    };
+
+    real        xlen;          // Domain length in the x-direction in meters
+    real        ylen;          // Domain length in the y-direction in meters
+    real        zlen;          // Domain length in the z-direction in meters
+    int         file_counter;  // Number of files that have been written so far
+    real1d      zint;          // Interface heights of z levels (variable vertical grid)
+    real1d      zmid;          // Interface heights of z levels (variable vertical grid)
+    real1d      dz;            // Grid spacing of vertical cells (variable vertical grid)
+    Options     options;       // Organizes shared scalar options
+    DataManager dm;            // Organizes shared variables
+    std::vector<Tracer>    tracers;     // Organizes tracer entries for transport and diffusion
+    std::vector<OutputVar> output_vars; // Organizes output variables on the standard grid dims
+    // Allows modules to register their own output writing functions for variables not on the standard grid dims
+    std::vector<std::function<void(core::Coupler &coupler , yakl::SimplePNetCDF &nc)>> out_write_funcs;
+    // Allows modules to register their own restart functions for variables absent from output_vars
+    std::vector<std::function<void(core::Coupler &coupler , yakl::SimplePNetCDF &nc)>> restart_read_funcs;
+    // Keeps track of timing information so users can assess how long modules take
+    std::chrono::time_point<std::chrono::high_resolution_clock> inform_timer;
     // MPI parallelization information
-    ParallelComm par_comm;   // 
+    ParallelComm par_comm;   // Object to hold the MPI communicator information for this coupler and
+                             //   perform MPI operations such as reductions on the communicator
     size_t nx_glob;          // Total global number of cells in the x-direction (summing all MPI Processes)
     size_t ny_glob;          // Total global number of cells in the y-direction (summing all MPI Processes)
+    int    nz;               // Total number of cells in the z-direction
     int    nproc_x;          // Number of parallel processes distributed over the x-dimension
     int    nproc_y;          // Number of parallel processes distributed over the y-dimension
-                             // nproc_x * nproc_y  must equal  nranks
+                             //   nproc_x * nproc_y  must equal  nranks
     int    px;               // My process ID in the x-direction
     int    py;               // My process ID in the y-direction
     size_t i_beg;            // Beginning of my x-direction global index
@@ -39,51 +66,39 @@ namespace core {
     SArray<int,2,3,3> neigh; // List of neighboring rank IDs;  1st index: y;  2nd index: x
                              // Y: 0 = south;  1 = middle;  2 = north
                              // X: 0 = west ;  1 = center;  3 = east 
-    int    file_counter;
-
-    DataManager dm;
-
-    struct Tracer {
-      std::string name;
-      std::string desc;
-      bool        positive;
-      bool        adds_mass;
-      bool        diffuse;
-    };
-    std::vector<Tracer> tracers;
-
-    struct OutputVar {
-      std::string name;
-      int         dims;
-      size_t      type_hash;
-    };
-    std::vector<OutputVar> output_vars;
-
-    std::vector<std::function<void(core::Coupler &coupler , yakl::SimplePNetCDF &nc)>> out_write_funcs;
-    std::vector<std::function<void(core::Coupler &coupler , yakl::SimplePNetCDF &nc)>> restart_read_funcs;
-
-    std::chrono::time_point<std::chrono::high_resolution_clock> inform_timer;
-
 
   public:
 
+    // Entries for the dims specification of output_vars for variables on standard grid dimensions
     int static constexpr DIMS_COLUMN  = 1;
     int static constexpr DIMS_SURFACE = 2;
     int static constexpr DIMS_3D      = 3;
 
     Coupler() {
-      this->xlen   = -1;
-      this->ylen   = -1;
-      this->zlen   = -1;
-      this->dt_gcm = -1;
+      this->xlen         = -1;
+      this->ylen         = -1;
+      this->zlen         = -1;
       this->file_counter = 0;
       this->inform_timer = std::chrono::high_resolution_clock::now();
+      this->nx_glob      = 0;
+      this->ny_glob      = 0;
+      this->nz           = 0;
+      this->nproc_x      = 0;
+      this->nproc_y      = 0;
+      this->px           = 0;
+      this->py           = 0;
+      this->i_beg        = 0;
+      this->j_beg        = 0;
+      this->i_end        = 0;
+      this->j_end        = 0;
     }
 
 
-    Coupler(Coupler &&) = default;
-    Coupler &operator=(Coupler &&) = default;
-    Coupler(Coupler const &) = delete;
+    // Default move constructors
+    Coupler(Coupler &&)                 = default;
+    Coupler &operator=(Coupler &&)      = default;
+    // Don't allow copy constructors. Always pass the coupler by reference
+    Coupler(Coupler const &)            = delete;
     Coupler &operator=(Coupler const &) = delete;
 
 
@@ -91,22 +106,34 @@ namespace core {
       Kokkos::fence();
       dm.finalize();
       options.finalize();
-      tracers = std::vector<Tracer>();
-      this->xlen   = -1;
-      this->ylen   = -1;
-      this->zlen   = -1;
-      this->dt_gcm = -1;
+      this->tracers      = std::vector<Tracer>();
+      this->xlen         = -1;
+      this->ylen         = -1;
+      this->zlen         = -1;
+      this->file_counter = 0;
+      this->nx_glob      = 0;
+      this->ny_glob      = 0;
+      this->nz           = 0;
+      this->nproc_x      = 0;
+      this->nproc_y      = 0;
+      this->px           = 0;
+      this->py           = 0;
+      this->i_beg        = 0;
+      this->j_beg        = 0;
+      this->i_end        = 0;
+      this->j_end        = 0;
     }
 
 
+    // To replicate a coupler, you should create a new coupler and "clone_into" that coupler
     void clone_into( Coupler &coupler ) const {
       coupler.xlen               = this->xlen              ;
       coupler.ylen               = this->ylen              ;
       coupler.zlen               = this->zlen              ;
-      coupler.dt_gcm             = this->dt_gcm            ;
       coupler.par_comm           = this->par_comm          ;
       coupler.nx_glob            = this->nx_glob           ;
       coupler.ny_glob            = this->ny_glob           ;
+      coupler.nz                 = this->nz                ;
       coupler.nproc_x            = this->nproc_x           ;
       coupler.nproc_y            = this->nproc_y           ;
       coupler.px                 = this->px                ;
@@ -121,6 +148,10 @@ namespace core {
       coupler.output_vars        = this->output_vars       ;
       coupler.out_write_funcs    = this->out_write_funcs   ;
       coupler.restart_read_funcs = this->restart_read_funcs;
+      coupler.inform_timer       = this->inform_timer      ;
+      coupler.zint               = this->zint              ;
+      coupler.zmid               = this->zmid              ;
+      coupler.dz                 = this->dz                ;
       this->dm     .clone_into( coupler.dm      );
       this->options.clone_into( coupler.options );
     }
@@ -129,19 +160,32 @@ namespace core {
     void set_parallel_comm(ParallelComm par_comm) { this->par_comm = par_comm; }
 
 
-    void distribute_mpi_and_allocate_coupled_state(ParallelComm par_comm                     ,
-                                                   int nz, size_t ny_glob, size_t nx_glob    ,
-                                                   int nproc_x_in = -1 , int nproc_y_in = -1 ,
-                                                   int px_in      = -1 , int py_in      = -1 ,
-                                                   int i_beg_in   = -1 , int i_end_in   = -1 ,
-                                                   int j_beg_in   = -1 , int j_end_in   = -1 ) {
+    void init( ParallelComm par_comm                           ,
+               real1d const & zint                             ,
+               size_t ny_glob         , size_t nx_glob         ,
+               real   ylen            , real   xlen            ,
+               int    nproc_x_in = -1 , int    nproc_y_in = -1 ,
+               int    px_in      = -1 , int    py_in      = -1 ,
+               int    i_beg_in   = -1 , int    i_end_in   = -1 ,
+               int    j_beg_in   = -1 , int    j_end_in   = -1 ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-
       this->par_comm = par_comm;
-
-      this->nx_glob = nx_glob;
-      this->ny_glob = ny_glob;
+      this->zint     = zint.createDeviceCopy();
+      this->nx_glob  = nx_glob;
+      this->ny_glob  = ny_glob;
+      this->nz       = zint.size()-1;
+      this->xlen     = xlen;
+      this->ylen     = ylen;
+      this->zlen     = zint.createHostCopy()(nz);
+      this->dz       = real1d("dz"  ,nz);
+      this->zmid     = real1d("zmid",nz);
+      YAKL_SCOPE( dz   , this->dz   );
+      YAKL_SCOPE( zmid , this->zmid );
+      parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
+        dz  (k) =  zint(k+1) - zint(k);
+        zmid(k) = (zint(k+1) + zint(k))/2;
+      });
 
       int nranks = par_comm.get_size();
       int myrank = par_comm.get_rank_id();
@@ -210,9 +254,9 @@ namespace core {
         }
       }
 
-      dm.add_dimension( "x"    , nx   );
-      dm.add_dimension( "y"    , ny   );
-      dm.add_dimension( "z"    , nz   );
+      dm.add_dimension( "x" , nx );
+      dm.add_dimension( "y" , ny );
+      dm.add_dimension( "z" , nz );
       set_option<real>("elapsed_time",0._fp);
       if (is_mainproc()) {
         std::cout << "There are a total of " << nz << " x "
@@ -224,35 +268,51 @@ namespace core {
                                           << ny << " x "
                                           << nx << " = "
                                           << nz*ny*nx << " DOFs per task" << std::endl;
+        std::cout << "The domain is " << get_xlen()/1000 << "km x "
+                                      << get_ylen()/1000 << "km x "
+                                      << get_zlen()/1000 << "km in the x, y, and z directions" << std::endl;
+        std::cout << "The horizontal grid spacing is " << get_dx() << "m and "
+                                                       << get_dy() << "m in the x and y directions" << std::endl;
+        std::cout << "The vertical grid spacing is (in meters): ";
+        auto dzhost = dz.createHostCopy();
+        for (int k=0; k < nz; k++) { std::cout << dzhost(k); if (k < nz-1) std::cout << " , "; }
+        std::cout << std::endl;
+        auto zinthost = zint.createHostCopy();
+        std::cout << "The vertical grid interfaces are (in meters): ";
+        for (int k=0; k < nz+1; k++) { std::cout << zinthost(k); if (k < nz) std::cout << " , "; }
+        std::cout << std::endl;
       }
-
     }
 
 
-    void set_dt_gcm(real dt_gcm) { this->dt_gcm = dt_gcm; }
-
-    ParallelComm              get_parallel_comm         () const { return this->par_comm    ; }
-    real                      get_xlen                  () const { return this->xlen        ; }
-    real                      get_ylen                  () const { return this->ylen        ; }
-    real                      get_zlen                  () const { return this->zlen        ; }
-    real                      get_dt_gcm                () const { return this->dt_gcm      ; }
-    int                       get_nranks                () const { return this->par_comm.get_size();    }
+    ParallelComm              get_parallel_comm         () const { return this->par_comm              ; }
+    real                      get_xlen                  () const { return this->xlen                  ; }
+    real                      get_ylen                  () const { return this->ylen                  ; }
+    real                      get_zlen                  () const { return this->zlen                  ; }
+    int                       get_nranks                () const { return this->par_comm.get_size()   ; }
     int                       get_myrank                () const { return this->par_comm.get_rank_id(); }
-    size_t                    get_nx_glob               () const { return this->nx_glob     ; }
-    size_t                    get_ny_glob               () const { return this->ny_glob     ; }
-    int                       get_nproc_x               () const { return this->nproc_x     ; }
-    int                       get_nproc_y               () const { return this->nproc_y     ; }
-    int                       get_px                    () const { return this->px          ; }
-    int                       get_py                    () const { return this->py          ; }
-    size_t                    get_i_beg                 () const { return this->i_beg       ; }
-    size_t                    get_j_beg                 () const { return this->j_beg       ; }
-    size_t                    get_i_end                 () const { return this->i_end       ; }
-    size_t                    get_j_end                 () const { return this->j_end       ; }
-    bool                      is_sim2d                  () const { return this->ny_glob == 1; }
-    bool                      is_mainproc               () const { return this->get_myrank() == 0; }
-    SArray<int,2,3,3> const & get_neighbor_rankid_matrix() const { return this->neigh       ; }
-    DataManager       const & get_data_manager_readonly () const { return this->dm          ; }
-    DataManager             & get_data_manager_readwrite()       { return this->dm          ; }
+    size_t                    get_nx_glob               () const { return this->nx_glob               ; }
+    size_t                    get_ny_glob               () const { return this->ny_glob               ; }
+    int                       get_nz                    () const { return this->nz                    ; }
+    int                       get_nproc_x               () const { return this->nproc_x               ; }
+    int                       get_nproc_y               () const { return this->nproc_y               ; }
+    int                       get_px                    () const { return this->px                    ; }
+    int                       get_py                    () const { return this->py                    ; }
+    size_t                    get_i_beg                 () const { return this->i_beg                 ; }
+    size_t                    get_j_beg                 () const { return this->j_beg                 ; }
+    size_t                    get_i_end                 () const { return this->i_end                 ; }
+    size_t                    get_j_end                 () const { return this->j_end                 ; }
+    bool                      is_sim2d                  () const { return this->ny_glob == 1          ; }
+    bool                      is_mainproc               () const { return this->get_myrank() == 0     ; }
+    SArray<int,2,3,3> const & get_neighbor_rankid_matrix() const { return this->neigh                 ; }
+    DataManager       const & get_data_manager_readonly () const { return this->dm                    ; }
+    DataManager             & get_data_manager_readwrite()       { return this->dm                    ; }
+    real                      get_dx                    () const { return get_xlen() / get_nx_glob()  ; }
+    real                      get_dy                    () const { return get_ylen() / get_ny_glob()  ; }
+    real1d                    get_dz                    () const { return this->dz                    ; }
+    real1d                    get_zint                  () const { return this->zint                  ; }
+    real1d                    get_zmid                  () const { return this->zmid                  ; }
+    int                       get_num_tracers           () const { return tracers.size()              ; }
 
 
     int get_nx() const {
@@ -265,24 +325,6 @@ namespace core {
       if (dm.find_dimension("y") == -1) return -1;
       return dm.get_dimension_size("y");
     }
-
-
-    int get_nz() const {
-      if (dm.find_dimension("z") == -1) return -1;
-      return dm.get_dimension_size("z");
-    }
-
-
-    real get_dx() const { return get_xlen() / nx_glob; }
-
-
-    real get_dy() const { return get_ylen() / ny_glob; }
-
-
-    real get_dz() const { return get_zlen() / get_nz(); }
-
-
-    int get_num_tracers() const { return tracers.size(); }
 
 
     template <class T>
@@ -323,21 +365,6 @@ namespace core {
 
     void delete_option( std::string key ) {
       options.delete_option(key);
-    }
-
-
-    void set_grid(real xlen, real ylen, real zlen) {
-      this->xlen = xlen;
-      this->ylen = ylen;
-      this->zlen = zlen;
-      if (is_mainproc()) {
-        std::cout << "The domain is " << get_xlen()/1000 << "km x "
-                                      << get_ylen()/1000 << "km x "
-                                      << get_zlen()/1000 << "km in the x, y, and z directions" << std::endl;
-        std::cout << "The grid spacing is " << get_dx() << "m , "
-                                            << get_dy() << "m , and "
-                                            << get_dz() << "m in the x, y, and z directions" << std::endl;
-      }
     }
 
 
@@ -546,6 +573,76 @@ namespace core {
     }
 
 
+    real1d generate_levels_equal( int nz , real zlen ) const {
+      realHost1d zint("zint",nz+1);
+      for (int i=0; i < nz+1; i++) { zint(i) = i*zlen/nz; }
+      return zint.createDeviceCopy();
+    }
+
+
+    real1d generate_levels_exp( int nz , real zlen , real dz0 ) const {
+      using yakl::intrinsics::sum;
+      using yakl::componentwise::operator-;
+      using yakl::componentwise::operator*;
+      if (dz0 > zlen / nz) dz0 = zlen/nz;
+      realHost1d dz("dz",nz);
+      real f1 = 0;
+      real f2 = 5;
+      // Perform iterations
+      while (f2-f1 >= 1.e-13) {
+        real f = (f1+f2)/2;
+        dz(0) = dz0;
+        for (int k=1; k < nz; k++) { dz(k) = dz(k-1)*f; }
+        if (sum(dz) > zlen) { f2 = f; }
+        else                { f1 = f; }
+      }
+      realHost1d zint("zint",nz+1);
+      zint(0) = 0;
+      for (int k=0; k < nz; k++) { zint(k+1) = zint(k) + dz(k); }
+      zint = zint * (zlen / zint(nz));
+      return zint.createDeviceCopy();
+    }
+
+
+    // var('dz0,dz1')
+    // N      = 5
+    // coefs  = coefs_1d(N,0,'a')
+    // p      = poly_1d(N,coefs,x)
+    // constr = vector([ p.subs(x=0) , p.diff(x).subs(x=0) , p.subs(x=1) , p.diff(x).subs(x=1) , p.diff(x,2).subs(x=1) ])
+    // p      = poly_1d(N,jacobian(constr,coefs)^-1*vector([dz0,0,dz1,0,0]),x)
+    // print(p)
+    real1d generate_levels_const_high( real zlen , real dz0 , real z1 , real dz1 ) const {
+      using yakl::intrinsics::sum;
+      using yakl::componentwise::operator-;
+      using yakl::componentwise::operator*;
+      int nzmax = (int) std::ceil(zlen/std::min(dz0,dz1));
+      realHost1d dz("dz",nzmax);
+      dz = dz0;
+      // Perform iterations
+      for (int iter=0; iter < 100; iter++) {
+        real z = 0;
+        for (int k=0; k < nzmax; k++) {
+          real zn = (z+dz(k)/2)/z1;
+          if (zn <= 1) { dz(k) = -3*(dz0-dz1)*zn*zn*zn*zn+8*(dz0-dz1)*zn*zn*zn-6*(dz0-dz1)*zn*zn+dz0; }
+          else         { dz(k) = dz1;                                                                 }
+          z += dz(k);
+        }
+      }
+      // Find actual number of vertical levels
+      real z = 0;
+      int nz = 0;
+      for (int k=0; k < nzmax; k++) {
+        z += dz(k);
+        if (z >= zlen) { nz = k+1; break; }
+      }
+      realHost1d zint("zint",nz+1);
+      zint(0) = 0;
+      for (int k=0; k < nz; k++) { zint(k+1) = zint(k) + dz(k); }
+      zint = zint * (zlen / zint(nz));
+      return zint.createDeviceCopy();
+    }
+
+
     void write_output_file( std::string prefix , bool verbose = true ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
@@ -557,14 +654,14 @@ namespace core {
       auto nz          = get_nz();
       auto dx          = get_dx();
       auto dy          = get_dy();
-      auto dz          = get_dz();
       auto num_tracers = get_num_tracers();
       auto C0          = get_option<real>("C0");
       auto R_d         = get_option<real>("R_d");
       auto gamma       = get_option<real>("gamma_d");
       auto etime       = get_option<real>("elapsed_time");
-      int i_beg        = get_i_beg();
-      int j_beg        = get_j_beg();
+      int  i_beg       = get_i_beg();
+      int  j_beg       = get_j_beg();
+      auto zint        = get_zint();
       yakl::SimplePNetCDF nc(par_comm.get_mpi_comm());
       std::stringstream fname;
       fname << prefix << "_" << std::setw(8) << std::setfill('0') << file_counter << ".nc";
@@ -577,6 +674,7 @@ namespace core {
       nc.create_dim( "x"   , get_nx_glob() );
       nc.create_dim( "y"   , get_ny_glob() );
       nc.create_dim( "z"   , nz );
+      nc.create_dim( "zi"  , nz+1 );
       nc.create_dim( "t"   , 1 );
       std::vector<std::string> dimnames_column  = {"z"};
       std::vector<std::string> dimnames_surface = {"y","x"};
@@ -584,6 +682,7 @@ namespace core {
       nc.create_var<float>( "x"   , {"x"} );
       nc.create_var<float>( "y"   , {"y"} );
       nc.create_var<float>( "z"   , {"z"} );
+      nc.create_var<float>( "zi"  , {"zi"} );
       nc.create_var<float>( "density_dry"  , dimnames_3d );
       nc.create_var<float>( "uvel"         , dimnames_3d );
       nc.create_var<float>( "vvel"         , dimnames_3d );
@@ -623,11 +722,9 @@ namespace core {
       float1d yloc("yloc",ny);
       parallel_for( YAKL_AUTO_LABEL() , ny , KOKKOS_LAMBDA (int j) { yloc(j) = (j+j_beg+0.5)*dy; });
       nc.write_all( yloc , "y" , {j_beg} );
-      // z-coordinate
-      float1d zloc("zloc",nz);
-      parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) { zloc(k) = (k      +0.5)*dz; });
       nc.begin_indep_data();
-      if (is_mainproc()) nc.write( zloc , "z" );
+      if (is_mainproc()) nc.write( zmid         , "z"            );
+      if (is_mainproc()) nc.write( zint         , "zi"           );
       if (is_mainproc()) nc.write( (float)etime , "etime"        );
       if (is_mainproc()) nc.write( file_counter , "file_counter" );
       nc.end_indep_data();

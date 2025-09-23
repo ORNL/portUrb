@@ -68,9 +68,9 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "enable_gravity"     , true        );
     coupler.set_option<real       >( "dycore_cs"          , 100         );
 
-    coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
-
-    coupler.set_grid( xlen , ylen , zlen );
+    coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
+                  coupler.generate_levels_equal(nz,zlen) ,
+                  ny_glob , nx_glob , ylen , xlen );
 
     int nfaces = mesh.faces.extent(0);
     coupler.get_data_manager_readwrite().register_and_allocate<float>("mesh_faces","",{nfaces,3,3});

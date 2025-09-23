@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
     int         nx_glob       = 200;
     int         ny_glob       = 200;
     int         nz            = 40;
-    std::string out_prefix    = "supercell";
+    std::string out_prefix    = "supercell_morr2mom";
     real        dtphys_in     = 0;
     int         dyn_cycle     = 1;
     real        out_freq      = 7200;
@@ -49,9 +49,9 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_buoyancy_theta"     , buoy_theta  );
     coupler.set_option<real       >( "dycore_cs"                 , cs          );
 
-    coupler.distribute_mpi_and_allocate_coupled_state( core::ParallelComm(MPI_COMM_WORLD) , nz, ny_glob, nx_glob);
-
-    coupler.set_grid( xlen , ylen , zlen );
+    coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
+                  coupler.generate_levels_equal(nz,zlen) ,
+                  ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     modules::Time_Averager                     time_averager;

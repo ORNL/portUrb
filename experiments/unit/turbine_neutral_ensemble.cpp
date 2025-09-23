@@ -121,12 +121,9 @@ int main(int argc, char** argv) {
                                                 << "omega_pm: " << omega_pm << "\n"
                                                 << "h_1_3:    " << h_1_3    << std::endl;
 
-      // Coupler state is: (1) dry density;  (2) u-velocity;  (3) v-velocity;  (4) w-velocity;  (5) temperature
-      //                   (6+) tracer masses (*not* mixing ratios!); and Option elapsed_time init to zero
-      coupler_main.distribute_mpi_and_allocate_coupled_state( par_comm , nz, ny_glob, nx_glob);
-
-      // Just tells the coupler how big the domain is in each dimensions
-      coupler_main.set_grid( xlen , ylen , zlen );
+      coupler_main.init( par_comm ,
+                         coupler_main.generate_levels_equal(nz,zlen) ,
+                         ny_glob , nx_glob , ylen , xlen );
 
       // No microphysics specified, so create a water_vapor tracer required by the dycore
       coupler_main.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -192,7 +189,7 @@ int main(int argc, char** argv) {
         coupler_prec.set_option<std::string>("restart_file",restart_file_prec);
         coupler_prec.overwrite_with_restart();
         auto &dm_prec = coupler_prec.get_data_manager_readonly();
-        auto &dm_main = coupler_main     .get_data_manager_readwrite();
+        auto &dm_main = coupler_main.get_data_manager_readwrite();
         dm_prec.get<real const,3>("density_dry").deep_copy_to(dm_main.get<real,3>("density_dry"));
         dm_prec.get<real const,3>("uvel"       ).deep_copy_to(dm_main.get<real,3>("uvel"       ));
         dm_prec.get<real const,3>("vvel"       ).deep_copy_to(dm_main.get<real,3>("vvel"       ));
@@ -261,8 +258,8 @@ int main(int argc, char** argv) {
         coupler_main.set_option<real>("elapsed_time",etime);
         coupler_prec.set_option<real>("elapsed_time",etime);
         if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
-          if (run_main) { std::cout << "MAIN: "; coupler_main.inform_user(); }
-          std::cout << "PREC: "; coupler_prec.inform_user();
+          if (run_main) { if (coupler_main.is_mainproc()) std::cout << "MAIN: "; coupler_main.inform_user(); }
+          if (coupler_main.is_mainproc()) std::cout << "PREC: "; coupler_prec.inform_user();
           inform_counter.reset();
         }
         if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
