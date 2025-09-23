@@ -1014,7 +1014,7 @@ namespace modules {
         SArray<real,1,6> s;
         s(0) = -dz(std::max(0,k-1))-dz(std::max(0,k-2));
         for (int kk=1; kk < 6; kk++) { s(kk) = s(kk-1) + dz(std::max(0,std::min(nz-1,k-3+kk))); }
-        for (int kk=0; kk < 6; kk++) { s(kk) /= dz(std::max(0,std::min(nz-1,k-1))); }
+        for (int kk=0; kk < 6; kk++) { s(kk) /= dz(std::max(0,std::min(nz-1,k))); }
         metjac_edges(k+1,0) = ( 3*s(0)-30*s(1)-20*s(2)+60*s(3)-15*s(4)+2*s(5))/60.;
         metjac_edges(k+1,1) = (-2*s(0)+15*s(1)-60*s(2)+20*s(3)+30*s(4)-3*s(5))/60.;
       });
