@@ -34,6 +34,7 @@ macro(process_target target_name)
 endmacro()
 
 process_target(abl_convective)
+process_target(abl_neutral)
 process_target(abl_stable)
 process_target(city)
 process_target(supercell_kessler)

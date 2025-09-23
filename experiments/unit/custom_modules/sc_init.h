@@ -243,6 +243,45 @@ namespace custom_modules {
         if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
+    } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
+
+      auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
+        if      (z <  500)            { return 300;                        }
+        else if (z >= 500 && z < 650) { return 300+0.08*(z-500);           }
+        else                          { return 300+0.08*150+0.003*(z-650); }
+      };
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
+      auto u_g = coupler.get_option<real>("geostrophic_u",10.);
+      auto v_g = coupler.get_option<real>("geostrophic_v",0. );
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        dm_rho_d(k,j,i) = 0;
+        dm_uvel (k,j,i) = 0;
+        dm_vvel (k,j,i) = 0;
+        dm_wvel (k,j,i) = 0;
+        dm_temp (k,j,i) = 0;
+        dm_rho_v(k,j,i) = 0;
+        for (int kk=0; kk<nqpoints; kk++) {
+          real z         = zmid(k) + qpoints(kk)*dz(k);
+          real theta     = compute_theta(z);
+          real p         = pressGLL(k,kk);
+          real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
+          real rho       = rho_theta / theta;
+          real u         = u_g;
+          real v         = v_g;
+          real w         = 0;
+          real T         = p/(rho*R_d);
+          real rho_v     = 0;
+          real wt = qweights(kk);
+          dm_rho_d(k,j,i) += rho   * wt;
+          dm_uvel (k,j,i) += u     * wt;
+          dm_vvel (k,j,i) += v     * wt;
+          dm_wvel (k,j,i) += w     * wt;
+          dm_temp (k,j,i) += T     * wt;
+          dm_rho_v(k,j,i) += rho_v * wt;
+        }
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+      });
+
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
 
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {

@@ -72,6 +72,14 @@ namespace custom_modules {
         if (z <= 50) dm_temp(k,j,i) += rand.genFP<real>(-0.10,0.10);
       });
 
+    } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
+
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
+        real z = zmid(k);
+        if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
+      });
+
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
 
       auto wind = coupler.get_option<real>("hub_height_wind_mag");

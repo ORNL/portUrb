@@ -2,8 +2,8 @@
 #SBATCH -A stf006
 #SBATCH -J portUrb
 #SBATCH -o %x-%j.out
-#SBATCH -t 0:30:00
-#SBATCH -N 1
+#SBATCH -t 1:00:00
+#SBATCH -N 4
 #SBATCH --partition batch
 
 # #SBATCH --partition extended
@@ -14,7 +14,8 @@ source machines/frontier/frontier_gpu.env
 date
 # srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./supercell_morr2mom       >& supercell_morr2mom.out
 # srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./supercell_kessler        >& supercell_kessler.out
-srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_convective           >& abl_convective.out
+# srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_convective           >& abl_convective.out
+srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_neutral              >& abl_neutral.out
 # srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./city                     >& city.out
 # srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_neutral_ensemble >& turbine_neutral_ensemble.out
 # srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_stable               >& abl_stable.out

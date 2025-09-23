@@ -6,6 +6,7 @@ from cmap import Colormap
 import xarray
 
 workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+prefix = "ABL_neutral_variable"
 
 def spectra(T,dx = 1) :
   spd  = np.abs( np.fft.rfft(T[0,0,:]) )**2
@@ -23,7 +24,7 @@ def get_ind(arr,val) :
     return np.argmin(np.abs(arr-val))
 
 
-nc = Dataset(f"{workdir}/ABL_neutral_00000020.nc","r")
+nc = Dataset(f"{workdir}/{prefix}_00000020.nc","r")
 x = np.array(nc["x"])/1000
 y = np.array(nc["y"])/1000
 z = np.array(nc["z"])/1000
@@ -32,10 +33,9 @@ ny = len(y)
 nz = len(z)
 dx = x[1]-x[0]
 dy = y[1]-y[0]
-dz = z[1]-z[0]
 xlen = x[-1]+dx/2
 ylen = y[-1]+dy/2
-zlen = z[-1]+dz/2
+zlen = np.array(nc["zi"])[-1]
 uvel  = np.array(nc["uvel"][:,:,:])
 vvel  = np.array(nc["vvel"][:,:,:])
 wvel  = np.array(nc["wvel"][:,:,:])
@@ -65,7 +65,7 @@ ax.legend(loc="upper left")
 ax.set_xlim(left=0)
 ax.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_neutral_uvel_height.png",dpi=600)
+plt.savefig(f"{prefix}_uvel_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -95,7 +95,7 @@ ax.legend()
 ax.margins(x=0)
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_neutral_up_wp_height.png",dpi=600)
+plt.savefig(f"{prefix}_up_wp_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -119,7 +119,7 @@ plt.legend()
 ax.margins(x=0)
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_neutral_tke_height.png",dpi=600)
+plt.savefig(f"{prefix}_tke_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -148,7 +148,7 @@ ax.set_ylim(top=1.e6)
 ax.margins(x=0)
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_neutral_spectra.png",dpi=600)
+plt.savefig(f"{prefix}_spectra.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -171,7 +171,7 @@ cax = divider.append_axes("bottom", size="4%", pad=0.5)
 plt.colorbar(CS,orientation="horizontal",cax=cax)
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_neutral_contour_xy.png",dpi=600)
+plt.savefig(f"{prefix}_contour_xy.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -195,14 +195,14 @@ cax = divider.append_axes("bottom", size="4%", pad=0.5)
 plt.colorbar(CS,orientation="horizontal",cax=cax)
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_neutral_contour_xz.png",dpi=600)
+plt.savefig(f"{prefix}_contour_xz.png",dpi=600)
 plt.show()
 plt.close()
 
 
-u0  = np.mean(np.array(Dataset(f"{workdir}/ABL_neutral_00000000.nc","r")["uvel"]),axis=(1,2))
-u8  = np.mean(np.array(Dataset(f"{workdir}/ABL_neutral_00000016.nc","r")["uvel"]),axis=(1,2))
-u10 = np.mean(np.array(Dataset(f"{workdir}/ABL_neutral_00000020.nc","r")["uvel"]),axis=(1,2))
+u0  = np.mean(np.array(Dataset(f"{workdir}/{prefix}_00000000.nc","r")["uvel"]),axis=(1,2))
+u8  = np.mean(np.array(Dataset(f"{workdir}/{prefix}_00000016.nc","r")["uvel"]),axis=(1,2))
+u10 = np.mean(np.array(Dataset(f"{workdir}/{prefix}_00000020.nc","r")["uvel"]),axis=(1,2))
 z2 = get_ind(z,0.75)
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
@@ -216,14 +216,14 @@ ax.set_xlim(left=0)
 ax.margins(x=0)
 plt.tight_layout()
 plt.grid()
-plt.savefig("ABL_neutral_uvel_height_times.png",dpi=600)
+plt.savefig(f"{prefix}_uvel_height_times.png",dpi=600)
 plt.show()
 plt.close()
 
 
-u0  = np.mean(np.array(Dataset(f"{workdir}/ABL_neutral_00000000.nc","r")["vvel"]),axis=(1,2))
-u8  = np.mean(np.array(Dataset(f"{workdir}/ABL_neutral_00000016.nc","r")["vvel"]),axis=(1,2))
-u10 = np.mean(np.array(Dataset(f"{workdir}/ABL_neutral_00000020.nc","r")["vvel"]),axis=(1,2))
+u0  = np.mean(np.array(Dataset(f"{workdir}/{prefix}_00000000.nc","r")["vvel"]),axis=(1,2))
+u8  = np.mean(np.array(Dataset(f"{workdir}/{prefix}_00000016.nc","r")["vvel"]),axis=(1,2))
+u10 = np.mean(np.array(Dataset(f"{workdir}/{prefix}_00000020.nc","r")["vvel"]),axis=(1,2))
 z2 = get_ind(z,0.75)
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
@@ -237,14 +237,14 @@ ax.set_xlim(left=-0.2)
 ax.margins(x=0)
 plt.tight_layout()
 plt.grid()
-plt.savefig("ABL_neutral_vvel_height_times.png",dpi=600)
+plt.savefig(f"{prefix}_vvel_height_times.png",dpi=600)
 plt.show()
 plt.close()
 
 
-nc0  = Dataset(f"{workdir}/ABL_neutral_00000000.nc","r")
-nc8  = Dataset(f"{workdir}/ABL_neutral_00000016.nc","r")
-nc10 = Dataset(f"{workdir}/ABL_neutral_00000020.nc","r")
+nc0  = Dataset(f"{workdir}/{prefix}_00000000.nc","r")
+nc8  = Dataset(f"{workdir}/{prefix}_00000016.nc","r")
+nc10 = Dataset(f"{workdir}/{prefix}_00000020.nc","r")
 hs = 5
 u0  = np.mean(np.array(nc0 ["theta_pert"])+np.array(nc0 ["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis],axis=(1,2))
 u8  = np.mean(np.array(nc8 ["theta_pert"])+np.array(nc8 ["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis],axis=(1,2))
@@ -262,6 +262,6 @@ ax.set_xlim(left=299,right=313)
 ax.margins(x=0)
 plt.tight_layout()
 plt.grid()
-plt.savefig("ABL_neutral_theta_height_times.png",dpi=600)
+plt.savefig(f"{prefix}_theta_height_times.png",dpi=600)
 plt.show()
 plt.close()
