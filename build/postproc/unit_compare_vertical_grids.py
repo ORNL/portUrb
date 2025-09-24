@@ -49,12 +49,12 @@ def process(prefix_fixed,prefix_variable,varlist,time) :
 
 process(prefix_fixed="ABL_neutral_fixed",
         prefix_variable="ABL_neutral_variable",
-        varlist=["uvel","vvel","wvel","TKE","theta_pert","density_pert"],
+        varlist=["density_dry","temperature","uvel","vvel","wvel","TKE","theta_pert","density_pert"],
         time=1)
 
 process(prefix_fixed="supercell_kessler_fixed",
         prefix_variable="supercell_kessler_variable",
-        varlist=["uvel","vvel","wvel","water_vapor","cloud_liquid","precip_liquid",
+        varlist=["density_dry","temperature","uvel","vvel","wvel","water_vapor","cloud_liquid","precip_liquid",
                  "TKE","theta_pert","density_pert","pressure_pert"],
         time=1)
 
