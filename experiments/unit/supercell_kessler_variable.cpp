@@ -23,7 +23,6 @@ int main(int argc, char** argv) {
     real        zlen          = 20000;
     int         nx_glob       = 200;
     int         ny_glob       = 200;
-    int         nz            = 40;
     std::string out_prefix    = "supercell_kessler_variable";
     real        dtphys_in     = 0;
     int         dyn_cycle     = 1;

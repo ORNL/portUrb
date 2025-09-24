@@ -19,7 +19,6 @@ int main(int argc, char** argv) {
     real        sim_time    = 3600*2+1;
     int         nx_glob     = 200;
     int         ny_glob     = 200;
-    int         nz          = 50;
     real        xlen        = 4000;
     real        ylen        = 4000;
     real        zlen        = 1000;

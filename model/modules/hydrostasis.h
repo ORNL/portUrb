@@ -12,8 +12,8 @@ namespace modules {
   template <size_t nq = 9>
   inline realHost2d integrate_hydrostatic_pressure_gll_temp_qv( FUNC_Z         func_T      ,
                                                                 FUNC_Z         func_qv     ,
-                                                                real1d const & zint        ,
-                                                                real1d const & dz          ,
+                                                                real1d const & zint_d      ,
+                                                                real1d const & dz_d        ,
                                                                 real           p0   = 1.e5 ,
                                                                 real           grav = 9.81 ,
                                                                 real           R_d  = 287  ,
@@ -22,7 +22,9 @@ namespace modules {
     SArray<real,1,nq> qweights;
     TransformMatrices::get_gll_points (qpoints );
     TransformMatrices::get_gll_weights(qweights);
-    int nz = dz.size();
+    auto zint = zint_d.createHostCopy();
+    auto dz   = dz_d  .createHostCopy();
+    int  nz   = dz.size();
     realHost2d pgll("pressure_hydrostatic_gll",nz,nq);
     for (int k1=0; k1 < nz; k1++) {
       if (k1 == 0) { pgll(k1,0) = p0;              }
@@ -48,8 +50,8 @@ namespace modules {
 
   template <size_t nq = 9>
   inline realHost2d integrate_hydrostatic_pressure_gll_theta( FUNC_Z         func_th     ,
-                                                              real1d const & zint        ,
-                                                              real1d const & dz          ,
+                                                              real1d const & zint_d      ,
+                                                              real1d const & dz_d        ,
                                                               real           p0   = 1.e5 ,
                                                               real           grav = 9.81 ,
                                                               real           R_d  = 287  ,
@@ -58,6 +60,8 @@ namespace modules {
     SArray<real,1,nq> qweights;
     TransformMatrices::get_gll_points (qpoints );
     TransformMatrices::get_gll_weights(qweights);
+    auto zint  = zint_d.createHostCopy();
+    auto dz    = dz_d  .createHostCopy();
     int  nz    = dz.size();
     real c_v   = c_p - R_d;
     real gamma = c_p / c_v;

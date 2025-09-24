@@ -15,7 +15,7 @@ namespace modules {
     auto ny      = coupler.get_ny  ();
     auto nx      = coupler.get_nx  ();
     auto zlen    = coupler.get_zlen();
-    auto zint    = coupler.get_zint();
+    auto zint    = coupler.get_zint().createHostCopy();
     auto zmid    = coupler.get_zmid();
     auto &dm     = coupler.get_data_manager_readwrite();
 

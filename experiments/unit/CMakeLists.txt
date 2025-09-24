@@ -14,7 +14,6 @@ include_directories(${PORTURB_HOME}/model
                     ${PORTURB_HOME}/model/core
                     ${PORTURB_HOME}/model/modules
                     ${PORTURB_HOME}/model/modules/helpers
-                    ${PORTURB_HOME}/model/modules/helpers/microphysics_p3
                     ${PORTURB_HOME}/external/yaml-cpp/include
                     ${PORTURB_HOME}/external/ponni/src
                     ${CMAKE_CURRENT_SOURCE_DIR}/custom_modules
