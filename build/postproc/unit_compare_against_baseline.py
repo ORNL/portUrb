@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 generate_diff_plots = False
-results_dir  = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+# results_dir  = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+results_dir  = "/lustre/storm/nwp501/scratch/imn/portUrb/build"
 
 # Main dictionary for numpy arrays and scalars
 results = {}

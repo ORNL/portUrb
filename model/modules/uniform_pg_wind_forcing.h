@@ -56,8 +56,8 @@ namespace modules {
       real z2 = zint(k2)+dz(k2)/2;
       real w1 = (z2-height)/((dz(k1)+dz(k2))/2);
       real w2 = (height-z1)/((dz(k1)+dz(k2))/2);
-      real u  = w1*u1 + w2*u2;
-      real v  = w1*v1 + w2*v2;
+      u = w1*u1 + w2*u2;
+      v = w1*v1 + w2*v2;
     }
     real u_forcing = dt / tau*(u0-u);
     real v_forcing = dt / tau*(v0-v);

@@ -53,7 +53,9 @@ int main(int argc, char** argv) {
     }
     // coupler_main.set_option<real>("hub_height_wind_mag",11);
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_main , 4 , MPI_COMM_WORLD );
+    int ntasks;
+    MPI_Comm_size(MPI_COMM_WORLD,&ntasks);
+    auto par_comm = ensembler.create_coupler_comm( coupler_main , ntasks/2 , MPI_COMM_WORLD );
     coupler_main.set_parallel_comm( par_comm );
 
     auto orig_cout_buf = std::cout.rdbuf();
