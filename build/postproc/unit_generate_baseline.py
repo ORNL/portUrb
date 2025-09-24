@@ -52,7 +52,8 @@ files = ["ABL_convective",
          "turbulent_wind-20.000000",
          "turbulent_wind-20.000000_precursor",
          "turbulent_wind-5.000000",
-         "turbulent_wind-5.000000_precursor"]
+         "turbulent_wind-5.000000_precursor",
+         "turbine_simple"]
 for file in files :
   process(prefix=file,time=1,exclude=["x","y","z","zi"])
 

@@ -243,6 +243,29 @@ namespace custom_modules {
         if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
+    } else if (coupler.get_option<std::string>("init_data") == "constant") {
+
+      coupler.set_option<std::string>("bc_x1","open");
+      coupler.set_option<std::string>("bc_x2","open");
+      coupler.set_option<std::string>("bc_y1","open");
+      coupler.set_option<std::string>("bc_y2","open");
+      coupler.set_option<bool>("enable_gravity",false);
+      real u  = coupler.get_option<real>( "constant_uvel"  , 10.  );
+      real v  = coupler.get_option<real>( "constant_vvel"  , 0.   );
+      real w  = 0;
+      real T  = coupler.get_option<real>( "constant_temp"  , 300. );
+      real p  = coupler.get_option<real>( "constant_press" , 1.e5 );
+      real r  = p/(R_d*T);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        dm_rho_d(k,j,i) = r;
+        dm_uvel (k,j,i) = u;
+        dm_vvel (k,j,i) = v;
+        dm_wvel (k,j,i) = w;
+        dm_temp (k,j,i) = T;
+        dm_rho_v(k,j,i) = 0;
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+      });
+
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
 
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {

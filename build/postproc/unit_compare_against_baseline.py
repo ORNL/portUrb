@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 generate_diff_plots = False
-# results_dir  = "/lustre/orion/stf006/scratch/imn/portUrb/build"
-results_dir  = "/lustre/storm/nwp501/scratch/imn/portUrb/build"
+results_dir  = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+# results_dir  = "/lustre/storm/nwp501/scratch/imn/portUrb/build"
 
 # Main dictionary for numpy arrays and scalars
 results = {}
@@ -54,24 +54,34 @@ files = ["ABL_convective",
          "turbulent_wind-20.000000",
          "turbulent_wind-20.000000_precursor",
          "turbulent_wind-5.000000",
-         "turbulent_wind-5.000000_precursor"]
+         "turbulent_wind-5.000000_precursor",
+         "turbine_simple"]
 for file in files :
   process(prefix=file,time=1,exclude=["x","y","z","zi"])
 
-baseline = loaded_data = np.load(f"{results_dir}/inputs/unit_baseline.npz")
+baseline_O1 = loaded_data = np.load(f"{results_dir}/inputs/unit_baseline_O1.npz")
+baseline_O3 = loaded_data = np.load(f"{results_dir}/inputs/unit_baseline_O3.npz")
 
-for key in baseline.keys() :
-  denom = np.mean(np.abs(baseline[key]))
-  numer = np.mean(np.abs(results[key]-baseline[key]))
+print(f"{'name':<60}: {'exp_diff':<11} > {'base_diff':<11}  ;  {'exp_value':<11}")
+for key in baseline_O1.keys() :
+  denom = np.mean(np.abs(baseline_O1[key]))
+  numer = np.mean(np.abs(results[key]-baseline_O1[key]))
   if (denom > 1.e-15) :
-    diff = numer / denom
+    diff_exp = numer / denom
   else :
-    diff = numer 
-  if (diff > 1.e-14) :
-    print(f"{key:<60}: {diff}")
+    diff_exp = numer 
+  denom = np.mean(np.abs(baseline_O1[key]))
+  numer = np.mean(np.abs(baseline_O3[key]-baseline_O1[key]))
+  if (denom > 1.e-15) :
+    diff_base = numer / denom
+  else :
+    diff_base = numer 
+  if (diff_exp > 10*diff_base) :
+    print(f"{key:<60}: {diff_exp:11.5e} > {diff_base:11.5e}  ;  {np.mean(np.abs(results[key])):11.5e}")
     if (generate_diff_plots and len(results[key].shape) == 1) :
-      plt.plot(baseline[key],color="black",label="baseline")
-      plt.plot(results [key],color="red"  ,label="results" )
+      plt.plot(baseline_O1[key],color="black",label="baseline_O1")
+      plt.plot(baseline_O3[key],color="blue" ,label="baseline_O3")
+      plt.plot(results    [key],color="red"  ,label="results"    )
       plt.title(key)
       plt.legend()
       plt.savefig(f"{key}.png")

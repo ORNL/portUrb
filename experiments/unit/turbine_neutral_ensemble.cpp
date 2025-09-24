@@ -66,7 +66,6 @@ int main(int argc, char** argv) {
 
     // core::ParallelComm par_comm(MPI_COMM_WORLD);
     // coupler_main.set_option<real>("hub_height_wind_mag",12);
-    // coupler_main.set_option<bool>( "turbine_floating_motions" , true );
 
     real dx = 20;
 
@@ -111,6 +110,7 @@ int main(int argc, char** argv) {
       real u19_5    = hub_wind*std::log(19.5/z0)/std::log(turbine_hubz/z0);
       real omega_pm = 0.877*9.81/u19_5;
       real h_1_3    = 0.21*u19_5*u19_5/9.81;
+      coupler_main.set_option<bool             >( "turbine_floating_motions"   , true     );
       coupler_main.set_option<real             >( "turbine_floating_sine_amp"  , h_1_3    );
       coupler_main.set_option<real             >( "turbine_floating_sine_freq" , omega_pm );
       coupler_main.set_option<std::vector<real>>( "turbine_x_locs"             , {6*D}    );

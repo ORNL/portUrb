@@ -23,5 +23,6 @@ srun -N $SLURM_NNODES -n $num_tasks -c 32 --gpus-per-task=1 --gpu-bind=closest .
 srun -N $SLURM_NNODES -n $num_tasks -c 32 --gpus-per-task=1 --gpu-bind=closest ./supercell_kessler_variable >& supercell_kessler_variable.out
 srun -N $SLURM_NNODES -n $num_tasks -c 32 --gpus-per-task=1 --gpu-bind=closest ./supercell_morr2mom         >& supercell_morr2mom.out
 srun -N $SLURM_NNODES -n $num_tasks -c 32 --gpus-per-task=1 --gpu-bind=closest ./turbine_neutral_ensemble   >& turbine_neutral_ensemble.out
+srun -N $SLURM_NNODES -n $num_tasks -c 32 --gpus-per-task=1 --gpu-bind=closest ./turbine_simple             >& turbine_simple.out
 date
 
