@@ -2,7 +2,7 @@ from netCDF4 import Dataset
 import numpy as np
 import matplotlib.pyplot as plt
 
-generate_diff_plots = False
+generate_diff_plots = True
 results_dir  = "/lustre/orion/stf006/scratch/imn/portUrb/build"
 # results_dir  = "/lustre/storm/nwp501/scratch/imn/portUrb/build"
 

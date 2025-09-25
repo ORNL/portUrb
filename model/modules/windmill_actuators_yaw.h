@@ -176,7 +176,6 @@ namespace modules {
                          turb_x2 < dom_x1 || // Turbine's to the left
                          turb_y1 > dom_y2 || // Turbine's above
                          turb_y2 < dom_y1 ); // Turbine's below
-        std::random_device rd{};
         Turbine loc;
         loc.active          = active;
         loc.base_loc_x      = base_loc_x;

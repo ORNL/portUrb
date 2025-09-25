@@ -84,10 +84,14 @@ namespace modules {
       int ny      = coupler.get_ny();
       int nz      = coupler.get_nz();
       real2d column("column",names.size(),nz);
-      column = 0;
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
-                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        Kokkos::atomic_add( &column(l,k) , state(l,k,j,i) );
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) ,
+                                        KOKKOS_LAMBDA (int l, int k) {
+        column(l,k) = 0;
+        for (int j=0; j < ny; j++) {
+          for (int i=0; i < nx; i++) {
+            column(l,k) += state(l,k,j,i);
+          }
+        }
       });
       column = coupler.get_parallel_comm().all_reduce( column , MPI_SUM , "column_nudging_Allreduce" );
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) , KOKKOS_LAMBDA (int l, int k) {

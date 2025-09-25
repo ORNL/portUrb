@@ -36,8 +36,7 @@ namespace modules {
       this->state(5)  = 0;
       this->etime     = 0;
       rand_pool = std::vector<real>(rand_pool_size);
-      std::random_device rd;
-      std::mt19937 generator(rd());
+      std::mt19937 generator(12345);
       std::uniform_real_distribution<real> distribution(0.,2.*M_PI);
       for (int i=0; i < rand_pool_size; i++) { rand_pool.at(i) = distribution(generator); }
       rand_pool_counter = 0;
