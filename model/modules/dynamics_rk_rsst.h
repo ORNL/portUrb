@@ -46,9 +46,10 @@ namespace modules {
       auto nx = coupler.get_nx();
       auto ny = coupler.get_ny();
       auto nz = coupler.get_nz();
+      auto dz = coupler.get_dz();
       real3d r("r",nz,ny,nx);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j , int i) {
-        r(k,j,i) = state(idR,k,j,i);
+        r(k,j,i) = state(idR,k,j,i)*dz(k);
       });
       return coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(r) , MPI_SUM );
     }
@@ -144,11 +145,11 @@ namespace modules {
       #endif
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      auto num_tracers     = tracers.extent(0);
-      auto nx              = coupler.get_nx();
-      auto ny              = coupler.get_ny();
-      auto nz              = coupler.get_nz();
-      auto &dm             = coupler.get_data_manager_readonly();
+      auto num_tracers = tracers.extent(0);
+      auto nx          = coupler.get_nx();
+      auto ny          = coupler.get_ny();
+      auto nz          = coupler.get_nz();
+      auto &dm         = coupler.get_data_manager_readonly();
       auto tracer_positive = dm.get<bool const,1>("dycore_tracer_positive");
       // SSPRK3 requires temporary arrays to hold intermediate state and tracers arrays
       real4d state_tmp   ("state_tmp"   ,num_state  ,nz,ny,nx);

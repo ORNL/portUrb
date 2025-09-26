@@ -47,11 +47,12 @@ namespace modules {
       auto nx = coupler.get_nx();
       auto ny = coupler.get_ny();
       auto nz = coupler.get_nz();
+      auto dz = coupler.get_dz();
       real3d r("r",nz,ny,nx);
       real3d t("t",nz,ny,nx);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j , int i) {
-        r(k,j,i) = state(idR,hs+k,hs+j,hs+i);
-        t(k,j,i) = state(idT,hs+k,hs+j,hs+i);
+        r(k,j,i) = state(idR,k,j,i)*dz(k);
+        t(k,j,i) = state(idT,k,j,i)*dz(k);
       });
       real rmass = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(r) , MPI_SUM );
       real tmass = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(t) , MPI_SUM );
@@ -118,8 +119,8 @@ namespace modules {
       auto nx                      = coupler.get_nx();
       auto ny                      = coupler.get_ny();
       auto nz                      = coupler.get_nz();
-      real4d state  ("state"  ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);
-      real4d tracers("tracers",num_tracers,nz+2*hs,ny+2*hs,nx+2*hs);
+      real4d state  ("state"  ,num_state  ,nz,ny,nx);
+      real4d tracers("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
       real dt_dyn = compute_time_step( coupler );
       int ncycles = (int) std::ceil( dt_phys / dt_dyn );
@@ -155,11 +156,11 @@ namespace modules {
       auto &dm         = coupler.get_data_manager_readonly();
       auto tracer_positive = dm.get<bool const,1>("tracer_positive");
       // SSPRK3 requires temporary arrays to hold intermediate state and tracers arrays
-      real4d state_tmp   ("state_tmp"   ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);
-      real4d tracers_tmp ("tracers_tmp" ,num_tracers,nz+2*hs,ny+2*hs,nx+2*hs);
+      real4d state_tmp   ("state_tmp"   ,num_state  ,nz,ny,nx);
+      real4d tracers_tmp ("tracers_tmp" ,num_tracers,nz,ny,nx);
       // To hold tendencies
-      real4d state_tend  ("state_tend"  ,num_state  ,nz     ,ny     ,nx     );
-      real4d tracers_tend("tracers_tend",num_tracers,nz     ,ny     ,nx     );
+      real4d state_tend  ("state_tend"  ,num_state  ,nz,ny,nx);
+      real4d tracers_tend("tracers_tend",num_tracers,nz,ny,nx);
 
       enforce_immersed_boundaries( coupler , state , tracers );
 
@@ -170,10 +171,10 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state_tmp  (l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i) + dt_dyn/3 * state_tend  (l,k,j,i);
+          state_tmp  (l,k,j,i) = state  (l,k,j,i) + dt_dyn/3 * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers_tmp(l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i) + dt_dyn/3 * tracers_tend(l,k,j,i);
+          tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/3 * tracers_tend(l,k,j,i);
         }
       });
 
@@ -183,10 +184,10 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state_tmp  (l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i) + dt_dyn/2 * state_tend  (l,k,j,i);
+          state_tmp  (l,k,j,i) = state  (l,k,j,i) + dt_dyn/2 * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers_tmp(l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i) + dt_dyn/2 * tracers_tend(l,k,j,i);
+          tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/2 * tracers_tend(l,k,j,i);
         }
       });
 
@@ -197,11 +198,11 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state      (l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i) + dt_dyn/1 * state_tend  (l,k,j,i);
+          state      (l,k,j,i) = state  (l,k,j,i) + dt_dyn/1 * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers    (l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i) + dt_dyn/1 * tracers_tend(l,k,j,i);
-          if (tracer_positive(l))  tracers(l,hs+k,hs+j,hs+i) = std::max( 0._fp , tracers(l,hs+k,hs+j,hs+i) );
+          tracers    (l,k,j,i) = tracers(l,k,j,i) + dt_dyn/1 * tracers_tend(l,k,j,i);
+          if (tracer_positive(l))  tracers(l,k,j,i) = std::max( 0._fp , tracers(l,k,j,i) );
         }
       });
 
@@ -231,11 +232,11 @@ namespace modules {
       auto &dm         = coupler.get_data_manager_readonly();
       auto tracer_positive = dm.get<bool const,1>("tracer_positive");
       // SSPRK3 requires temporary arrays to hold intermediate state and tracers arrays
-      real4d state_tmp   ("state_tmp"   ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);
-      real4d tracers_tmp ("tracers_tmp" ,num_tracers,nz+2*hs,ny+2*hs,nx+2*hs);
+      real4d state_tmp   ("state_tmp"   ,num_state  ,nz,ny,nx);
+      real4d tracers_tmp ("tracers_tmp" ,num_tracers,nz,ny,nx);
       // To hold tendencies
-      real4d state_tend  ("state_tend"  ,num_state  ,nz     ,ny     ,nx     );
-      real4d tracers_tend("tracers_tend",num_tracers,nz     ,ny     ,nx     );
+      real4d state_tend  ("state_tend"  ,num_state  ,nz,ny,nx);
+      real4d tracers_tend("tracers_tend",num_tracers,nz,ny,nx);
 
       enforce_immersed_boundaries( coupler , state , tracers );
 
@@ -246,10 +247,10 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state_tmp  (l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i) + dt_dyn/4 * state_tend  (l,k,j,i);
+          state_tmp  (l,k,j,i) = state  (l,k,j,i) + dt_dyn/4 * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers_tmp(l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i) + dt_dyn/4 * tracers_tend(l,k,j,i);
+          tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/4 * tracers_tend(l,k,j,i);
         }
       });
 
@@ -259,10 +260,10 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state_tmp  (l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i) + dt_dyn/3 * state_tend  (l,k,j,i);
+          state_tmp  (l,k,j,i) = state  (l,k,j,i) + dt_dyn/3 * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers_tmp(l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i) + dt_dyn/3 * tracers_tend(l,k,j,i);
+          tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/3 * tracers_tend(l,k,j,i);
         }
       });
 
@@ -272,10 +273,10 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state_tmp  (l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i) + dt_dyn/2 * state_tend  (l,k,j,i);
+          state_tmp  (l,k,j,i) = state  (l,k,j,i) + dt_dyn/2 * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers_tmp(l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i) + dt_dyn/2 * tracers_tend(l,k,j,i);
+          tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/2 * tracers_tend(l,k,j,i);
         }
       });
 
@@ -286,11 +287,11 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state      (l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i) + dt_dyn/1 * state_tend  (l,k,j,i);
+          state      (l,k,j,i) = state  (l,k,j,i) + dt_dyn/1 * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers    (l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i) + dt_dyn/1 * tracers_tend(l,k,j,i);
-          if (tracer_positive(l))  tracers(l,hs+k,hs+j,hs+i) = std::max( 0._fp , tracers(l,hs+k,hs+j,hs+i) );
+          tracers    (l,k,j,i) = tracers(l,k,j,i) + dt_dyn/1 * tracers_tend(l,k,j,i);
+          if (tracer_positive(l))  tracers(l,k,j,i) = std::max( 0._fp , tracers(l,k,j,i) );
         }
       });
 
@@ -320,11 +321,11 @@ namespace modules {
       auto &dm         = coupler.get_data_manager_readonly();
       auto tracer_positive = dm.get<bool const,1>("tracer_positive");
       // SSPRK3 requires temporary arrays to hold intermediate state and tracers arrays
-      real4d state_tmp   ("state_tmp"   ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);
-      real4d tracers_tmp ("tracers_tmp" ,num_tracers,nz+2*hs,ny+2*hs,nx+2*hs);
+      real4d state_tmp   ("state_tmp"   ,num_state  ,nz,ny,nx);
+      real4d tracers_tmp ("tracers_tmp" ,num_tracers,nz,ny,nx);
       // To hold tendencies
-      real4d state_tend  ("state_tend"  ,num_state  ,nz     ,ny     ,nx     );
-      real4d tracers_tend("tracers_tend",num_tracers,nz     ,ny     ,nx     );
+      real4d state_tend  ("state_tend"  ,num_state  ,nz,ny,nx);
+      real4d tracers_tend("tracers_tend",num_tracers,nz,ny,nx);
 
       enforce_immersed_boundaries( coupler , state , tracers );
 
@@ -336,10 +337,10 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state_tmp  (l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i) + dt_dyn * state_tend  (l,k,j,i);
+          state_tmp  (l,k,j,i) = state  (l,k,j,i) + dt_dyn * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers_tmp(l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i) + dt_dyn * tracers_tend(l,k,j,i);
+          tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn * tracers_tend(l,k,j,i);
         }
       });
 
@@ -351,14 +352,14 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state_tmp  (l,hs+k,hs+j,hs+i) = (3._fp/4._fp) * state      (l,hs+k,hs+j,hs+i) + 
-                                          (1._fp/4._fp) * state_tmp  (l,hs+k,hs+j,hs+i) +
-                                          (1._fp/4._fp) * dt_dyn * state_tend  (l,k,j,i);
+          state_tmp  (l,k,j,i) = (3._fp/4._fp) * state      (l,k,j,i) + 
+                                 (1._fp/4._fp) * state_tmp  (l,k,j,i) +
+                                 (1._fp/4._fp) * dt_dyn * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers_tmp(l,hs+k,hs+j,hs+i) = (3._fp/4._fp) * tracers    (l,hs+k,hs+j,hs+i) + 
-                                          (1._fp/4._fp) * tracers_tmp(l,hs+k,hs+j,hs+i) +
-                                          (1._fp/4._fp) * dt_dyn * tracers_tend(l,k,j,i);
+          tracers_tmp(l,k,j,i) = (3._fp/4._fp) * tracers    (l,k,j,i) + 
+                                 (1._fp/4._fp) * tracers_tmp(l,k,j,i) +
+                                 (1._fp/4._fp) * dt_dyn * tracers_tend(l,k,j,i);
         }
       });
 
@@ -370,16 +371,16 @@ namespace modules {
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
-          state  (l,hs+k,hs+j,hs+i) = (1._fp/3._fp) * state      (l,hs+k,hs+j,hs+i) +
-                                      (2._fp/3._fp) * state_tmp  (l,hs+k,hs+j,hs+i) +
-                                      (2._fp/3._fp) * dt_dyn * state_tend  (l,k,j,i);
+          state  (l,k,j,i) = (1._fp/3._fp) * state      (l,k,j,i) +
+                             (2._fp/3._fp) * state_tmp  (l,k,j,i) +
+                             (2._fp/3._fp) * dt_dyn * state_tend  (l,k,j,i);
         } else {
           l -= num_state;
-          tracers(l,hs+k,hs+j,hs+i) = (1._fp/3._fp) * tracers    (l,hs+k,hs+j,hs+i) +
-                                      (2._fp/3._fp) * tracers_tmp(l,hs+k,hs+j,hs+i) +
-                                      (2._fp/3._fp) * dt_dyn * tracers_tend(l,k,j,i);
+          tracers(l,k,j,i) = (1._fp/3._fp) * tracers    (l,k,j,i) +
+                             (2._fp/3._fp) * tracers_tmp(l,k,j,i) +
+                             (2._fp/3._fp) * dt_dyn * tracers_tend(l,k,j,i);
           // Ensure positive tracers stay positive
-          if (tracer_positive(l))  tracers(l,hs+k,hs+j,hs+i) = std::max( 0._fp , tracers(l,hs+k,hs+j,hs+i) );
+          if (tracer_positive(l))  tracers(l,k,j,i) = std::max( 0._fp , tracers(l,k,j,i) );
         }
       });
 
@@ -416,37 +417,37 @@ namespace modules {
         // TODO: Find a way to calculate drag in here
         // Density
         {
-          auto &var = state(idR,hs+k,hs+j,hs+i);
+          auto &var = state(idR,k,j,i);
           real  target = hy_dens_cells(hs+k);
           var = var + (target - var)*mult;
         }
         // u-momentum
         {
-          auto &var = state(idU,hs+k,hs+j,hs+i);
+          auto &var = state(idU,k,j,i);
           real  target = 0;
           var = var + (target - var)*mult;
         }
         // v-momentum
         {
-          auto &var = state(idV,hs+k,hs+j,hs+i);
+          auto &var = state(idV,k,j,i);
           real  target = 0;
           var = var + (target - var)*mult;
         }
         // w-momentum
         {
-          auto &var = state(idW,hs+k,hs+j,hs+i);
+          auto &var = state(idW,k,j,i);
           real  target = 0;
           var = var + (target - var)*mult;
         }
         // density*theta
         {
-          auto &var = state(idT,hs+k,hs+j,hs+i);
+          auto &var = state(idT,k,j,i);
           real  target = hy_dens_cells(hs+k)*hy_theta_cells(hs+k);
           var = var + (target - var)*mult;
         }
         // Tracers
         for (int tr=0; tr < num_tracers; tr++) {
-          auto &var = tracers(tr,hs+k,hs+j,hs+i);
+          auto &var = tracers(tr,k,j,i);
           real  target = 0;
           var = var + (target - var)*mult;
           if (tracer_positive(tr))  var = std::max( 0._fp , var );
@@ -584,11 +585,11 @@ namespace modules {
 
       // Compute pressure
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        fields_loc(idP,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,hs+k,hs+j,hs+i),gamma) - hy_pressure_cells(hs+k);
-        real r_r = 1._fp / state(idR,hs+k,hs+j,hs+i);
-        fields_loc(idR,hs+k,hs+j,hs+i) = state(idR,hs+k,hs+j,hs+i);
-        for (int l=1; l < num_state  ; l++) { fields_loc(            l,hs+k,hs+j,hs+i) = state  (l,hs+k,hs+j,hs+i)*r_r; }
-        for (int l=0; l < num_tracers; l++) { fields_loc(num_state+1+l,hs+k,hs+j,hs+i) = tracers(l,hs+k,hs+j,hs+i)*r_r; }
+        fields_loc(idP,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,k,j,i),gamma) - hy_pressure_cells(hs+k);
+        real r_r = 1._fp / state(idR,k,j,i);
+        fields_loc(idR,hs+k,hs+j,hs+i) = state(idR,k,j,i);
+        for (int l=1; l < num_state  ; l++) { fields_loc(            l,hs+k,hs+j,hs+i) = state  (l,k,j,i)*r_r; }
+        for (int l=0; l < num_tracers; l++) { fields_loc(num_state+1+l,hs+k,hs+j,hs+i) = tracers(l,k,j,i)*r_r; }
         fields_loc(idR,hs+k,hs+j,hs+i) -= hy_dens_cells (hs+k);
         fields_loc(idT,hs+k,hs+j,hs+i) -= hy_theta_cells(hs+k);
       });
@@ -809,14 +810,14 @@ namespace modules {
           if (l == idW && enable_gravity) {
             if (buoy_theta) {
               real thetap = fields_loc(idT,hs+k,hs+j,hs+i);
-              real rho    = state(idR,hs+k,hs+j,hs+i);
+              real rho    = state(idR,k,j,i);
               state_tend(l,k,j,i) += grav*rho*thetap/hy_theta_cells(hs+k);
             } else {
               state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
             }
           }
-          if (latitude != 0 && !sim2d && l == idU) state_tend(l,k,j,i) += fcor*state(idV,hs+k,hs+j,hs+i);
-          if (latitude != 0 && !sim2d && l == idV) state_tend(l,k,j,i) -= fcor*state(idU,hs+k,hs+j,hs+i);
+          if (latitude != 0 && !sim2d && l == idU) state_tend(l,k,j,i) += fcor*state(idV,k,j,i);
+          if (latitude != 0 && !sim2d && l == idV) state_tend(l,k,j,i) -= fcor*state(idU,k,j,i);
         }
         if (l < num_tracers) {
           tracers_tend(l,k,j,i) = -( flux_x(num_state+l,k,j,i+1) - flux_x(num_state+l,k,j,i) ) * r_dx
@@ -843,27 +844,27 @@ namespace modules {
             SArray<FLOC,1,ord> s;
             for (int ii = 0; ii < ord; ii++) { s(ii) = fields_visc(l,hs+k,hs+j,1+i+ii); }
             if (l==idV || l==idW) modify_stencil_immersed_der0( s , immersed );
-            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
-            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
-            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                  hv_beta*hypervis(s)/dt; }
+            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
+            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
           }
           for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,1+j+jj,hs+i) > 0; }
           for (int l=0; l < num_state+num_tracers; l++) {
             SArray<FLOC,1,ord> s;
             for (int jj = 0; jj < ord; jj++) { s(jj) = fields_visc(l,hs+k,1+j+jj,hs+i); }
             if (l==idU || l==idW) modify_stencil_immersed_der0( s , immersed );
-            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
-            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
-            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                  hv_beta*hypervis(s)/dt; }
+            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
+            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
           }
           for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(1+k+kk,hs+j,hs+i) > 0; }
           for (int l=0; l < num_state+num_tracers; l++) {
             SArray<FLOC,1,ord> s;
             for (int kk = 0; kk < ord; kk++) { s(kk) = fields_visc(l,1+k+kk,hs+j,hs+i); }
             if (l==idU || l==idV) modify_stencil_immersed_der0( s , immersed );
-            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                           hv_beta*hypervis(s)/dt; }
-            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
-            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,hs+k,hs+j,hs+i)*hv_beta*hypervis(s)/dt; }
+            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                  hv_beta*hypervis(s)/dt; }
+            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
+            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
           }
         }
       });
@@ -1063,8 +1064,8 @@ namespace modules {
       auto dm_tracer_positive = dm.get<bool,1>("tracer_positive");
       tracer_positive.deep_copy_to(dm_tracer_positive);
 
-      real4d state  ("state"  ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);  state   = 0;
-      real4d tracers("tracers",num_tracers,nz+2*hs,ny+2*hs,nx+2*hs);  tracers = 0;
+      real4d state  ("state"  ,num_state  ,nz,ny,nx);  state   = 0;
+      real4d tracers("tracers",num_tracers,nz,ny,nx);  tracers = 0;
       convert_coupler_to_dynamics( coupler , state , tracers );
       dm.register_and_allocate<real>("hy_dens_cells"    ,"",{nz+2*hs});
       dm.register_and_allocate<real>("hy_theta_cells"   ,"",{nz+2*hs});
@@ -1072,12 +1073,12 @@ namespace modules {
       auto r = dm.get<real,1>("hy_dens_cells"    );    r = 0;
       auto t = dm.get<real,1>("hy_theta_cells"   );    t = 0;
       auto p = dm.get<real,1>("hy_pressure_cells");    p = 0;
-      parallel_for( YAKL_AUTO_LABEL() , nz+2*hs , KOKKOS_LAMBDA (int k) {
+      parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
         for (int j = 0; j < ny; j++) {
           for (int i = 0; i < nx; i++) {
-            r(k) += state(idR,k,hs+j,hs+i);
-            t(k) += state(idT,k,hs+j,hs+i) / state(idR,k,hs+j,hs+i);
-            p(k) += C0 * std::pow( state(idT,k,hs+j,hs+i) , gamma );
+            r(hs+k) += state(idR,k,j,i);
+            t(hs+k) += state(idT,k,j,i) / state(idR,k,j,i);
+            p(hs+k) += C0 * std::pow( state(idT,k,j,i) , gamma );
           }
         }
       });
@@ -1085,10 +1086,10 @@ namespace modules {
       coupler.get_parallel_comm().all_reduce( t , MPI_SUM ).deep_copy_to(t);
       coupler.get_parallel_comm().all_reduce( p , MPI_SUM ).deep_copy_to(p);
       real r_nx_ny = 1./(nx_glob*ny_glob);
-      parallel_for( YAKL_AUTO_LABEL() , nz+2*hs , KOKKOS_LAMBDA (int k) {
-        r(k) *= r_nx_ny;
-        t(k) *= r_nx_ny;
-        p(k) *= r_nx_ny;
+      parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
+        r(hs+k) *= r_nx_ny;
+        t(hs+k) *= r_nx_ny;
+        p(hs+k) *= r_nx_ny;
       });
       parallel_for( YAKL_AUTO_LABEL() , hs , KOKKOS_LAMBDA (int kk) {
         {
@@ -1318,24 +1319,24 @@ namespace modules {
         if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_theta_cells"   ) , "hy_theta_cells"    );
         if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_pressure_cells") , "hy_pressure_cells" );
         nc.end_indep_data();
-        real4d state  ("state"  ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs);
-        real4d tracers("tracers",num_tracers,nz+2*hs,ny+2*hs,nx+2*hs);
+        real4d state  ("state"  ,num_state  ,nz,ny,nx);
+        real4d tracers("tracers",num_tracers,nz,ny,nx);
         convert_coupler_to_dynamics( coupler , state , tracers );
         std::vector<MPI_Offset> start_3d = {0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
         real3d data("data",nz,ny,nx);
         auto hy_dens_cells = dm.get<real const,1>("hy_dens_cells");
         yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          data(k,j,i) = state(idR,hs+k,hs+j,hs+i) - hy_dens_cells(hs+k);
+          data(k,j,i) = state(idR,k,j,i) - hy_dens_cells(hs+k);
         });
         nc.write_all(data.as<float>(),"density_pert",start_3d);
         auto hy_theta_cells = dm.get<real const,1>("hy_theta_cells");
         yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          data(k,j,i) = state(idT,hs+k,hs+j,hs+i) / state(idR,hs+k,hs+j,hs+i) - hy_theta_cells(hs+k);
+          data(k,j,i) = state(idT,k,j,i) / state(idR,k,j,i) - hy_theta_cells(hs+k);
         });
         nc.write_all(data.as<float>(),"theta_pert",start_3d);
         auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");
         yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          data(k,j,i) = C0 * std::pow( state(idT,hs+k,hs+j,hs+i) , gamma ) - hy_pressure_cells(hs+k);
+          data(k,j,i) = C0 * std::pow( state(idT,k,j,i) , gamma ) - hy_pressure_cells(hs+k);
         });
         nc.write_all(data.as<float>(),"pressure_pert",start_3d);
       } );
@@ -1383,22 +1384,22 @@ namespace modules {
       auto tracer_names = coupler.get_tracer_names();
       for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real,3>(tracer_names.at(tr)) ); }
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        real rho   = state(idR,hs+k,hs+j,hs+i);
-        real u     = state(idU,hs+k,hs+j,hs+i) / rho;
-        real v     = state(idV,hs+k,hs+j,hs+i) / rho;
-        real w     = state(idW,hs+k,hs+j,hs+i) / rho;
-        real theta = state(idT,hs+k,hs+j,hs+i) / rho;
+        real rho   = state(idR,k,j,i);
+        real u     = state(idU,k,j,i) / rho;
+        real v     = state(idV,k,j,i) / rho;
+        real w     = state(idW,k,j,i) / rho;
+        real theta = state(idT,k,j,i) / rho;
         real press = C0 * pow( rho*theta , gamma );
-        real rho_v = tracers(idWV,hs+k,hs+j,hs+i);
+        real rho_v = tracers(idWV,k,j,i);
         real rho_d = rho;
-        for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho_d -= tracers(tr,hs+k,hs+j,hs+i); }
+        for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho_d -= tracers(tr,k,j,i); }
         real temp = press / ( rho_d * R_d + rho_v * R_v );
         dm_rho_d(k,j,i) = rho_d;
         dm_uvel (k,j,i) = u;
         dm_vvel (k,j,i) = v;
         dm_wvel (k,j,i) = w;
         dm_temp (k,j,i) = temp;
-        for (int tr=0; tr < num_tracers; tr++) { dm_tracers(tr,k,j,i) = tracers(tr,hs+k,hs+j,hs+i); }
+        for (int tr=0; tr < num_tracers; tr++) { dm_tracers(tr,k,j,i) = tracers(tr,k,j,i); }
       });
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("convert_dynamics_to_coupler");
@@ -1446,12 +1447,12 @@ namespace modules {
         real rho = rho_d;
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho += dm_tracers(tr,k,j,i); }
         real theta = pow( press/C0 , 1._fp / gamma ) / rho;
-        state(idR,hs+k,hs+j,hs+i) = rho;
-        state(idU,hs+k,hs+j,hs+i) = rho * u;
-        state(idV,hs+k,hs+j,hs+i) = rho * v;
-        state(idW,hs+k,hs+j,hs+i) = rho * w;
-        state(idT,hs+k,hs+j,hs+i) = rho * theta;
-        for (int tr=0; tr < num_tracers; tr++) { tracers(tr,hs+k,hs+j,hs+i) = dm_tracers(tr,k,j,i); }
+        state(idR,k,j,i) = rho;
+        state(idU,k,j,i) = rho * u;
+        state(idV,k,j,i) = rho * v;
+        state(idW,k,j,i) = rho * w;
+        state(idT,k,j,i) = rho * theta;
+        for (int tr=0; tr < num_tracers; tr++) { tracers(tr,k,j,i) = dm_tracers(tr,k,j,i); }
       });
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("convert_coupler_to_dynamics");
