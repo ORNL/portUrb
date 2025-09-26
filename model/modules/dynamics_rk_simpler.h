@@ -66,7 +66,8 @@ namespace modules {
       auto dx = coupler.get_dx();
       auto dy = coupler.get_dy();
       auto dz = coupler.get_dz();
-      real maxwave = 350 + coupler.get_option<real>( "dycore_max_wind" , 100 );
+      auto cs = coupler.get_option<real>( "dycore_cs" , 350 );
+      real maxwave = cs + coupler.get_option<real>( "dycore_max_wind" , 100 );
       real cfl = coupler.get_option<real>("cfl",0.70);
       return cfl * std::min( std::min( dx , dy ) , minval(dz) ) / maxwave;
     }
@@ -89,6 +90,7 @@ namespace modules {
     //   auto temp  = dm.get<real const,3>("temp"       );
     //   real3d dt3d("dt3d",nz,ny,nx);
     //   real cfl = coupler.get_option<real>("cfl",0.15);
+    //   real csconst = coupler.get_option<real>( "dycore_cs" , -1 );
     //   parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
     //     real r = rho_d(k,j,i);
     //     real u = uvel (k,j,i);
@@ -96,7 +98,7 @@ namespace modules {
     //     real w = wvel (k,j,i);
     //     real T = temp (k,j,i);
     //     real p = r*R_d*T;
-    //     real cs = std::sqrt(gamma*p/r);
+    //     real cs = csconst < 0 ? std::sqrt(gamma*p/r) : csconst;
     //     real dtx = cfl*dx   /(std::abs(u)+cs);
     //     real dty = cfl*dy   /(std::abs(v)+cs);
     //     real dtz = cfl*dz(k)/(std::abs(w)+cs);
@@ -509,14 +511,12 @@ namespace modules {
       auto dx                = coupler.get_dx();    // grid spacing
       auto dy                = coupler.get_dy();    // grid spacing
       auto dz                = coupler.get_dz();    // grid spacing
-      auto sim2d             = coupler.is_sim2d();  // Is this a 2-D simulation?
+      auto num_tracers       = coupler.get_num_tracers();            // Number of tracers
       auto enable_gravity    = coupler.get_option<bool>("enable_gravity",true);
       auto C0                = coupler.get_option<real>("C0"     );  // pressure = C0*pow(rho*theta,gamma)
       auto grav              = coupler.get_option<real>("grav"   );  // Gravity
       auto gamma             = coupler.get_option<real>("gamma_d");  // cp_dry / cv_dry (about 1.4)
       auto latitude          = coupler.get_option<real>("latitude",0); // For coriolis
-      auto idWV              = coupler.get_option<int >("idWV"   );
-      auto num_tracers       = coupler.get_num_tracers();            // Number of tracers
       auto &dm               = coupler.get_data_manager_readonly();  // Grab read-only data manager
       auto immersed_prop     = dm.get<real const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion
       auto any_immersed2     = dm.get<bool const,3>("dycore_any_immersed2" ); // Are any immersed in 3-D halo?
@@ -526,7 +526,6 @@ namespace modules {
       auto any_immersed10    = dm.get<bool const,3>("dycore_any_immersed10"); // Are any immersed in 3-D halo?
       auto hy_dens_cells     = dm.get<real const,1>("hy_dens_cells"        ); // Hydrostatic density
       auto hy_theta_cells    = dm.get<real const,1>("hy_theta_cells"       ); // Hydrostatic potential temperature
-      auto hy_dens_edges     = dm.get<real const,1>("hy_dens_edges"        ); // Hydrostatic density
       auto hy_theta_edges    = dm.get<real const,1>("hy_theta_edges"       ); // Hydrostatic potential temperature
       auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells"    ); // Hydrostatic pressure
       auto metjac_edges      = dm.get<real const,2>("dycore_metjac_edges"  ); // Vertical metric jacobian at edges
@@ -535,6 +534,8 @@ namespace modules {
       real r_dx = 1./dx; // reciprocal of grid spacing
       real r_dy = 1./dy; // reciprocal of grid spacing
       real fcor = 2*7.2921e-5*std::sin(latitude/180*M_PI);      // For coriolis: 2*Omega*sin(latitude)
+
+      FLOC cs = coupler.get_option<real>("dycore_cs",350);
 
       int constexpr hsm1 = hs-1;
 
@@ -582,16 +583,19 @@ namespace modules {
       }
 
       yakl::Array<FLOC,4> fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
+      bool rsst = coupler.get_option<real>("dycore_cs",350) != 350;
+
 
       // Compute pressure
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        fields_loc(idP,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,k,j,i),gamma) - hy_pressure_cells(hs+k);
+        if (!rsst) fields_loc(idP,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,k,j,i),gamma) - hy_pressure_cells(hs+k);
         real r_r = 1._fp / state(idR,k,j,i);
         fields_loc(idR,hs+k,hs+j,hs+i) = state(idR,k,j,i);
         for (int l=1; l < num_state  ; l++) { fields_loc(            l,hs+k,hs+j,hs+i) = state  (l,k,j,i)*r_r; }
         for (int l=0; l < num_tracers; l++) { fields_loc(num_state+1+l,hs+k,hs+j,hs+i) = tracers(l,k,j,i)*r_r; }
         fields_loc(idR,hs+k,hs+j,hs+i) -= hy_dens_cells (hs+k);
         fields_loc(idT,hs+k,hs+j,hs+i) -= hy_theta_cells(hs+k);
+        if (rsst) { fields_loc(idP,hs+k,hs+j,hs+i) = cs*cs*fields_loc(idR,hs+k,hs+j,hs+i); }
       });
 
       // Perform periodic halo exchange in the horizontal, and implement vertical no-slip solid wall boundary conditions
@@ -626,25 +630,28 @@ namespace modules {
 
       auto wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
       auto wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
+      typedef limiter::WenoLimiter<FLOC,ord> Limiter;
+      auto use_weno = coupler.get_option<bool>("dycore_use_weno",true);
 
-      FLOC constexpr cs = 350;
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
         SArray<FLOC,1,ord> s;
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_L = 0;
-        for (int ii=0; ii < ord; ii++) { p_L += wt(ord-1-ii)*s(ii); }
-        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii); }
+        FLOC p_L, dummy;
+        Limiter::compute_limited_edges( s , dummy , p_L , { false , false , false } );
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*
+                                                          fields_loc (idU,hs+k,hs+j,i+ii); }
         FLOC ru_L = 0;
         for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii+1); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_R = 0;
-        for (int ii=0; ii < ord; ii++) { p_R += wt(ii)*s(ii); }
-        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*fields_loc(idU,hs+k,hs+j,i+ii+1); }
+        FLOC p_R;
+        Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*
+                                                          fields_loc (idU,hs+k,hs+j,i+ii+1); }
         FLOC ru_R = 0;
         for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
         p_x (k,j,i) = 0.5f*(p_L  + p_R  - cs*(ru_R-ru_L)   );
@@ -656,17 +663,19 @@ namespace modules {
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_L = 0;
-        for (int jj=0; jj < ord; jj++) { p_L += wt(ord-1-jj)*s(jj); }
-        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj,hs+i); }
+        FLOC p_L, dummy;
+        Limiter::compute_limited_edges( s , dummy , p_L , { false , false , false } );
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*
+                                                          fields_loc (idV,hs+k,j+jj,hs+i); }
         FLOC rv_L = 0;
         for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj+1,hs+i); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_R = 0;
-        for (int jj=0; jj < ord; jj++) { p_R += wt(jj)*s(jj); }
-        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*fields_loc(idV,hs+k,j+jj+1,hs+i); }
+        FLOC p_R;
+        Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*
+                                                          fields_loc (idV,hs+k,j+jj+1,hs+i); }
         FLOC rv_R = 0;
         for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
         p_y (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rv_R-rv_L)   );
@@ -679,10 +688,11 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk,hs+j,hs+i); }
         for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_L = 0;
-        for (int kk=0; kk < ord; kk++) { p_L += wt(ord-1-kk)*s(kk); }
+        FLOC p_L, dummy;
+        Limiter::compute_limited_edges( s , dummy , p_L , { false , false , false } );
         p_L /= metjac_edges(1+k-1,1);
-        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk,hs+j,hs+i)+hy_dens_cells(k+kk))*fields_loc(idW,k+kk,hs+j,hs+i); }
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk,hs+j,hs+i)+hy_dens_cells(k+kk))*
+                                                          fields_loc (idW,k+kk,hs+j,hs+i); }
         for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
         FLOC rw_L = 0;
         for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
@@ -693,10 +703,11 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk+1,hs+j,hs+i); }
         for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
         modify_stencil_immersed_der0( s , immersed );
-        FLOC p_R = 0;
-        for (int kk=0; kk < ord; kk++) { p_R += wt(kk)*s(kk); }
+        FLOC p_R;
+        Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
         p_R /= metjac_edges(1+k,0);
-        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*fields_loc(idW,k+kk+1,hs+j,hs+i); }
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*
+                                                          fields_loc (idW,k+kk+1,hs+j,hs+i); }
         for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
         FLOC rw_R = 0;
         for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
@@ -718,10 +729,6 @@ namespace modules {
       for (int tr=0; tr < num_tracers; tr++) { advect_fields.add_field( fields_loc.slice<3>(num_state+1+tr,0,0,0) ); }
       int num_fields = advect_fields.get_num_fields();
 
-      typedef limiter::WenoLimiter<FLOC,ord> Limiter;
-
-      auto use_weno = coupler.get_option<bool>("dycore_use_weno",true);
-
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool ,1,ord> immersed;
         FLOC ru = ru_x(k,j,i);
@@ -732,7 +739,7 @@ namespace modules {
           for (int ii = 0; ii < ord; ii++) { s(ii) = advect_fields(l,hs+k,hs+j,i+ii+ind); }
           if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
           FLOC val;
-          if (l==idU || l==idV || l==idW || !use_weno) {
+          if (!use_weno) {
             val = 0;
             for (int ii=0; ii < ord; ii++) { val += wt(ru>0?ord-1-ii:ii)*s(ii); }
           } else {
@@ -756,7 +763,7 @@ namespace modules {
           for (int jj = 0; jj < ord; jj++) { s(jj) = advect_fields(l,hs+k,j+jj+ind,hs+i); }
           if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
           FLOC val;
-          if (l==idU || l==idV || l==idW || !use_weno) {
+          if (!use_weno) {
             val = 0;
             for (int jj=0; jj < ord; jj++) { val += wt(rv>0?ord-1-jj:jj)*s(jj); }
           } else {
@@ -782,7 +789,7 @@ namespace modules {
           for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+ind+kk)))/
                                                       dz(std::max(0,std::min(nz-1,k-1 +ind   ))); }
           FLOC val;
-          if (l==idU || l==idV || l==idW || !use_weno) {
+          if (!use_weno) {
             val = 0;
             for (int kk=0; kk < ord; kk++) { val += wt(rw>0?ord-1-kk:kk)*s(kk); }
           } else {
@@ -799,14 +806,14 @@ namespace modules {
       });
 
       // Compute tendencies as the flux divergence + gravity source term + coriolis
-      auto buoy_theta = coupler.get_option<bool>("dycore_buoyancy_theta",false);
+      auto buoy_theta = coupler.get_option<bool>("dycore_buoyancy_theta",false) || rsst;
       int mx = std::max(num_state,num_tracers);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(mx,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(mx,nz,ny,nx) ,
+                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
           state_tend(l,k,j,i) = -( flux_x(l,k,j,i+1) - flux_x(l,k,j,i) ) * r_dx
                                 -( flux_y(l,k,j+1,i) - flux_y(l,k,j,i) ) * r_dy
                                 -( flux_z(l,k+1,j,i) - flux_z(l,k,j,i) ) / dz(k);
-          if (l == idV && sim2d) state_tend(l,k,j,i) = 0;
           if (l == idW && enable_gravity) {
             if (buoy_theta) {
               real thetap = fields_loc(idT,hs+k,hs+j,hs+i);
@@ -816,8 +823,8 @@ namespace modules {
               state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
             }
           }
-          if (latitude != 0 && !sim2d && l == idU) state_tend(l,k,j,i) += fcor*state(idV,k,j,i);
-          if (latitude != 0 && !sim2d && l == idV) state_tend(l,k,j,i) -= fcor*state(idU,k,j,i);
+          if (latitude != 0 && l == idU) state_tend(l,k,j,i) += fcor*state(idV,k,j,i);
+          if (latitude != 0 && l == idV) state_tend(l,k,j,i) -= fcor*state(idU,k,j,i);
         }
         if (l < num_tracers) {
           tracers_tend(l,k,j,i) = -( flux_x(num_state+l,k,j,i+1) - flux_x(num_state+l,k,j,i) ) * r_dx
