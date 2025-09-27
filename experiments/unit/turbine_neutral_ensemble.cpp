@@ -7,7 +7,6 @@
 #include "les_closure.h"
 #include "windmill_actuators_yaw.h"
 #include "surface_flux.h"
-#include "precursor_sponge.h"
 #include "uniform_pg_wind_forcing.h"
 #include "Ensembler.h"
 #include "column_nudging.h"
@@ -141,8 +140,6 @@ int main(int argc, char** argv) {
 
       // Run the initialization modules on coupler_main
       custom_modules::sc_init     ( coupler_main );
-      les_closure  .init          ( coupler_main );
-      dycore       .init          ( coupler_main );
 
       /////////////////////////////////////////////////////////////////////////
       // Everything previous to this is now replicated in coupler_precursor
@@ -150,9 +147,7 @@ int main(int argc, char** argv) {
       coupler_main.clone_into(coupler_prec);
       /////////////////////////////////////////////////////////////////////////
 
-      custom_modules::sc_perturb( coupler_main );
-      custom_modules::sc_perturb( coupler_prec );
-
+      coupler_prec.set_option<bool>("dycore_is_precursor",true);
       coupler_prec.set_option<std::string>("bc_x1","periodic");
       coupler_prec.set_option<std::string>("bc_x2","periodic");
       coupler_prec.set_option<std::string>("bc_y1","periodic");
@@ -161,15 +156,22 @@ int main(int argc, char** argv) {
       coupler_prec.set_option<std::string>("bc_z2","wall_free_slip");
 
       coupler_main.set_option<std::string>("bc_x1","precursor");
-      coupler_main.set_option<std::string>("bc_x2","open");
-      coupler_main.set_option<std::string>("bc_y1","periodic");
-      coupler_main.set_option<std::string>("bc_y2","periodic");
+      coupler_main.set_option<std::string>("bc_x2","precursor");
+      coupler_main.set_option<std::string>("bc_y1","precursor");
+      coupler_main.set_option<std::string>("bc_y2","precursor");
       coupler_main.set_option<std::string>("bc_z1","wall_free_slip");
       coupler_main.set_option<std::string>("bc_z2","wall_free_slip");
 
-      windmills    .init( coupler_main );
-      time_averager.init( coupler_main );
-      time_averager.init( coupler_prec );
+      les_closure  .init        ( coupler_main );
+      dycore       .init        ( coupler_main );
+      custom_modules::sc_perturb( coupler_main );
+      windmills    .init        ( coupler_main );
+      time_averager.init        ( coupler_main );
+
+      les_closure  .init        ( coupler_prec );
+      dycore       .init        ( coupler_prec );
+      custom_modules::sc_perturb( coupler_prec );
+      time_averager.init        ( coupler_prec );
 
       // Get elapsed time (zero), and create counters for output and informing the user in stdout
       real etime = coupler_main.get_option<real>("elapsed_time");
@@ -232,20 +234,10 @@ int main(int argc, char** argv) {
         col_nudge_prec.set_column( coupler_prec , {"density_dry","temp"} );
         col_nudge_main.column = col_nudge_prec.column;
         col_nudge_main.names  = col_nudge_prec.names;
+        
+        dycore.copy_precursor_ghost_cells( coupler_prec , coupler_main );
 
         if (run_main) {
-          auto &dm_prec = coupler_prec.get_data_manager_readwrite();
-          auto u0 = dm_prec.get<real const,3>("uvel").createDeviceCopy();
-          auto v0 = dm_prec.get<real const,3>("vvel").createDeviceCopy();
-          auto w0 = dm_prec.get<real const,3>("wvel").createDeviceCopy();
-          coupler_prec.run_module( [&] (Coupler &c) { fluctuation_scaling(c,dt,2.0,dt,{"uvel","vvel","wvel"}); } , "fluct_scaling"  );
-          modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
-                                     nx_glob/20 , 0 , 0 , 0 );
-          modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
-                                     0 , nx_glob/20 , 0 , 0 );
-          u0.deep_copy_to(dm_prec.get<real,3>("uvel"));
-          v0.deep_copy_to(dm_prec.get<real,3>("vvel"));
-          w0.deep_copy_to(dm_prec.get<real,3>("wvel"));
           coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
           coupler_main.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );

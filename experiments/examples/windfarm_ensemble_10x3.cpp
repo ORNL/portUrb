@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
       coupler_prec.set_option<std::string>("bc_z1","wall_free_slip");
       coupler_prec.set_option<std::string>("bc_z2","wall_free_slip");
 
-      coupler_main.set_option<std::string>("bc_x1","precursor");
+      coupler_main.set_option<std::string>("bc_x1","open");
       coupler_main.set_option<std::string>("bc_x2","open");
       coupler_main.set_option<std::string>("bc_y1","periodic");
       coupler_main.set_option<std::string>("bc_y2","periodic");

@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    bool run_main = false;
+    bool run_main = true;
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler_main;
@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "turbine_f_TKE"             , 0.25              );
     coupler_main.set_option<real       >( "dycore_max_wind"           , 20                );
     coupler_main.set_option<bool       >( "dycore_buoyancy_theta"     , true              );
-    coupler_main.set_option<real       >( "dycore_cs"                 , 18                );
+    coupler_main.set_option<real       >( "dycore_cs"                 , 40                );
 
     coupler_main.set_parallel_comm( MPI_COMM_WORLD );
 
@@ -133,9 +133,9 @@ int main(int argc, char** argv) {
     custom_modules::sc_perturb( coupler_prec );
     custom_modules::sc_perturb( coupler_main );
 
-    coupler_main.set_option<std::string>("bc_x1","precursor");
+    coupler_main.set_option<std::string>("bc_x1","open");
     coupler_main.set_option<std::string>("bc_x2","open");
-    coupler_main.set_option<std::string>("bc_y1","precursor");
+    coupler_main.set_option<std::string>("bc_y1","open");
     coupler_main.set_option<std::string>("bc_y2","open");
     coupler_main.set_option<std::string>("bc_z1","wall_free_slip");
     coupler_main.set_option<std::string>("bc_z2","wall_free_slip");
