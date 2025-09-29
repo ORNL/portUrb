@@ -216,6 +216,68 @@ namespace custom_modules {
         // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
+    } else if (coupler.get_option<std::string>("init_data") == "city_stretched") {
+
+      dm_immersed_rough = coupler.get_option<real>("building_roughness");
+      real uref = 10;
+      real href = 600;
+      auto faces = coupler.get_data_manager_readwrite().get<float,3>("mesh_faces");
+      auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
+        if (z <  600) { return 300;               }
+        else          { return 300+0.005*(z-600); }
+      };
+      auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
+      auto t1 = std::chrono::high_resolution_clock::now();
+      if (coupler.is_mainproc()) std::cout << "*** Beginning setup ***" << std::endl;
+      float4d zmesh("zmesh",ny,nx,nqpoints,nqpoints);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ny,nx,nqpoints,nqpoints) ,
+                                        KOKKOS_LAMBDA (int j, int i, int jj, int ii) {
+        real x           = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+        real y           = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+        zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
+        if (zmesh(j,i,jj,ii) == 0) zmesh(j,i,jj,ii) = -1;
+      });
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        dm_rho_d        (k,j,i) = 0;
+        dm_uvel         (k,j,i) = 0;
+        dm_vvel         (k,j,i) = 0;
+        dm_wvel         (k,j,i) = 0;
+        dm_temp         (k,j,i) = 0;
+        dm_rho_v        (k,j,i) = 0;
+        dm_immersed_prop(k,j,i) = 0;
+        for (int kk=0; kk<nqpoints; kk++) {
+          for (int jj=0; jj<nqpoints; jj++) {
+            for (int ii=0; ii<nqpoints; ii++) {
+              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real z         = zmid(k)          + qpoints(kk)*dz(k);
+              real theta     = compute_theta(z);
+              real p         = pressGLL(k,kk);
+              real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
+              real rho       = rho_theta / theta;
+              real umag      = uref*std::log((z+roughness)/roughness)/std::log((href+roughness)/roughness);
+              real ang       = 29./180.*M_PI;
+              real u         = umag*std::cos(ang);
+              real v         = umag*std::sin(ang);
+              real w         = 0;
+              real T         = p/(rho*R_d);
+              real rho_v     = 0;
+              real wt = qweights(kk)*qweights(jj)*qweights(ii);
+              dm_immersed_prop(k,j,i) += (z<=zmesh(j,i,jj,ii) ? 1 : 0) * wt;
+              dm_rho_d        (k,j,i) += rho                           * wt;
+              dm_uvel         (k,j,i) += (z<=zmesh(j,i,jj,ii) ? 0 : u) * wt;
+              dm_vvel         (k,j,i) += (z<=zmesh(j,i,jj,ii) ? 0 : v) * wt;
+              dm_wvel         (k,j,i) += (z<=zmesh(j,i,jj,ii) ? 0 : w) * wt;
+              dm_temp         (k,j,i) += T                             * wt;
+              dm_rho_v        (k,j,i) += rho_v                         * wt;
+            }
+          }
+        }
+        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
+      });
+      std::chrono::duration<double> dur = std::chrono::high_resolution_clock::now() - t1;
+      if (coupler.is_mainproc()) std::cout << "*** Finished setup in [" << dur.count() << "] seconds ***" << std::endl;
+
     } else if (coupler.get_option<std::string>("init_data") == "city") {
 
       dm_immersed_rough = coupler.get_option<real>("building_roughness");
@@ -320,17 +382,17 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "shallow_convection") {
 
-      auto compute_u = KOKKOS_LAMBDA (real z) -> real {
-        real constexpr z0 = 0;
-        real constexpr z1 = 700;
-        real constexpr z2 = 3000;
-        real constexpr v0 = -8.75;
-        real constexpr v1 = -8.75;
-        real constexpr v2 = -4.61;
-        if      (z >= z0 && z <= z1) { return v0+(v1-v0)/(z1-z0)*(z-z0); }
-        else if (z >  z1 && z <= z2) { return v1+(v2-v1)/(z2-z1)*(z-z1); }
-        return 0;
-      };
+      // auto compute_u = KOKKOS_LAMBDA (real z) -> real {
+      //   real constexpr z0 = 0;
+      //   real constexpr z1 = 700;
+      //   real constexpr z2 = 3000;
+      //   real constexpr v0 = -8.75;
+      //   real constexpr v1 = -8.75;
+      //   real constexpr v2 = -4.61;
+      //   if      (z >= z0 && z <= z1) { return v0+(v1-v0)/(z1-z0)*(z-z0); }
+      //   else if (z >  z1 && z <= z2) { return v1+(v2-v1)/(z2-z1)*(z-z1); }
+      //   return 0;
+      // };
       auto compute_qv = KOKKOS_LAMBDA (real z) -> real {
         real constexpr z0 = 0;
         real constexpr z1 = 520;

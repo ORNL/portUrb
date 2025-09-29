@@ -643,6 +643,39 @@ namespace core {
     }
 
 
+    real1d generate_levels_const_low_high( real zlen , real dz0 , real z1 , real z2 , real dz2 ) const {
+      using yakl::intrinsics::sum;
+      using yakl::componentwise::operator-;
+      using yakl::componentwise::operator*;
+      int nzmax = (int) std::ceil(zlen/std::min(dz0,dz2));
+      realHost1d dz("dz",nzmax);
+      dz = dz0;
+      // Perform iterations
+      for (int iter=0; iter < 100; iter++) {
+        real z = 0;
+        for (int k=0; k < nzmax; k++) {
+          real zn = (z+dz(k)/2-z1)/(z2-z1);
+          if      (zn <  0) { dz(k) = dz0;                                                                 }
+          else if (zn <= 1) { dz(k) = -3*(dz0-dz2)*zn*zn*zn*zn+8*(dz0-dz2)*zn*zn*zn-6*(dz0-dz2)*zn*zn+dz0; }
+          else              { dz(k) = dz2;                                                                 }
+          z += dz(k);
+        }
+      }
+      // Find actual number of vertical levels
+      real z = 0;
+      int nz = 0;
+      for (int k=0; k < nzmax; k++) {
+        z += dz(k);
+        if (z >= zlen) { nz = k+1; break; }
+      }
+      realHost1d zint("zint",nz+1);
+      zint(0) = 0;
+      for (int k=0; k < nz; k++) { zint(k+1) = zint(k) + dz(k); }
+      zint = zint * (zlen / zint(nz));
+      return zint.createDeviceCopy();
+    }
+
+
     void write_output_file( std::string prefix , bool verbose = true ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
