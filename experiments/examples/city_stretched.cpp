@@ -7,7 +7,8 @@
 #include "les_closure.h"
 #include "surface_flux.h"
 #include "sponge_layer.h"
-#include "uniform_pg_wind_forcing.h"
+#include "column_nudging.h"
+#include "geostrophic_wind_forcing.h"
 #include "TriMesh.h"
 
 /*
@@ -82,6 +83,7 @@ int main(int argc, char** argv) {
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
+    modules::ColumnNudger                      col_nudge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -91,6 +93,7 @@ int main(int argc, char** argv) {
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
     time_averager.init        ( coupler );
+    col_nudge.set_column      ( coupler , {"density_dry","temp"} );
     custom_modules::sc_perturb( coupler );
 
     coupler.set_option<std::string>("bc_x1","periodic");
@@ -124,18 +127,19 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
-        using modules::uniform_pg_wind_forcing_height;
-        real umag = 10;
-        real hr = 600;
-        real ur = umag*std::cos(29./180.*M_PI);
-        real vr = umag*std::sin(29./180.*M_PI);
-        real tr = dt*100;
-        coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );
-        coupler.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt);             } , "dycore"         );
-        coupler.run_module( [&] (Coupler &c) { modules::sponge_layer         (c,dt,dt,0.05);     } , "sponge"         );
-        coupler.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt);             } , "surface_fluxes" );
-        coupler.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt);             } , "les_closure"    );
-        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt);             } , "time_averager"  );
+        using modules::geostrophic_wind_forcing;
+        using modules::sponge_layer;
+        using modules::apply_surface_fluxes;
+        real u_g   = 10;
+        real v_g   = 0 ;
+        real lat_g = 43.289340204;
+        coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column(c,dt,dt*10);         } , "col_nudge"      );
+        coupler.run_module( [&] (Coupler &c) { geostrophic_wind_forcing (c,dt,lat_g,u_g,v_g); } , "geostr_forcing" );
+        coupler.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);               } , "dycore"         );
+        coupler.run_module( [&] (Coupler &c) { sponge_layer             (c,dt,dt,0.05);       } , "sponge"         );
+        coupler.run_module( [&] (Coupler &c) { apply_surface_fluxes     (c,dt);               } , "surface_fluxes" );
+        coupler.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);               } , "les_closure"    );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);               } , "time_averager"  );
       }
 
       // Update time step
