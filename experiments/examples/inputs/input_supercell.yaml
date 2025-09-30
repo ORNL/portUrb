@@ -22,7 +22,7 @@ dt_phys: 0.
 dyn_cycle: 5
 
 # Output frequency in seconds (negative number turns off all file I/O)
-out_freq: 180.
+out_freq: 3600.
 
 # How frequently (in model time in seconds) to inform the user of the model state
 inform_freq: 180.
