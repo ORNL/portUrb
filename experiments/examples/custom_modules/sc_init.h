@@ -220,11 +220,12 @@ namespace custom_modules {
 
       dm_immersed_rough = coupler.get_option<real>("building_roughness");
       real uref = 10;
-      real href = 600;
+      real href = 500;
       auto faces = coupler.get_data_manager_readwrite().get<float,3>("mesh_faces");
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
-        if (z <  600) { return 300;               }
-        else          { return 300+0.005*(z-600); }
+        if      (z <  500)            { return 300;                        }
+        else if (z >= 500 && z < 650) { return 300+0.08*(z-500);           }
+        else                          { return 300+0.08*150+0.003*(z-650); }
       };
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
       auto t1 = std::chrono::high_resolution_clock::now();

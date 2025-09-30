@@ -130,9 +130,9 @@ int main(int argc, char** argv) {
         using modules::geostrophic_wind_forcing;
         using modules::sponge_layer;
         using modules::apply_surface_fluxes;
-        real u_g   = 10;
-        real v_g   = 0 ;
-        real lat_g = 43.289340204;
+        real u_g   = 10*std::cos(29./180.*M_PI);
+        real v_g   = 10*std::sin(29./180.*M_PI);
+        real lat_g = 40.8;
         coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column(c,dt,dt*10);         } , "col_nudge"      );
         coupler.run_module( [&] (Coupler &c) { geostrophic_wind_forcing (c,dt,lat_g,u_g,v_g); } , "geostr_forcing" );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);               } , "dycore"         );
