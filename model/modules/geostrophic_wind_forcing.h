@@ -16,6 +16,7 @@ namespace modules {
     auto &dm     = coupler.get_data_manager_readwrite();
     auto uvel    = dm.get<real,3>("uvel");
     auto vvel    = dm.get<real,3>("vvel");
+    auto imm     = dm.get<real const,3>("immersed_proportion");
     real fcor    = 2*7.2921e-5*std::sin(lat_g/180*M_PI);
     int constexpr idU  = 0;
     int constexpr idV  = 1;
@@ -57,6 +58,25 @@ namespace modules {
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       uvel(k,j,i) += dt*( fcor*(col(idV,k)-v_g));
       vvel(k,j,i) += dt*(-fcor*(col(idU,k)-u_g));
+    });
+  }
+
+  inline void geostrophic_wind_forcing_indiv( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ) {
+    using yakl::c::parallel_for;
+    using yakl::c::SimpleBounds;
+    auto nz      = coupler.get_nz();
+    auto ny      = coupler.get_ny();
+    auto nx      = coupler.get_nx();
+    auto ny_glob = coupler.get_ny_glob();
+    auto nx_glob = coupler.get_nx_glob();
+    auto &dm     = coupler.get_data_manager_readwrite();
+    auto uvel    = dm.get<real,3>("uvel");
+    auto vvel    = dm.get<real,3>("vvel");
+    auto imm     = dm.get<real const,3>("immersed_proportion");
+    real fcor    = 2*7.2921e-5*std::sin(lat_g/180*M_PI);
+    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      uvel(k,j,i) += dt*( fcor*(vvel(k,j,i)-v_g));
+      vvel(k,j,i) += dt*(-fcor*(uvel(k,j,i)-u_g));
     });
   }
 

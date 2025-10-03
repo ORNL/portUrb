@@ -55,6 +55,8 @@ namespace custom_modules {
 
     if        (coupler.get_option<std::string>("init_data") == "city") {
 
+    } else if (coupler.get_option<std::string>("init_data") == "city_stretched") {
+
     } else if (coupler.get_option<std::string>("init_data") == "building") {
 
     } else if (coupler.get_option<std::string>("init_data") == "buildings_periodic") {

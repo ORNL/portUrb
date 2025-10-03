@@ -228,8 +228,6 @@ namespace custom_modules {
         else                          { return 300+0.08*150+0.003*(z-650); }
       };
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
-      auto t1 = std::chrono::high_resolution_clock::now();
-      if (coupler.is_mainproc()) std::cout << "*** Beginning setup ***" << std::endl;
       float4d zmesh("zmesh",ny,nx,nqpoints,nqpoints);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ny,nx,nqpoints,nqpoints) ,
                                         KOKKOS_LAMBDA (int j, int i, int jj, int ii) {
@@ -238,6 +236,8 @@ namespace custom_modules {
         zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
         if (zmesh(j,i,jj,ii) == 0) zmesh(j,i,jj,ii) = -1;
       });
+      auto u_g = coupler.get_option<real>("geostrophic_u",10.);
+      auto v_g = coupler.get_option<real>("geostrophic_v",0. );
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d        (k,j,i) = 0;
         dm_uvel         (k,j,i) = 0;
@@ -249,17 +249,13 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
-              real z         = zmid(k)          + qpoints(kk)*dz(k);
+              real z         = zmid(k) + qpoints(kk)*dz(k);
               real theta     = compute_theta(z);
               real p         = pressGLL(k,kk);
               real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
               real rho       = rho_theta / theta;
-              real umag      = uref*std::log((z+roughness)/roughness)/std::log((href+roughness)/roughness);
-              real ang       = 29./180.*M_PI;
-              real u         = umag*std::cos(ang);
-              real v         = umag*std::sin(ang);
+              real u         = u_g;
+              real v         = v_g;
               real w         = 0;
               real T         = p/(rho*R_d);
               real rho_v     = 0;
@@ -276,8 +272,6 @@ namespace custom_modules {
         }
         // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
-      std::chrono::duration<double> dur = std::chrono::high_resolution_clock::now() - t1;
-      if (coupler.is_mainproc()) std::cout << "*** Finished setup in [" << dur.count() << "] seconds ***" << std::endl;
 
     } else if (coupler.get_option<std::string>("init_data") == "city") {
 
