@@ -31,6 +31,9 @@ namespace core {
       size_t      type_hash;
     };
 
+    real        x0;            // Domain beginning in the x-direction in meters
+    real        y0;            // Domain beginning in the y-direction in meters
+    real        z0;            // Domain beginning in the z-direction in meters
     real        xlen;          // Domain length in the x-direction in meters
     real        ylen;          // Domain length in the y-direction in meters
     real        zlen;          // Domain length in the z-direction in meters
@@ -75,6 +78,9 @@ namespace core {
     int static constexpr DIMS_3D      = 3;
 
     Coupler() {
+      this->x0           = -1;
+      this->y0           = -1;
+      this->z0           = -1;
       this->xlen         = -1;
       this->ylen         = -1;
       this->zlen         = -1;
@@ -107,6 +113,9 @@ namespace core {
       dm.finalize();
       options.finalize();
       this->tracers      = std::vector<Tracer>();
+      this->x0           = -1;
+      this->y0           = -1;
+      this->z0           = -1;
       this->xlen         = -1;
       this->ylen         = -1;
       this->zlen         = -1;
@@ -127,6 +136,9 @@ namespace core {
 
     // To replicate a coupler, you should create a new coupler and "clone_into" that coupler
     void clone_into( Coupler &coupler ) const {
+      coupler.x0                 = this->x0                ;
+      coupler.y0                 = this->y0                ;
+      coupler.z0                 = this->z0                ;
       coupler.xlen               = this->xlen              ;
       coupler.ylen               = this->ylen              ;
       coupler.zlen               = this->zlen              ;
@@ -175,6 +187,9 @@ namespace core {
       this->nx_glob  = nx_glob;
       this->ny_glob  = ny_glob;
       this->nz       = zint.size()-1;
+      this->x0       = 0;
+      this->y0       = 0;
+      this->z0       = zint.createHostCopy()(0);
       this->xlen     = xlen;
       this->ylen     = ylen;
       this->zlen     = zint.createHostCopy()(nz);
@@ -286,6 +301,9 @@ namespace core {
 
 
     ParallelComm              get_parallel_comm         () const { return this->par_comm              ; }
+    real                      get_x0                    () const { return this->x0                    ; }
+    real                      get_y0                    () const { return this->y0                    ; }
+    real                      get_z0                    () const { return this->z0                    ; }
     real                      get_xlen                  () const { return this->xlen                  ; }
     real                      get_ylen                  () const { return this->ylen                  ; }
     real                      get_zlen                  () const { return this->zlen                  ; }

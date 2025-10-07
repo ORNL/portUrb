@@ -17,6 +17,8 @@ namespace custom_modules {
     auto nx        = coupler.get_nx();
     auto ny        = coupler.get_ny();
     auto nz        = coupler.get_nz();
+    auto x0        = coupler.get_x0();
+    auto y0        = coupler.get_y0();
     auto dx        = coupler.get_dx();
     auto dy        = coupler.get_dy();
     auto dz        = coupler.get_dz();
@@ -120,8 +122,8 @@ namespace custom_modules {
       float4d zmesh("zmesh",ny,nx,nqpoints,nqpoints);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ny,nx,nqpoints,nqpoints) ,
                                         KOKKOS_LAMBDA (int j, int i, int jj, int ii) {
-        real x           = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-        real y           = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+        real x           = x0+(i_beg+i+0.5)*dx + qpoints(ii)*dx;
+        real y           = y0+(j_beg+j+0.5)*dy + qpoints(jj)*dy;
         zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
         if (zmesh(j,i,jj,ii) == 0) zmesh(j,i,jj,ii) = -1;
       });
@@ -136,9 +138,9 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
-              real z         = zmid(k)          + qpoints(kk)*dz(k);
+              real x         = x0+(i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y         = y0+(j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real z         = zmid(k)             + qpoints(kk)*dz(k);
               real theta     = compute_theta(z);
               real p         = pressGLL(k,kk);
               real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
@@ -409,9 +411,9 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x     = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y     = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
-              real z     = zmid(k)          + qpoints(kk)*dz(k);
+              real x     = x0+(i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y     = y0+(j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real z     = zmid(k)             + qpoints(kk)*dz(k);
               real T     = c_T(z);
               real qv    = interp( s_height , s_qv    , z );
               real u     = interp( s_height , s_uvel  , z );

@@ -71,11 +71,13 @@ namespace modules {
         auto ny     = coupler.get_ny();
         auto dx     = coupler.get_dx();
         auto dy     = coupler.get_dy();
+        auto x0     = coupler.get_x0();
+        auto y0     = coupler.get_y0();
         // bounds of this MPI task's domain
-        real dom_x1  = (i_beg+0 )*dx;
-        real dom_x2  = (i_beg+nx)*dx;
-        real dom_y1  = (j_beg+0 )*dy;
-        real dom_y2  = (j_beg+ny)*dy;
+        real dom_x1  = x0+(i_beg+0 )*dx;
+        real dom_x2  = x0+(i_beg+nx)*dx;
+        real dom_y1  = y0+(j_beg+0 )*dy;
+        real dom_y2  = y0+(j_beg+ny)*dy;
         // Rectangular bounds of this turbine's potential influence
         real turb_x1 = base_loc_x-6*ref_turbine.blade_radius;
         real turb_x2 = base_loc_x+6*ref_turbine.blade_radius;
@@ -109,6 +111,8 @@ namespace modules {
       auto nz    = coupler.get_nz();
       auto dx    = coupler.get_dx();
       auto dy    = coupler.get_dy();
+      auto x0    = coupler.get_x0();
+      auto y0    = coupler.get_y0();
       auto i_beg = coupler.get_i_beg();
       auto j_beg = coupler.get_j_beg();
       RefTurbine ref_turbine;
@@ -133,8 +137,8 @@ namespace modules {
           nc.begin_indep_data();
           for (int iturb=0; iturb < turbine_group.turbines.size(); iturb++) {
             auto &turbine = turbine_group.turbines.at(iturb);
-            if (turbine.active && turbine.base_loc_x >= i_beg*dx && turbine.base_loc_x < (i_beg+nx)*dx &&
-                                  turbine.base_loc_y >= j_beg*dy && turbine.base_loc_y < (j_beg+ny)*dy ) {
+            if (turbine.active && turbine.base_loc_x >= x0+i_beg*dx && turbine.base_loc_x < x0+(i_beg+nx)*dx &&
+                                  turbine.base_loc_y >= y0+j_beg*dy && turbine.base_loc_y < y0+(j_beg+ny)*dy ) {
               realHost1d power_arr("power_arr",trace_size);
               realHost1d yaw_arr  ("yaw_arr"  ,trace_size);
               for (int i=0; i < trace_size; i++) { power_arr(i) = turbine.power_trace.at(i);          }
@@ -161,6 +165,8 @@ namespace modules {
       auto nz    = coupler.get_nz   ();
       auto dx    = coupler.get_dx   ();
       auto dy    = coupler.get_dy   ();
+      auto x0    = coupler.get_x0   ();
+      auto y0    = coupler.get_y0   ();
       auto dz    = coupler.get_dz   ();
       auto zint  = coupler.get_zint ();
       auto zmid  = coupler.get_zmid ();
@@ -212,8 +218,8 @@ namespace modules {
             disk_weight_angle(k,j,i) = 0;
             disk_weight_proj (k,j,i) = 0;
             disk_weight_samp (k,j,i) = 0;
-            float x = (i_beg+i+0.5f)*dx;
-            float y = (j_beg+j+0.5f)*dy;
+            float x = x0+(i_beg+i+0.5f)*dx;
+            float y = y0+(j_beg+j+0.5f)*dy;
             float z = zmid(k);
             if ( z >= hub_height-rad && z <= hub_height+rad &&
                  y >= base_y    -rad && y <= base_y    +rad &&
@@ -268,8 +274,8 @@ namespace modules {
                 float zp = hub_height + z;
                 // If it's in this task's domain, atomically add to the cell's total shape function sum for projection
                 //     Also, add the average angle for torque application later
-                int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-                int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                int ti = static_cast<int>(std::floor((xp-x0)/dx))-i_beg;
+                int tj = static_cast<int>(std::floor((yp-y0)/dy))-j_beg;
                 int tk = 0;
                 for (int kk=0; kk < nz; kk++) {
                   if (zp >= zint(kk) && zp < zint(kk+1)) {
@@ -284,8 +290,8 @@ namespace modules {
                 // Now do the same thing for the upwind sampling disk for computing inflow velocity
                 xp += up_x_offset;
                 yp += up_y_offset;
-                ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-                tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                ti = static_cast<int>(std::floor((xp-x0)/dx))-i_beg;
+                tj = static_cast<int>(std::floor((yp-y0)/dy))-j_beg;
                 // tk is the same because only the horizontal location is translated
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_samp(tk,tj,ti) , shp );
