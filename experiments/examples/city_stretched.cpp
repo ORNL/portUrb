@@ -31,9 +31,9 @@ int main(int argc, char** argv) {
     real pad_x2 = 20;
     real pad_y1 = 20;
     real pad_y2 = 20;
-    real dx     = 2;
-    real dy     = 2;
-    real dz     = 2;
+    real dx     = 4;
+    real dy     = 4;
+    real dz     = 4;
 
     modules::TriMesh mesh;
     mesh.load_file("/ccs/home/imn/nyc2.obj");
@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
     int         ny_glob           = ylen/dy;
     int         nz                = zlen/dz;
     int         dyn_cycle         = 4;
-    real        out_freq          = 900;
+    real        out_freq          = 100;
     real        inform_freq       = 10;
     std::string out_prefix_main   = "city_stretched";
     std::string out_prefix_prec   = out_prefix_main+std::string("_precursor");
@@ -66,9 +66,9 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "cfl"                , 0.6               );
     coupler_main.set_option<bool       >( "enable_gravity"     , true              );
     coupler_main.set_option<real       >( "dycore_max_wind"    , 25                );
-    coupler_main.set_option<real       >( "dycore_cs"          , 40                );
-    coupler_main.set_option<real       >("geostrophic_u"       , 10.               );
-    coupler_main.set_option<real       >("geostrophic_v"       , 0.                );
+    // coupler_main.set_option<real       >( "dycore_cs"          , 40                );
+    coupler_main.set_option<real       >( "geostrophic_u"      , 10.               );
+    coupler_main.set_option<real       >( "geostrophic_v"      , 0.                );
 
     coupler_main.init( core::ParallelComm(MPI_COMM_WORLD) ,
                        coupler_main.generate_levels_const_low_high(zlen,2,480,600,10) ,
@@ -170,14 +170,14 @@ int main(int argc, char** argv) {
       coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);               } , "time_averager"  );
 
       // // Copy the precursor column to the main column nudger for nudging to the precursor column state
-      // col_nudge_prec.set_column( coupler_prec , {"density_dry","temp"} );
-      // col_nudge_main.column = col_nudge_prec.column;
-      // col_nudge_main.names  = col_nudge_prec.names;
+      col_nudge_prec.set_column( coupler_prec , {"density_dry","temp"} );
+      col_nudge_main.column = col_nudge_prec.column;
+      col_nudge_main.names  = col_nudge_prec.names;
       // Copy the precursor ghost cells to the main ghost cells
       dycore.copy_precursor_ghost_cells( coupler_prec , coupler_main );
 
       // Run the main modules using precursor ghost cells / open boundaries
-      // coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100);   } , "col_nudge"  );
+      coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100);   } , "col_nudge"  );
       coupler_main.run_module( [&] (Coupler &c) { geostrophic_wind_forcing_specified(c,dt,lat_g,u_g,v_g,col); } , "pg_forcing" );
       coupler_main.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);               } , "dycore"         );
       coupler_main.run_module( [&] (Coupler &c) { sponge_layer             (c,dt,dt,0.05);       } , "sponge"         );

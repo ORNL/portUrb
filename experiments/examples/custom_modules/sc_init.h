@@ -711,9 +711,9 @@ namespace custom_modules {
         else if (z >= 500 && z < 650) { return 300+0.08*(z-500);           }
         else                          { return 300+0.08*150+0.003*(z-650); }
       };
-      real p0       = 1*R_d*300; // Assume a density of one
-      real uref     = coupler.get_option<real>("hub_height_wind_mag",12); // Velocity at hub height
-      real href     = coupler.get_option<real>("turbine_hub_height",90);  // Height of hub / center of windmills
+      real uref     = coupler.get_option<real>("hub_height_wind_mag",12); // Velocity magnitude at hub height
+      real dref     = coupler.get_option<real>("hub_height_wind_dir",0 ); // Velocity direction at hub height
+      real href     = coupler.get_option<real>("turbine_hub_height" ,90); // Height of hub / center of windmills
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = 0;
@@ -729,8 +729,8 @@ namespace custom_modules {
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
           real ustar     = uref / std::log((href+roughness)/roughness);
-          real u         = ustar * std::log((z+roughness)/roughness);
-          real v         = 0;
+          real u         = ustar * std::log((z+roughness)/roughness) * std::cos(dref);
+          real v         = ustar * std::log((z+roughness)/roughness) * std::sin(dref);
           real w         = 0;
           real T         = p/(rho*R_d);
           real rho_v     = 0;

@@ -7,12 +7,10 @@
 #include "les_closure.h"
 #include "windmill_actuators_yaw.h"
 #include "surface_flux.h"
-#include "precursor_sponge.h"
 #include "uniform_pg_wind_forcing.h"
 #include "Ensembler.h"
 #include "column_nudging.h"
 #include "fluctuation_scaling.h"
-#include "geostrophic_wind_forcing.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -22,9 +20,8 @@ int main(int argc, char** argv) {
     /////////////////////////////////////////////////////////
     // IMPORTANT PARAMETERS
     /////////////////////////////////////////////////////////
-    real constexpr z0    = 1.e-1;
+    real constexpr z0    = 1.e-5;
     real constexpr dx    = 10;
-    real constexpr lat_g = 40;
 
     std::string turbine_file      = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
     YAML::Node  node              = YAML::LoadFile(turbine_file);
@@ -35,8 +32,8 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler_prec;
 
-    coupler_prec.set_option<std::string>("ensemble_stdout","ensemble_" );
-    coupler_prec.set_option<std::string>("out_prefix"     ,"turbulent_");
+    coupler_prec.set_option<std::string>("ensemble_stdout",std::string("ensemble_")+std::to_string(z0));
+    coupler_prec.set_option<std::string>("out_prefix"     ,std::string("windfarm_")+std::to_string(z0));
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Ensembler ensembler;
@@ -45,22 +42,15 @@ int main(int argc, char** argv) {
     {
       auto func_nranks  = [=] (int ind) { return 1; };
       auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        // real wind = ind*3+3;
-        real wind = 11;
-        real zBL = 500;
-        real zH  = turbine_hubz-turbine_rad+0.433*D;
-        real u_g = (wind*std::log((zBL+z0)/z0)/std::log((zH+z0)/z0))*1.135;
-        real v_g = 0;
+        real wind = ind+2;
         coupler.set_option<real>("hub_height_wind_mag",wind);
-        coupler.set_option<real>("geostrophic_u",u_g);
-        coupler.set_option<real>("geostrophic_v",v_g);
         ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("wind-")+std::to_string(wind));
         ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("wind-")+std::to_string(wind));
       };
-      ensembler.register_dimension( 1 , func_nranks , func_coupler );
+      ensembler.register_dimension( 25 , func_nranks , func_coupler );
     }
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_prec , 64 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_prec , 4 , MPI_COMM_WORLD );
     coupler_prec.set_parallel_comm( par_comm );
 
     auto orig_cout_buf = std::cout.rdbuf();
@@ -83,12 +73,13 @@ int main(int argc, char** argv) {
       int         ny_glob           = (int) std::round(ylen/dx);
       int         nz                = (int) std::round(zlen/dx);
       real        dtphys_in         = 0.;  // Dycore determined time step size
-      int         dyn_cycle         = 2;
-      std::string init_data         = "ABL_neutral";
+      int         dyn_cycle         = 1;
+      std::string init_data         = "ABL_neutral2";
       real        out_freq          = 3600;
       real        inform_freq       = 10;
       std::string out_prefix        = coupler_prec.get_option<std::string>("out_prefix");
       real        hub_wind          = coupler_prec.get_option<real>("hub_height_wind_mag");
+      real        hub_dir           = M_PI/4.;
       coupler_prec.set_option<std::string      >( "init_data"                , init_data    );
       coupler_prec.set_option<real             >( "out_freq"                 , out_freq     );
       coupler_prec.set_option<real             >( "latitude"                 , 0.           );
@@ -104,10 +95,11 @@ int main(int argc, char** argv) {
       coupler_prec.set_option<real             >( "cfl"                      , 0.6          );
       coupler_prec.set_option<real             >( "dycore_max_wind"          , 50           );
       coupler_prec.set_option<bool             >( "dycore_buoyancy_theta"    , true         );
-      coupler_prec.set_option<real             >( "dycore_cs"                , 100          );
-      coupler_prec.set_option<std::vector<real>>( "turbine_x_locs"           , {5*D}        );
-      coupler_prec.set_option<std::vector<real>>( "turbine_y_locs"           , {5*D}        );
+      coupler_prec.set_option<real             >( "dycore_cs"                , 60           );
+      coupler_prec.set_option<std::vector<real>>( "turbine_x_locs"           , {4*D}        );
+      coupler_prec.set_option<std::vector<real>>( "turbine_y_locs"           , {4*D}        );
       coupler_prec.set_option<std::vector<bool>>( "turbine_apply_thrust"     , {true}       );
+      coupler_prec.set_option<real             >( "hub_height_wind_dir"      , hub_dir      );
 
       if (coupler_prec.is_mainproc()) std::cout << "z0:   " << z0       << "\n"
                                                 << "uhub: " << hub_wind << std::endl;
@@ -125,27 +117,23 @@ int main(int argc, char** argv) {
       modules::Dynamics_Euler_Stratified_WenoFV  dycore;
       modules::Time_Averager                     time_averager;
       modules::WindmillActuators                 windmills;
-      modules::ColumnNudger                      col_nudge_prec;
 
       // Run the initialization modules on coupler_prec
-      custom_modules::sc_init     ( coupler_prec );
-      les_closure  .init          ( coupler_prec );
-      dycore       .init          ( coupler_prec );
+      custom_modules::sc_init( coupler_prec );
 
-      core::Coupler coupler_main;
+      core::Coupler coupler_noturb;
       core::Coupler coupler_turb;
 
       /////////////////////////////////////////////////////////////////////////
       // Everything previous to this is now replicated in coupler_precursor
       // From here out, the will be treated separately
-      coupler_prec.clone_into(coupler_main);
+      coupler_prec.clone_into(coupler_noturb);
       coupler_prec.clone_into(coupler_turb);
       /////////////////////////////////////////////////////////////////////////
 
-      custom_modules::sc_perturb( coupler_prec );
-      custom_modules::sc_perturb( coupler_main );
-      custom_modules::sc_perturb( coupler_turb );
-
+      // Boundaries must be declared before dycore.init(...)
+      // Set precursor boundaries
+      coupler_prec.set_option<bool>("dycore_is_precursor",true);
       coupler_prec.set_option<std::string>("bc_x1","periodic");
       coupler_prec.set_option<std::string>("bc_x2","periodic");
       coupler_prec.set_option<std::string>("bc_y1","periodic");
@@ -153,32 +141,45 @@ int main(int argc, char** argv) {
       coupler_prec.set_option<std::string>("bc_z1","wall_free_slip");
       coupler_prec.set_option<std::string>("bc_z2","wall_free_slip");
 
-      coupler_main.set_option<std::string>("bc_x1","open");
-      coupler_main.set_option<std::string>("bc_x2","open");
-      coupler_main.set_option<std::string>("bc_y1","open");
-      coupler_main.set_option<std::string>("bc_y2","open");
-      coupler_main.set_option<std::string>("bc_z1","wall_free_slip");
-      coupler_main.set_option<std::string>("bc_z2","wall_free_slip");
+      // Set no-turbine boundaries
+      coupler_noturb.set_option<std::string>("bc_x1","precursor");
+      coupler_noturb.set_option<std::string>("bc_x2","precursor");
+      coupler_noturb.set_option<std::string>("bc_y1","precursor");
+      coupler_noturb.set_option<std::string>("bc_y2","precursor");
+      coupler_noturb.set_option<std::string>("bc_z1","wall_free_slip");
+      coupler_noturb.set_option<std::string>("bc_z2","wall_free_slip");
 
-      coupler_turb.set_option<std::string>("bc_x1","open");
-      coupler_turb.set_option<std::string>("bc_x2","open");
-      coupler_turb.set_option<std::string>("bc_y1","open");
-      coupler_turb.set_option<std::string>("bc_y2","open");
+      // Set turbine boundaries
+      coupler_turb.set_option<std::string>("bc_x1","precursor");
+      coupler_turb.set_option<std::string>("bc_x2","precursor");
+      coupler_turb.set_option<std::string>("bc_y1","precursor");
+      coupler_turb.set_option<std::string>("bc_y2","precursor");
       coupler_turb.set_option<std::string>("bc_z1","wall_free_slip");
       coupler_turb.set_option<std::string>("bc_z2","wall_free_slip");
 
-      time_averager.init( coupler_prec );
-      time_averager.init( coupler_main );
-      time_averager.init( coupler_turb );
+      // Initialize the modules (init les_closure before dycore so that SGS TKE is registered as a tracer)
+      les_closure  .init        ( coupler_prec );
+      dycore       .init        ( coupler_prec );
+      time_averager.init        ( coupler_prec );
+      custom_modules::sc_perturb( coupler_prec );
 
-      windmills    .init( coupler_turb );
+      les_closure  .init        ( coupler_noturb );
+      dycore       .init        ( coupler_noturb );
+      time_averager.init        ( coupler_noturb );
+      custom_modules::sc_perturb( coupler_noturb );
+
+      les_closure  .init        ( coupler_turb );
+      dycore       .init        ( coupler_turb );
+      time_averager.init        ( coupler_turb );
+      custom_modules::sc_perturb( coupler_turb );
+      windmills    .init        ( coupler_turb );
 
       // Get elapsed time (zero), and create counters for output and informing the user in stdout
       real etime = coupler_prec.get_option<real>("elapsed_time");
       core::Counter output_counter( out_freq    , etime );
       core::Counter inform_counter( inform_freq , etime );
 
-      if (out_freq >= 0) coupler_main.write_output_file( out_prefix+std::string("_noturbine") );
+      if (out_freq >= 0) coupler_noturb.write_output_file( out_prefix+std::string("_noturbine") );
       if (out_freq >= 0) coupler_turb.write_output_file( out_prefix+std::string("_turbine")   );
 
       // Begin main simulation loop over time steps
@@ -189,51 +190,52 @@ int main(int argc, char** argv) {
         // If we're about to go past the final time, then limit to time step to exactly hit the final time
         if (etime + dt > sim_time) { dt = sim_time - etime; }
 
+        real h = turbine_hubz;
+        real u = hub_wind*std::cos(hub_dir);
+        real v = hub_wind*std::sin(hub_dir);
+        real pgu, pgv;
+
         // Run modules
         using core::Coupler;
-        using modules::geostrophic_wind_forcing;
-        using modules::geostrophic_wind_forcing_specified;
-        using modules::fluctuation_scaling;
-        auto u_g = coupler_prec.get_option<real>("geostrophic_u");
-        auto v_g = coupler_prec.get_option<real>("geostrophic_v");
+        using modules::uniform_pg_wind_forcing_height;
+        using modules::uniform_pg_wind_forcing_specified;
 
         real2d col;
         {
-          coupler_prec.run_module( [&] (Coupler &c) { col = geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); } , "geo_forcing" );
+          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,dt*100); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
           coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );
           coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply            (c,dt); } , "les_closure"    );
           coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate     (c,dt); } , "time_averager"  );
         }
 
+        // We're going to force the forced simulations to maintain the precursor average col density and temperature
+        modules::ColumnNudger col_nudge_prec;
         col_nudge_prec.set_column( coupler_prec , {"density_dry","temp"} );
-        modules::ColumnNudger col_nudge_main;
-        col_nudge_main.column = col_nudge_prec.column;
-        col_nudge_main.names  = col_nudge_prec.names;
+
+        // Force domain avg col density and temperature, and copy in precursor ghost cells
+        modules::ColumnNudger col_nudge_noturb;
+        col_nudge_noturb.column = col_nudge_prec.column;
+        col_nudge_noturb.names  = col_nudge_prec.names;
+        dycore.copy_precursor_ghost_cells( coupler_prec , coupler_noturb );
 
         {
-          modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
-                                     nx_glob/20 , 0 , ny_glob/20 , 0 );
-          modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} ,
-                                     0 , nx_glob/20 , 0 , ny_glob/20 );
-          coupler_main.run_module( [&] (Coupler &c) { geostrophic_wind_forcing_specified(c,dt,lat_g,u_g,v_g,col); } , "geo_forcing" );
-          coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
-          coupler_main.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
-          coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
-          coupler_main.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt); } , "les_closure"       );
-          coupler_main.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt); } , "time_averager"     );
+          coupler_noturb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
+          coupler_noturb.run_module( [&] (Coupler &c) { col_nudge_noturb.nudge_to_column(c,dt,dt*100); } , "col_nudge");
+          coupler_noturb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
+          coupler_noturb.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
+          coupler_noturb.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt); } , "les_closure"       );
+          coupler_noturb.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt); } , "time_averager"     );
         }
 
+        // Force domain avg col density and temperature, and copy in precursor ghost cells
         modules::ColumnNudger col_nudge_turb;
         col_nudge_turb.column = col_nudge_prec.column;
         col_nudge_turb.names  = col_nudge_prec.names;
+        dycore.copy_precursor_ghost_cells( coupler_prec , coupler_turb );
 
         {
-          modules::precursor_sponge( coupler_turb , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
-                                     nx_glob/20 , 0 , ny_glob/20 , 0 );
-          modules::precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temp"} ,
-                                     0 , nx_glob/20 , 0 , ny_glob/20 );
-          coupler_turb.run_module( [&] (Coupler &c) { geostrophic_wind_forcing_specified(c,dt,lat_g,u_g,v_g,col); } , "geo_forcing" );
+          coupler_turb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_turb.run_module( [&] (Coupler &c) { col_nudge_turb.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
           coupler_turb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
           coupler_turb.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
@@ -244,20 +246,25 @@ int main(int argc, char** argv) {
 
         // Update time step
         etime += dt; // Advance elapsed time
-        coupler_main.set_option<real>("elapsed_time",etime);
-        coupler_prec.set_option<real>("elapsed_time",etime);
-        coupler_turb.set_option<real>("elapsed_time",etime);
+        coupler_noturb.set_option<real>("elapsed_time",etime);
+        coupler_prec  .set_option<real>("elapsed_time",etime);
+        coupler_turb  .set_option<real>("elapsed_time",etime);
         if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
-          if (coupler_turb.is_mainproc()) std::cout << "TURB: ";
+          if (coupler_prec  .is_mainproc()) std::cout << "PREC: ";
+          coupler_prec.inform_user();
+          if (coupler_noturb.is_mainproc()) std::cout << "NOTURB: ";
+          coupler_noturb.inform_user();
+          if (coupler_turb  .is_mainproc()) std::cout << "TURB: ";
           coupler_turb.inform_user();
           inform_counter.reset();
         }
-        if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
-          coupler_main.write_output_file( out_prefix+std::string("_noturbine") , true );
-          coupler_turb.write_output_file( out_prefix+std::string("_turbine")   , true );
-          time_averager.reset(coupler_prec);
-          time_averager.reset(coupler_main);
-          time_averager.reset(coupler_turb);
+        if (out_freq >= 0. && output_counter.update_and_check(dt)) {
+          coupler_prec  .write_output_file( out_prefix+std::string("_precursor") , true );
+          coupler_noturb.write_output_file( out_prefix+std::string("_noturbine") , true );
+          coupler_turb  .write_output_file( out_prefix+std::string("_turbine")   , true );
+          time_averager.reset(coupler_prec  );
+          time_averager.reset(coupler_noturb);
+          time_averager.reset(coupler_turb  );
           output_counter.reset();
         }
       } // End main simulation loop

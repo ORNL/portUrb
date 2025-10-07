@@ -2,7 +2,7 @@ from netCDF4 import Dataset
 import numpy as np
 import matplotlib.pyplot as plt
 
-files = [f"city_stretched_{i:08d}.nc" for i in range(2)]
+files = [f"city_stretched_{i:08d}.nc" for i in range(13)]
 
 def plot_var(vname) :
   for i in range(len(files)) :
