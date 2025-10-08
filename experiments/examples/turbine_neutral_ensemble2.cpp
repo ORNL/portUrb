@@ -179,8 +179,9 @@ int main(int argc, char** argv) {
       core::Counter output_counter( out_freq    , etime );
       core::Counter inform_counter( inform_freq , etime );
 
+      if (out_freq >= 0) coupler_prec  .write_output_file( out_prefix+std::string("_precursor") );
       if (out_freq >= 0) coupler_noturb.write_output_file( out_prefix+std::string("_noturbine") );
-      if (out_freq >= 0) coupler_turb.write_output_file( out_prefix+std::string("_turbine")   );
+      if (out_freq >= 0) coupler_turb  .write_output_file( out_prefix+std::string("_turbine")   );
 
       // Begin main simulation loop over time steps
       real dt = dtphys_in;
