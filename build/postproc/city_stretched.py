@@ -10,7 +10,7 @@ workdir="/lustre/storm/nwp501/scratch/imn/city_stretched/"
 def get_ind(a,v) :
   return np.argmin(np.abs(a-v))
 
-times = range(8*4,10*4+1,1)
+times = range(8*4+1,10*4+1,1)
 files_prec = [f"{workdir}/city_stretched_precursor_{i:08d}.nc" for i in times]
 files_main = [f"{workdir}/city_stretched_{i:08d}.nc" for i in times]
 
