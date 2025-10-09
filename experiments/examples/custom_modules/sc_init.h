@@ -234,7 +234,7 @@ namespace custom_modules {
         real x           = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
         real y           = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
         zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
-        if (zmesh(j,i,jj,ii) == 0) zmesh(j,i,jj,ii) = -1;
+        if (zmesh(j,i,jj,ii) < 1.e-6) zmesh(j,i,jj,ii) = -1;
       });
       auto u_g = coupler.get_option<real>("geostrophic_u",10.);
       auto v_g = coupler.get_option<real>("geostrophic_v",0. );
@@ -289,7 +289,7 @@ namespace custom_modules {
         real x           = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
         real y           = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
         zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
-        if (zmesh(j,i,jj,ii) == 0) zmesh(j,i,jj,ii) = -1;
+        if (zmesh(j,i,jj,ii) < 1.e-6) zmesh(j,i,jj,ii) = -1;
       });
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d        (k,j,i) = 0;
@@ -707,9 +707,10 @@ namespace custom_modules {
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
 
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
-        if      (z <  500)            { return 300;                        }
-        else if (z >= 500 && z < 650) { return 300+0.08*(z-500);           }
-        else                          { return 300+0.08*150+0.003*(z-650); }
+        // if      (z <  500)            { return 300;                        }
+        // else if (z >= 500 && z < 650) { return 300+0.08*(z-500);           }
+        // else                          { return 300+0.08*150+0.003*(z-650); }
+        return 300;
       };
       real uref     = coupler.get_option<real>("hub_height_wind_mag",12); // Velocity magnitude at hub height
       real dref     = coupler.get_option<real>("hub_height_wind_dir",0 ); // Velocity direction at hub height

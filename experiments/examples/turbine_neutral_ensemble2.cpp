@@ -11,6 +11,7 @@
 #include "Ensembler.h"
 #include "column_nudging.h"
 #include "fluctuation_scaling.h"
+#include "sponge_layer.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -68,7 +69,7 @@ int main(int argc, char** argv) {
       real        sim_time          = 3600*24+1;
       real        xlen              = 3000;
       real        ylen              = 3000;
-      real        zlen              = 1000;
+      real        zlen              = 600;
       int         nx_glob           = (int) std::round(xlen/dx);
       int         ny_glob           = (int) std::round(ylen/dx);
       int         nz                = (int) std::round(zlen/dx);
@@ -205,6 +206,7 @@ int main(int argc, char** argv) {
         {
           coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,dt*100); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
+          coupler_prec.run_module( [&] (Coupler &c) { modules::sponge_layer        (c,dt,100,0.1); } , "sponge" );
           coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );
           coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply            (c,dt); } , "les_closure"    );
           coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate     (c,dt); } , "time_averager"  );
@@ -224,6 +226,7 @@ int main(int argc, char** argv) {
           coupler_noturb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_noturb.run_module( [&] (Coupler &c) { col_nudge_noturb.nudge_to_column(c,dt,dt*100); } , "col_nudge");
           coupler_noturb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
+          coupler_noturb.run_module( [&] (Coupler &c) { modules::sponge_layer         (c,dt,100,0.1); } , "sponge"    );
           coupler_noturb.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
           coupler_noturb.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt); } , "les_closure"       );
           coupler_noturb.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt); } , "time_averager"     );
@@ -239,6 +242,7 @@ int main(int argc, char** argv) {
           coupler_turb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_turb.run_module( [&] (Coupler &c) { col_nudge_turb.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
           coupler_turb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
+          coupler_turb.run_module( [&] (Coupler &c) { modules::sponge_layer         (c,dt,100,0.1); } , "sponge"    );
           coupler_turb.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
           coupler_turb.run_module( [&] (Coupler &c) { windmills.apply               (c,dt); } , "windmillactuators" );
           coupler_turb.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt); } , "les_closure"       );

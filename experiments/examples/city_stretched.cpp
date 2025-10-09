@@ -27,17 +27,17 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real pad_x1 = 20;
-    real pad_x2 = 20;
-    real pad_y1 = 20;
-    real pad_y2 = 20;
-    real dx     = 4;
-    real dy     = 4;
-    real dz     = 4;
+    real dx = 4;
+    real dy = 4;
 
     modules::TriMesh mesh;
     mesh.load_file("/ccs/home/imn/nyc2.obj");
     mesh.zero_domain_lo();
+
+    real pad_x1 = mesh.domain_hi.x/2;
+    real pad_x2 = mesh.domain_hi.x/2;
+    real pad_y1 = mesh.domain_hi.y/2;
+    real pad_y2 = mesh.domain_hi.y/2;
 
     real        sim_time          = 3600*10+1;
     real        xlen              = std::ceil((mesh.domain_hi.x+pad_x1+pad_x2)/dx)*dx;
@@ -45,9 +45,8 @@ int main(int argc, char** argv) {
     real        zlen              = 1800;
     int         nx_glob           = xlen/dx;
     int         ny_glob           = ylen/dy;
-    int         nz                = zlen/dz;
     int         dyn_cycle         = 4;
-    real        out_freq          = 100;
+    real        out_freq          = 900;
     real        inform_freq       = 10;
     std::string out_prefix_main   = "city_stretched";
     std::string out_prefix_prec   = out_prefix_main+std::string("_precursor");
@@ -56,6 +55,7 @@ int main(int argc, char** argv) {
     std::string restart_file_prec = "";
 
     mesh.add_offset(pad_x1,pad_y1);
+    DEBUG_PRINT_MAIN_VAL( mesh.domain_lo.z );
 
     core::Coupler coupler_main;
     coupler_main.set_option<std::string>( "init_data"          , "city_stretched"  );
@@ -66,12 +66,12 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "cfl"                , 0.6               );
     coupler_main.set_option<bool       >( "enable_gravity"     , true              );
     coupler_main.set_option<real       >( "dycore_max_wind"    , 25                );
-    // coupler_main.set_option<real       >( "dycore_cs"          , 40                );
+    coupler_main.set_option<real       >( "dycore_cs"          , 60                );
     coupler_main.set_option<real       >( "geostrophic_u"      , 10.               );
     coupler_main.set_option<real       >( "geostrophic_v"      , 0.                );
 
     coupler_main.init( core::ParallelComm(MPI_COMM_WORLD) ,
-                       coupler_main.generate_levels_const_low_high(zlen,2,480,600,10) ,
+                       coupler_main.generate_levels_const_low_high(zlen,4,480,600,10) ,
                        ny_glob , nx_glob , ylen , xlen );
 
     int nfaces = mesh.faces.extent(0);

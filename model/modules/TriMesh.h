@@ -114,18 +114,20 @@ namespace modules {
 
     // Interpolate the height of the given horizontal point location using surrounding face data
     KOKKOS_INLINE_FUNCTION static float interp( float3d const &faces_in, int k, float x, float y, float domain_lo_z ) {
-      auto v1_x = faces_in(k,0,0);    auto v1_y = faces_in(k,0,1);    auto v1_z = faces_in(k,0,2);
-      auto v2_x = faces_in(k,1,0);    auto v2_y = faces_in(k,1,1);    auto v2_z = faces_in(k,1,2);
-      auto v3_x = faces_in(k,2,0);    auto v3_y = faces_in(k,2,1);    auto v3_z = faces_in(k,2,2);
+      double constexpr eps = 1.e-8;
+      double v1_x = faces_in(k,0,0);    double v1_y = faces_in(k,0,1);    double v1_z = faces_in(k,0,2);
+      double v2_x = faces_in(k,1,0);    double v2_y = faces_in(k,1,1);    double v2_z = faces_in(k,1,2);
+      double v3_x = faces_in(k,2,0);    double v3_y = faces_in(k,2,1);    double v3_z = faces_in(k,2,2);
       // Area of the triangle
-      float area = 0.5f * std::abs(v1_x*(v2_y - v3_y) + v2_x*(v3_y - v1_y) + v3_x*(v1_y - v2_y));
+      double area = 0.5 * (v1_x*(v2_y - v3_y) + v2_x*(v3_y - v1_y) + v3_x*(v1_y - v2_y));
+      if (std::abs(area) < eps) return domain_lo_z;
       // Interpolation weights
-      float w1 = (v2_x*v3_y - v3_x*v2_y + (v2_y - v3_y)*x + (v3_x - v2_x)*y) / (2*area);
-      float w2 = (v3_x*v1_y - v1_x*v3_y + (v3_y - v1_y)*x + (v1_x - v3_x)*y) / (2*area);
-      float w3 = 1 - w1 - w2;
+      double w1 = (v2_x*v3_y - v3_x*v2_y + (v2_y - v3_y)*x + (v3_x - v2_x)*y) / (2*area);
+      double w2 = (v3_x*v1_y - v1_x*v3_y + (v3_y - v1_y)*x + (v1_x - v3_x)*y) / (2*area);
+      double w3 = 1 - w1 - w2;
       // Interpolate z value if weights in [0,1] (i.e., the point's within this triangle's horizontal area)
-      if (w1>=0 && w2>=0 && w3>=0 && w1<=1 && w2<=1 && w3<=1) { return w1*v1_z + w2*v2_z + w3*v3_z; }
-      else                                                    { return domain_lo_z;                 }
+      if (w1>=-eps && w2>=-eps && w3>=-eps && w1<=1+eps && w2<=1+eps && w3<=1+eps) { return w1*v1_z + w2*v2_z + w3*v3_z; }
+      else                                                                         { return domain_lo_z;                 }
     }
 
 
