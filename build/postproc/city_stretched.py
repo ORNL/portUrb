@@ -14,6 +14,23 @@ times = range(8*4+1,10*4+1,1)
 files_prec = [f"{workdir}/city_stretched_precursor_{i:08d}.nc" for i in times]
 files_main = [f"{workdir}/city_stretched_{i:08d}.nc" for i in times]
 
+# Plot vertical grid spacing
+nc_prec = Dataset(files_prec[-1],"r")
+zi      = np.array(nc_prec["zi"][:])
+fig = plt.figure(figsize=(4,6))
+ax  = fig.gca()
+ax.hlines(zi,0,1,color="black")
+ax.tick_params(axis='x', bottom=False, labelbottom=False)
+ax.set_xlim(0,1)
+ax.set_ylim(470.413,623.9676)
+ax.set_ylabel("Vertical Interface Locations (m)")
+ax.margins(x=0)
+fig.tight_layout()
+plt.savefig("city_ABL_vert_grid_z.png",dpi=600)
+plt.show()
+plt.close()
+
+
 # Intantaneous horizontal velocity at z=100 and y=midpoint
 nc_prec  = Dataset(files_prec[-1],"r")
 nc_main  = Dataset(files_main[-1],"r")
@@ -92,7 +109,7 @@ plt.show()
 plt.close()
 
 
-# Intantaneous horizontal velocity at z=100 and y=midpoint
+# Theta at y=midpoint
 nc_prec  = Dataset(files_prec[-1],"r")
 nc_main  = Dataset(files_main[-1],"r")
 x        = np.array(nc_prec["x"][:])
@@ -145,7 +162,7 @@ for i in range(len(times)) :
   i2       = get_ind(x,3*1269.11407/2) # Bounding box of the city
   j1       = get_ind(y,1*1674.81256/2) # Bounding box of the city
   j2       = get_ind(y,3*1674.81256/2) # Bounding box of the city
-  k2       = get_ind(z,1500)
+  k2       = get_ind(z,900)
   loc_prec = np.mean(np.array(nc_prec[vname][:k2,j1:j2+1,i1:i2+1]),axis=(1,2))
   loc_main = np.mean(np.array(nc_main[vname][:k2,j1:j2+1,i1:i2+1]),axis=(1,2))
   var_prec = loc_prec if i==0 else var_prec+loc_prec
@@ -157,7 +174,7 @@ ax  = fig.gca()
 ax.plot(var_prec,z[:k2],label="precursor",color="black",linestyle="--")
 ax.plot(var_main,z[:k2],label="city"     ,color="red"  )
 ax.set_xlim(0,12)
-ax.set_ylim(0,1500)
+ax.set_ylim(0,900)
 ax.set_xlabel("u-velocity (m/s)")
 ax.set_ylabel("Height (m)")
 ax.legend()
@@ -180,7 +197,7 @@ for i in range(len(times)) :
   i2       = get_ind(x,3*1269.11407/2) # Bounding box of the city
   j1       = get_ind(y,1*1674.81256/2) # Bounding box of the city
   j2       = get_ind(y,3*1674.81256/2) # Bounding box of the city
-  k2       = get_ind(z,1500)
+  k2       = get_ind(z,900)
   loc_prec = np.mean(np.array(nc_prec[vname][:k2,j1:j2+1,i1:i2+1]),axis=(1,2))
   loc_main = np.mean(np.array(nc_main[vname][:k2,j1:j2+1,i1:i2+1]),axis=(1,2))
   var_prec = loc_prec if i==0 else var_prec+loc_prec
@@ -192,7 +209,7 @@ ax  = fig.gca()
 ax.plot(var_prec,z[:k2],label="precursor",color="black",linestyle="--")
 ax.plot(var_main,z[:k2],label="city",color="red"  )
 ax.set_xlim(-0.25,4.25)
-ax.set_ylim(0,1500)
+ax.set_ylim(0,900)
 ax.set_xlabel("v-velocity (m/s)")
 ax.set_ylabel("Height (m)")
 ax.legend()
@@ -216,9 +233,9 @@ for i in range(len(times)) :
   i2       = get_ind(x,3*1269.11407/2) # Bounding box of the city
   j1       = get_ind(y,1*1674.81256/2) # Bounding box of the city
   j2       = get_ind(y,3*1674.81256/2) # Bounding box of the city
-  k2       = get_ind(z,1500)
-  loc_prec = np.mean(np.array(nc_prec["theta_pert"][:k2,:,:]),axis=(1,2)) + np.array(nc_prec["hy_theta_cells"][hs:k2+hs])
-  loc_main = np.mean(np.array(nc_main["theta_pert"][:k2,:,:]),axis=(1,2)) + np.array(nc_main["hy_theta_cells"][hs:k2+hs])
+  k2       = get_ind(z,900)
+  loc_prec = np.mean(np.array(nc_prec["theta_pert"][:k2,j1:j2+1,i1:i2+1]),axis=(1,2)) + np.array(nc_prec["hy_theta_cells"][hs:k2+hs])
+  loc_main = np.mean(np.array(nc_main["theta_pert"][:k2,j1:j2+1,i1:i2+1]),axis=(1,2)) + np.array(nc_main["hy_theta_cells"][hs:k2+hs])
   var_prec = loc_prec if i==0 else var_prec+loc_prec
   var_main = loc_main if i==0 else var_main+loc_main
 var_prec /= len(times)
@@ -228,7 +245,7 @@ ax  = fig.gca()
 ax.plot(var_prec,z[:k2],label="precursor",color="black",linestyle="--")
 ax.plot(var_main,z[:k2],label="city"     ,color="red"  )
 ax.set_xlim(299.7,314.5)
-ax.set_ylim(0,1500)
+ax.set_ylim(0,900)
 ax.set_xlabel("Potential Temperature (K)")
 ax.set_ylabel("Height (m)")
 ax.legend()
@@ -251,7 +268,7 @@ i1         = get_ind(x,1*1269.11407/2) # Bounding box of the city
 i2         = get_ind(x,3*1269.11407/2) # Bounding box of the city
 j1         = get_ind(y,1*1674.81256/2) # Bounding box of the city
 j2         = get_ind(y,3*1674.81256/2) # Bounding box of the city
-k2         = get_ind(z,1500)
+k2         = get_ind(z,900)
 theta_prec = np.array(nc_prec["theta_pert"][:k2,:,:]) + np.array(nc_prec["hy_theta_cells"][hs:k2+hs])[:,np.newaxis,np.newaxis]
 theta_main = np.array(nc_main["theta_pert"][:k2,:,:]) + np.array(nc_main["hy_theta_cells"][hs:k2+hs])[:,np.newaxis,np.newaxis]
 w_prec     = np.array(nc_prec["wvel"      ][:k2,:,:])
@@ -267,7 +284,7 @@ ax  = fig.gca()
 ax.plot(wptp_prec,z[:k2],label="precursor",color="black",linestyle="--")
 ax.plot(wptp_main,z[:k2],label="city"     ,color="red"  )
 ax.set_xlim(-1.1,0.5)
-ax.set_ylim(0,1500)
+ax.set_ylim(0,900)
 ax.set_xlabel(r"$w^\prime \theta^\prime$")
 ax.set_ylabel("Height (m)")
 ax.legend()

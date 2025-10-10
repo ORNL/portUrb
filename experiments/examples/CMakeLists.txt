@@ -33,6 +33,7 @@ macro(process_target target_name)
 endmacro()
 
 process_target(abl_convective)
+process_target(abl_convective_performance)
 process_target(abl_neutral)
 process_target(abl_stable)
 process_target(awaken_simplest)
