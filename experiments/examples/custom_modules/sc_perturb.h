@@ -69,17 +69,8 @@ namespace custom_modules {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real x    = (i_beg+i+0.5)*dx;
-        real y    = (j_beg+j+0.5)*dy;
         real z    = zmid(k);
         real ztop = 50;
-        real zl   = z / ztop;
-        real uper = 4;
-        real vper = 4;
-        real delu = 1;
-        real delv = 1;
-        dm_uvel(k,j,i) += delu*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(uper*2*M_PI*y/ylen);
-        dm_vvel(k,j,i) += delv*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(vper*2*M_PI*x/xlen);
         if (z <= ztop)  dm_temp(k,j,i) += rand.genFP<real>(-1.4,1.4);
       });
 
@@ -141,18 +132,11 @@ namespace custom_modules {
       auto wind = coupler.get_option<real>("hub_height_wind_mag");
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        real x    = (i_beg+i+0.5)*dx;
-        real y    = (j_beg+j+0.5)*dy;
         real z    = zmid(k);
         real ztop = 100;
-        real zl   = z / ztop;
-        real uper = 4;
-        real vper = 4;
-        real delu = 0.1*wind;
-        real delv = 0.1*wind;
-        dm_uvel(k,j,i) += delu*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(uper*2*M_PI*y/ylen);
-        dm_vvel(k,j,i) += delv*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(vper*2*M_PI*x/xlen);
-        if (z <= ztop)  dm_temp(k,j,i) += rand.genFP<real>(-1,1);
+        if (z <= ztop)  dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
+        if (z <= ztop)  dm_uvel(k,j,i) *= (1+rand.genFP<real>(-0.03,0.03));
+        if (z <= ztop)  dm_vvel(k,j,i) *= (1+rand.genFP<real>(-0.03,0.03));
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "AWAKEN_neutral") {

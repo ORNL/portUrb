@@ -136,7 +136,7 @@ namespace custom_modules {
               real p         = pressGLL(k,kk);
               real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
               real rho       = rho_theta / theta;
-              real umag      = uref*std::log((z+roughness)/roughness)/std::log((href+roughness)/roughness);
+              real umag      = uref*std::log(z/roughness)/std::log(href/roughness);
               real u         = umag;
               real v         = 0;
               real w         = 0;
@@ -219,8 +219,6 @@ namespace custom_modules {
     } else if (coupler.get_option<std::string>("init_data") == "city_stretched") {
 
       dm_immersed_rough = coupler.get_option<real>("building_roughness");
-      real uref = 10;
-      real href = 500;
       auto faces = coupler.get_data_manager_readwrite().get<float,3>("mesh_faces");
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real {
         if      (z <  500)            { return 300;                        }
@@ -309,7 +307,7 @@ namespace custom_modules {
               real p         = pressGLL(k,kk);
               real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
               real rho       = rho_theta / theta;
-              real umag      = uref*std::log((z+roughness)/roughness)/std::log((href+roughness)/roughness);
+              real umag      = uref*std::log(z/roughness)/std::log(href/roughness);
               real ang       = 29./180.*M_PI;
               real u         = umag*std::cos(ang);
               real v         = umag*std::sin(ang);
@@ -529,8 +527,8 @@ namespace custom_modules {
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
-          real u         = hub_u * std::log((z+roughness)/roughness) / std::log((hub_z+roughness)/roughness);
-          real v         = hub_v * std::log((z+roughness)/roughness) / std::log((hub_z+roughness)/roughness);
+          real u         = hub_u * std::log(z/roughness) / std::log(hub_z/roughness);
+          real v         = hub_v * std::log(z/roughness) / std::log(hub_z/roughness);
           real w         = 0;
           real T         = p/(rho*R_d);
           real rho_v     = 0;
@@ -607,8 +605,8 @@ namespace custom_modules {
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
-          real ustar     = uref / std::log((href+roughness)/roughness);
-          real u         = ustar * std::log((z+roughness)/roughness);
+          real ustar     = uref / std::log(href/roughness);
+          real u         = ustar * std::log(z/roughness);
           real v         = 0;
           real w         = 0;
           real T         = p/(rho*R_d);
@@ -687,8 +685,8 @@ namespace custom_modules {
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
-          real ustar     = uref / std::log((href+roughness)/roughness);
-          real u         = ustar * std::log((z+roughness)/roughness);
+          real ustar     = uref / std::log(href/roughness);
+          real u         = ustar * std::log(z/roughness);
           real v         = 0;
           real w         = 0;
           real T         = p/(rho*R_d);
@@ -729,9 +727,9 @@ namespace custom_modules {
           real p         = pressGLL(k,kk);
           real rho_theta = std::pow( p/C0 , 1._fp/gamma_d );
           real rho       = rho_theta / theta;
-          real ustar     = uref / std::log((href+roughness)/roughness);
-          real u         = ustar * std::log((z+roughness)/roughness) * std::cos(dref);
-          real v         = ustar * std::log((z+roughness)/roughness) * std::sin(dref);
+          real ustar     = uref / std::log(href/roughness);
+          real u         = ustar * std::log(z/roughness) * std::cos(dref);
+          real v         = ustar * std::log(z/roughness) * std::sin(dref);
           real w         = 0;
           real T         = p/(rho*R_d);
           real rho_v     = 0;
