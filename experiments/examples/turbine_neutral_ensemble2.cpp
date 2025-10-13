@@ -8,6 +8,7 @@
 #include "windmill_actuators_yaw.h"
 #include "surface_flux.h"
 #include "uniform_pg_wind_forcing.h"
+#include "precursor_sponge.h"
 #include "Ensembler.h"
 #include "column_nudging.h"
 #include "fluctuation_scaling.h"
@@ -43,15 +44,15 @@ int main(int argc, char** argv) {
     {
       auto func_nranks  = [=] (int ind) { return 1; };
       auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        real wind = ind+2;
+        real wind = 10; // ind+2;
         coupler.set_option<real>("hub_height_wind_mag",wind);
         ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("wind-")+std::to_string(wind));
         ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("wind-")+std::to_string(wind));
       };
-      ensembler.register_dimension( 25 , func_nranks , func_coupler );
+      ensembler.register_dimension( 1 , func_nranks , func_coupler );
     }
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_prec , 4 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_prec , 16 , MPI_COMM_WORLD );
     coupler_prec.set_parallel_comm( par_comm );
 
     auto orig_cout_buf = std::cout.rdbuf();
@@ -97,8 +98,8 @@ int main(int argc, char** argv) {
       coupler_prec.set_option<real             >( "dycore_max_wind"          , 50           );
       coupler_prec.set_option<bool             >( "dycore_buoyancy_theta"    , true         );
       coupler_prec.set_option<real             >( "dycore_cs"                , 60           );
-      coupler_prec.set_option<std::vector<real>>( "turbine_x_locs"           , {4*D}        );
-      coupler_prec.set_option<std::vector<real>>( "turbine_y_locs"           , {4*D}        );
+      coupler_prec.set_option<std::vector<real>>( "turbine_x_locs"           , {6*D}        );
+      coupler_prec.set_option<std::vector<real>>( "turbine_y_locs"           , {6*D}        );
       coupler_prec.set_option<std::vector<bool>>( "turbine_apply_thrust"     , {true}       );
       coupler_prec.set_option<real             >( "hub_height_wind_dir"      , hub_dir      );
 
@@ -201,6 +202,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
         using modules::uniform_pg_wind_forcing_specified;
+        using modules::precursor_sponge;
 
         real2d col;
         {
@@ -218,13 +220,14 @@ int main(int argc, char** argv) {
 
         // Force domain avg col density and temperature, and copy in precursor ghost cells
         modules::ColumnNudger col_nudge_noturb;
-        col_nudge_noturb.column = col_nudge_prec.column;
+        col_nudge_noturb.column = col_nudge_prec.column.createDeviceCopy();
         col_nudge_noturb.names  = col_nudge_prec.names;
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_noturb );
 
         {
+          precursor_sponge( coupler_noturb , coupler_prec , {"density_dry","temp"} , 0 , nx_glob/10 , 0 , ny_glob/10 );
           coupler_noturb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
-          coupler_noturb.run_module( [&] (Coupler &c) { col_nudge_noturb.nudge_to_column(c,dt,300); } , "col_nudge");
+          coupler_noturb.run_module( [&] (Coupler &c) { col_nudge_noturb.nudge_to_column(c,dt,dt*2); } , "col_nudge");
           coupler_noturb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
           coupler_noturb.run_module( [&] (Coupler &c) { modules::sponge_layer         (c,dt,300,0.1); } , "sponge"    );
           coupler_noturb.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
@@ -234,13 +237,14 @@ int main(int argc, char** argv) {
 
         // Force domain avg col density and temperature, and copy in precursor ghost cells
         modules::ColumnNudger col_nudge_turb;
-        col_nudge_turb.column = col_nudge_prec.column;
+        col_nudge_turb.column = col_nudge_prec.column.createDeviceCopy();
         col_nudge_turb.names  = col_nudge_prec.names;
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_turb );
 
         {
+          precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temp"} , 0 , nx_glob/10 , 0 , ny_glob/10 );
           coupler_turb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
-          coupler_turb.run_module( [&] (Coupler &c) { col_nudge_turb.nudge_to_column(c,dt,300); } , "col_nudge"  );
+          coupler_turb.run_module( [&] (Coupler &c) { col_nudge_turb.nudge_to_column(c,dt,dt*2); } , "col_nudge"  );
           coupler_turb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
           coupler_turb.run_module( [&] (Coupler &c) { modules::sponge_layer         (c,dt,300,0.1); } , "sponge"    );
           coupler_turb.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );

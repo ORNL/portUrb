@@ -77,21 +77,21 @@ namespace modules {
       int nx      = coupler.get_nx();
       int ny      = coupler.get_ny();
       int nz      = coupler.get_nz();
-      real2d column("column",names.size(),nz);
+      real2d column_loc("column_loc",names.size(),nz);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) ,
                                         KOKKOS_LAMBDA (int l, int k) {
-        column(l,k) = 0;
+        column_loc(l,k) = 0;
         for (int j=0; j < ny; j++) {
           for (int i=0; i < nx; i++) {
-            column(l,k) += state(l,k,j,i);
+            column_loc(l,k) += state(l,k,j,i);
           }
         }
       });
-      column = coupler.get_parallel_comm().all_reduce( column , MPI_SUM , "column_nudging_Allreduce" );
+      column_loc = coupler.get_parallel_comm().all_reduce( column_loc , MPI_SUM , "column_nudging_Allreduce" );
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) , KOKKOS_LAMBDA (int l, int k) {
-        column(l,k) /= (nx_glob*ny_glob);
+        column_loc(l,k) /= (nx_glob*ny_glob);
       });
-      return column;
+      return column_loc;
     }
 
   };

@@ -28,30 +28,27 @@ namespace modules {
     core::MultiField<real      ,3> fields_main;
     core::MultiField<real const,3> fields_prec;
     int numvars = vnames.size();
-    int idR = -1, idT=-1;
     for (int i=0; i < numvars; i++) {
-      if (vnames.at(i) == "density_dry") idR = i;
-      if (vnames.at(i) == "temp"       ) idT = i;
       fields_main.add_field( dm_main.get<real      ,3>(vnames.at(i)) );
       fields_prec.add_field( dm_prec.get<real const,3>(vnames.at(i)) );
     }
 
-    // Get the mean column for main values
-    real2d col_main("main_col_mean",numvars,nz);
-    real2d col_prec("main_col_prec",numvars,nz);
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(numvars,nz) , KOKKOS_LAMBDA (int l, int k) {
-      col_main(l,k) = 0;
-      col_prec(l,k) = 0;
-      for (int j=0; j < ny; j++) {
-        for (int i=0; i < nx; i++) {
-          col_main(l,k) += fields_main(l,k,j,i);
-          col_prec(l,k) += fields_prec(l,k,j,i);
-        }
-      }
-    });
+    // // Get the mean column for main values
+    // real2d col_main("main_col_mean",numvars,nz);
+    // real2d col_prec("main_col_prec",numvars,nz);
+    // parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(numvars,nz) , KOKKOS_LAMBDA (int l, int k) {
+    //   col_main(l,k) = 0;
+    //   col_prec(l,k) = 0;
+    //   for (int j=0; j < ny; j++) {
+    //     for (int i=0; i < nx; i++) {
+    //       col_main(l,k) += fields_main(l,k,j,i);
+    //       col_prec(l,k) += fields_prec(l,k,j,i);
+    //     }
+    //   }
+    // });
 
-    col_main = coupler_main.get_parallel_comm().all_reduce(col_main,MPI_SUM)/(nx_glob*ny_glob);
-    col_prec = coupler_prec.get_parallel_comm().all_reduce(col_prec,MPI_SUM)/(nx_glob*ny_glob);
+    // col_main = coupler_main.get_parallel_comm().all_reduce(col_main,MPI_SUM)/(nx_glob*ny_glob);
+    // col_prec = coupler_prec.get_parallel_comm().all_reduce(col_prec,MPI_SUM)/(nx_glob*ny_glob);
 
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
       real weight = 0;
@@ -79,11 +76,11 @@ namespace modules {
         if (ny_glob-1-(j_beg+j) < nfull) { weight = 1; }
         else                             { weight = std::max(weight,(1+std::cos(M_PI*(ny_glob-1-(j_beg+j)-nfull)/npart))/2); }
       }
-      if (l==idR || l==idT) {
-        fields_main(l,k,j,i) = weight*(fields_prec(l,k,j,i)-col_prec(l,k)+col_main(l,k)) + (1-weight)*fields_main(l,k,j,i);
-      } else {
+      // if (l==idR || l==idT) {
+      //   fields_main(l,k,j,i) = weight*(fields_prec(l,k,j,i)-col_prec(l,k)+col_main(l,k)) + (1-weight)*fields_main(l,k,j,i);
+      // } else {
         fields_main(l,k,j,i) = weight*(fields_prec(l,k,j,i)                            ) + (1-weight)*fields_main(l,k,j,i);
-      }
+      // }
     });
 
   }
