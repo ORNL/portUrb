@@ -165,10 +165,10 @@ int main(int argc, char** argv) {
 
       // Run the precursor modules
       coupler_prec.run_module( [&] (Coupler &c) { col = geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); } , "pg_forcing" );
-      coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);               } , "dycore"         );
+      coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);               } , "les_closure"    );
       coupler_prec.run_module( [&] (Coupler &c) { sponge_layer             (c,dt,300,0.05);      } , "sponge"         );
       coupler_prec.run_module( [&] (Coupler &c) { apply_surface_fluxes     (c,dt);               } , "surface_fluxes" );
-      coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);               } , "les_closure"    );
+      coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);               } , "dycore"         );
       coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);               } , "time_averager"  );
 
       // // Copy the precursor column to the main column nudger for nudging to the precursor column state
@@ -179,13 +179,13 @@ int main(int argc, char** argv) {
       dycore.copy_precursor_ghost_cells( coupler_prec , coupler_main );
 
       // Run the main modules using precursor ghost cells / open boundaries
-      precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} , nx_glob/20 , nx_glob/20 , ny_glob/20 , ny_glob/20 );
+      precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} , 0 , nx_glob/10 , 0 , ny_glob/10 );
       coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100);   } , "col_nudge"  );
       coupler_main.run_module( [&] (Coupler &c) { geostrophic_wind_forcing_specified(c,dt,lat_g,u_g,v_g,col); } , "pg_forcing" );
-      coupler_main.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);               } , "dycore"         );
+      coupler_main.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);               } , "les_closure"    );
       coupler_main.run_module( [&] (Coupler &c) { sponge_layer             (c,dt,300,0.05);      } , "sponge"         );
       coupler_main.run_module( [&] (Coupler &c) { apply_surface_fluxes     (c,dt);               } , "surface_fluxes" );
-      coupler_main.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);               } , "les_closure"    );
+      coupler_main.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);               } , "dycore"         );
       coupler_main.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);               } , "time_averager"  );
 
       // Update time step

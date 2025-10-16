@@ -925,12 +925,12 @@ namespace modules {
           auto prec_x1 = dm.get<FLOC const,5>("dycore_ghost_x1");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            // if (l!=idP) {
+            if (l!=idP) {
               auto u = fields(idU,hs+k,hs+j,hs);
               fields(l,hs+k,hs+j,hs-1-ii) = u > 0 ? prec_x1(istage,l,k,j,ii) : fields(l,hs+k,hs+j,hs+0);
-            // } else {
-            //   fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0);
-            // }
+            } else {
+              fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0);
+            }
           });
         } else {
           std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x1 can only be periodic or open";
@@ -949,12 +949,12 @@ namespace modules {
           auto prec_x2 = dm.get<FLOC const,5>("dycore_ghost_x2");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            // if (l!=idP) {
+            if (l!=idP) {
               auto u = fields(idU,hs+k,hs+j,hs+nx-1);
               fields(l,hs+k,hs+j,hs+nx+ii) = u > 0 ? fields(l,hs+k,hs+j,hs+nx-1) : prec_x2(istage,l,k,j,ii);
-            // } else {
-            //   fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
-            // }
+            } else {
+              fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
+            }
           });
         } else {
           std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x2 can only be periodic or open";
@@ -973,12 +973,12 @@ namespace modules {
           auto prec_y1 = dm.get<FLOC const,5>("dycore_ghost_y1");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            // if (l!=idP) {
+            if (l!=idP) {
               auto v = fields(idV,hs+k,hs,hs+i);
               fields(l,hs+k,hs-1-jj,hs+i) = v > 0 ? prec_y1(istage,l,k,jj,i) : fields(l,hs+k,hs+0,hs+i);
-            // } else {
-            //   fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i);
-            // }
+            } else {
+              fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i);
+            }
           });
         } else {
           std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y1 can only be periodic or open";
@@ -997,12 +997,12 @@ namespace modules {
           auto prec_y2 = dm.get<FLOC const,5>("dycore_ghost_y2");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            // if (l!=idP) {
+            if (l!=idP) {
               auto v = fields(idV,hs+k,hs+ny-1,hs+i);
               fields(l,hs+k,hs+ny+jj,hs+i) = v > 0 ? fields(l,hs+k,hs+ny-1,hs+i) : prec_y2(istage,l,k,jj,i);
-            // } else {
-            //   fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
-            // }
+            } else {
+              fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
+            }
           });
         } else {
           std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y2 can only be periodic or open";
