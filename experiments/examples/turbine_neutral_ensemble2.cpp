@@ -44,15 +44,15 @@ int main(int argc, char** argv) {
     {
       auto func_nranks  = [=] (int ind) { return 1; };
       auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        real wind = 10; // ind+2;
+        real wind = ind+2;
         coupler.set_option<real>("hub_height_wind_mag",wind);
         ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("wind-")+std::to_string(wind));
         ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("wind-")+std::to_string(wind));
       };
-      ensembler.register_dimension( 1 , func_nranks , func_coupler );
+      ensembler.register_dimension( 25 , func_nranks , func_coupler );
     }
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_prec , 16 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_prec , 4 , MPI_COMM_WORLD );
     coupler_prec.set_parallel_comm( par_comm );
 
     auto orig_cout_buf = std::cout.rdbuf();
@@ -176,6 +176,9 @@ int main(int argc, char** argv) {
       custom_modules::sc_perturb( coupler_turb );
       windmills    .init        ( coupler_turb );
 
+      windmills.turbine_group.turbines.at(0).u_samp_inertial = hub_wind*std::cos(hub_dir);
+      windmills.turbine_group.turbines.at(0).v_samp_inertial = hub_wind*std::sin(hub_dir);
+
       // Get elapsed time (zero), and create counters for output and informing the user in stdout
       real etime = coupler_prec.get_option<real>("elapsed_time");
       core::Counter output_counter( out_freq    , etime );
@@ -193,20 +196,21 @@ int main(int argc, char** argv) {
         // If we're about to go past the final time, then limit to time step to exactly hit the final time
         if (etime + dt > sim_time) { dt = sim_time - etime; }
 
-        real h = turbine_hubz;
         real u = hub_wind*std::cos(hub_dir);
         real v = hub_wind*std::sin(hub_dir);
         real pgu, pgv;
 
         // Run modules
         using core::Coupler;
-        using modules::uniform_pg_wind_forcing_height;
+        using modules::uniform_pg_wind_forcing_given;
         using modules::uniform_pg_wind_forcing_specified;
         using modules::precursor_sponge;
 
         real2d col;
         {
-          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,900); } , "pg_forcing" );
+          real u_in = windmills.turbine_group.turbines.at(0).u_samp_inertial;
+          real v_in = windmills.turbine_group.turbines.at(0).v_samp_inertial;
+          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_given(c,dt,u_in,v_in,u,v,900); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
           coupler_prec.run_module( [&] (Coupler &c) { modules::sponge_layer        (c,dt,300,0.1); } , "sponge" );
           coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );

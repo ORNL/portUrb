@@ -69,6 +69,31 @@ namespace modules {
   }
 
 
+  inline std::tuple<real,real> uniform_pg_wind_forcing_given( core::Coupler & coupler  ,
+                                                              real            dt       ,
+                                                              real            u_in     ,
+                                                              real            v_in     ,
+                                                              real            u0       ,
+                                                              real            v0       ,
+                                                              real            tau = 10 ) {
+    using yakl::c::parallel_for;
+    using yakl::c::SimpleBounds;
+    auto nz   = coupler.get_nz();
+    auto ny   = coupler.get_ny();
+    auto nx   = coupler.get_nx();
+    auto &dm  = coupler.get_data_manager_readwrite();
+    auto uvel = dm.get<real,3>("uvel");
+    auto vvel = dm.get<real,3>("vvel");
+    real u_forcing = dt / tau*(u0-u_in);
+    real v_forcing = dt / tau*(v0-v_in);
+    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      uvel(k,j,i) += u_forcing;
+      vvel(k,j,i) += v_forcing;
+    });
+    return std::make_tuple(u_forcing/dt,v_forcing/dt);
+  }
+
+
   inline void uniform_pg_wind_forcing_specified( core::Coupler & coupler ,
                                                  real            dt      ,
                                                  real            utend   ,
