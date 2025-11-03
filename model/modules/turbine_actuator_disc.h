@@ -46,14 +46,15 @@ namespace modules {
 
 
     struct Turbine {
-      bool               active;      // Whether this turbine affects this MPI task
-      real               base_loc_x;  // x location of the tower base
-      real               base_loc_y;  // y location of the tower base
-      real               yaw_angle;   // Current yaw angle (radians counter-clockwise from facing west)
-      RefTurbine         ref_turbine; // The reference turbine to use for this turbine
-      core::ParallelComm par_comm;    // MPI communicator for this turbine
-      std::vector<real>  power_trace; // Time trace of power generation
-      std::vector<real>  yaw_trace;   // Time trace of yaw angle
+      bool               active;         // Whether this turbine affects this MPI task
+      real               base_loc_x;     // x location of the tower base
+      real               base_loc_y;     // y location of the tower base
+      real               yaw_angle;      // Current yaw angle (radians counter-clockwise from facing west)
+      RefTurbine         ref_turbine;    // The reference turbine to use for this turbine
+      core::ParallelComm par_comm;       // MPI communicator for this turbine
+      std::vector<real>  power_trace;    // Time trace of power generation
+      std::vector<real>  yaw_trace;      // Time trace of yaw angle
+      std::vector<real>  mag_trace;      // Time trace of inflow wind magnitude normal to turbine plane
     };
 
 
@@ -128,6 +129,7 @@ namespace modules {
           for (int iturb=0; iturb < turbine_group.turbines.size(); iturb++) {
             nc.create_var<real>( std::string("power_trace_turb_")+std::to_string(iturb) , {"num_time_steps"} );
             nc.create_var<real>( std::string("yaw_trace_turb_"  )+std::to_string(iturb) , {"num_time_steps"} );
+            nc.create_var<real>( std::string("mag_trace_turb_"  )+std::to_string(iturb) , {"num_time_steps"} );
           }
           nc.enddef();
           nc.begin_indep_data();
@@ -137,14 +139,18 @@ namespace modules {
                                   turbine.base_loc_y >= j_beg*dy && turbine.base_loc_y < (j_beg+ny)*dy ) {
               realHost1d power_arr("power_arr",trace_size);
               realHost1d yaw_arr  ("yaw_arr"  ,trace_size);
+              realHost1d mag_arr  ("mag_arr"  ,trace_size);
               for (int i=0; i < trace_size; i++) { power_arr(i) = turbine.power_trace.at(i);          }
               for (int i=0; i < trace_size; i++) { yaw_arr  (i) = turbine.yaw_trace  .at(i)/M_PI*180; }
+              for (int i=0; i < trace_size; i++) { mag_arr  (i) = turbine.mag_trace  .at(i); }
               nc.write( power_arr , std::string("power_trace_turb_")+std::to_string(iturb) );
               nc.write( yaw_arr   , std::string("yaw_trace_turb_"  )+std::to_string(iturb) );
+              nc.write( mag_arr   , std::string("mag_trace_turb_"  )+std::to_string(iturb) );
             }
             coupler.get_parallel_comm().barrier();
             turbine.power_trace.clear();
             turbine.yaw_trace  .clear();
+            turbine.mag_trace  .clear();
           }
           nc.end_indep_data();
         }
@@ -324,6 +330,7 @@ namespace modules {
           sums(0) = yakl::intrinsics::sum( samp_u );
           sums(1) = yakl::intrinsics::sum( samp_v );
           sums = turbine.par_comm.all_reduce( sums , MPI_SUM , "windmill_Allreduce2" );
+          // Compute horizontal wind magnitude normal to the disk
           float mag0 = std::max( 0.f , sums(0)*cos_yaw + sums(1)*sin_yaw );
           // Computation of disk properties
           float C_T       = std::min( 1.f , interp( ref_velmag , ref_thrust_coef , mag0 ) );
@@ -356,6 +363,7 @@ namespace modules {
             }
           });
           turbine.yaw_trace  .push_back( turbine.yaw_angle );
+          turbine.mag_trace  .push_back( mag0              );
           turbine.power_trace.push_back( pwr               );
           if (! coupler.get_option<bool>("turbine_fixed_yaw",false)) {
             turbine.yaw_angle = yaw_tend(up_uvel,up_vvel,dt,turbine.yaw_angle,turbine.ref_turbine.max_yaw_speed);
@@ -371,6 +379,68 @@ namespace modules {
       });
 
       trace_size++;
+    }
+
+
+    void disk_average_wind( core::Coupler const & coupler     ,
+                            RefTurbine    const & ref_turbine ,
+                            real                & avg_u       ,
+                            real                & avg_v       ) {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto  nx         = coupler.get_nx  ();
+      auto  ny         = coupler.get_ny  ();
+      auto  nz         = coupler.get_nz  ();
+      auto  dx         = coupler.get_dx  ();
+      auto  nx_glob    = coupler.get_nx_glob();
+      auto  ny_glob    = coupler.get_ny_glob();
+      auto  zint       = coupler.get_zint().createHostCopy();
+      auto  &dm        = coupler.get_data_manager_readonly();
+      auto  uvel       = dm.get<real const,3>("uvel");
+      auto  vvel       = dm.get<real const,3>("vvel");
+      auto  rad        = ref_turbine.blade_radius;
+      auto  hub_height = ref_turbine.hub_height  ;
+      auto  decay      = 2*dx/rad; // Length of decay of thrust after the end of the blade radius (relative)
+      int   num_z      = std::ceil(20/dx*rad*(1+decay/2)*2); // # cells to sample over in z-direction
+      auto thrust_shape = [&] (float x, float x2, float x3, float a) -> float {
+        if (x < x2) return std::pow(-1.0*((x*x)-2*x*x2)/(x2*x2),a);
+        if (x < x3) return -1.0*(2*(x*x*x)-3*(x*x)*x2-3*x2*(x3*x3)+(x3*x3*x3)-3*((x*x)-2*x*x2)*x3)/
+                                ((x2*x2*x2)-3*(x2*x2)*x3+3*x2*(x3*x3)-(x3*x3*x3));
+        return 0;
+      };
+      realHost1d shp_host("shp",nz);
+      shp_host = 0;
+      for (int k = 0; k < num_z; k++) {
+        float z = -rad*(1+decay/2) + (2*rad*(1+decay/2)*k)/(num_z-1);
+        float rloc = std::abs(z);
+        if (rloc <= rad*(1+decay/2)) {
+          float shp_loc = thrust_shape(rloc/rad,1-decay/2,1+decay/2,0.5);
+          float zp = hub_height + z;
+          int tk = 0;
+          for (int kk=0; kk < nz; kk++) {
+            if (zp >= zint(kk) && zp < zint(kk+1)) {
+              tk = kk;
+              break;
+            }
+          }
+          if ( tk >= 0 && tk < nz) shp_host(tk) += shp_loc;
+        }
+      }
+      using yakl::componentwise::operator/;
+      auto shp = (shp_host / yakl::intrinsics::sum(shp_host)).createDeviceCopy();
+      real2d udisk("udisk",ny,nx);
+      real2d vdisk("vdisk",ny,nx);
+      udisk = 0;
+      vdisk = 0;
+      real r_nx_ny = 1./(nx_glob*ny_glob);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (shp(k) > 0) {
+          Kokkos::atomic_add( &udisk(j,i) , shp(k)*uvel(k,j,i)*r_nx_ny );
+          Kokkos::atomic_add( &vdisk(j,i) , shp(k)*vvel(k,j,i)*r_nx_ny );
+        }
+      });
+      avg_u = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(udisk),MPI_SUM);
+      avg_v = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(vdisk),MPI_SUM);
     }
 
 

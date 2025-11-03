@@ -5,7 +5,7 @@
 #include "sc_init.h"
 #include "sc_perturb.h"
 #include "les_closure.h"
-#include "windmill_actuators_yaw.h"
+#include "turbine_actuator_disc.h"
 #include "surface_flux.h"
 #include "uniform_pg_wind_forcing.h"
 #include "precursor_sponge.h"
@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     // IMPORTANT PARAMETERS
     /////////////////////////////////////////////////////////
     real constexpr z0    = 1.e-5;
-    real constexpr dx    = 10;
+    real constexpr dx    = 12;
 
     std::string turbine_file      = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
     YAML::Node  node              = YAML::LoadFile(turbine_file);
@@ -44,15 +44,15 @@ int main(int argc, char** argv) {
     {
       auto func_nranks  = [=] (int ind) { return 1; };
       auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        real wind = ind+2;
+        real wind = 3+ind*2;
         coupler.set_option<real>("hub_height_wind_mag",wind);
         ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("wind-")+std::to_string(wind));
         ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("wind-")+std::to_string(wind));
       };
-      ensembler.register_dimension( 25 , func_nranks , func_coupler );
+      ensembler.register_dimension( 12 , func_nranks , func_coupler );
     }
 
-    auto par_comm = ensembler.create_coupler_comm( coupler_prec , 4 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_prec , 12 , MPI_COMM_WORLD );
     coupler_prec.set_parallel_comm( par_comm );
 
     auto orig_cout_buf = std::cout.rdbuf();
@@ -68,27 +68,27 @@ int main(int argc, char** argv) {
                                                 << coupler_prec.get_option<real>("hub_height_wind_mag")
                                                 << "] m/s" << std::endl;
       real        sim_time          = 3600*24+1;
-      real        xlen              = 3000;
-      real        ylen              = 3000;
-      real        zlen              = 600;
+      real        xlen              = 10000;
+      real        ylen              = 12*D;
+      real        zlen              = 5*D;
       int         nx_glob           = (int) std::round(xlen/dx);
       int         ny_glob           = (int) std::round(ylen/dx);
       int         nz                = (int) std::round(zlen/dx);
       real        dtphys_in         = 0.;  // Dycore determined time step size
-      int         dyn_cycle         = 1;
+      int         dyn_cycle         = 4;
       std::string init_data         = "ABL_neutral2";
       real        out_freq          = 3600;
       real        inform_freq       = 10;
       std::string out_prefix        = coupler_prec.get_option<std::string>("out_prefix");
       real        hub_wind          = coupler_prec.get_option<real>("hub_height_wind_mag");
-      real        hub_dir           = M_PI/4.;
+      real        hub_dir           = 0;
       coupler_prec.set_option<std::string      >( "init_data"                , init_data    );
       coupler_prec.set_option<real             >( "out_freq"                 , out_freq     );
       coupler_prec.set_option<real             >( "latitude"                 , 0.           );
       coupler_prec.set_option<std::string      >( "turbine_file"             , turbine_file );
       coupler_prec.set_option<bool             >( "turbine_floating_motions" , false        );
       coupler_prec.set_option<bool             >( "turbine_do_blades"        , false        );
-      coupler_prec.set_option<real             >( "turbine_initial_yaw"      , M_PI/4.      );
+      coupler_prec.set_option<real             >( "turbine_initial_yaw"      , 0            );
       coupler_prec.set_option<bool             >( "turbine_fixed_yaw"        , false        );
       coupler_prec.set_option<bool             >( "turbine_immerse_material" , false        );
       coupler_prec.set_option<bool             >( "turbine_orig_C_T"         , true         );
@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
       coupler_prec.set_option<bool             >( "dycore_buoyancy_theta"    , true         );
       coupler_prec.set_option<real             >( "dycore_cs"                , 60           );
       coupler_prec.set_option<std::vector<real>>( "turbine_x_locs"           , {6*D}        );
-      coupler_prec.set_option<std::vector<real>>( "turbine_y_locs"           , {6*D}        );
+      coupler_prec.set_option<std::vector<real>>( "turbine_y_locs"           , {ylen/2}     );
       coupler_prec.set_option<std::vector<bool>>( "turbine_apply_thrust"     , {true}       );
       coupler_prec.set_option<real             >( "hub_height_wind_dir"      , hub_dir      );
 
@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
       modules::LES_Closure                       les_closure;
       modules::Dynamics_Euler_Stratified_WenoFV  dycore;
       modules::Time_Averager                     time_averager;
-      modules::WindmillActuators                 windmills;
+      modules::TurbineActuatorDisc               windmills;
 
       // Run the initialization modules on coupler_prec
       custom_modules::sc_init( coupler_prec );
@@ -176,9 +176,6 @@ int main(int argc, char** argv) {
       custom_modules::sc_perturb( coupler_turb );
       windmills    .init        ( coupler_turb );
 
-      windmills.turbine_group.turbines.at(0).u_samp_inertial = hub_wind*std::cos(hub_dir);
-      windmills.turbine_group.turbines.at(0).v_samp_inertial = hub_wind*std::sin(hub_dir);
-
       // Get elapsed time (zero), and create counters for output and informing the user in stdout
       real etime = coupler_prec.get_option<real>("elapsed_time");
       core::Counter output_counter( out_freq    , etime );
@@ -208,9 +205,9 @@ int main(int argc, char** argv) {
 
         real2d col;
         {
-          real u_in = windmills.turbine_group.turbines.at(0).u_samp_inertial;
-          real v_in = windmills.turbine_group.turbines.at(0).v_samp_inertial;
-          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_given(c,dt,u_in,v_in,u,v,900); } , "pg_forcing" );
+          real u_in,v_in;
+          windmills.disk_average_wind( coupler_prec , windmills.turbine_group.turbines.at(0).ref_turbine , u_in , v_in );
+          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_given(c,dt,u_in,v_in,u,v,300); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
           coupler_prec.run_module( [&] (Coupler &c) { modules::sponge_layer        (c,dt,300,0.1); } , "sponge" );
           coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );

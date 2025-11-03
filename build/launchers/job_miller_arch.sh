@@ -5,7 +5,7 @@
 #SBATCH -J portUrb
 #SBATCH -o %x-%j.out
 #SBATCH -t 6:00:00
-#SBATCH -N 25
+#SBATCH -N 36
 
 # #SBATCH --exclude=arch13
 
