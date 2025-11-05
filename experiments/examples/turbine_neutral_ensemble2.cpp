@@ -23,13 +23,15 @@ int main(int argc, char** argv) {
     // IMPORTANT PARAMETERS
     /////////////////////////////////////////////////////////
     real constexpr z0    = 1.e-5;
-    real constexpr dx    = 12;
+    real constexpr dx    = 10;
 
     std::string turbine_file      = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
     YAML::Node  node              = YAML::LoadFile(turbine_file);
     real        turbine_hubz      = node["hub_height"  ].as<real>();
     real        turbine_rad       = node["blade_radius"].as<real>();
     real        D                 = turbine_rad*2;
+    bool        is_restart        = true;
+    int         restart_index     = 15;
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler_prec;
@@ -181,9 +183,28 @@ int main(int argc, char** argv) {
       core::Counter output_counter( out_freq    , etime );
       core::Counter inform_counter( inform_freq , etime );
 
-      if (out_freq >= 0) coupler_prec  .write_output_file( out_prefix+std::string("_precursor") );
-      if (out_freq >= 0) coupler_noturb.write_output_file( out_prefix+std::string("_noturbine") );
-      if (out_freq >= 0) coupler_turb  .write_output_file( out_prefix+std::string("_turbine")   );
+      // if restart, overwrite with restart data, and set the counters appropriately. Otherwise, write initial output
+      if (is_restart) {
+        std::stringstream fname_prec;
+        std::stringstream fname_noturb;
+        std::stringstream fname_turb;
+        fname_prec   << out_prefix << "_precursor_" << std::setw(8) << std::setfill('0') << restart_index << ".nc";
+        fname_noturb << out_prefix << "_noturbine_" << std::setw(8) << std::setfill('0') << restart_index << ".nc";
+        fname_turb   << out_prefix << "_turbine_"   << std::setw(8) << std::setfill('0') << restart_index << ".nc";
+        coupler_prec  .set_option<std::string>( "restart_file" , fname_prec  .str() );
+        coupler_noturb.set_option<std::string>( "restart_file" , fname_noturb.str() );
+        coupler_turb  .set_option<std::string>( "restart_file" , fname_turb  .str() );
+        coupler_prec  .overwrite_with_restart();
+        coupler_noturb.overwrite_with_restart();
+        coupler_turb  .overwrite_with_restart();
+        etime          = coupler_prec.get_option<real>("elapsed_time");
+        output_counter = core::Counter( out_freq    , etime-((int)(etime/out_freq   ))*out_freq    );
+        inform_counter = core::Counter( inform_freq , etime-((int)(etime/inform_freq))*inform_freq );
+      } else {
+        if (out_freq >= 0) coupler_prec  .write_output_file( out_prefix+std::string("_precursor") );
+        if (out_freq >= 0) coupler_noturb.write_output_file( out_prefix+std::string("_noturbine") );
+        if (out_freq >= 0) coupler_turb  .write_output_file( out_prefix+std::string("_turbine")   );
+      }
 
       // Begin main simulation loop over time steps
       real dt = dtphys_in;
