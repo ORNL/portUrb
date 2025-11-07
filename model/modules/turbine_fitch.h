@@ -6,7 +6,7 @@
 
 namespace modules {
 
-  struct TurbineActuatorDisc {
+  struct TurbineFitch {
 
 
     struct RefTurbine {
@@ -56,8 +56,8 @@ namespace modules {
         auto j_beg = coupler.get_j_beg();
         real dom_x1 = (i_beg+0 )*dx;
         real dom_x2 = (i_beg+nx)*dx;
-        real dom_y1 = (y_beg+0 )*dy;
-        real dom_y2 = (y_beg+ny)*dy;
+        real dom_y1 = (j_beg+0 )*dy;
+        real dom_y2 = (j_beg+ny)*dy;
         bool active = base_loc_x >= dom_x1 && base_loc_x < dom_x2 && base_loc_y >= dom_y1 && base_loc_y < dom_y2;
         Turbine loc;
         loc.active      = active;
@@ -75,7 +75,7 @@ namespace modules {
               if (std::abs(z0) < 1) prop(k) += std::sqrt(1-z0*z0);
             }
           }
-          using yakl::intrinsics::operator/;
+          using yakl::componentwise::operator/;
           loc.prop = (prop/yakl::intrinsics::sum(prop)).createDeviceCopy();
         }
         turbines.push_back(loc);
@@ -160,7 +160,6 @@ namespace modules {
         if (turbine.active) {
           // Get reference data for later computations
           real rad             = turbine.ref_turbine.blade_radius;
-          real hub_height      = turbine.ref_turbine.hub_height  ;
           real base_x          = turbine.base_loc_x              ;
           real base_y          = turbine.base_loc_y              ;
           auto prop            = turbine.prop                    ;
@@ -185,7 +184,7 @@ namespace modules {
           real cos_yaw = std::cos(yaw);
           real sin_yaw = std::sin(yaw);
           real mag0    = sqrt(u0*u0+v0*v0);
-          real C_T     = std::min( 1.f , interp( ref_velmag , ref_thrust_coef , mag0 ) );
+          real C_T     = std::min( 1.  , interp( ref_velmag , ref_thrust_coef , mag0 ) );
           real C_P     = std::min( C_T , interp( ref_velmag , ref_power_coef  , mag0 ) );
           real pwr     =                 interp( ref_velmag , ref_power       , mag0 );
           real C_TKE   = coupler.get_option<real>("turbine_f_TKE",0.25) * (C_T - C_P);
@@ -223,15 +222,29 @@ namespace modules {
                             real                & avg_v       ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      auto  nx      = coupler.get_nx();
-      auto  ny      = coupler.get_ny();
-      auto  nz      = coupler.get_nz();
-      auto  nx_glob = coupler.get_nx_glob();
-      auto  ny_glob = coupler.get_ny_glob();
-      auto  &dm     = coupler.get_data_manager_readonly();
-      auto  uvel    = dm.get<real const,3>("uvel");
-      auto  vvel    = dm.get<real const,3>("vvel");
-      auto  prop    = turbine.prop;
+      auto nx      = coupler.get_nx();
+      auto ny      = coupler.get_ny();
+      auto nz      = coupler.get_nz();
+      auto zint    = coupler.get_zint().createHostCopy();
+      auto nx_glob = coupler.get_nx_glob();
+      auto ny_glob = coupler.get_ny_glob();
+      auto &dm     = coupler.get_data_manager_readonly();
+      auto uvel    = dm.get<real const,3>("uvel");
+      auto vvel    = dm.get<real const,3>("vvel");
+
+      realHost1d prop_h("prop",nz);
+      int nsamp = 5;
+      for (int k=0; k < nz; k++) {
+        prop_h(k) = 0;
+        for (int kk=0; kk < nsamp; kk++) {
+          real z  = zint(k)+(kk+0.5)*(zint(k+1)-zint(k))/nsamp;
+          real z0 = (z-ref_turbine.hub_height)/ref_turbine.blade_radius;
+          if (std::abs(z0) < 1) prop_h(k) += std::sqrt(1-z0*z0);
+        }
+      }
+      using yakl::componentwise::operator/;
+      auto prop = (prop_h/yakl::intrinsics::sum(prop_h)).createDeviceCopy();
+
       real2d udisk("udisk",ny,nx);
       real2d vdisk("vdisk",ny,nx);
       udisk = 0;
