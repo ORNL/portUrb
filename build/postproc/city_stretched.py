@@ -5,7 +5,7 @@ from matplotlib import gridspec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
 
-workdir="/lustre/storm/nwp501/scratch/imn/city_stretched/"
+workdir="/lustre/storm/nwp501/scratch/imn/city_stretched_2"
 
 def get_ind(a,v) :
   return np.argmin(np.abs(a-v))
@@ -47,7 +47,7 @@ u        = np.array(nc_main["uvel"][:,:,:])
 v        = np.array(nc_main["vvel"][:,:,:])
 mag_main = np.sqrt(u*u+v*v)
 fig = plt.figure(figsize=(8,8),constrained_layout=True)
-gs = gridspec.GridSpec(2, 2, height_ratios=[3, 1], hspace=0.00, wspace=0.00, figure=fig)
+gs = gridspec.GridSpec(2, 2, height_ratios=[2.8, 1], hspace=0.00, wspace=0.00, figure=fig)
 # Top row: larger subplots
 ax1 = fig.add_subplot(gs[0, 0])
 ax2 = fig.add_subplot(gs[0, 1])
@@ -65,7 +65,7 @@ ax1.set_xlabel("x-location (km)")
 ax1.set_ylabel("y-location (km)")
 ax1.margins(x=0)
 divider = make_axes_locatable(ax1)
-cax1 = divider.append_axes("bottom", size="4%", pad=0.5)
+cax1 = divider.append_axes("bottom", size="1.2%", pad=0.5)
 cbar1 = plt.colorbar(CS1,orientation="horizontal",cax=cax1)
 cbar1.ax.tick_params(labelrotation=40)
 pos = ax2.get_position()
@@ -76,7 +76,7 @@ ax2.set_xlabel("x-location (km)")
 ax2.set_ylabel("y-location (km)")
 ax2.margins(x=0)
 divider = make_axes_locatable(ax2)
-cax2 = divider.append_axes("bottom", size="4%", pad=0.5)
+cax2 = divider.append_axes("bottom", size="1.2%", pad=0.5)
 cbar2 = plt.colorbar(CS2,orientation="horizontal",cax=cax2)
 cbar2.ax.tick_params(labelrotation=40)
 mn = np.minimum(np.min(mag_prec[:k2,ind_j,:]),np.min(mag_main[:k2,ind_j,:]))
@@ -151,6 +151,7 @@ plt.close()
 
 
 # avg_u over the last two hours
+fig,ax = plt.subplots(1,3,figsize=(8,5),sharey=True)
 vname = "avg_u"
 for i in range(len(times)) :
   nc_prec  = Dataset(files_prec[i],"r")
@@ -169,20 +170,14 @@ for i in range(len(times)) :
   var_main = loc_main if i==0 else var_main+loc_main
 var_prec /= len(times)
 var_main /= len(times)
-fig = plt.figure(figsize=(4,6))
-ax  = fig.gca()
-ax.plot(var_prec,z[:k2],label="precursor",color="black",linestyle="--")
-ax.plot(var_main,z[:k2],label="city"     ,color="red"  )
-ax.set_xlim(0,12)
-ax.set_ylim(0,900)
-ax.set_xlabel("u-velocity (m/s)")
-ax.set_ylabel("Height (m)")
-ax.legend()
-ax.margins(x=0)
-fig.tight_layout()
-plt.savefig("city_ABL_uvel_z.png",dpi=600)
-plt.show()
-plt.close()
+ax[0].plot(var_prec,z[:k2],label="precursor",color="black",linestyle="--")
+ax[0].plot(var_main,z[:k2],label="city"     ,color="red"  )
+ax[0].set_xlim(0,12)
+ax[0].set_ylim(0,900)
+ax[0].set_xlabel("u-velocity (m/s)")
+ax[0].set_ylabel("Height (m)")
+ax[0].legend()
+ax[0].margins(x=0)
 
 
 # avg_v over the last two hours
@@ -204,20 +199,14 @@ for i in range(len(times)) :
   var_main = loc_main if i==0 else var_main+loc_main
 var_prec /= len(times)
 var_main /= len(times)
-fig = plt.figure(figsize=(4,6))
-ax  = fig.gca()
-ax.plot(var_prec,z[:k2],label="precursor",color="black",linestyle="--")
-ax.plot(var_main,z[:k2],label="city",color="red"  )
-ax.set_xlim(-0.25,4.25)
-ax.set_ylim(0,900)
-ax.set_xlabel("v-velocity (m/s)")
-ax.set_ylabel("Height (m)")
-ax.legend()
-ax.margins(x=0)
-fig.tight_layout()
-plt.savefig("city_ABL_vvel_z.png",dpi=600)
-plt.show()
-plt.close()
+ax[1].plot(var_prec,z[:k2],label="precursor",color="black",linestyle="--")
+ax[1].plot(var_main,z[:k2],label="city",color="red"  )
+ax[1].set_xlim(-0.25,4.25)
+ax[1].set_ylim(0,900)
+ax[1].set_xlabel("v-velocity (m/s)")
+# ax[1].set_ylabel("Height (m)")
+ax[1].legend()
+ax[1].margins(x=0)
 
 
 # theta over the last two hours
@@ -240,56 +229,54 @@ for i in range(len(times)) :
   var_main = loc_main if i==0 else var_main+loc_main
 var_prec /= len(times)
 var_main /= len(times)
-fig = plt.figure(figsize=(4,6))
-ax  = fig.gca()
-ax.plot(var_prec,z[:k2],label="precursor",color="black",linestyle="--")
-ax.plot(var_main,z[:k2],label="city"     ,color="red"  )
-ax.set_xlim(299.7,314.5)
-ax.set_ylim(0,900)
-ax.set_xlabel("Potential Temperature (K)")
-ax.set_ylabel("Height (m)")
-ax.legend()
-ax.margins(x=0)
+ax[2].plot(var_prec,z[:k2],label="precursor",color="black",linestyle="--")
+ax[2].plot(var_main,z[:k2],label="city"     ,color="red"  )
+ax[2].set_xlim(299.7,314.5)
+ax[2].set_ylim(0,900)
+ax[2].set_xlabel("Potential Temperature (K)")
+# ax[2].set_ylabel("Height (m)")
+ax[2].legend()
+ax[2].margins(x=0)
 fig.tight_layout()
-plt.savefig("city_ABL_theta_z.png",dpi=600)
+plt.savefig("city_ABL_vertical.png",dpi=600)
 plt.show()
 plt.close()
 
 
-# w' theta'
-nc_prec    = Dataset(files_prec[-1],"r")
-nc_main    = Dataset(files_main[-1],"r")
-x          = np.array(nc_prec["x"][:])
-y          = np.array(nc_prec["y"][:])
-z          = np.array(nc_prec["z"][:])
-nz         = nc_prec.dimensions["z"].size
-hs         = int((nc_prec.dimensions["z_halo"].size-nz)/2)
-i1         = get_ind(x,1*1269.11407/2) # Bounding box of the city
-i2         = get_ind(x,3*1269.11407/2) # Bounding box of the city
-j1         = get_ind(y,1*1674.81256/2) # Bounding box of the city
-j2         = get_ind(y,3*1674.81256/2) # Bounding box of the city
-k2         = get_ind(z,900)
-theta_prec = np.array(nc_prec["theta_pert"][:k2,:,:]) + np.array(nc_prec["hy_theta_cells"][hs:k2+hs])[:,np.newaxis,np.newaxis]
-theta_main = np.array(nc_main["theta_pert"][:k2,:,:]) + np.array(nc_main["hy_theta_cells"][hs:k2+hs])[:,np.newaxis,np.newaxis]
-w_prec     = np.array(nc_prec["wvel"      ][:k2,:,:])
-w_main     = np.array(nc_main["wvel"      ][:k2,:,:])
-wp_prec    = w_prec     - np.mean(w_prec    ,axis=(1,2))[:,np.newaxis,np.newaxis]
-wp_main    = w_main     - np.mean(w_main    ,axis=(1,2))[:,np.newaxis,np.newaxis]
-tp_prec    = theta_prec - np.mean(theta_prec,axis=(1,2))[:,np.newaxis,np.newaxis]
-tp_main    = theta_main - np.mean(theta_main,axis=(1,2))[:,np.newaxis,np.newaxis]
-wptp_prec  = np.mean(wp_prec*tp_prec,axis=(1,2)) 
-wptp_main  = np.mean(wp_main*tp_main,axis=(1,2))
-fig = plt.figure(figsize=(4,6))
-ax  = fig.gca()
-ax.plot(wptp_prec,z[:k2],label="precursor",color="black",linestyle="--")
-ax.plot(wptp_main,z[:k2],label="city"     ,color="red"  )
-ax.set_xlim(-1.1,0.5)
-ax.set_ylim(0,900)
-ax.set_xlabel(r"$w^\prime \theta^\prime$")
-ax.set_ylabel("Height (m)")
-ax.legend()
-ax.margins(x=0)
-fig.tight_layout()
-plt.savefig("city_ABL_wptp_z.png",dpi=600)
-plt.show()
-plt.close()
+# # w' theta'
+# nc_prec    = Dataset(files_prec[-1],"r")
+# nc_main    = Dataset(files_main[-1],"r")
+# x          = np.array(nc_prec["x"][:])
+# y          = np.array(nc_prec["y"][:])
+# z          = np.array(nc_prec["z"][:])
+# nz         = nc_prec.dimensions["z"].size
+# hs         = int((nc_prec.dimensions["z_halo"].size-nz)/2)
+# i1         = get_ind(x,1*1269.11407/2) # Bounding box of the city
+# i2         = get_ind(x,3*1269.11407/2) # Bounding box of the city
+# j1         = get_ind(y,1*1674.81256/2) # Bounding box of the city
+# j2         = get_ind(y,3*1674.81256/2) # Bounding box of the city
+# k2         = get_ind(z,900)
+# theta_prec = np.array(nc_prec["theta_pert"][:k2,:,:]) + np.array(nc_prec["hy_theta_cells"][hs:k2+hs])[:,np.newaxis,np.newaxis]
+# theta_main = np.array(nc_main["theta_pert"][:k2,:,:]) + np.array(nc_main["hy_theta_cells"][hs:k2+hs])[:,np.newaxis,np.newaxis]
+# w_prec     = np.array(nc_prec["wvel"      ][:k2,:,:])
+# w_main     = np.array(nc_main["wvel"      ][:k2,:,:])
+# wp_prec    = w_prec     - np.mean(w_prec    ,axis=(1,2))[:,np.newaxis,np.newaxis]
+# wp_main    = w_main     - np.mean(w_main    ,axis=(1,2))[:,np.newaxis,np.newaxis]
+# tp_prec    = theta_prec - np.mean(theta_prec,axis=(1,2))[:,np.newaxis,np.newaxis]
+# tp_main    = theta_main - np.mean(theta_main,axis=(1,2))[:,np.newaxis,np.newaxis]
+# wptp_prec  = np.mean(wp_prec*tp_prec,axis=(1,2)) 
+# wptp_main  = np.mean(wp_main*tp_main,axis=(1,2))
+# fig = plt.figure(figsize=(4,6))
+# ax  = fig.gca()
+# ax.plot(wptp_prec,z[:k2],label="precursor",color="black",linestyle="--")
+# ax.plot(wptp_main,z[:k2],label="city"     ,color="red"  )
+# ax.set_xlim(-1.1,0.5)
+# ax.set_ylim(0,900)
+# ax.set_xlabel(r"$w^\prime \theta^\prime$")
+# ax.set_ylabel("Height (m)")
+# ax.legend()
+# ax.margins(x=0)
+# fig.tight_layout()
+# plt.savefig("city_ABL_wptp_z.png",dpi=600)
+# plt.show()
+# plt.close()

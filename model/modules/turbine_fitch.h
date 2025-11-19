@@ -16,8 +16,9 @@ namespace modules {
       std::vector<real> power;         // Power generation               (MW)
       real              hub_height;    // Hub height                     (m)
       real              blade_radius;  // Blade radius                   (m)
-      void init( std::string fname ) {
-        YAML::Node config = YAML::LoadFile( fname );
+      real1d            prop;          // Proportion of the turbine in each vertical level
+      void init( core::Coupler const & coupler ) {
+        YAML::Node config = YAML::LoadFile( coupler.get_option<std::string>("turbine_file") );
         if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
         this->velmag       = config["velocity_magnitude"].as<std::vector<real>>();
         this->thrust_coef  = config["thrust_coef"       ].as<std::vector<real>>();
@@ -25,6 +26,20 @@ namespace modules {
         this->power        = config["power_megawatts"   ].as<std::vector<real>>();
         this->hub_height   = config["hub_height"        ].as<real>();
         this->blade_radius = config["blade_radius"      ].as<real>();
+        auto nz   = coupler.get_nz();
+        auto zint = coupler.get_zint().createHostCopy();
+        realHost1d prop_h("prop",nz);
+        int nsamp = 5;
+        for (int k=0; k < nz; k++) {
+          prop_h(k) = 0;
+          for (int kk=0; kk < nsamp; kk++) {
+            real z  = zint(k)+(kk+0.5)*(zint(k+1)-zint(k))/nsamp;
+            real z0 = (z-this->hub_height)/this->blade_radius;
+            if (std::abs(z0) < 1) prop_h(k) += std::sqrt(1-z0*z0);
+          }
+        }
+        using yakl::componentwise::operator/;
+        this->prop = (prop_h/yakl::intrinsics::sum(prop_h)).createDeviceCopy();
       }
     };
 
@@ -36,7 +51,6 @@ namespace modules {
       RefTurbine         ref_turbine;  // The reference turbine to use for this turbine
       std::vector<real>  power_trace;  // Time trace of power generation
       std::vector<real>  mag_trace;    // Time trace of inflow wind magnitude normal to turbine plane
-      real1d             prop;         // Proportion of the turbine in each vertical level
     };
 
 
@@ -51,7 +65,6 @@ namespace modules {
         auto nx    = coupler.get_nx();
         auto ny    = coupler.get_ny();
         auto nz    = coupler.get_nz();
-        auto zint  = coupler.get_zint().createHostCopy();
         auto i_beg = coupler.get_i_beg();
         auto j_beg = coupler.get_j_beg();
         real dom_x1 = (i_beg+0 )*dx;
@@ -64,20 +77,6 @@ namespace modules {
         loc.base_loc_x  = base_loc_x;
         loc.base_loc_y  = base_loc_y;
         loc.ref_turbine = ref_turbine;
-        if (active) {
-          realHost1d prop("prop",nz);
-          int nsamp = 5;
-          for (int k=0; k < nz; k++) {
-            prop(k) = 0;
-            for (int kk=0; kk < nsamp; kk++) {
-              real z  = zint(k)+(kk+0.5)*(zint(k+1)-zint(k))/nsamp;
-              real z0 = (z-ref_turbine.hub_height)/ref_turbine.blade_radius;
-              if (std::abs(z0) < 1) prop(k) += std::sqrt(1-z0*z0);
-            }
-          }
-          using yakl::componentwise::operator/;
-          loc.prop = (prop/yakl::intrinsics::sum(prop)).createDeviceCopy();
-        }
         turbines.push_back(loc);
       }
     };
@@ -89,7 +88,7 @@ namespace modules {
 
     void init( core::Coupler &coupler ) {
       RefTurbine ref_turbine;
-      ref_turbine.init( coupler.get_option<std::string>("turbine_file") );
+      ref_turbine.init( coupler );
       if (coupler.option_exists("turbine_x_locs") && coupler.option_exists("turbine_y_locs")) {
         auto x_locs = coupler.get_option<std::vector<real>>("turbine_x_locs");
         auto y_locs = coupler.get_option<std::vector<real>>("turbine_y_locs");
@@ -162,7 +161,7 @@ namespace modules {
           real rad             = turbine.ref_turbine.blade_radius;
           real base_x          = turbine.base_loc_x              ;
           real base_y          = turbine.base_loc_y              ;
-          auto prop            = turbine.prop                    ;
+          auto prop            = turbine.ref_turbine.prop        ;
           auto ref_velmag      = turbine.ref_turbine.velmag      ;
           auto ref_thrust_coef = turbine.ref_turbine.thrust_coef ;
           auto ref_power_coef  = turbine.ref_turbine.power_coef  ;
@@ -225,26 +224,12 @@ namespace modules {
       auto nx      = coupler.get_nx();
       auto ny      = coupler.get_ny();
       auto nz      = coupler.get_nz();
-      auto zint    = coupler.get_zint().createHostCopy();
       auto nx_glob = coupler.get_nx_glob();
       auto ny_glob = coupler.get_ny_glob();
       auto &dm     = coupler.get_data_manager_readonly();
       auto uvel    = dm.get<real const,3>("uvel");
       auto vvel    = dm.get<real const,3>("vvel");
-
-      realHost1d prop_h("prop",nz);
-      int nsamp = 5;
-      for (int k=0; k < nz; k++) {
-        prop_h(k) = 0;
-        for (int kk=0; kk < nsamp; kk++) {
-          real z  = zint(k)+(kk+0.5)*(zint(k+1)-zint(k))/nsamp;
-          real z0 = (z-ref_turbine.hub_height)/ref_turbine.blade_radius;
-          if (std::abs(z0) < 1) prop_h(k) += std::sqrt(1-z0*z0);
-        }
-      }
-      using yakl::componentwise::operator/;
-      auto prop = (prop_h/yakl::intrinsics::sum(prop_h)).createDeviceCopy();
-
+      auto prop    = ref_turbine.prop;
       real2d udisk("udisk",ny,nx);
       real2d vdisk("vdisk",ny,nx);
       udisk = 0;
