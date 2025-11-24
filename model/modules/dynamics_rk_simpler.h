@@ -117,22 +117,82 @@ namespace modules {
       #endif
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      auto num_tracers             = coupler.get_num_tracers();
-      auto nx                      = coupler.get_nx();
-      auto ny                      = coupler.get_ny();
-      auto nz                      = coupler.get_nz();
+      auto num_tracers = coupler.get_num_tracers();
+      auto nx          = coupler.get_nx();
+      auto ny          = coupler.get_ny();
+      auto nz          = coupler.get_nz();
+      auto px          = coupler.get_px();
+      auto py          = coupler.get_py();
+      auto bc_x1       = coupler.get_option<std::string>("bc_x1");
+      auto bc_x2       = coupler.get_option<std::string>("bc_x2");
+      auto bc_y1       = coupler.get_option<std::string>("bc_y1");
+      auto bc_y2       = coupler.get_option<std::string>("bc_y2");
+      auto bc_z1       = coupler.get_option<std::string>("bc_z1");
+      auto bc_z2       = coupler.get_option<std::string>("bc_z2");
+      auto &dm         = coupler.get_data_manager_readwrite();
+      auto npx         = coupler.get_nproc_x();
+      auto npy         = coupler.get_nproc_y();
       real4d state  ("state"  ,num_state  ,nz,ny,nx);
       real4d tracers("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
       real dt_dyn = compute_time_step( coupler );
       int ncycles = (int) std::ceil( dt_phys / dt_dyn );
       dt_dyn = dt_phys / ncycles;
+
+      if ( coupler.get_option<bool>("dycore_is_precursor",false)   ||
+           coupler.get_option<std::string>("bc_x1") == "precursor" ||
+           coupler.get_option<std::string>("bc_x2") == "precursor" ||
+           coupler.get_option<std::string>("bc_y1") == "precursor" ||
+           coupler.get_option<std::string>("bc_y2") == "precursor" ) {
+        auto nstage = coupler.get_option<int>("dycore_num_stages");
+        if (px == 0) {
+          if (dm.entry_exists("dycore_ghost_x1")) {
+            if (dm.get<FLOC const,6>("dycore_ghost_x1").extent(0) != ncycles) {
+              dm.unregister_and_deallocate( "dycore_ghost_x1" );
+            }
+          }
+          if (! dm.entry_exists("dycore_ghost_x1")) {
+            dm.register_and_allocate<FLOC>("dycore_ghost_x1","",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+          }
+        }
+        if (px == npx-1) {
+          if (dm.entry_exists("dycore_ghost_x2")) {
+            if (dm.get<FLOC const,6>("dycore_ghost_x2").extent(0) != ncycles) {
+              dm.unregister_and_deallocate( "dycore_ghost_x2" );
+            }
+          }
+          if (! dm.entry_exists("dycore_ghost_x2")) {
+            dm.register_and_allocate<FLOC>("dycore_ghost_x2","",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+          }
+        }
+        if (py == 0) {
+          if (dm.entry_exists("dycore_ghost_y1")) {
+            if (dm.get<FLOC const,6>("dycore_ghost_y1").extent(0) != ncycles) {
+              dm.unregister_and_deallocate( "dycore_ghost_y1" );
+            }
+          }
+          if (! dm.entry_exists("dycore_ghost_y1")) {
+            dm.register_and_allocate<FLOC>("dycore_ghost_y1","",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+          }
+        }
+        if (py == npy-1) {
+          if (dm.entry_exists("dycore_ghost_y2")) {
+            if (dm.get<FLOC const,6>("dycore_ghost_y2").extent(0) != ncycles) {
+              dm.unregister_and_deallocate( "dycore_ghost_y2" );
+            }
+          }
+          if (! dm.entry_exists("dycore_ghost_y2")) {
+            dm.register_and_allocate<FLOC>("dycore_ghost_y2","",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+          }
+        }
+      }
+
       // auto mass1 = compute_mass( coupler , state );
       auto time_stepper = coupler.get_option<std::string>("dycore_time_stepper","ssprk3");
       for (int icycle = 0; icycle < ncycles; icycle++) {
-        if      (time_stepper == "linrk3") { time_step_rk3   (coupler,state,tracers,dt_dyn); }
-        else if (time_stepper == "linrk4") { time_step_rk4   (coupler,state,tracers,dt_dyn); }
-        else if (time_stepper == "ssprk3") { time_step_ssprk3(coupler,state,tracers,dt_dyn); }
+        if      (time_stepper == "linrk3") { time_step_rk3   (coupler,state,tracers,dt_dyn,icycle); }
+        else if (time_stepper == "linrk4") { time_step_rk4   (coupler,state,tracers,dt_dyn,icycle); }
+        else if (time_stepper == "ssprk3") { time_step_ssprk3(coupler,state,tracers,dt_dyn,icycle); }
       }
       // auto mass2 = compute_mass( coupler , state );
       // if (coupler.is_mainproc()) std::cout << "Mass change: "
@@ -150,7 +210,8 @@ namespace modules {
     void time_step_rk3( core::Coupler & coupler ,
                         real4d const  & state   ,
                         real4d const  & tracers ,
-                        real            dt_dyn  ) const {
+                        real            dt_dyn  ,
+                        int             icycle  ) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("time_step_rk_3_3");
       #endif
@@ -173,7 +234,7 @@ namespace modules {
 
       // Stage 1
       coupler.set_option<bool>("dycore_use_weno",false);
-      compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/3,0);
+      compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/3,0,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -186,7 +247,7 @@ namespace modules {
       });
 
       // Stage 2
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,1);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,1,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -200,7 +261,7 @@ namespace modules {
 
       // Stage 3
       coupler.set_option<bool>("dycore_use_weno",true);
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,2);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,2,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -226,7 +287,8 @@ namespace modules {
     void time_step_rk4( core::Coupler & coupler ,
                         real4d const  & state   ,
                         real4d const  & tracers ,
-                        real            dt_dyn  ) const {
+                        real            dt_dyn  ,
+                        int             icycle  ) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("time_step_rk_3_3");
       #endif
@@ -249,7 +311,7 @@ namespace modules {
 
       // Stage 1
       coupler.set_option<bool>("dycore_use_weno",false);
-      compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/4,0);
+      compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/4,0,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -262,7 +324,7 @@ namespace modules {
       });
 
       // Stage 2
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/3,1);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/3,1,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -275,7 +337,7 @@ namespace modules {
       });
 
       // Stage 3
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,2);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,2,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -289,7 +351,7 @@ namespace modules {
 
       // Stage 4
       coupler.set_option<bool>("dycore_use_weno",true);
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,3);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,3,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -315,7 +377,8 @@ namespace modules {
     void time_step_ssprk3( core::Coupler & coupler ,
                            real4d const  & state   ,
                            real4d const  & tracers ,
-                           real            dt_dyn  ) const {
+                           real            dt_dyn  ,
+                           int             icycle  ) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("time_step_rk_3_3");
       #endif
@@ -339,7 +402,7 @@ namespace modules {
       //////////////
       // Stage 1
       //////////////
-      compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn,0);
+      compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn,0,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -354,7 +417,7 @@ namespace modules {
       //////////////
       // Stage 2
       //////////////
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/4.,1);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/4.,1,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -373,7 +436,7 @@ namespace modules {
       //////////////
       // Stage 3
       //////////////
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn*2./3.,2);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn*2./3.,2,icycle);
       // Apply tendencies
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -505,7 +568,8 @@ namespace modules {
                              real4d        const & tracers      ,
                              real4d        const & tracers_tend ,
                              real                  dt           ,
-                             int                   istage       ) const {
+                             int                   istage       ,
+                             int                   icycle       ) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("compute_tendencies");
       #endif
@@ -620,7 +684,7 @@ namespace modules {
       coupler.get_parallel_comm().barrier();
       yakl::timer_stop("dycore_halo_exchange_y");
       #endif
-      halo_boundary_conditions( coupler , fields_loc , istage );
+      halo_boundary_conditions( coupler , fields_loc , istage , icycle );
 
       yakl::Array<FLOC,4> flux_x("flux_x",num_state+num_tracers,nz,ny,nx+1);
       yakl::Array<FLOC,4> flux_y("flux_y",num_state+num_tracers,nz,ny+1,nx);
@@ -889,9 +953,10 @@ namespace modules {
 
 
 
-    void halo_boundary_conditions( core::Coupler & coupler ,
+    void halo_boundary_conditions( core::Coupler & coupler            ,
                                    yakl::Array<FLOC,4> const & fields ,
-                                   int istage ) const {
+                                   int istage                         ,
+                                   int icycle                         ) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("halo_boundary_conditions");
       #endif
@@ -912,7 +977,6 @@ namespace modules {
       auto nproc_y      = coupler.get_nproc_y();
       auto num_tracers  = coupler.get_num_tracers();
       auto &dm          = coupler.get_data_manager_readonly();
-      auto is_precursor = coupler.get_option<bool>("dycore_is_precursor",false);
 
       if (px == 0) {
         if (bc_x1 == "periodic") { // Already handled in halo_exchange
@@ -922,12 +986,12 @@ namespace modules {
             fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0);
           });
         } else if (bc_x1 == "precursor" ) {
-          auto prec_x1 = dm.get<FLOC const,5>("dycore_ghost_x1");
+          auto prec_x1 = dm.get<FLOC const,6>("dycore_ghost_x1");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
             if (l!=idP) {
               auto u = fields(idU,hs+k,hs+j,hs);
-              fields(l,hs+k,hs+j,hs-1-ii) = u > 0 ? prec_x1(istage,l,k,j,ii) : fields(l,hs+k,hs+j,hs+0);
+              fields(l,hs+k,hs+j,hs-1-ii) = u > 0 ? prec_x1(icycle,istage,l,k,j,ii) : fields(l,hs+k,hs+j,hs+0);
             } else {
               fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0);
             }
@@ -946,12 +1010,12 @@ namespace modules {
             fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
           });
         } else if (bc_x2 == "precursor" ) {
-          auto prec_x2 = dm.get<FLOC const,5>("dycore_ghost_x2");
+          auto prec_x2 = dm.get<FLOC const,6>("dycore_ghost_x2");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
             if (l!=idP) {
               auto u = fields(idU,hs+k,hs+j,hs+nx-1);
-              fields(l,hs+k,hs+j,hs+nx+ii) = u > 0 ? fields(l,hs+k,hs+j,hs+nx-1) : prec_x2(istage,l,k,j,ii);
+              fields(l,hs+k,hs+j,hs+nx+ii) = u > 0 ? fields(l,hs+k,hs+j,hs+nx-1) : prec_x2(icycle,istage,l,k,j,ii);
             } else {
               fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
             }
@@ -970,12 +1034,12 @@ namespace modules {
             fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i);
           });
         } else if (bc_y1 == "precursor" ) {
-          auto prec_y1 = dm.get<FLOC const,5>("dycore_ghost_y1");
+          auto prec_y1 = dm.get<FLOC const,6>("dycore_ghost_y1");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             if (l!=idP) {
               auto v = fields(idV,hs+k,hs,hs+i);
-              fields(l,hs+k,hs-1-jj,hs+i) = v > 0 ? prec_y1(istage,l,k,jj,i) : fields(l,hs+k,hs+0,hs+i);
+              fields(l,hs+k,hs-1-jj,hs+i) = v > 0 ? prec_y1(icycle,istage,l,k,jj,i) : fields(l,hs+k,hs+0,hs+i);
             } else {
               fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i);
             }
@@ -994,12 +1058,12 @@ namespace modules {
             fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
           });
         } else if (bc_y2 == "precursor" ) {
-          auto prec_y2 = dm.get<FLOC const,5>("dycore_ghost_y2");
+          auto prec_y2 = dm.get<FLOC const,6>("dycore_ghost_y2");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             if (l!=idP) {
               auto v = fields(idV,hs+k,hs+ny-1,hs+i);
-              fields(l,hs+k,hs+ny+jj,hs+i) = v > 0 ? fields(l,hs+k,hs+ny-1,hs+i) : prec_y2(istage,l,k,jj,i);
+              fields(l,hs+k,hs+ny+jj,hs+i) = v > 0 ? fields(l,hs+k,hs+ny-1,hs+i) : prec_y2(icycle,istage,l,k,jj,i);
             } else {
               fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
             }
@@ -1048,33 +1112,33 @@ namespace modules {
         Kokkos::abort("");
       }
 
-      if (is_precursor) {
+      if (coupler.get_option<bool>("dycore_is_precursor",false)) {
         if (px == 0) {
-          auto ghost_x1 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_ghost_x1");
+          auto ghost_x1 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x1");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            ghost_x1(istage,l,k,j,ii) = fields(l,hs+k,hs+j,hs-1-ii);
+            ghost_x1(icycle,istage,l,k,j,ii) = fields(l,hs+k,hs+j,hs-1-ii);
           });
         }
         if (px == nproc_x-1) {
-          auto ghost_x2 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_ghost_x2");
+          auto ghost_x2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x2");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            ghost_x2(istage,l,k,j,ii) = fields(l,hs+k,hs+j,hs+nx+ii);
+            ghost_x2(icycle,istage,l,k,j,ii) = fields(l,hs+k,hs+j,hs+nx+ii);
           });
         }
         if (py == 0) {
-          auto ghost_y1 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_ghost_y1");
+          auto ghost_y1 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y1");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            ghost_y1(istage,l,k,jj,i) = fields(l,hs+k,hs-1-jj,hs+i);
+            ghost_y1(icycle,istage,l,k,jj,i) = fields(l,hs+k,hs-1-jj,hs+i);
           });
         }
         if (py == nproc_y-1) {
-          auto ghost_y2 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_ghost_y2");
+          auto ghost_y2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y2");
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            ghost_y2(istage,l,k,jj,i) = fields(l,hs+k,hs+ny+jj,hs+i);
+            ghost_y2(icycle,istage,l,k,jj,i) = fields(l,hs+k,hs+ny+jj,hs+i);
           });
         }
       }
@@ -1086,17 +1150,172 @@ namespace modules {
 
 
 
+    real2d compute_average_ghost_column( core::Coupler & coupler ) {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto nx_glob           = coupler.get_nx_glob();
+      auto ny_glob           = coupler.get_ny_glob();
+      auto nx                = coupler.get_nx();
+      auto ny                = coupler.get_ny();
+      auto nz                = coupler.get_nz();
+      auto C0                = coupler.get_option<real>("C0"     );  // pressure = C0*pow(rho*theta,gamma)
+      auto gamma             = coupler.get_option<real>("gamma_d");  // cp_dry / cv_dry (about 1.4)
+      auto cs                = coupler.get_option<real>("dycore_cs",350);
+      auto num_tracers       = coupler.get_num_tracers();
+      auto hy_pressure_cells = coupler.get_data_manager_readonly().get<real const,1>("hy_pressure_cells");
+      auto hy_dens_cells     = coupler.get_data_manager_readonly().get<real const,1>("hy_dens_cells");
+      auto hy_theta_cells    = coupler.get_data_manager_readonly().get<real const,1>("hy_theta_cells");
+      real4d state  ("state"  ,num_state  ,nz,ny,nx);
+      real4d tracers("tracers",num_tracers,nz,ny,nx);
+      convert_coupler_to_dynamics( coupler , state , tracers );
+      real4d fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
+      bool rsst = coupler.get_option<real>("dycore_cs",350) != 350;
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (!rsst) fields_loc(idP,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,k,j,i),gamma) - hy_pressure_cells(hs+k);
+        real r_r = 1._fp / state(idR,k,j,i);
+        fields_loc(idR,hs+k,hs+j,hs+i) = state(idR,k,j,i);
+        for (int l=1; l < num_state  ; l++) { fields_loc(            l,hs+k,hs+j,hs+i) = state  (l,k,j,i)*r_r; }
+        for (int l=0; l < num_tracers; l++) { fields_loc(num_state+1+l,hs+k,hs+j,hs+i) = tracers(l,k,j,i)*r_r; }
+        fields_loc(idR,hs+k,hs+j,hs+i) -= hy_dens_cells (hs+k);
+        fields_loc(idT,hs+k,hs+j,hs+i) -= hy_theta_cells(hs+k);
+        if (rsst) { fields_loc(idP,hs+k,hs+j,hs+i) = cs*cs*fields_loc(idR,hs+k,hs+j,hs+i); }
+      });
+      real2d ghost_col("ghost_col",num_state+num_tracers+1,nz);
+      real r_nx_ny = 1./(nx_glob*ny_glob);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(num_state+num_tracers+1,nz) , KOKKOS_LAMBDA (int l, int k) {
+        ghost_col(l,k) = 0;
+        for (int j=0; j < ny; j++) {
+          for (int i=0; i < nx; i++) {
+            ghost_col(l,k) += fields_loc(l,hs+k,hs+j,hs+i)*r_nx_ny;
+          }
+        }
+      });
+      coupler.get_parallel_comm().all_reduce( ghost_col , MPI_SUM , "" ).deep_copy_to(ghost_col);
+      Kokkos::fence();
+      return ghost_col;
+    }
+
+
+
+    void column_to_ghost_cells( real2d const & col , core::Coupler & coupler ) {
+      using yakl::c::parallel_for;
+      using yakl::c::SimpleBounds;
+      auto px       = coupler.get_px();
+      auto py       = coupler.get_py();
+      auto npx      = coupler.get_nproc_x();
+      auto npy      = coupler.get_nproc_y();
+      auto nz       = coupler.get_nz();
+      auto ny       = coupler.get_ny();
+      auto nx       = coupler.get_nx();
+      auto &dm      = coupler.get_data_manager_readwrite();
+      if (px == 0) {
+        auto ghost_x1 = dm.get<FLOC,6>("dycore_ghost_x1");
+        auto ncycles  = ghost_x1.extent(0);
+        auto nstage   = ghost_x1.extent(1);
+        auto nvar     = ghost_x1.extent(2);
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(ncycles,nstage,nvar,nz,ny,hs) ,
+                                          KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int j, int ii) {
+          ghost_x1(icycle,istage,l,k,j,ii) = col(l,k);
+        });
+      }
+      if (px == npx-1) {
+        auto ghost_x2 = dm.get<FLOC,6>("dycore_ghost_x2");
+        auto ncycles  = ghost_x2.extent(0);
+        auto nstage   = ghost_x2.extent(1);
+        auto nvar     = ghost_x2.extent(2);
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(ncycles,nstage,nvar,nz,ny,hs) ,
+                                          KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int j, int ii) {
+          ghost_x2(icycle,istage,l,k,j,ii) = col(l,k);
+        });
+      }
+      if (py == 0) {
+        auto ghost_y1 = dm.get<FLOC,6>("dycore_ghost_y1");
+        auto ncycles  = ghost_y1.extent(0);
+        auto nstage   = ghost_y1.extent(1);
+        auto nvar     = ghost_y1.extent(2);
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(ncycles,nstage,nvar,nz,hs,nx) ,
+                                          KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int jj, int i) {
+          ghost_y1(icycle,istage,l,k,jj,i) = col(l,k);
+        });
+      }
+      if (py == npy-1) {
+        auto ghost_y2 = dm.get<FLOC,6>("dycore_ghost_y2");
+        auto ncycles  = ghost_y2.extent(0);
+        auto nstage   = ghost_y2.extent(1);
+        auto nvar     = ghost_y2.extent(2);
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(ncycles,nstage,nvar,nz,hs,nx) ,
+                                          KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int jj, int i) {
+          ghost_y2(icycle,istage,l,k,jj,i) = col(l,k);
+        });
+      }
+    }
+
+
+
     void copy_precursor_ghost_cells( core::Coupler const & coupler_prec , core::Coupler & coupler_main ) {
-      auto px       = coupler_main.get_px();
-      auto py       = coupler_main.get_py();
-      auto npx      = coupler_main.get_nproc_x();
-      auto npy      = coupler_main.get_nproc_y();
-      auto &dm_prec = coupler_prec.get_data_manager_readonly ();
-      auto &dm_main = coupler_main.get_data_manager_readwrite();
-      if (px == 0    ) dm_prec.get<FLOC const,5>("dycore_ghost_x1").deep_copy_to(dm_main.get<FLOC,5>("dycore_ghost_x1"));
-      if (px == npx-1) dm_prec.get<FLOC const,5>("dycore_ghost_x2").deep_copy_to(dm_main.get<FLOC,5>("dycore_ghost_x2"));
-      if (py == 0    ) dm_prec.get<FLOC const,5>("dycore_ghost_y1").deep_copy_to(dm_main.get<FLOC,5>("dycore_ghost_y1"));
-      if (py == npy-1) dm_prec.get<FLOC const,5>("dycore_ghost_y2").deep_copy_to(dm_main.get<FLOC,5>("dycore_ghost_y2"));
+      int  px          = coupler_main.get_px();
+      int  py          = coupler_main.get_py();
+      int  npx         = coupler_main.get_nproc_x();
+      int  npy         = coupler_main.get_nproc_y();
+      int  nstage      = coupler_main.get_option<int>("dycore_num_stages");
+      int  num_tracers = coupler_main.get_num_tracers();
+      int  nx          = coupler_main.get_nx();
+      int  ny          = coupler_main.get_ny();
+      int  nz          = coupler_main.get_nz();
+      auto &dm_prec    = coupler_prec.get_data_manager_readonly ();
+      auto &dm_main    = coupler_main.get_data_manager_readwrite();
+      if (px == 0) {
+        int ncycles = dm_prec.get<FLOC const,6>("dycore_ghost_x1").extent(0);
+        if (dm_main.entry_exists("dycore_ghost_x1")) {
+          if (dm_main.get<FLOC const,6>("dycore_ghost_x1").extent(0) != ncycles) {
+            dm_main.unregister_and_deallocate( "dycore_ghost_x1" );
+          }
+        }
+        if (! dm_main.entry_exists("dycore_ghost_x1")) {
+          dm_main.register_and_allocate<FLOC>("dycore_ghost_x1","",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+        }
+      }
+      if (px == npx-1) {
+        int ncycles = dm_prec.get<FLOC const,6>("dycore_ghost_x2").extent(0);
+        if (dm_main.entry_exists("dycore_ghost_x2")) {
+          if (dm_main.get<FLOC const,6>("dycore_ghost_x2").extent(0) != ncycles) {
+            dm_main.unregister_and_deallocate( "dycore_ghost_x2" );
+          }
+        }
+        if (! dm_main.entry_exists("dycore_ghost_x2")) {
+          dm_main.register_and_allocate<FLOC>("dycore_ghost_x2","",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+        }
+      }
+      if (py == 0) {
+        int ncycles = dm_prec.get<FLOC const,6>("dycore_ghost_y1").extent(0);
+        if (dm_main.entry_exists("dycore_ghost_y1")) {
+          if (dm_main.get<FLOC const,6>("dycore_ghost_y1").extent(0) != ncycles) {
+            dm_main.unregister_and_deallocate( "dycore_ghost_y1" );
+          }
+        }
+        if (! dm_main.entry_exists("dycore_ghost_y1")) {
+          dm_main.register_and_allocate<FLOC>("dycore_ghost_y1","",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+        }
+      }
+      if (py == npy-1) {
+        int ncycles = dm_prec.get<FLOC const,6>("dycore_ghost_y2").extent(0);
+        if (dm_main.entry_exists("dycore_ghost_y2")) {
+          if (dm_main.get<FLOC const,6>("dycore_ghost_y2").extent(0) != ncycles) {
+            dm_main.unregister_and_deallocate( "dycore_ghost_y2" );
+          }
+        }
+        if (! dm_main.entry_exists("dycore_ghost_y2")) {
+          dm_main.register_and_allocate<FLOC>("dycore_ghost_y2","",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+        }
+      }
+
+      // coupler_prec.get_parallel_comm().barrier();
+      // coupler_main.get_parallel_comm().barrier();
+
+      if (px == 0    ) dm_prec.get<FLOC const,6>("dycore_ghost_x1").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_x1"));
+      if (px == npx-1) dm_prec.get<FLOC const,6>("dycore_ghost_x2").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_x2"));
+      if (py == 0    ) dm_prec.get<FLOC const,6>("dycore_ghost_y1").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_y1"));
+      if (py == npy-1) dm_prec.get<FLOC const,6>("dycore_ghost_y2").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_y2"));
     }
 
 
@@ -1131,18 +1350,6 @@ namespace modules {
       else if (time_stepper == "linrk3") { coupler.set_option("dycore_num_stages",3);    }
       else if (time_stepper == "linrk4") { coupler.set_option("dycore_num_stages",4);    }
       else                               { Kokkos::abort("Invalid dycore_time_stepper"); }
-
-      if ( coupler.get_option<bool>("dycore_is_precursor",false)   ||
-           coupler.get_option<std::string>("bc_x1") == "precursor" ||
-           coupler.get_option<std::string>("bc_x2") == "precursor" ||
-           coupler.get_option<std::string>("bc_y1") == "precursor" ||
-           coupler.get_option<std::string>("bc_y2") == "precursor" ) {
-        auto nstage = coupler.get_option<int>("dycore_num_stages");
-        if (px == 0        ) dm.register_and_allocate<FLOC>("dycore_ghost_x1","",{nstage,num_state+num_tracers+1,nz,ny,hs});
-        if (px == nproc_x-1) dm.register_and_allocate<FLOC>("dycore_ghost_x2","",{nstage,num_state+num_tracers+1,nz,ny,hs});
-        if (py == 0        ) dm.register_and_allocate<FLOC>("dycore_ghost_y1","",{nstage,num_state+num_tracers+1,nz,hs,nx});
-        if (py == nproc_y-1) dm.register_and_allocate<FLOC>("dycore_ghost_y2","",{nstage,num_state+num_tracers+1,nz,hs,nx});
-      }
 
       // Compute the metric jacobian (dz/dzeta) where zeta is the k interface index
       //

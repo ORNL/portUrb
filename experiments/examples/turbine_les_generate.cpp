@@ -148,16 +148,16 @@ int main(int argc, char** argv) {
       // Set no-turbine boundaries
       coupler_noturb.set_option<std::string>("bc_x1","precursor");
       coupler_noturb.set_option<std::string>("bc_x2","precursor");
-      coupler_noturb.set_option<std::string>("bc_y1","precursor");
-      coupler_noturb.set_option<std::string>("bc_y2","precursor");
+      coupler_noturb.set_option<std::string>("bc_y1","periodic");
+      coupler_noturb.set_option<std::string>("bc_y2","periodic");
       coupler_noturb.set_option<std::string>("bc_z1","wall_free_slip");
       coupler_noturb.set_option<std::string>("bc_z2","wall_free_slip");
 
       // Set turbine boundaries
       coupler_turb.set_option<std::string>("bc_x1","precursor");
       coupler_turb.set_option<std::string>("bc_x2","precursor");
-      coupler_turb.set_option<std::string>("bc_y1","precursor");
-      coupler_turb.set_option<std::string>("bc_y2","precursor");
+      coupler_turb.set_option<std::string>("bc_y1","periodic");
+      coupler_turb.set_option<std::string>("bc_y2","periodic");
       coupler_turb.set_option<std::string>("bc_z1","wall_free_slip");
       coupler_turb.set_option<std::string>("bc_z2","wall_free_slip");
 
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_noturb );
 
         {
-          precursor_sponge( coupler_noturb , coupler_prec , {"density_dry","temp"} , 0 , nx_glob/10 , 0 , ny_glob/10 );
+          precursor_sponge( coupler_noturb , coupler_prec , {"density_dry","temp"} , (int)(D/dx) , nx_glob/10 , 0 , 0 );
           coupler_noturb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_noturb.run_module( [&] (Coupler &c) { col_nudge_noturb.nudge_to_column(c,dt,dt*2); } , "col_nudge");
           coupler_noturb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
@@ -264,7 +264,7 @@ int main(int argc, char** argv) {
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_turb );
 
         {
-          precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temp"} , 0 , nx_glob/10 , 0 , ny_glob/10 );
+          precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temp"} , (int)(D/dx) , nx_glob/10 , 0 , 0 );
           coupler_turb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_turb.run_module( [&] (Coupler &c) { col_nudge_turb.nudge_to_column(c,dt,dt*2); } , "col_nudge"  );
           coupler_turb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );

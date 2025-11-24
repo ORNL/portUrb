@@ -12,6 +12,8 @@ files_p = {f"{wind}_{time}": f"{workdir}/{prefix}_{z0:.6f}_wind-{wind:.6f}_precu
 files_n = {f"{wind}_{time}": f"{workdir}/{prefix}_{z0:.6f}_wind-{wind:.6f}_noturbine_{time:08d}.nc" for time in times for wind in winds}
 files_t = {f"{wind}_{time}": f"{workdir}/{prefix}_{z0:.6f}_wind-{wind:.6f}_turbine_{time:08d}.nc"   for time in times for wind in winds}
 
+means = np.array([0. for i in range(len(winds))])
+stds  = np.array([0. for i in range(len(winds))])
 for iwind in range(len(winds)) :
     wind = winds[iwind]
     for itime in range(len(times)) :
@@ -21,17 +23,19 @@ for iwind in range(len(winds)) :
         mag   = u if time==times[0] else np.concatenate((mag,u))
     counts,bins = np.histogram(mag,bins=50)
     counts = counts / np.sum(counts)
-    plt.stairs(counts,bins,fill=True)
     mbins = (bins[:len(bins)-1]+bins[1:])/2
     m = np.mean(mag)
     s = np.std(mag)
     val = 1/(s*np.sqrt(2*np.pi))*np.exp(-0.5*((mbins-m)/s)**2)
     val = val / np.sum(val)
-    print(np.mean(np.abs(val-counts)))
-    plt.plot(mbins,val)
-    plt.title(f"{winds[iwind]}")
-    plt.show()
-    plt.close()
+    print(f"Wind: {wind:2d};   Mean: {m:10f};   Stddev: {s:10f};   Error: {np.mean(np.abs(val-counts)):10f}")
+    means[iwind] = m
+    stds [iwind] = s
+    # plt.stairs(counts,bins,fill=True)
+    # plt.plot(mbins,val)
+    # plt.title(f"{winds[iwind]}")
+    # plt.show()
+    # plt.close()
 
 z = np.array(Dataset(files_n[f"{winds[0]}_{times[0]}"],"r")["z"][:])
 noturb_u = np.array([[0. for i in range(len(z))] for j in range(len(winds))])
@@ -79,5 +83,7 @@ nc.createVariable('noturb_u','f4',('wind','z'))[:,:] = noturb_u[:,:]
 nc.createVariable('noturb_v','f4',('wind','z'))[:,:] = noturb_v[:,:]
 nc.createVariable('turb_u'  ,'f4',('wind','z'))[:,:] = turb_u  [:,:]
 nc.createVariable('turb_v'  ,'f4',('wind','z'))[:,:] = turb_v  [:,:]
+nc.createVariable('means'   ,'f4',('wind'    ))[:]   = means   [:]
+nc.createVariable('stds'    ,'f4',('wind'    ))[:]   = stds    [:]
 nc.close()
 
