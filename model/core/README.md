@@ -6,7 +6,7 @@
 * `ParallelComm.h`: This contains capability for MPI communication and activity using the `Coupler` object's MPI sub-communicator such as exchanges and reductions. The functionality is detailed in the main repository `README.md` file, so please go there for more information.
 * `Ensembler.h`: This is a small convenience class that allows users to implement ensembles easily within a single executable with multiple ensemble perturbation options.
 ```C++
-// Example usage
+// Example usage of the Ensembler class
 core::Coupler coupler;
 coupler.set_option<std::string>("ensemble_stdout","ensemble_" );
 coupler.set_option<std::string>("out_prefix"     ,"output_"   );
@@ -84,7 +84,7 @@ if (par_comm.valid()) {
 ```
 * `MultipleFields.h`: This is a small convenience class that allows users to aggregate multiple YAKL `Array` objects of the same dimensionality and underlying type into an object with an extra dimension in order to index the object as if the separate `Array` objects were part of an array object with an extra slowest varying dimension. This is helpful when trying to aggregate multiple variables and apply a single action an all of them such as is often done with dynamics variables and tracers.
 ```C++
-// Example Usage to test if some variables have any values less than zero
+// Example Usage of the MultiFields class typedef to test for negative values
 // Assume a core::Coupler & coupler object was passed into this code
 // The line below declares a MultiField of multiple Array objects of type real const, each with 3 dimensions
 core::MultiField<real const,3> fields;
