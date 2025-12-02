@@ -18,13 +18,13 @@ Also, check out the `portUrb/experiments/examples` directory `*.cpp` files for e
 * `Mp_morr_two_moment.h`: This is a class used by `microphysics_morr.h` and not directly by the user, which actually implements the 2-moment code.
 * `precursor_sponge.h`: This implements a function to sponge in a precursor coupler state onto a forced coupler state at horizontal edges according to a domain length for each horizontal edge as well as a time scale.
 * `profiles.h`: This is used only during initialization to define various vertical profiles for initialization routines.
-* `sponge_layer.h`: 
-* `surface_cooling.h`
-* `surface_flux.h`
-* `surface_heat_flux.h`
-* `time_averager.h`
-* `TriMesh.h`
-* `turbine_actuator_disc.h`
-* `turbine_fitch.h`
-* `uniform_pg_wind_forcing.h`
-* `windmill_actuators_yaw.h`
+* `sponge_layer.h`: This implements a sponge layer function to force variables at the model top toward horizontally averaged values for u-velocity, v-velocity, and temperature and toward zero for w-velocity according to a specified top domain length and a time scale.
+* `surface_cooling.h`: This implements a surface cooling function to cool the surface temperature of a coupler object by a given rate, typically used to implement stable atmospheric boundary layer simulations.
+* `surface_flux.h`: The applies surface fluxes of momenta and temperature at the model surface and at immersed boundary surfaces using Monin-Obukhov Similarity Theory (MOST). 
+* `surface_heat_flux.h`: This applies surface heat fluxes to the surface of a coupler object's data (it adds temperature to the surface layer but does not affect the surface temperature value), typically used to implement convective atmospheric boundary layer simulations.
+* `time_averager.h`: This averages wind velocities and SGS TKE in time for time-averaged output variables.
+* `TriMesh.h`: This is only used during initialization in order to process triangle-based OBJ wavefront files in order to determine heights of immersed material (typically buildings) for initialization of city simulations.
+* `turbine_actuator_disc.h`: This implements an actuator disk for wind turbine simulations in the Large Eddy Simulation (LES) regime where the horizontal and vertcal grid spacing is significantly less than the width of a turbine diameter. These actuator disks yaw with the inflow and project a sampling disk 2 turbine diameters in the upwind direction for inflow sampling. You can place multiple turbines in the coupler domain. this applies turbine thrust to the flow, applies torque to the flow, and estimates generated power from the inflow wind speed, all using reference tables for a given turbine type.
+* `turbine_fitch.h`: This implements a Fitch-type turbine parameterization for simulations where the horizontal grid spacing is significantly greater than the width of a turbine diameter. The vertical grid spacing can be finer than the turbine diameter, though. It applies thrust directly to the cells in which turbines are placed according to the proportion of the turbine in a given vertical cell, and it estimates power production based on the wind velocity of a cell. Multiple turbines can be placed with this parameterization.
+* `uniform_pg_wind_forcing.h`: This implements pressure gradient wind forcing uniformly to the domain, which basically just penalizes differences from a target wind speed at a certain height according to a certain time scale. This can be applied directly to a precursor and the domain-averaged forcing be saved to be applied identically to a forced simulation that uses the precursor as well.
+* `windmill_actuators_yaw.h`: This is similar to `turbine_actuator_disc.h`. It is for simulations where the horizontal and vertical grid spacings are significantly less than the width of a turbine diameter. Multiple turbines can be placed, but please do not place a turbine closer than two turbine diameters from the domain edge (just like the `turbine_actuator_disc.h` parameterization). This also allows the thrust to be projected onto rotating blades for very high-resolution simulations (say, at least 20 cells along a turbine diameter) rather than onto a disk, and it also allows projecting the turbine tower, hub, and flange as immersed material in the flow). This also allows floating platform forces to be added to the inflow of the turbine to emulate floating turbines.
