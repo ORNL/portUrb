@@ -12,13 +12,13 @@ Also, check out the `portUrb/experiments/examples` directory `*.cpp` files for e
 * `fluctuation_scaling.h`: This will scale the fluctuations about the mean of the specified variables of a coupler object by the specified fraction by a time scale. This is primarily used to change turbulent precursor turbulent intensities to a smaller or higher value when feeding them into a forced simulation.
 * `geostrophic_wind_forcing.h`: This implements a function to force the coupler object's horizontal winds with "geostrophic forcing" for atmospheric boundary layer simulations. This is a form of forcing akin to "pressure gradient forcing" except with an ekman spiral arising when used alongside surface friction. One can specify geostrophic forcing directly to a coupler object and then save the column forcing to apply identical forcing using a separate routine to a forced simulation from the direct forcing applied to a precursor coupler object.
 * `hydrostasis.h`: This is not used directly during runtime but is, rather, only used during initialization to establish hydrostatic background states for a column using specified variables (either potential temperature profile or a combined specification of temperature and dry mixing ratio of water vapor). 
-* `les_closure.h`: 
-* `microphysics_kessler.h`
-* `microphysics_morr.h`
-* `Mp_morr_two_moment.h`
-* `precursor_sponge.h`
-* `profiles.h`
-* `sponge_layer.h`
+* `les_closure.h`: Implements the `LES_Closure` class, which implements the 1-equation Lilly closure to apply eddy viscosity to the coupler object's flow using a prognosed SGS TKE tracer. Please initialize this before the dynamical core so that the `TKE` tracer is registered.
+* `microphysics_kessler.h`: Implements the `Microphysics_Kessler` class to apply simple 1-moment Kessler microphysics to the coupler object's flow. This introduces tracers, so please initialize this before initializing the dynamical core so that they are registered.
+* `microphysics_morr.h`: Implements the `Microphysics_Morrison` class to apply Morrison 2-moment Kessler microphysics to the coupler object's flow. This introduces tracers, so please initialize this before initializing the dynamical core so that they are registered.
+* `Mp_morr_two_moment.h`: This is a class used by `microphysics_morr.h` and not directly by the user, which actually implements the 2-moment code.
+* `precursor_sponge.h`: This implements a function to sponge in a precursor coupler state onto a forced coupler state at horizontal edges according to a domain length for each horizontal edge as well as a time scale.
+* `profiles.h`: This is used only during initialization to define various vertical profiles for initialization routines.
+* `sponge_layer.h`: 
 * `surface_cooling.h`
 * `surface_flux.h`
 * `surface_heat_flux.h`
