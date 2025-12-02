@@ -1,0 +1,12 @@
+# Contains the core functionality of portUrb
+
+* `CMakeLists.txt`: This includes the dependencies in the `portUrb/external` directory, and it also inclues the `core` and `modules` subdirectories of this directory. The `experiments/examples/CMakeLists.txt` or your own experiment's `CMakeLists.txt` will add this directory with the CMake function `add_subdirectory` and will link the CMake library `model` in order to link in and include the main portUrb routines.
+* `main_header.h`: This header file declares debugging helpers and convenience `typedef` declarations for commonly used array types such as `real3d` (floating point 3-D C-style YAKL Array object). This is included by `portUrb/model/core/coupler.h`, so it doesn't need to be explicitly included in experiment `*.cpp` files. Rather, experiment `*.cpp` files should `#include coupler.h`. Some of the conveniences from this file include:
+   * `#define DEBUG_PRINT_MAIN()`: Prints the current file name and line number to `stdout` from the executable's main task (task 0)
+   * `#define DEBUG_PRINT_MAIN_SUM(var)`: Prints the file name, line number, variable name, and sum of the variable from the executable's main task (task 0). Note this does *not* print from the *coupler* object's sub-communicator task 0 but the overall executable's task 0.
+   * `#define DEBUG_PRINT_MAIN_AVG(var)`: Prints the file name, line number, variable name, and average of the variable from the executable's main task (task 0)
+   * `#define DEBUG_PRINT_MAIN_MIN(var)`: Prints the file name, line number, variable name, and minimum value of the variable from the executable's main task (task 0)
+   * `#define DEBUG_PRINT_MAIN_MAX(var)`: Prints the file name, line number, variable name, and maximum value of the variable from the executable's main task (task 0)
+   * `#define DEBUG_PRINT_MAIN_VAL(var)`: Prints the file name, line number, variable name, and value of the variable from the executable's main task (task 0)
+   * `#define DEBUG_NAN_INF_VAL(var)`: Prints the file name, line number, variable name, and whether the variable has an inifinity or NaN value from the executable's main task (task 0)
+   * `KOKKOS_INLINE_FUNCTION void endrun(char const * msg = "")`: Causes the simulation to abort, even inside a device kernel. If this is called from the host, the passed error message is printed before aborting. If it is called from the device, the error message may or may not be printed before aborting, depending on the device backend.
