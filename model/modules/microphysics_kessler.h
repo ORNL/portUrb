@@ -10,16 +10,16 @@ namespace modules {
   public:
     int static constexpr num_tracers = 3;
 
-    real R_d    ;
-    real cp_d   ;
-    real cv_d   ;
-    real gamma_d;
-    real kappa_d;
-    real R_v    ;
-    real cp_v   ;
-    real cv_v   ;
-    real p0     ;
-    real grav   ;
+    real R_d    ;  // Dry air ideal gas constant
+    real cp_d   ;  // Specific heat of dry air at constant pressure
+    real cv_d   ;  // Specific heat of dry air at constant volume
+    real gamma_d;  // Ratio of specific heats for dry air
+    real kappa_d;  // R_d / cp_d
+    real R_v    ;  // Water vapor ideal gas constant
+    real cp_v   ;  // Specific heat of water vapor at constant pressure
+    real cv_v   ;  // Specific heat of water vapor at constant volume
+    real p0     ;  // Reference pressure (10^5 Pa)
+    real grav   ;  // Gravitational acceleration (9.81 m/s^2)
 
     int static constexpr ID_V = 0;  // Local index for water vapor
     int static constexpr ID_C = 1;  // Local index for cloud liquid
@@ -27,6 +27,7 @@ namespace modules {
 
 
 
+    // Initialize physical constants
     Microphysics_Kessler() {
       R_d     = 287.;
       cp_d    = 1003.;
@@ -42,19 +43,24 @@ namespace modules {
 
 
 
+    // Returns the number of tracers introduced by this microphysics scheme
     KOKKOS_INLINE_FUNCTION static int get_num_tracers() {
       return num_tracers;
     }
 
 
 
+    // Initialize the microphysics module within the coupler
+    // Adds three tracers: water_vapor, cloud_liquid, precip_liquid
+    // Call this before the dynamics module's init so that tracers are registered properly
+    // Also allocates non-tracer microphysics variable: precl
     void init(core::Coupler &coupler) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
 
-      int nx   = coupler.get_nx();
-      int ny   = coupler.get_ny();
-      int nz   = coupler.get_nz();
+      int nx   = coupler.get_nx();  // Number of local grid cells in the x-direction
+      int ny   = coupler.get_ny();  // Number of local grid cells in the y-direction
+      int nz   = coupler.get_nz();  // Number of vertical levels
 
       // Register tracers in the coupler
       //                 name              description       positive   adds mass    diffuse
@@ -62,7 +68,7 @@ namespace modules {
       coupler.add_tracer("cloud_liquid"  , "Cloud liquid"  , true     , true       , true);
       coupler.add_tracer("precip_liquid" , "precip_liquid" , true     , true       , true);
 
-      auto &dm = coupler.get_data_manager_readwrite();
+      auto &dm = coupler.get_data_manager_readwrite();  // Get the coupler's data manager for read/write access
 
       // Register and allocation non-tracer quantities used by the microphysics
       dm.register_and_allocate<real>( "precl" , "precipitation rate" , {ny,nx} , {"y","x"} );
@@ -80,6 +86,7 @@ namespace modules {
         if (k == 0) precl(j,i) = 0;
       });
 
+      // Set microphysics options in the coupler, and let the coupler know kessler is being used
       coupler.set_option<std::string>("micro","kessler");
       coupler.set_option<real>("R_d"    ,R_d    );
       coupler.set_option<real>("cp_d"   ,cp_d   );
@@ -95,68 +102,73 @@ namespace modules {
 
 
 
+    // Advance the microphysics module by one time step
+    // Applies latent heating, hydrometeor creation, and sedimentation fallout
+    // coupler : Reference to the coupler object
+    // dt : Time step size in seconds
     void time_step( core::Coupler &coupler , real dt ) const {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
 
-      auto &dm = coupler.get_data_manager_readwrite();
+      auto &dm = coupler.get_data_manager_readwrite(); // Get the coupler's data manager for read/write access
 
       // Grab the data
-      auto rho_v   = dm.get_lev_col<real      >("water_vapor"  );
-      auto rho_c   = dm.get_lev_col<real      >("cloud_liquid" );
-      auto rho_r   = dm.get_lev_col<real      >("precip_liquid");
-      auto rho_dry = dm.get_lev_col<real const>("density_dry"  );
-      auto temp    = dm.get_lev_col<real      >("temp"         );
+      auto rho_v   = dm.get_lev_col<real      >("water_vapor"  ); // Get water vapor density
+      auto rho_c   = dm.get_lev_col<real      >("cloud_liquid" ); // Get cloud liquid density
+      auto rho_r   = dm.get_lev_col<real      >("precip_liquid"); // Get precip liquid density
+      auto rho_dry = dm.get_lev_col<real const>("density_dry"  ); // Get dry air density
+      auto temp    = dm.get_lev_col<real      >("temp"         ); // Get temperature
 
       // Grab the dimension sizes
-      auto zmid_in = coupler.get_zmid();
-      int  nz      = coupler.get_nz();
-      int  ny      = coupler.get_ny();
-      int  nx      = coupler.get_nx();
-      int  ncol    = ny*nx;
+      auto zmid_in = coupler.get_zmid(); // Get mid-point heights (1-D array of size nz)
+      int  nz      = coupler.get_nz();   // Number of vertical levels
+      int  ny      = coupler.get_ny();   // Number of local grid cells in the y-direction
+      int  nx      = coupler.get_nx();   // Number of local grid cells in the x-direction
+      int  ncol    = ny*nx;              // Number of columns
 
       // These are inputs to kessler(...)
-      real2d qv      ("qv"      ,nz,ncol);
-      real2d qc      ("qc"      ,nz,ncol);
-      real2d qr      ("qr"      ,nz,ncol);
-      real2d pressure("pressure",nz,ncol);
-      real2d theta   ("theta"   ,nz,ncol);
-      real2d exner   ("exner"   ,nz,ncol);
-      real2d zmid    ("zmid"    ,nz,ncol);
+      real2d qv      ("qv"      ,nz,ncol); // Water vapor dry mixing ratio
+      real2d qc      ("qc"      ,nz,ncol); // Cloud liquid dry mixing ratio
+      real2d qr      ("qr"      ,nz,ncol); // Precip liquid dry mixing ratio
+      real2d pressure("pressure",nz,ncol); // Pressure
+      real2d theta   ("theta"   ,nz,ncol); // Potential temperature
+      real2d exner   ("exner"   ,nz,ncol); // Exner pressure
+      real2d zmid    ("zmid"    ,nz,ncol); // Mid-point heights (3-D variable instead of 1-D for kessler)
 
       // Force constants into local scope
-      real R_d  = this->R_d;
-      real R_v  = this->R_v;
-      real cp_d = this->cp_d;
-      real p0   = this->p0;
+      real R_d  = this->R_d;   // Dry air ideal gas constant
+      real R_v  = this->R_v;   // Water vapor ideal gas constant
+      real cp_d = this->cp_d;  // Specific heat of dry air at constant pressure
+      real p0   = this->p0;    // Reference pressure
 
-      // Save initial state, and compute inputs for kessler(...)
+      // Compute the inputs to kessler(...)
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
-        zmid    (k,i) = zmid_in(k);
-        qv      (k,i) = rho_v(k,i) / rho_dry(k,i);
-        qc      (k,i) = rho_c(k,i) / rho_dry(k,i);
-        qr      (k,i) = rho_r(k,i) / rho_dry(k,i);
-        pressure(k,i) = R_d * rho_dry(k,i) * temp(k,i) + R_v * rho_v(k,i) * temp(k,i);
-        exner   (k,i) = pow( pressure(k,i) / p0 , R_d / cp_d );
-        theta   (k,i) = temp(k,i) / exner(k,i);
+        zmid    (k,i) = zmid_in(k);                 // Expand zmid to 2-D for kessler
+        qv      (k,i) = rho_v(k,i) / rho_dry(k,i);  // water vapor dry mixing ratio
+        qc      (k,i) = rho_c(k,i) / rho_dry(k,i);  // cloud liquid dry mixing ratio
+        qr      (k,i) = rho_r(k,i) / rho_dry(k,i);  // precip liquid dry mixing ratio
+        pressure(k,i) = R_d * rho_dry(k,i) * temp(k,i) + R_v * rho_v(k,i) * temp(k,i); // Total pressure
+        exner   (k,i) = pow( pressure(k,i) / p0 , R_d / cp_d );  // Exner pressure
+        theta   (k,i) = temp(k,i) / exner(k,i);     // Potential temperature
       });
 
-      auto precl = dm.get_collapsed<real>("precl");
+      auto precl = dm.get_collapsed<real>("precl");  // This is the surface precipitation rate output by kessler
 
       ////////////////////////////////////////////
       // Call Kessler code
       ////////////////////////////////////////////
-      auto no_rain = coupler.get_option<bool>("kessler_no_rain",false);
+      auto no_rain = coupler.get_option<bool>("kessler_no_rain",false); // Whether to disable rain processes
+      // Calls the original kessler microphysics routine ported to portable C++
       kessler(theta, qv, qc, qr, rho_dry, precl, zmid, exner, dt, R_d, cp_d, p0, no_rain);
 
       // Post-process microphysics changes back to the coupler state
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
-        rho_v   (k,i) = qv(k,i)*rho_dry(k,i);
-        rho_c   (k,i) = qc(k,i)*rho_dry(k,i);
-        rho_r   (k,i) = qr(k,i)*rho_dry(k,i);
+        rho_v(k,i) = qv(k,i)*rho_dry(k,i);     // Water vapor density
+        rho_c(k,i) = qc(k,i)*rho_dry(k,i);     // Cloud liquid density
+        rho_r(k,i) = qr(k,i)*rho_dry(k,i);     // Precip liquid density
         // While micro changes total pressure, thus changing exner, the definition
         // of theta depends on the old exner pressure, so we'll use old exner here
-        temp    (k,i) = theta(k,i) * exner(k,i);
+        temp (k,i) = theta(k,i) * exner(k,i); // Temperature
       });
     }
 

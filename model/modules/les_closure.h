@@ -6,6 +6,7 @@
 
 namespace modules {
 
+  // This class implements a 1-equation SGS TKE-based SGS closure model
   struct LES_Closure {
     int static constexpr hs        = 1;  // Halo size used by the LES closure
     int static constexpr num_state = 5;  // Number of state variables (rho, rho*u, rho*v, rho*w, rho*theta)
