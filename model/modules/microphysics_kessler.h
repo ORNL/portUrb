@@ -6,6 +6,7 @@
 
 namespace modules {
 
+  // This class implements the Kessler microphysics scheme
   class Microphysics_Kessler {
   public:
     int static constexpr num_tracers = 3;
