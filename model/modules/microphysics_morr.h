@@ -174,31 +174,29 @@ namespace modules {
       double2d_F nr        ("nr        ",ncol,nz); // rain number concentration dry mixing ratio
       double2d_F t         ("t         ",ncol,nz); // temperature
       double2d_F ng        ("ng        ",ncol,nz); // graupel number concentration dry mixing ratio
-      double2d_F qlsink    ("qlsink    ",ncol,nz); // cloud liquid water sink due to autoconversion and accretion
-      double2d_F preci     ("preci     ",ncol,nz); // in-cloud ice precipitation rate
-      double2d_F precs     ("precs     ",ncol,nz); // snow precipitation rate
-      double2d_F precg     ("precg     ",ncol,nz); // graupel precipitation rate
-      double2d_F precr     ("precr     ",ncol,nz); // rain precipitation rate
+      double2d_F qlsink    ("qlsink    ",ncol,nz); // tendency of cloud water to rain, snow, graupel (kg/kg/s)
+      double2d_F preci     ("preci     ",ncol,nz); // sedimentation fluxes (kg/m^2/s) for ice
+      double2d_F precs     ("precs     ",ncol,nz); // sedimentation fluxes (kg/m^2/s) for snow
+      double2d_F precg     ("precg     ",ncol,nz); // sedimentation fluxes (kg/m^2/s) for graupel
+      double2d_F precr     ("precr     ",ncol,nz); // sedimentation fluxes (kg/m^2/s) for rain
       double2d_F p         ("p         ",ncol,nz); // pressure
-      double2d_F qrcuten   ("qrcuten   ",ncol,nz); // rain water dry mixing ratio tendencies
-      double2d_F qscuten   ("qscuten   ",ncol,nz); // snow dry mixing ratio tendencies
-      double2d_F qicuten   ("qicuten   ",ncol,nz); // cloud ice dry mixing ratio tendencies
+      double2d_F qrcuten   ("qrcuten   ",ncol,nz); // rain tendency from parameterized cumulus convection
+      double2d_F qscuten   ("qscuten   ",ncol,nz); // snow tendency from parameterized cumulus convection
+      double2d_F qicuten   ("qicuten   ",ncol,nz); // cloud tendency from parameterized cumulus convection
       double2d_F dz_arr    ("dz_arr"    ,ncol,nz); // vertical grid spacing array (3-D instead of 1-D for microphysics)
-      double1d_F rainncv   ("rainncv   ",ncol   ); // surface rain number concentration tendency
-      double1d_F sr        ("sr        ",ncol   ); // surface rain water mixing ratio tendency
-      double1d_F snowncv   ("snowncv   ",ncol   ); // surface snow number concentration tendency
-      double1d_F graupelncv("graupelncv",ncol   ); // surface graupel number concentration tendency
-      double1d_F rainnc    ("rainnc    ",ncol   ); // surface rain number concentration
-      double1d_F snownc    ("snownc    ",ncol   ); // surface snow number concentration
-      double1d_F graupelnc ("graupelnc ",ncol   ); // surface graupel number concentration
+      double1d_F rainncv   ("rainncv   ",ncol   ); // one time step grid scale precipitation (mm/time step)
+      double1d_F sr        ("sr        ",ncol   ); // one time step mass ratio of snow to total precip
+      double1d_F snowncv   ("snowncv   ",ncol   ); // one time step grid scale snow plus cloud ice (mm/time step)
+      double1d_F graupelncv("graupelncv",ncol   ); // one time step grid scale graupel (mm/time step)
+      double1d_F rainnc    ("rainnc    ",ncol   ); // accumulated grid-scale precipitation (mm)
+      double1d_F snownc    ("snownc    ",ncol   ); // accumulated grid-scale snow plus cloud ice (mm)
+      double1d_F graupelnc ("graupelnc ",ncol   ); // accumulated grid-scale graupel (mm)
 
-      //////////////////////////////////////////////////////////////////////////////
       // Compute quantities needed for inputs to Morrison 2-mom
-      //////////////////////////////////////////////////////////////////////////////
-      real R_d  = coupler.get_option<real>("R_d" );
-      real R_v  = coupler.get_option<real>("R_v" );
-      real cp_d = coupler.get_option<real>("cp_d");
-      real p0   = coupler.get_option<real>("p0"  );
+      real R_d  = coupler.get_option<real>("R_d" ); // ideal gas constant for dry air
+      real R_v  = coupler.get_option<real>("R_v" ); // ideal gas constant for water vapor
+      real cp_d = coupler.get_option<real>("cp_d"); // specific heat at constant pressure for dry air
+      real p0   = coupler.get_option<real>("p0"  ); // reference pressure in Pa
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
         // Compute dry mixing ratios for water vapor, cloud liquid, rain water, cloud ice, snow, graupel
@@ -256,6 +254,7 @@ namespace modules {
     }
 
 
+    // Returns the name of this microphysics scheme
     std::string micro_name() const { return "p3"; }
 
 
