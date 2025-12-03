@@ -6,6 +6,10 @@
 
 namespace modules {
 
+  // This module implements a turbine actuator disc model based on an actuator disc approach
+  //   with a projected disk that actively yaws toward the wind direction and applies thrust
+  //   and swirl forces to the flow field. The model also keeps time traces of power generation,
+  //   yaw angle, and inflow wind speed for each turbine.
   struct TurbineActuatorDisc {
 
 
