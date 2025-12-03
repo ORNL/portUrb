@@ -10,6 +10,7 @@ namespace modules {
   // a grid among all of the stored faces.
   struct TriMesh {
 
+    // This class holds data to define a vertex
     struct Vertex {
       float x, y, z;
       inline friend std::ostream &operator<<(std::ostream& os, Vertex const &v ) {
@@ -18,16 +19,19 @@ namespace modules {
       }
     };
 
+    // This class holds data to define a triangular face using three vertices
     struct Face {
       Vertex v1, v2, v3;
     };
 
 
-    float3d faces;
-    Vertex  domain_lo;
-    Vertex  domain_hi;
+    float3d faces;      // YAKL array holding the triangular faces. Dimensions are (num_faces,3,3)
+    Vertex  domain_lo;  // Lower extent of the domain containing all faces
+    Vertex  domain_hi;  // Upper extent of the domain containing all faces
 
 
+    // Load a wavefront .obj file containing triangular vertices and faces. Iterate through the file line by line,
+    //   storing vertices and faces as they are encountered, keeping track of the domain extents as vertices are read.
     void load_file(std::string fname) {
       float constexpr pos_huge = std::numeric_limits<float>::max();    // Highest possible float
       float constexpr neg_huge = std::numeric_limits<float>::lowest(); // Lowest possible float
