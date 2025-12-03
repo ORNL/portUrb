@@ -6,9 +6,14 @@
 
 namespace modules {
 
+  // This implements a turbine model based on the Fitch approach for situations where the turbine diameter
+  //   is smaller than the grid spacing. The model applies forces to the flow field based on lookup tables of
+  //   thrust and power coefficients as a function of wind speed and keeps track of power generation time traces.
   struct TurbineFitch {
 
 
+    // This class holds information about a reference wind turbine, including lookup tables for various properties
+    //   and turbine geometric properties
     struct RefTurbine {
       std::vector<real> velmag;        // Velocity magnitude at infinity (m/s)
       std::vector<real> thrust_coef;   // Thrust coefficient             (dimensionless)
@@ -26,8 +31,9 @@ namespace modules {
         this->power        = config["power_megawatts"   ].as<std::vector<real>>();
         this->hub_height   = config["hub_height"        ].as<real>();
         this->blade_radius = config["blade_radius"      ].as<real>();
-        auto nz   = coupler.get_nz();
-        auto zint = coupler.get_zint().createHostCopy();
+        auto nz   = coupler.get_nz();                    // Get the number of z-levels in the simulation
+        auto zint = coupler.get_zint().createHostCopy(); // Get the z-interface heights as host array
+        // pre-compute the proportion fo the turbine in each vertical cell
         realHost1d prop_h("prop",nz);
         int nsamp = 5;
         for (int k=0; k < nz; k++) {
@@ -38,12 +44,14 @@ namespace modules {
             if (std::abs(z0) < 1) prop_h(k) += std::sqrt(1-z0*z0);
           }
         }
-        using yakl::componentwise::operator/;
+        using yakl::componentwise::operator/;  // Allow componentwise '/' for yakl::Arrays
+        // Store the normalized vertical proportion array on the device in the RefTurbine
         this->prop = (prop_h/yakl::intrinsics::sum(prop_h)).createDeviceCopy();
       }
     };
 
 
+    // This holds information about an individual turbine instance in the simulation (there may be multiple turbines)
     struct Turbine {
       bool               active;       // Whether this turbine affects this MPI task
       real               base_loc_x;   // x location of the tower base
@@ -54,24 +62,28 @@ namespace modules {
     };
 
 
+    // This holds a all turbines in the simulation
     struct TurbineGroup {
       std::vector<Turbine> turbines;
       void add_turbine( core::Coupler       & coupler     ,
                         real                  base_loc_x  ,
                         real                  base_loc_y  ,
                         RefTurbine    const & ref_turbine ) {
-        auto dx    = coupler.get_dx();
-        auto dy    = coupler.get_dy();
-        auto nx    = coupler.get_nx();
-        auto ny    = coupler.get_ny();
-        auto nz    = coupler.get_nz();
-        auto i_beg = coupler.get_i_beg();
-        auto j_beg = coupler.get_j_beg();
+        auto dx    = coupler.get_dx();    // Grid spacing in the x-direction
+        auto dy    = coupler.get_dy();    // Grid spacing in the y-direction
+        auto nx    = coupler.get_nx();    // Local number of cells in the x-direction
+        auto ny    = coupler.get_ny();    // Local number of cells in the y-direction
+        auto nz    = coupler.get_nz();    // Number of cells in the z-direction
+        auto i_beg = coupler.get_i_beg(); // Starting i-index for this MPI task
+        auto j_beg = coupler.get_j_beg(); // Starting j-index for this MPI task
+        // Determine the extents of this MPI task's domain
         real dom_x1 = (i_beg+0 )*dx;
         real dom_x2 = (i_beg+nx)*dx;
         real dom_y1 = (j_beg+0 )*dy;
         real dom_y2 = (j_beg+ny)*dy;
+        // Determine if this turbine is active on this MPI task
         bool active = base_loc_x >= dom_x1 && base_loc_x < dom_x2 && base_loc_y >= dom_y1 && base_loc_y < dom_y2;
+        // Create the turbine and add it to the list
         Turbine loc;
         loc.active      = active;
         loc.base_loc_x  = base_loc_x;
@@ -82,8 +94,8 @@ namespace modules {
     };
 
 
-    TurbineGroup  turbine_group;
-    int           trace_size;
+    TurbineGroup  turbine_group;  // All turbines in the simulation
+    int           trace_size;     // Current size of the time traces
 
 
     void init( core::Coupler &coupler ) {
