@@ -9,6 +9,8 @@ namespace modules {
   struct TurbineActuatorDisc {
 
 
+    // This class holds information about a reference wind turbine, including lookup tables for various properties
+    //   and turbine geometric properties
     struct RefTurbine {
       std::vector<real> velmag;        // Velocity magnitude at infinity (m/s)
       std::vector<real> thrust_coef;   // Thrust coefficient             (dimensionless)
@@ -34,6 +36,8 @@ namespace modules {
     };
 
 
+    // This function computes the new yaw angle based on the current yaw angle, the wind direction,
+    //   and a maximum yaw rate
     real yaw_tend( real uvel , real vvel , real dt , real yaw , real max_yaw_speed ) {
       real diff = std::atan2(vvel,uvel) - yaw;
       if (diff >  M_PI) diff -= 2*M_PI;
@@ -45,6 +49,7 @@ namespace modules {
     }
 
 
+    // This holds information about an individual turbine in the simulation (there can be multiple turbines)
     struct Turbine {
       bool               active;         // Whether this turbine affects this MPI task
       real               base_loc_x;     // x location of the tower base
@@ -58,26 +63,29 @@ namespace modules {
     };
 
 
+    // This holds information about all turbines in the simulation
     struct TurbineGroup {
-      std::vector<Turbine> turbines;
+      std::vector<Turbine> turbines;  // All turbines in the simulation
+      // This routine adds a turbine to the group based on its base location and reference turbine data
+      // The coupler is needed in order to determine whether the turbine is active on this MPI task
       void add_turbine( core::Coupler       & coupler     ,
                         real                  base_loc_x  ,
                         real                  base_loc_y  ,
                         RefTurbine    const & ref_turbine ) {
         using yakl::c::parallel_for;
         using yakl::c::SimpleBounds;
-        auto i_beg  = coupler.get_i_beg();
-        auto j_beg  = coupler.get_j_beg();
-        auto nx     = coupler.get_nx();
-        auto ny     = coupler.get_ny();
-        auto dx     = coupler.get_dx();
-        auto dy     = coupler.get_dy();
+        auto i_beg  = coupler.get_i_beg();  // Get the beginning x-direction index for this MPI task
+        auto j_beg  = coupler.get_j_beg();  // Get the beginning y-direction index for this MPI task
+        auto nx     = coupler.get_nx();     // Get the number of x-direction cells
+        auto ny     = coupler.get_ny();     // Get the number of y-direction cells
+        auto dx     = coupler.get_dx();     // Get the grid spacing in the x-direction
+        auto dy     = coupler.get_dy();     // Get the grid spacing in the y-direction
         // bounds of this MPI task's domain
         real dom_x1  = (i_beg+0 )*dx;
         real dom_x2  = (i_beg+nx)*dx;
         real dom_y1  = (j_beg+0 )*dy;
         real dom_y2  = (j_beg+ny)*dy;
-        // Rectangular bounds of this turbine's potential influence
+        // Rectangular bounds of this turbine's potential influence (3 turbine diameters in each direction from tower base)
         real turb_x1 = base_loc_x-6*ref_turbine.blade_radius;
         real turb_x2 = base_loc_x+6*ref_turbine.blade_radius;
         real turb_y1 = base_loc_y-6*ref_turbine.blade_radius;
@@ -86,34 +94,40 @@ namespace modules {
                          turb_x2 < dom_x1 || // Turbine's to the left
                          turb_y1 > dom_y2 || // Turbine's above
                          turb_y2 < dom_y1 ); // Turbine's below
+        // Create a local turbine object, assign its properties, and add it to the list
         Turbine loc;
         loc.active      = active;
         loc.base_loc_x  = base_loc_x;
         loc.base_loc_y  = base_loc_y;
         loc.yaw_angle   = coupler.get_option<real>("turbine_initial_yaw",0);
         loc.ref_turbine = ref_turbine;
+        // The line below calls MPI_Comm_split to create a new sub-communicator and group for MPI tasks
+        //   involved with this turbine
         loc.par_comm.create( active , coupler.get_parallel_comm().get_mpi_comm() );
         turbines.push_back(loc);
       }
     };
 
 
-    TurbineGroup  turbine_group;
-    int           trace_size;
+    TurbineGroup  turbine_group;  // Holds all turbines in the simulation
+    int           trace_size;     // Number of time steps recorded in the turbine traces so far
+                                  // This is reset to zero after writing output each time
 
 
+    // Initialize the turbine actuator disc module, adding all the specified turbines from the coupler options
     void init( core::Coupler &coupler ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      auto nx    = coupler.get_nx();
-      auto ny    = coupler.get_ny();
-      auto nz    = coupler.get_nz();
-      auto dx    = coupler.get_dx();
-      auto dy    = coupler.get_dy();
-      auto i_beg = coupler.get_i_beg();
-      auto j_beg = coupler.get_j_beg();
-      RefTurbine ref_turbine;
+      auto nx    = coupler.get_nx();    // Get the local number of x-direction cells
+      auto ny    = coupler.get_ny();    // Get the local number of y-direction cells
+      auto nz    = coupler.get_nz();    // Get the number of z-direction cells
+      auto dx    = coupler.get_dx();    // Get the grid spacing in the x-direction
+      auto dy    = coupler.get_dy();    // Get the grid spacing in the y-direction
+      auto i_beg = coupler.get_i_beg(); // Get the beginning x-direction index for this MPI task
+      auto j_beg = coupler.get_j_beg(); // Get the beginning y-direction index for this MPI task
+      RefTurbine ref_turbine;  // Create a reference turbine and initialize it from file
       ref_turbine.init( coupler.get_option<std::string>("turbine_file") );
+      // Add turbines based on the specified x and y locations from coupler options
       if (coupler.option_exists("turbine_x_locs") && coupler.option_exists("turbine_y_locs")) {
         auto x_locs = coupler.get_option<std::vector<real>>("turbine_x_locs");
         auto y_locs = coupler.get_option<std::vector<real>>("turbine_y_locs");
@@ -121,64 +135,74 @@ namespace modules {
           turbine_group.add_turbine( coupler , x_locs.at(iturb) , y_locs.at(iturb) , ref_turbine );
         }
       }
-      trace_size = 0;
+      trace_size = 0;  // Initialize trace size to zero
+      // Register output writing function to write turbine traces
       coupler.register_write_output_module( [=] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
         if (trace_size > 0) {
-          nc.redef();
-          nc.create_dim( "num_time_steps" , trace_size );
+          nc.redef();  // Enter define mode in order to add new variables and dimensions
+          nc.create_dim( "num_time_steps" , trace_size );  // Create dimension for time steps
+          // Add a trace variable for each turbine for power, yaw, and inflow wind speed
           for (int iturb=0; iturb < turbine_group.turbines.size(); iturb++) {
             nc.create_var<real>( std::string("power_trace_turb_")+std::to_string(iturb) , {"num_time_steps"} );
             nc.create_var<real>( std::string("yaw_trace_turb_"  )+std::to_string(iturb) , {"num_time_steps"} );
             nc.create_var<real>( std::string("mag_trace_turb_"  )+std::to_string(iturb) , {"num_time_steps"} );
           }
-          nc.enddef();
-          nc.begin_indep_data();
-          for (int iturb=0; iturb < turbine_group.turbines.size(); iturb++) {
-            auto &turbine = turbine_group.turbines.at(iturb);
+          nc.enddef();  // Exit define mode to write data
+          nc.begin_indep_data();  // Begin independent data section for writing from only the owning MPI task
+          for (int iturb=0; iturb < turbine_group.turbines.size(); iturb++) {  // Loop over all turbines
+            auto &turbine = turbine_group.turbines.at(iturb); // Grab a reference to this turbine for convenience
+            // Only write this data from the MPI task that contains the base location
             if (turbine.active && turbine.base_loc_x >= i_beg*dx && turbine.base_loc_x < (i_beg+nx)*dx &&
                                   turbine.base_loc_y >= j_beg*dy && turbine.base_loc_y < (j_beg+ny)*dy ) {
-              realHost1d power_arr("power_arr",trace_size);
-              realHost1d yaw_arr  ("yaw_arr"  ,trace_size);
-              realHost1d mag_arr  ("mag_arr"  ,trace_size);
+              realHost1d power_arr("power_arr",trace_size);  // Array to hold power trace
+              realHost1d yaw_arr  ("yaw_arr"  ,trace_size);  // Array to hold yaw trace
+              realHost1d mag_arr  ("mag_arr"  ,trace_size);  // Array to hold inflow wind magnitude trace
+              // Load data from std:;vector to yakl::Array for writing
               for (int i=0; i < trace_size; i++) { power_arr(i) = turbine.power_trace.at(i);          }
               for (int i=0; i < trace_size; i++) { yaw_arr  (i) = turbine.yaw_trace  .at(i)/M_PI*180; }
               for (int i=0; i < trace_size; i++) { mag_arr  (i) = turbine.mag_trace  .at(i); }
+              // Write the data arrays to file
               nc.write( power_arr , std::string("power_trace_turb_")+std::to_string(iturb) );
               nc.write( yaw_arr   , std::string("yaw_trace_turb_"  )+std::to_string(iturb) );
               nc.write( mag_arr   , std::string("mag_trace_turb_"  )+std::to_string(iturb) );
             }
             coupler.get_parallel_comm().barrier();
+            // Clear the trace data after writing
             turbine.power_trace.clear();
             turbine.yaw_trace  .clear();
             turbine.mag_trace  .clear();
           }
-          nc.end_indep_data();
+          nc.end_indep_data();  // End independent data section
         }
-        trace_size = 0;
+        trace_size = 0;  // Reset trace size to zero after writing
       });
     }
 
 
+    // Apply the turbine actuator disc forces and yaw updates for all turbines, accumulating tendencies from
+    //   thrust and torque forces. Keep traces of the power, yaw angle, and inflow wind speed normal to the turbine plane.
+    // Injects a portion of the unused thrust energy back into the flow as SGS/unresolved TKE.
     void apply( core::Coupler & coupler , float dt ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      auto nx    = coupler.get_nx   ();
-      auto ny    = coupler.get_ny   ();
-      auto nz    = coupler.get_nz   ();
-      auto dx    = coupler.get_dx   ();
-      auto dy    = coupler.get_dy   ();
-      auto dz    = coupler.get_dz   ();
-      auto zint  = coupler.get_zint ();
-      auto zmid  = coupler.get_zmid ();
-      auto i_beg = coupler.get_i_beg();
-      auto j_beg = coupler.get_j_beg();
-      auto &dm   = coupler.get_data_manager_readwrite();
-      auto rho_d = dm.get<real const,3>("density_dry"  );
-      auto uvel  = dm.get<real      ,3>("uvel"         );
-      auto vvel  = dm.get<real      ,3>("vvel"         );
-      auto wvel  = dm.get<real      ,3>("wvel"         );
-      auto tke   = dm.get<real      ,3>("TKE"          );
+      auto nx    = coupler.get_nx   ();  // Get the local number of x-direction cells
+      auto ny    = coupler.get_ny   ();  // Get the local number of y-direction cells
+      auto nz    = coupler.get_nz   ();  // Get the number of z-direction cells
+      auto dx    = coupler.get_dx   ();  // Get the grid spacing in the x-direction
+      auto dy    = coupler.get_dy   ();  // Get the grid spacing in the y-direction
+      auto dz    = coupler.get_dz   ();  // Get the grid spacing in the z-direction (1-D array of size nz)
+      auto zint  = coupler.get_zint ();  // Get the z-interface heights (1-D array of size nz+1)
+      auto zmid  = coupler.get_zmid ();  // Get the z-midpoint heights (1-D array of size nz)
+      auto i_beg = coupler.get_i_beg();  // Get the beginning x-direction index for this MPI task
+      auto j_beg = coupler.get_j_beg();  // Get the beginning y-direction index for this MPI task
+      auto &dm   = coupler.get_data_manager_readwrite();  // Get the data manager for read/write access
+      auto rho_d = dm.get<real const,3>("density_dry"  );  // Dry air density
+      auto uvel  = dm.get<real      ,3>("uvel"         );  // u-velocity
+      auto vvel  = dm.get<real      ,3>("vvel"         );  // v-velocity
+      auto wvel  = dm.get<real      ,3>("wvel"         );  // w-velocity
+      auto tke   = dm.get<real      ,3>("TKE"          );  // TKE
 
+      // Allocate tendency arrays for u, v, w, and TKE and initialize to zero
       float3d tend_u  ("tend_u"  ,nz,ny,nx);
       float3d tend_v  ("tend_v"  ,nz,ny,nx);
       float3d tend_w  ("tend_w"  ,nz,ny,nx);
@@ -190,37 +214,42 @@ namespace modules {
         tend_tke(k,j,i) = 0;
       });
 
-      for (int iturb = 0; iturb < turbine_group.turbines.size(); iturb++) {
-        auto &turbine = turbine_group.turbines.at(iturb);
-        if (turbine.active) {
+      for (int iturb = 0; iturb < turbine_group.turbines.size(); iturb++) {  // Loop over all turbines
+        auto &turbine = turbine_group.turbines.at(iturb);  // Grab a reference to this turbine for convenience
+        if (turbine.active) {  // If this MPI task is potentially involved with the turbine
           // Pre-compute rotation matrix terms
           float cos_yaw = std::cos(turbine.yaw_angle);
           float sin_yaw = std::sin(turbine.yaw_angle);
           // Get reference data for later computations
-          float rad             = turbine.ref_turbine.blade_radius ;
-          float hub_height      = turbine.ref_turbine.hub_height   ;
-          float base_x          = turbine.base_loc_x               ;
-          float base_y          = turbine.base_loc_y               ;
-          auto  ref_velmag      = turbine.ref_turbine.velmag       ;
-          auto  ref_thrust_coef = turbine.ref_turbine.thrust_coef  ;
-          auto  ref_power_coef  = turbine.ref_turbine.power_coef   ;
-          auto  ref_power       = turbine.ref_turbine.power        ;
-          auto  ref_rotation    = turbine.ref_turbine.rotation     ;
+          float rad             = turbine.ref_turbine.blade_radius ;  // Blade radius
+          float hub_height      = turbine.ref_turbine.hub_height   ;  // Hub height
+          float base_x          = turbine.base_loc_x               ;  // Tower base x-location
+          float base_y          = turbine.base_loc_y               ;  // Tower base y-location
+          auto  ref_velmag      = turbine.ref_turbine.velmag       ;  // Reference velocity magnitudes
+          auto  ref_thrust_coef = turbine.ref_turbine.thrust_coef  ;  // Reference thrust coefficients
+          auto  ref_power_coef  = turbine.ref_turbine.power_coef   ;  // Reference power coefficients
+          auto  ref_power       = turbine.ref_turbine.power        ;  // Reference power generation values
+          auto  ref_rotation    = turbine.ref_turbine.rotation     ;  // Reference rotation rates
 
           // Zero out disk weights for projection and sampling
           // Compute average winds in a 3-D tet around the turbine hub to compute upstream direction
-          float3d disk_weight_angle("disk_weight_angle",nz,ny,nx);
-          float3d disk_weight_proj ("disk_weight_proj" ,nz,ny,nx);
-          float3d disk_weight_samp ("disk_weight_samp" ,nz,ny,nx);
-          float3d uvel_3d          ("uvel_3d"          ,nz,ny,nx);
-          float3d vvel_3d          ("vvel_3d"          ,nz,ny,nx);
+          float3d disk_weight_angle("disk_weight_angle",nz,ny,nx);  // Weights for computing wind angle about the hub
+                                                                    // The angle is used later for torque calculation
+          float3d disk_weight_proj ("disk_weight_proj" ,nz,ny,nx);  // Weights for thrust projection disk
+          float3d disk_weight_samp ("disk_weight_samp" ,nz,ny,nx);  // Weights for inflow sampling disk
+          float3d uvel_3d          ("uvel_3d"          ,nz,ny,nx);  // For determining upstream direction
+          float3d vvel_3d          ("vvel_3d"          ,nz,ny,nx);  // For determining upstream direction
+          // Local MPI task's contribution to upstream wind direction
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+            // Initialize weights to zero
             disk_weight_angle(k,j,i) = 0;
             disk_weight_proj (k,j,i) = 0;
             disk_weight_samp (k,j,i) = 0;
+            // Compute midpoint location for this cell
             float x = (i_beg+i+0.5f)*dx;
             float y = (j_beg+j+0.5f)*dy;
             float z = zmid(k);
+            // Store the u and v velocities within the rotor disk for upstream direction calculation
             if ( z >= hub_height-rad && z <= hub_height+rad &&
                  y >= base_y    -rad && y <= base_y    +rad &&
                  x >= base_x    -rad && x <= base_x    +rad ) {
@@ -231,10 +260,12 @@ namespace modules {
               vvel_3d(k,j,i) = 0;
             }
           });
+          // Aggregate the global upstream wind velocities at the turbine from all MPI tasks
           yakl::SArray<float,1,2> weights_tot;
           weights_tot(0) = yakl::intrinsics::sum(uvel_3d);
           weights_tot(1) = yakl::intrinsics::sum(vvel_3d);
           weights_tot = turbine.par_comm.all_reduce( weights_tot , MPI_SUM , "windmill_Allreduce1" );
+          // Determine the upstream wind direction for the turbine
           float up_uvel = weights_tot(0);
           float up_vvel = weights_tot(1);
           float up_dir  = coupler.get_option<real>("turbine_upstream_dir",std::atan2( up_vvel , up_uvel ));
@@ -249,23 +280,26 @@ namespace modules {
             int num_x   = std::ceil(20/dx*xr             *2); // # cells to sample over in x-direction
             int num_y   = std::ceil(20/dx*rad*(1+decay/2)*2); // # cells to sample over in y-direction
             int num_z   = std::ceil(20/dx*rad*(1+decay/2)*2); // # cells to sample over in z-direction
+            // This function computes the thrust shaping function in reference space
             auto thrust_shape = KOKKOS_LAMBDA (float x, float x2, float x3, float a) -> float {
               if (x < x2) return std::pow(-1.0*((x*x)-2*x*x2)/(x2*x2),a);
               if (x < x3) return -1.0*(2*(x*x*x)-3*(x*x)*x2-3*x2*(x3*x3)+(x3*x3*x3)-3*((x*x)-2*x*x2)*x3)/
                                       ((x2*x2*x2)-3*(x2*x2)*x3+3*x2*(x3*x3)-(x3*x3*x3));
               return 0;
             };
+            // This function defines the 1-D projection shaping function in the direction normal to the disk
             auto proj_shape_1d = KOKKOS_LAMBDA ( float x , float xr ) -> float {
               float term = 1-(x/xr)*(x/xr);
               return term <= 0 ? 0 : term*term;
             };
+            // Compute the local MPI task's contribution to the disk projection and sampling weights
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_z,num_y,num_x) , KOKKOS_LAMBDA (int k, int j, int i) {
               // Initial point in the y-z plane facing the negative x direction
-              float x = -xr              + (2*xr             *i)/(num_x-1);
-              float y = -rad*(1+decay/2) + (2*rad*(1+decay/2)*j)/(num_y-1);
-              float z = -rad*(1+decay/2) + (2*rad*(1+decay/2)*k)/(num_z-1);
+              float x = -xr              + (2*xr             *i)/(num_x-1); // Compute reference x location
+              float y = -rad*(1+decay/2) + (2*rad*(1+decay/2)*j)/(num_y-1); // Compute reference y location
+              float z = -rad*(1+decay/2) + (2*rad*(1+decay/2)*k)/(num_z-1); // Compute reference z location
               float rloc = std::sqrt(y*y+z*z);  // radius of the point about the origin / hub center
-              if (rloc <= rad*(1+decay/2)) {
+              if (rloc <= rad*(1+decay/2)) {  // if within the disk + decay region
                 // Compute the 3-D shaping function for this point in reference space
                 float shp = thrust_shape(rloc/rad,1-decay/2,1+decay/2,0.5)*proj_shape_1d(x,xr);
                 // Rotate about z-axis for yaw angle, and translate to base location
@@ -274,8 +308,9 @@ namespace modules {
                 float zp = hub_height + z;
                 // If it's in this task's domain, atomically add to the cell's total shape function sum for projection
                 //     Also, add the average angle for torque application later
-                int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-                int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                int ti = static_cast<int>(std::floor(xp/dx))-i_beg; // Compute global i-index this sampling point falls into
+                int tj = static_cast<int>(std::floor(yp/dy))-j_beg; // Compute global j-index this sampling point falls into
+                // Locate the vertical index (k) this sampling point falls into
                 int tk = 0;
                 for (int kk=0; kk < nz; kk++) {
                   if (zp >= zint(kk) && zp < zint(kk+1)) {
@@ -283,6 +318,8 @@ namespace modules {
                     break;
                   }
                 }
+                // If the sampling point is in this MPI task's domain, accumulate its contribution in the correct cell
+                // This must be done with atomics because multiple threads may write to the same cell at the same time
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_angle(tk,tj,ti) , shp*std::atan2(z,-y) );
                   Kokkos::atomic_add( &disk_weight_proj (tk,tj,ti) , shp );
@@ -309,8 +346,9 @@ namespace modules {
           // Compute average angle in each cell by dividing by prjection weights
           // Normalize thrust and sampling disk weights so that they sum to one
           // Aggregate weighted wind velocities in upstream sampling region to compute inflow
-          float3d samp_u("samp_u",nz,ny,nx);
-          float3d samp_v("samp_v",nz,ny,nx);
+          float3d samp_u("samp_u",nz,ny,nx);  // u-velocity sampled at the upstream disk
+          float3d samp_v("samp_v",nz,ny,nx);  // v-velocity sampled at the upstream disk
+          // Compute local MPI task's contribution to normalized weights and sampled velocities
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             if (disk_weight_proj(k,j,i) > 1.e-10) {
               disk_weight_angle(k,j,i) /= disk_weight_proj(k,j,i);
@@ -333,20 +371,20 @@ namespace modules {
           // Compute horizontal wind magnitude normal to the disk
           float mag0 = std::max( 0.f , sums(0)*cos_yaw + sums(1)*sin_yaw );
           // Computation of disk properties
-          float C_T       = std::min( 1.f , interp( ref_velmag , ref_thrust_coef , mag0 ) );
-          float C_P       = std::min( C_T , interp( ref_velmag , ref_power_coef  , mag0 ) );
-          float pwr       =                 interp( ref_velmag , ref_power       , mag0 );
-          float rot_speed = ref_rotation.size() > 0 ? interp( ref_velmag , ref_rotation , mag0 ) : 0;
-                rot_speed = coupler.get_option<real>("turbine_rot_fixed",rot_speed);
-          float C_Q       = rot_speed == 0 ? 0 : C_P * mag0 / (rot_speed * rad);
-          float C_TKE     = coupler.get_option<real>("turbine_f_TKE",0.25) * (C_T - C_P);
-          // Application of disk onto tendencies
+          float C_T       = std::min( 1.f , interp( ref_velmag , ref_thrust_coef , mag0 ) );  // Thrust coefficient
+          float C_P       = std::min( C_T , interp( ref_velmag , ref_power_coef  , mag0 ) );  // Power coefficient
+          float pwr       =                 interp( ref_velmag , ref_power       , mag0 );    // Power generation (MW)
+          float rot_speed = ref_rotation.size() > 0 ? interp( ref_velmag , ref_rotation , mag0 ) : 0; // Rotation rate (rad/s)
+                rot_speed = coupler.get_option<real>("turbine_rot_fixed",rot_speed);          // Optionally override with fixed rotation rate
+          float C_Q       = rot_speed == 0 ? 0 : C_P * mag0 / (rot_speed * rad);              // Torque coefficient
+          float C_TKE     = coupler.get_option<real>("turbine_f_TKE",0.25) * (C_T - C_P);     // TKE injection coefficient
+          // Application of disk onto u, v, w, and TKE tendencies
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             if (disk_weight_proj(k,j,i) > 0) {
               // If normal wind is negative, don't do anything.
               if (uvel(k,j,i)*cos_yaw + vvel(k,j,i)*sin_yaw > 0) {
                 float wt = disk_weight_proj(k,j,i)*M_PI*rad*rad/(dx*dy*dz(k));
-                float az = disk_weight_angle(k,j,i);
+                float az = disk_weight_angle(k,j,i);  // Angle for swirl calculation
                 // Compute tendencies implied by actuator disk thoery; Only apply TKE for disk, not blades
                 float t_u    = -0.5f             *C_T  *mag0*mag0*cos_yaw*wt;
                 float t_v    = -0.5f             *C_T  *mag0*mag0*sin_yaw*wt;
@@ -355,6 +393,7 @@ namespace modules {
                 float t_w    =  0.5f             *C_Q  *mag0*mag0        *std::cos(az)*wt;
                       t_u   += -0.5f             *C_Q  *mag0*mag0*sin_yaw*std::sin(az)*wt;
                       t_v   +=  0.5f             *C_Q  *mag0*mag0*cos_yaw*std::sin(az)*wt;
+                // Accumulate to total tendencies
                 tend_u  (k,j,i) += t_u;
                 tend_v  (k,j,i) += t_v;
                 tend_w  (k,j,i) += t_w;
@@ -362,6 +401,7 @@ namespace modules {
               }
             }
           });
+          // Record traces and update yaw angle
           turbine.yaw_trace  .push_back( turbine.yaw_angle );
           turbine.mag_trace  .push_back( mag0              );
           turbine.power_trace.push_back( pwr               );
@@ -371,6 +411,7 @@ namespace modules {
         } // if (turbine.active)
       } // for (int iturb = 0; iturb < turbine_group.turbines.size(); iturb++)
 
+      // Apply accumulated tendencies to the flow field
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         uvel(k,j,i) += dt * tend_u  (k,j,i);
         vvel(k,j,i) += dt * tend_v  (k,j,i);
@@ -382,32 +423,36 @@ namespace modules {
     }
 
 
+    // Compute the average wind velocity through the turbine disk in order to force
+    //   the time-averaged inflow velocity to a specified value with pressure-gradient forcing
     void disk_average_wind( core::Coupler const & coupler     ,
                             RefTurbine    const & ref_turbine ,
                             real                & avg_u       ,
                             real                & avg_v       ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      auto  nx         = coupler.get_nx  ();
-      auto  ny         = coupler.get_ny  ();
-      auto  nz         = coupler.get_nz  ();
-      auto  dx         = coupler.get_dx  ();
-      auto  nx_glob    = coupler.get_nx_glob();
-      auto  ny_glob    = coupler.get_ny_glob();
-      auto  zint       = coupler.get_zint().createHostCopy();
-      auto  &dm        = coupler.get_data_manager_readonly();
-      auto  uvel       = dm.get<real const,3>("uvel");
-      auto  vvel       = dm.get<real const,3>("vvel");
-      auto  rad        = ref_turbine.blade_radius;
-      auto  hub_height = ref_turbine.hub_height  ;
+      auto  nx         = coupler.get_nx  ();     // Get the local number of x-direction cells
+      auto  ny         = coupler.get_ny  ();     // Get the local number of y-direction cells
+      auto  nz         = coupler.get_nz  ();     // Get the number of z-direction cells
+      auto  dx         = coupler.get_dx  ();     // Get the grid spacing in the x-direction
+      auto  nx_glob    = coupler.get_nx_glob();  // Get the global number of x-direction cells
+      auto  ny_glob    = coupler.get_ny_glob();  // Get the global number of y-direction cells
+      auto  zint       = coupler.get_zint().createHostCopy(); // Get the z-interface heights as host array
+      auto  &dm        = coupler.get_data_manager_readonly(); // Get the data manager for read-only access
+      auto  uvel       = dm.get<real const,3>("uvel"); // u-velocity
+      auto  vvel       = dm.get<real const,3>("vvel"); // v-velocity
+      auto  rad        = ref_turbine.blade_radius;     // Blade radius
+      auto  hub_height = ref_turbine.hub_height  ;     // Hub height
       auto  decay      = 2*dx/rad; // Length of decay of thrust after the end of the blade radius (relative)
       int   num_z      = std::ceil(20/dx*rad*(1+decay/2)*2); // # cells to sample over in z-direction
+      // This function computes the thrust shaping function in reference space
       auto thrust_shape = [&] (float x, float x2, float x3, float a) -> float {
         if (x < x2) return std::pow(-1.0*((x*x)-2*x*x2)/(x2*x2),a);
         if (x < x3) return -1.0*(2*(x*x*x)-3*(x*x)*x2-3*x2*(x3*x3)+(x3*x3*x3)-3*((x*x)-2*x*x2)*x3)/
                                 ((x2*x2*x2)-3*(x2*x2)*x3+3*x2*(x3*x3)-(x3*x3*x3));
         return 0;
       };
+      // Compute the vertical shape function for the disk averaging
       realHost1d shp_host("shp",nz);
       shp_host = 0;
       for (int k = 0; k < num_z; k++) {
@@ -426,7 +471,7 @@ namespace modules {
           if ( tk >= 0 && tk < nz) shp_host(tk) += shp_loc;
         }
       }
-      using yakl::componentwise::operator/;
+      using yakl::componentwise::operator/;  // Allow componentwise '/' for yakl::Arrays
       auto shp = (shp_host / yakl::intrinsics::sum(shp_host)).createDeviceCopy();
       real2d udisk("udisk",ny,nx);
       real2d vdisk("vdisk",ny,nx);
