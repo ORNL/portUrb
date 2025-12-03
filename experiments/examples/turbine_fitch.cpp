@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
       // Run the initialization modules on coupler
       custom_modules::sc_init( coupler );
 
-      auto ghost_col = compute_average_ghost_column( core::Coupler & coupler );
+      auto ghost_col = dycore.compute_average_ghost_column( coupler );
 
       {
         using yakl::c::parallel_for;

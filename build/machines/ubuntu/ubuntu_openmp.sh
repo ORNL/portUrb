@@ -14,7 +14,7 @@ export PORTURB_BACKEND="Kokkos_ENABLE_OPENMP"
 export PORTURB_ARCH="Kokkos_ARCH_NATIVE"
 export PORTURB_CXX_FLAGS="-DHAVE_MPI;-DYAKL_PROFILE;-O3;${myinclude};-fopenmp"
 export PORTURB_F90_FLAGS="-cpp;-ffree-line-length-none;-O3;-fdefault-real-8;-fdefault-double-8"
-export PORTURB_LINK_FLAGS="-L`pnetcdf-config --libdir` -lpnetcdf `nc-config --libs` -fopenmp"
+export PORTURB_LINK_FLAGS="-L`pnetcdf-config --libdir` -lpnetcdf -L`nc-config --libdir` -lnetcdf -fopenmp"
 export PORTURB_DEBUG=OFF
 
 unset CXXFLAGS
