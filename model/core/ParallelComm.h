@@ -6,20 +6,22 @@
 namespace core {
 
   struct ParallelComm {
-    bool             comm_was_created;
-    MPI_Comm         comm;
-    int              nranks;
-    int              rank_id;
-    MPI_Group        group;
+    bool             comm_was_created;  // Whether the communicator was created by this ParallelComm instance
+    MPI_Comm         comm;              // The MPI communicator
+    int              nranks;            // Number of ranks in the communicator
+    int              rank_id;           // Rank ID of this rank within this communicator
+    MPI_Group        group;             // The MPI group associated with the communicator
 
+    // Struct to hold information for a send/receive operation
     template <class T, int N>
     struct SendRecvPack {
-      yakl::Array<T,N,yakl::memDevice,yakl::styleC>  arr;
-      int                                            them;
-      int                                            tag;
+      yakl::Array<T,N,yakl::memDevice,yakl::styleC>  arr;  // YAKL array to send/receive
+      int                                            them; // Rank ID of the other rank to send to / receive from
+      int                                            tag;  // MPI tag for the send/receive operation
     };
 
 
+    // Internal use: Nullify the communicator and reset all members
     void nullify() {
       comm_was_created = false;
       comm             = MPI_COMM_NULL;
@@ -28,7 +30,7 @@ namespace core {
       group            = MPI_GROUP_NULL;
     }
     
-
+    // Default constructor and constructor from existing MPI_Comm
     ParallelComm () { nullify(); }
     ParallelComm (MPI_Comm comm_in) { wrap(comm_in); }
     ~ParallelComm() { }
