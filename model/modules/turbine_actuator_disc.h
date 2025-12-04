@@ -459,11 +459,12 @@ namespace modules {
       // Compute the vertical shape function for the disk averaging
       realHost1d shp_host("shp",nz);
       shp_host = 0;
-      for (int k = 0; k < num_z; k++) {
-        float z = -rad*(1+decay/2) + (2*rad*(1+decay/2)*k)/(num_z-1);
+      for (int k = 0; k < num_z; k++) { // Loop over sampling points in z-direction
+        float z = -rad*(1+decay/2) + (2*rad*(1+decay/2)*k)/(num_z-1); // Compute reference z location
         float rloc = std::abs(z);
-        if (rloc <= rad*(1+decay/2)) {
-          float shp_loc = thrust_shape(rloc/rad,1-decay/2,1+decay/2,0.5);
+        if (rloc <= rad*(1+decay/2)) {  // if within the disk + decay region
+          float shp_loc = thrust_shape(rloc/rad,1-decay/2,1+decay/2,0.5); // Compute the 1-D shaping function
+          // Translate to hub height and accumulate to the correct vertical cell
           float zp = hub_height + z;
           int tk = 0;
           for (int kk=0; kk < nz; kk++) {
@@ -472,22 +473,25 @@ namespace modules {
               break;
             }
           }
+          // Accumulate to the correct cell
           if ( tk >= 0 && tk < nz) shp_host(tk) += shp_loc;
         }
       }
       using yakl::componentwise::operator/;  // Allow componentwise '/' for yakl::Arrays
-      auto shp = (shp_host / yakl::intrinsics::sum(shp_host)).createDeviceCopy();
-      real2d udisk("udisk",ny,nx);
-      real2d vdisk("vdisk",ny,nx);
+      auto shp = (shp_host / yakl::intrinsics::sum(shp_host)).createDeviceCopy(); // Normalize and copy to device
+      real2d udisk("udisk",ny,nx);  // Hold disk-averaged u-velocity
+      real2d vdisk("vdisk",ny,nx);  // Hold disk-averaged v-velocity
       udisk = 0;
       vdisk = 0;
-      real r_nx_ny = 1./(nx_glob*ny_glob);
+      real r_nx_ny = 1./(nx_glob*ny_glob);  // Reciprocal of total number of horizontal cells
+      // Compute local MPI task's contribution to disk-averaged velocities
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         if (shp(k) > 0) {
           Kokkos::atomic_add( &udisk(j,i) , shp(k)*uvel(k,j,i)*r_nx_ny );
           Kokkos::atomic_add( &vdisk(j,i) , shp(k)*vvel(k,j,i)*r_nx_ny );
         }
       });
+      // Reduce to get global disk-averaged velocities
       avg_u = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(udisk),MPI_SUM);
       avg_v = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(vdisk),MPI_SUM);
     }
