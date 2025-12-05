@@ -40,6 +40,7 @@ process_target(city)
 process_target(supercell_kessler_fixed)
 process_target(supercell_kessler_variable)
 process_target(supercell_morr2mom)
+process_target(toy_bem)
 process_target(turbine_neutral_ensemble)
 process_target(turbine_simple)
 
