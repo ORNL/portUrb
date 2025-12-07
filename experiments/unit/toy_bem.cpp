@@ -241,14 +241,15 @@ int main(int argc, char** argv) {
     }
 
     // SET PARAMETERS FOR BEM COMPUTATIONS AND FORCE ACCUMULATIONS
-    bool tloss  = true;  // Use tip loss?
-    bool hloss  = true;  // Use hub loss?
-    int  mxiter = 100;   // Maximum number of iterations
-    real tol    = 1.e-6; // Tolerance for convergence
-    real pitch  = 0;     // Blade pitch
-    real U_inf  = 3;     // Inflow wind speed
-    real thrust = 0;
-    real torque = 0;
+    bool tloss   = true;   // Use tip loss?
+    bool hloss   = true;   // Use hub loss?
+    int  mxiter  = 1000;    // Maximum number of iterations
+    real tol     = 1.e-6;  // Tolerance for convergence
+    real pitch   = 0;      // Blade pitch
+    real U_inf   = 11.4;   // Inflow wind speed
+    real gen_eff = 0.944;  // Efficiency of power generation
+    real thrust  = 0;
+    real torque  = 0;
     std::ofstream of("output.txt");
     of << std::scientific << std::setprecision(5) << std::setw(15) << "r    " << "  " <<
           std::scientific << std::setprecision(5) << std::setw(15) << "dT_dr" << "  " <<
@@ -280,10 +281,10 @@ int main(int argc, char** argv) {
       torque += dQ_dr*dr;
     }
     of.close();
-    real power = torque*linear_interp(rwt_mag,rwt_rot,U_inf,false);
-    std::cout << "Thrust     : " << thrust                                      << std::endl;
+    real power = torque*linear_interp(rwt_mag,rwt_rot,U_inf,false)*gen_eff;
+    std::cout << "Thrust (kN): " << thrust/1e3                                  << std::endl;
     std::cout << "Torque     : " << torque                                      << std::endl;
-    std::cout << "Power      : " << power                                       << std::endl;
+    std::cout << "Power (MW) : " << power/1e6                                   << std::endl;
     std::cout << "C_Thrust   : " << thrust/(0.5*rho*M_PI*R*R*U_inf*U_inf)       << std::endl;
     std::cout << "C_Torque   : " << torque/(0.5*rho*M_PI*R*R*R*U_inf*U_inf)     << std::endl;
     std::cout << "C_Power    : " << power /(0.5*rho*M_PI*R*R*U_inf*U_inf*U_inf) << std::endl;
