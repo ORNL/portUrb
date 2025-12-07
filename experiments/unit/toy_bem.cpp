@@ -245,8 +245,8 @@ int main(int argc, char** argv) {
     bool hloss   = true;   // Use hub loss?
     int  mxiter  = 1000;    // Maximum number of iterations
     real tol     = 1.e-6;  // Tolerance for convergence
-    real pitch   = 0;      // Blade pitch
-    real U_inf   = 11.4;   // Inflow wind speed
+    real pitch   = 10.45/180*M_PI;      // Blade pitch
+    real U_inf   = 15;   // Inflow wind speed
     real gen_eff = 0.944;  // Efficiency of power generation
     real thrust  = 0;
     real torque  = 0;
@@ -282,12 +282,12 @@ int main(int argc, char** argv) {
     }
     of.close();
     real power = torque*linear_interp(rwt_mag,rwt_rot,U_inf,false)*gen_eff;
-    std::cout << "Thrust (kN): " << thrust/1e3                                  << std::endl;
-    std::cout << "Torque     : " << torque                                      << std::endl;
-    std::cout << "Power (MW) : " << power/1e6                                   << std::endl;
-    std::cout << "C_Thrust   : " << thrust/(0.5*rho*M_PI*R*R*U_inf*U_inf)       << std::endl;
-    std::cout << "C_Torque   : " << torque/(0.5*rho*M_PI*R*R*R*U_inf*U_inf)     << std::endl;
-    std::cout << "C_Power    : " << power /(0.5*rho*M_PI*R*R*U_inf*U_inf*U_inf) << std::endl;
+    std::cout << "Thrust (kN)   : " << thrust/1e3                                  << std::endl;
+    std::cout << "Torque (MN m) : " << torque/1e6                                  << std::endl;
+    std::cout << "Power (MW)    : " << power/1e6                                   << std::endl;
+    std::cout << "C_Thrust      : " << thrust/(0.5*rho*M_PI*R*R*U_inf*U_inf)       << std::endl;
+    std::cout << "C_Torque      : " << torque/(0.5*rho*M_PI*R*R*R*U_inf*U_inf)     << std::endl;
+    std::cout << "C_Power       : " << power /(0.5*rho*M_PI*R*R*U_inf*U_inf*U_inf) << std::endl;
 
 
 
