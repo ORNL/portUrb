@@ -49,9 +49,6 @@ real linear_interp( realHost1d const & aref                ,
 }
 
 
-real clip( real v , real mn , real mx ) { return std::max(mn,std::min(mx,v)); }
-
-
 
 real prandtl_tip_loss(real r, real R, int num_blades, real phi_rad) {
   if (std::abs(std::sin(phi_rad)) < 1e-6) return 1;
@@ -138,8 +135,8 @@ real bem_aerodyn( real         r                 ,   // input : radial position 
     if (abs(denom_ap) < 1e-10) { a_prime_new = 0.0; }
     else                       { a_prime_new = 1 / denom_ap; }
     // Clip new axial and tangential induction factors to realistic values
-    a_new       = clip(a_new      , -0.5, 0.95);
-    a_prime_new = clip(a_prime_new, -0.5, 0.95);
+    a_new       = std::max((real)-0.5,std::min((real)0.95,a_new      ));
+    a_prime_new = std::max((real)-0.5,std::min((real)0.95,a_prime_new));
     // If converged, then exit and compute final values
     if (std::abs(a_new - a) < tol && std::abs(a_prime_new - a_prime) < tol) {
       a       = a_new;
