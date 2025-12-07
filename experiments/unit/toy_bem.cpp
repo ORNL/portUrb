@@ -1,5 +1,6 @@
 
 #include "coupler.h"
+#include <fstream>
 
 int constexpr MAX_FIELDS = 50;
 typedef yakl::SArray<realHost1d,1,MAX_FIELDS> MultiField;
@@ -52,7 +53,7 @@ real clip( real v , real mn , real mx ) { return std::max(mn,std::min(mx,v)); }
 
 
 
-void bem_aerodyn( real         r                 ,     // input : radial position (m)
+real bem_aerodyn( real         r                 ,     // input : radial position (m)
                   realHost1d & foil_sec          ,     // input : airfoil sections markers (m)
                   realHost1d & foil_twist        ,     // input : airfoil section twist angle (deg)
                   realHost1d & foil_chord        ,     // input : airfoil section chord length (m)
@@ -83,7 +84,8 @@ void bem_aerodyn( real         r                 ,     // input : radial positio
                   real       & W                 ,     // output: relative velocity magnitude (m/s)
                   real       & dT_dr             ,     // output: thrust per unit span (N/m) (all B blades)
                   real       & dQ_dr             ,     // output: torque per unit span (N·m/m) (all B blades)
-                  real       & F                 ) {   // output: combined tip-hub loss factor (-)
+                  real       & F                 ,     // output: combined tip-hub loss factor (-)
+                  real       & sigma             ) {   // output: local solidarity factor
   // Get the chord length, twist angle, and coefficients of lift and drag lookup arrays from the foil segment arrays
   real       chord;     // Chord length (m)
   real       twist;     // Twist angle (rad)
@@ -112,10 +114,10 @@ void bem_aerodyn( real         r                 ,     // input : radial positio
   }
   // Get rotation rate in radians per second from U_inf
   real omega    = linear_interp( rwt_mag , rwt_rot , U_inf , false ) * 2*M_PI / 60; // rpm to rad/sec conversion
-  real sigma    = B * chord / (2 * M_PI * r); // Local solidity - ratio of blade area to annular area at this radius
+  sigma         = B * chord / (2 * M_PI * r); // Local solidity - ratio of blade area to annular area at this radius
   real lambda_r = omega * r / U_inf;          // Local tip speed ratio at this radial station
   real beta     = twist + pitch;              // Total blade pitch angle (twist + pitch) (radians)
-  // Next three lines compute initial axial induction factor
+  // Eq 20: Next three lines compute initial axial induction factor
   real t1   = 4 + M_PI * lambda_r * sigma;
   real disc = t1*t1 - 4*M_PI*sigma + 8*M_PI*lambda_r*sigma*beta;
   a         = disc > 0 ? clip( (t1 - std::sqrt(std::max(disc,(real)0)))/2 , (real) 0 , (real) 0.5 ) : 0.3;
@@ -137,14 +139,12 @@ void bem_aerodyn( real         r                 ,     // input : radial positio
     real F_tip = (2./M_PI) * std::acos(std::exp(-(B/2.)*(R-r    )/(r*sp))); // Tip loss
     real F_hub = (2./M_PI) * std::acos(std::exp(-(B/2.)*(r-R_hub)/(r*sp))); // Hub loss
     real F     = std::max( F_tip*F_hub , (real) 1e-10 ); // Total loss
-        // F_tip = (2/np.pi) * np.arccos(np.exp(-(B/2)*(R-r    )/(r*sp)))
-        // F_hub = (2/np.pi) * np.arccos(np.exp(-(B/2)*(r-R_hub)/(r*sp)))
-        // F = max(F_tip * F_hub, 1e-10)
     Cn = Cl*cp + Cd*sp; // Normal force coefficient (perpendicular to rotor plane, thrust direction)
     // Eq 27: Standard BEM
     a_new = std::abs(Cn) > 1e-10 ? 1./(1 + 4*F*sp*sp/(sigma*Cn)) : 0.; // Axial induction from standard BEM theory
-    // Eq 26: Glauert correction
+    // Eq 22: Coefficient of thrust
     real CT = 1 + sigma * (1 - a)*(1 - a) * Cn / (sp*sp); // Coefficient of thrust
+    // Eq 26: Glauert correction
     if (CT > 0.96*F && a_new > 0.4) {
       real inner = CT*(50-36*F) + 12*F*(3*F-4);
       if (inner >= 0) a_new = (18*F - 20 - 3*std::sqrt(inner))/(36*F - 50);
@@ -177,8 +177,9 @@ void bem_aerodyn( real         r                 ,     // input : radial positio
   real cp = std::cos(phi);
   Cn      = Cl*cp + Cd*sp; // Normal force
   Ct      = Cl*sp - Cd*cp; // Tangential force
-  dT_dr   = 0.5*rho*W*W*chord*Cn*B;
-  dQ_dr   = 0.5*rho*W*W*chord*Ct*B*r;
+  dT_dr   = 0.5*B*rho*W*W*Cn*chord;   // Eq 3 (divided by dr)
+  dQ_dr   = 0.5*B*rho*W*W*Ct*chord*r; // Eq 4 (divided by dr)
+  return std::max( abs(a_new-a_old) , abs(ap_new-ap_old) );
 }
 
 
@@ -267,18 +268,30 @@ int main(int argc, char** argv) {
     real tol    = 1.e-6; // Tolerance for convergence
     real pitch  = 0;     // Blade pitch
     real U_inf  = 11.4;  // Inflow wind speed
-    int  nrad   = 100;
+    int  nrad   = 400;
     real thrust = 0;
+    real torque = 0;
+    std::ofstream of("output.txt");
     for (int i=0; i < nrad; i++) {
-      real r     = r1 + (r2-r1)*((real)i)/(nrad-1.);
-      real a, ap, phi, alpha, Cl, Cd, Cn, Ct, W, dT_dr, dQ_dr, F;
-      bem_aerodyn( r , foil_sec , foil_twist , foil_chord , foil_id , foil_alpha , foil_clift , foil_cdrag ,    // inputs
-                   rwt_mag , rwt_rot_rpm , U_inf , pitch , B , R , R_hub , rho , tloss , hloss , mxiter , tol , // inputs
-                   a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F );                          // outputs
-      // std::cout << r << " , " << dT_dr << " , " << dQ_dr << std::endl;
-      thrust += dT_dr*(r2-r1)/99;
+      real r = r1 + (r2-r1)*((real)i)/(nrad-1.);
+      real a, ap, phi, alpha, Cl, Cd, Cn, Ct, W, dT_dr, dQ_dr, F, sigma;
+      real conv = bem_aerodyn( r , foil_sec , foil_twist , foil_chord , foil_id , foil_alpha , foil_clift , // inputs
+                               foil_cdrag , rwt_mag , rwt_rot_rpm , U_inf , pitch , B , R , R_hub , rho ,   // inputs
+                               tloss , hloss , mxiter , tol ,                                               // inputs
+                               a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma);   // outputs
+      if (conv > tol) std::cout << "WARNING: conv == " << conv << std::endl;
+      of << r << "  " << dT_dr << "  " << dQ_dr << "  " << alpha << "  " << sigma << std::endl;
+      thrust += dT_dr*(r2-r1)/(nrad-1.);
+      torque += dQ_dr*(r2-r1)/(nrad-1.);
     }
-    std::cout << "Thrust: " << thrust/(0.5*rho*M_PI*R*R*U_inf*U_inf) << std::endl;
+    of.close();
+    real power = torque*linear_interp(rwt_mag,rwt_rot_rpm,U_inf,false)*2*M_PI/60;
+    std::cout << "Thrust  : " << thrust                                      << std::endl;
+    std::cout << "Torque  : " << torque                                      << std::endl;
+    std::cout << "Power   : " << power                                       << std::endl;
+    std::cout << "C_Thrust: " << thrust/(0.5*rho*M_PI*R*R*U_inf*U_inf)       << std::endl;
+    std::cout << "C_Torque: " << torque/(0.5*rho*M_PI*R*R*R*U_inf*U_inf)     << std::endl;
+    std::cout << "C_Power : " << power /(0.5*rho*M_PI*R*R*U_inf*U_inf*U_inf) << std::endl;
 
 
     yakl::timer_stop("main");
