@@ -50,6 +50,7 @@ real linear_interp( realHost1d const & aref                ,
 
 
 
+// TODO: Near rated wind speed, this routine limits convergence of alpha to 1e-3 at the last blade segment
 real prandtl_tip_loss(real r, real R, int num_blades, real phi_rad) {
   if (std::abs(std::sin(phi_rad)) < 1e-6) return 1;
   real f_tip = (num_blades / 2.0) * (R - r) / (r * std::sin(phi_rad));
@@ -243,10 +244,10 @@ int main(int argc, char** argv) {
     // SET PARAMETERS FOR BEM COMPUTATIONS AND FORCE ACCUMULATIONS
     bool tloss   = true;   // Use tip loss?
     bool hloss   = true;   // Use hub loss?
-    int  mxiter  = 1000;    // Maximum number of iterations
+    int  mxiter  = 100;    // Maximum number of iterations
     real tol     = 1.e-6;  // Tolerance for convergence
-    real pitch   = 10.45/180*M_PI;      // Blade pitch
-    real U_inf   = 15;   // Inflow wind speed
+    real pitch   = 0;      // Blade pitch
+    real U_inf   = 11.3;   // Inflow wind speed
     real gen_eff = 0.944;  // Efficiency of power generation
     real thrust  = 0;
     real torque  = 0;
