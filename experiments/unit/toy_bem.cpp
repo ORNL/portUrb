@@ -247,22 +247,22 @@ struct turbine_BEM {
 
 
   void auto_pitch( realHost1d & winds           ,   // input : inflow wind speeds (m/s)
-                    int          num_blades      ,   // input : number of blades
-                    real         rho             ,   // input : total air density (kg/m^3)
-                    real         gen_eff         ,   // input : Proportion of torque that generates power
-                    bool         tloss           ,   // input : whether to include tip loss
-                    bool         hloss           ,   // input : whether to include hub loss
-                    real         max_power       ,   // input : whether to include hub loss
-                    real         max_thrust_prop ,   // input : whether to include hub loss
-                    realHost1d & out_pitch       ,   // output: pitch angle (radians)
-                    realHost2d & out_dT_dr       ,   // output: thrust values at section mid points
-                    realHost2d & out_dQ_dr       ,   // output: torque values at section mid points
-                    realHost1d & out_thrust      ,   // output: total thrust (N)
-                    realHost1d & out_torque      ,   // output: total torque (N m)
-                    realHost1d & out_power       ,   // output: power generation (W)
-                    realHost1d & out_C_T         ,   // output: thrust coefficient
-                    realHost1d & out_C_P         ,   // output: power coefficient
-                    realHost1d & out_C_Q         ) { // output: torque coefficient
+                   int          num_blades      ,   // input : number of blades
+                   real         rho             ,   // input : total air density (kg/m^3)
+                   real         gen_eff         ,   // input : Proportion of torque that generates power
+                   bool         tloss           ,   // input : whether to include tip loss
+                   bool         hloss           ,   // input : whether to include hub loss
+                   real         max_power       ,   // input : whether to include hub loss
+                   real         max_thrust_prop ,   // input : whether to include hub loss
+                   realHost1d & out_pitch       ,   // output: pitch angle (radians)
+                   realHost2d & out_dT_dr       ,   // output: thrust values at section mid points
+                   realHost2d & out_dQ_dr       ,   // output: torque values at section mid points
+                   realHost1d & out_thrust      ,   // output: total thrust (N)
+                   realHost1d & out_torque      ,   // output: total torque (N m)
+                   realHost1d & out_power       ,   // output: power generation (W)
+                   realHost1d & out_C_T         ,   // output: thrust coefficient
+                   realHost1d & out_C_P         ,   // output: power coefficient
+                   realHost1d & out_C_Q         ) { // output: torque coefficient
     int  nwinds = winds.size();
     int  nseg   = foil_mid.size();
     out_pitch  = realHost1d("out_pitch ",nwinds);
@@ -419,15 +419,15 @@ int main(int argc, char** argv) {
       winds(i) = cut_in + (cut_out-cut_in)*((real)i)/(winds.size()-1.);
     }
 
-    bool tloss      = true;   // Use tip loss?
-    bool hloss      = true;   // Use hub loss?
-    int  mxiter     = 200;    // Maximum number of iterations
-    real tol        = 1.e-6;  // Tolerance for convergence
-    real pitch      = 0;      // Blade pitch
-    real U_inf      = 3;      // Inflow wind speed
-    real gen_eff    = 0.944;  // Efficiency of power generation
-    int  num_blades = 3;
-    real rho        = 1.225;  // Air density
+    bool tloss           = true;   // Use tip loss?
+    bool hloss           = true;   // Use hub loss?
+    int  mxiter          = 200;    // Maximum number of iterations
+    real tol             = 1.e-6;  // Tolerance for convergence
+    real pitch           = 0;      // Blade pitch
+    real U_inf           = 3;      // Inflow wind speed
+    real gen_eff         = 0.944;  // Efficiency of power generation
+    int  num_blades      = 3;
+    real rho             = 1.225;  // Air density
     real max_power       = 5.29661e6;
     real max_thrust_prop = 0.8;
 
