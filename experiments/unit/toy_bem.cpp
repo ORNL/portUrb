@@ -71,42 +71,40 @@ real prandtl_hub_loss(real r, real R_hub, int num_blades, real phi_rad) {
 
 
 
-real bem_aerodyn( real         r                 ,   // input : radial position (m)
-                  real         twist             ,   // input : twist angle (radians)
-                  real         chord             ,   // input : 
-                  realHost1d & ref_alpha         ,   // input : 
-                  realHost1d & ref_clift         ,   // input : 
-                  realHost1d & ref_cdrag         ,   // input : 
-                  realHost1d & rwt_mag           ,   // input : controller inflow wind speed (m/s)
-                  realHost1d & rwt_rot           ,   // input : controller rotation rate (radians / sec)
-                  real         U_inf             ,   // input : inflow wind speed
-                  real         pitch             ,   // input : pitch of the blades (radians)
-                  int          num_blades        ,   // input : number of blades
-                  real         R                 ,   // input : blade radius (m)
-                  real         R_hub             ,   // input : hub radius (m)
-                  real         rho               ,   // input : total air density (kg/m^3)
-                  bool         tip_loss          ,   // input : whether to include tip loss
-                  bool         hub_loss          ,   // input : whether to include hub loss
-                  int          max_iter          ,   // input : maximum number of iterations for convergence
-                  real         tol               ,   // input : tolerance for convergence
-                  real       & a                 ,   // output: axial induction factor (-)
-                  real       & a_prime           ,   // output: tangential induction factor (-)
-                  real       & phi               ,   // output: inflow angle (rad)
-                  real       & alpha             ,   // output: angle of attack (rad)
-                  real       & Cl                ,   // output: lift coefficient (-)
-                  real       & Cd                ,   // output: drag coefficient (-)
-                  real       & Cn                ,   // output: normal force coefficient (-)
-                  real       & Ct                ,   // output: tangential force coefficient (-)
-                  real       & W                 ,   // output: relative velocity magnitude (m/s)
-                  real       & dT_dr             ,   // output: thrust per unit span (N/m) (all blades)
-                  real       & dQ_dr             ,   // output: torque per unit span (N·m/m) (all blades)
-                  real       & F                 ,   // output: combined tip-hub loss factor (-)
-                  real       & sigma             ) { // output: local solidarity factor
+real blade_element( real         r                 ,   // input : radial position (m)
+                    real         twist             ,   // input : twist angle (radians)
+                    real         chord             ,   // input : chord length (m)
+                    real         omega             ,   // input : rotation rate (radians / sec)
+                    realHost1d & ref_alpha         ,   // input : look-up alpha for coefficients of lift and drag
+                    realHost1d & ref_clift         ,   // input : look-up for coefficient of lift based on alpha
+                    realHost1d & ref_cdrag         ,   // input : look-up for coefficient of drag based on alpha
+                    real         U_inf             ,   // input : inflow wind speed
+                    real         pitch             ,   // input : pitch of the blades (radians)
+                    int          num_blades        ,   // input : number of blades
+                    real         R                 ,   // input : blade radius (m)
+                    real         R_hub             ,   // input : hub radius (m)
+                    real         rho               ,   // input : total air density (kg/m^3)
+                    bool         tip_loss          ,   // input : whether to include tip loss
+                    bool         hub_loss          ,   // input : whether to include hub loss
+                    int          max_iter          ,   // input : maximum number of iterations for convergence
+                    real         tol               ,   // input : tolerance for convergence
+                    real       & a                 ,   // output: axial induction factor (-)
+                    real       & a_prime           ,   // output: tangential induction factor (-)
+                    real       & phi               ,   // output: inflow angle (rad)
+                    real       & alpha             ,   // output: angle of attack (rad)
+                    real       & Cl                ,   // output: lift coefficient (-)
+                    real       & Cd                ,   // output: drag coefficient (-)
+                    real       & Cn                ,   // output: normal force coefficient (-)
+                    real       & Ct                ,   // output: tangential force coefficient (-)
+                    real       & W                 ,   // output: relative velocity magnitude (m/s)
+                    real       & dT_dr             ,   // output: thrust per unit span (N/m) (all blades)
+                    real       & dQ_dr             ,   // output: torque per unit span (N·m/m) (all blades)
+                    real       & F                 ,   // output: combined tip-hub loss factor (-)
+                    real       & sigma             ) { // output: local solidarity factor
   a              = 0;                                    // Axial induction factor
   a_prime        = 0;                                    // Tangential induction factor
   sigma          = num_blades * chord / (2. * M_PI * r); // Local solidity
   real theta     = twist + pitch;                        // Blade section angle (twist + pitch) (rad)
-  real omega     = linear_interp( rwt_mag , rwt_rot , U_inf , true ); // Rotation rate (rad/sec)
   real a_new;       // Next predicted iteration for axial induction factor
   real a_prime_new; // Next predicted iteration for tangential induction factor
   for (int iter = 0; iter < max_iter; iter++) {
@@ -244,19 +242,20 @@ int main(int argc, char** argv) {
     // SET PARAMETERS FOR BEM COMPUTATIONS AND FORCE ACCUMULATIONS
     bool tloss   = true;   // Use tip loss?
     bool hloss   = true;   // Use hub loss?
-    int  mxiter  = 100;    // Maximum number of iterations
+    int  mxiter  = 200;    // Maximum number of iterations
     real tol     = 1.e-6;  // Tolerance for convergence
     real pitch   = 0;      // Blade pitch
-    real U_inf   = 11.3;   // Inflow wind speed
+    real U_inf   = 3;   // Inflow wind speed
     real gen_eff = 0.944;  // Efficiency of power generation
-    real thrust  = 0;
-    real torque  = 0;
+    real omega   = linear_interp(rwt_mag,rwt_rot,U_inf,false);
     std::ofstream of("output.txt");
     of << std::scientific << std::setprecision(5) << std::setw(15) << "r    " << "  " <<
           std::scientific << std::setprecision(5) << std::setw(15) << "dT_dr" << "  " <<
           std::scientific << std::setprecision(5) << std::setw(15) << "dQ_dr" << "  " <<
           std::scientific << std::setprecision(5) << std::setw(15) << "a    " << "  " <<
           std::scientific << std::setprecision(5) << std::setw(15) << "ap   " << std::endl;
+    real thrust  = 0;
+    real torque  = 0;
     // Loop over blade segments and compute thrust and torque properties at each
     for (int i=0; i < nseg; i++) {
       real       r         = foil_mid(i);
@@ -268,9 +267,9 @@ int main(int argc, char** argv) {
       realHost1d ref_cdrag = foil_cdrag(foil_id(i));
 
       real a, ap, phi, alpha, Cl, Cd, Cn, Ct, W, dT_dr, dQ_dr, F, sigma; // outputs
-      real conv = bem_aerodyn( r , twist , chord , ref_alpha , ref_clift , ref_cdrag , rwt_mag , rwt_rot , // inputs
-                               U_inf , pitch , B , R , R_hub , rho , tloss , hloss , mxiter , tol ,        // inputs
-                               a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma ); // outputs
+      real conv = blade_element( r , twist , chord , omega , ref_alpha , ref_clift , ref_cdrag ,             // inputs
+                                 U_inf , pitch , B , R , R_hub , rho , tloss , hloss , mxiter , tol ,        // inputs
+                                 a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma ); // outputs
       if (conv > tol) std::cout << "NOT CONVERGED: r: " << r << ";  conv == " << conv << std::endl;
 
       of << std::scientific << std::setprecision(5) << std::setw(15) << r     << "  " <<
@@ -282,7 +281,7 @@ int main(int argc, char** argv) {
       torque += dQ_dr*dr;
     }
     of.close();
-    real power = torque*linear_interp(rwt_mag,rwt_rot,U_inf,false)*gen_eff;
+    real power = torque*omega*gen_eff;
     std::cout << "Thrust (kN)   : " << thrust/1e3                                  << std::endl;
     std::cout << "Torque (MN m) : " << torque/1e6                                  << std::endl;
     std::cout << "Power (MW)    : " << power/1e6                                   << std::endl;
