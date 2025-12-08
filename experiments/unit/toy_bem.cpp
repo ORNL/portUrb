@@ -414,16 +414,21 @@ int main(int argc, char** argv) {
     real pitch   = 0;      // Blade pitch
     real U_inf   = 3;   // Inflow wind speed
     real gen_eff = 0.944;  // Efficiency of power generation
-    real omega   = linear_interp(rwt_mag,rwt_rot,U_inf,false);
 
 
 
+    real cut_in  = rwt_mag(0);
+    real cut_out = rwt_mag(rwt_mag.size()-1);
+    realHost1d winds("winds",(int)((cut_out-cut_in)*10)+1);
+    for (int i=0; i < winds.size(); i++) {
+      winds(i) = cut_in + (cut_out-cut_in)*((real)i)/(winds.size()-1.);
+    }
 
     real max_power       = 5.29661e6;
-    real max_thrust_prop = 0.8;
+    real max_thrust_prop = 1.0;
     realHost2d out_dT_dr, out_dQ_dr;
     realHost1d out_pitch, out_thrust, out_torque, out_power, out_C_T, out_C_P, out_C_Q;
-    auto_pitch( rwt_mag , num_blades , R , R_hub , rho , gen_eff , tloss , hloss , max_power , max_thrust_prop ,
+    auto_pitch( winds , num_blades , R , R_hub , rho , gen_eff , tloss , hloss , max_power , max_thrust_prop ,
                 foil_mid , foil_len , foil_twist , foil_chord , foil_id , foil_alpha , foil_clift , foil_cdrag ,
                 rwt_mag , rwt_rot , out_pitch , out_dT_dr , out_dQ_dr , out_thrust , out_torque , out_power    ,
                 out_C_T , out_C_P , out_C_Q );
@@ -436,8 +441,8 @@ int main(int argc, char** argv) {
                << std::setw(15) << "Thrust Coef"   << "  "
                << std::setw(15) << "Power Coef"    << "  "
                << std::setw(15) << "Torque Coef"   << std::endl;
-    for (int iwind = 0; iwind < rwt_mag.size(); iwind++) {
-      std::cout << std::scientific << std::setw(15) << rwt_mag   (iwind)          << "  "
+    for (int iwind = 0; iwind < winds.size(); iwind++) {
+      std::cout << std::scientific << std::setw(15) << winds     (iwind)          << "  "
                 << std::scientific << std::setw(15) << out_pitch (iwind)/M_PI*180 << "  "
                 << std::scientific << std::setw(15) << out_thrust(iwind)/1e3      << "  "
                 << std::scientific << std::setw(15) << out_torque(iwind)/1e6      << "  "
