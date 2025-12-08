@@ -1,6 +1,7 @@
 
 #include "coupler.h"
 #include <fstream>
+#include "YAKL_netcdf.h"
 
 
 namespace YAML {
@@ -423,7 +424,7 @@ int main(int argc, char** argv) {
     int  mxiter     = 200;    // Maximum number of iterations
     real tol        = 1.e-6;  // Tolerance for convergence
     real pitch      = 0;      // Blade pitch
-    real U_inf      = 3;   // Inflow wind speed
+    real U_inf      = 3;      // Inflow wind speed
     real gen_eff    = 0.944;  // Efficiency of power generation
     int  num_blades = 3;
     real rho        = 1.225;  // Air density
@@ -437,25 +438,19 @@ int main(int argc, char** argv) {
                     out_pitch , out_dT_dr , out_dQ_dr , out_thrust , out_torque , out_power ,
                     out_C_T , out_C_P , out_C_Q );
 
-    std::cout  << std::setw(15) << "Wind (m/s)"    << "  "
-               << std::setw(15) << "Pitch (deg)"   << "  "
-               << std::setw(15) << "Thrust (kN)"   << "  "
-               << std::setw(15) << "Torque (MN m)" << "  "
-               << std::setw(15) << "Power (MW)"    << "  "
-               << std::setw(15) << "Thrust Coef"   << "  "
-               << std::setw(15) << "Power Coef"    << "  "
-               << std::setw(15) << "Torque Coef"   << std::endl;
-    for (int iwind = 0; iwind < winds.size(); iwind++) {
-      std::cout << std::scientific << std::setw(15) << winds     (iwind)          << "  "
-                << std::scientific << std::setw(15) << out_pitch (iwind)/M_PI*180 << "  "
-                << std::scientific << std::setw(15) << out_thrust(iwind)/1e3      << "  "
-                << std::scientific << std::setw(15) << out_torque(iwind)/1e6      << "  "
-                << std::scientific << std::setw(15) << out_power (iwind)/1e6      << "  "
-                << std::scientific << std::setw(15) << out_C_T   (iwind)          << "  "
-                << std::scientific << std::setw(15) << out_C_P   (iwind)          << "  "
-                << std::scientific << std::setw(15) << out_C_Q   (iwind)          << std::endl;
-    }
-
+    yakl::SimpleNetCDF nc;
+    nc.create( "bem.nc" , yakl::NETCDF_MODE_REPLACE );
+    nc.write( winds        , "wind"    , {"wind"});
+    nc.write( bem.foil_mid , "segment" , {"segment"});
+    nc.write( out_dT_dr    , "dT_dr"   , {"wind","segment"});
+    nc.write( out_dQ_dr    , "dQ_dr"   , {"wind","segment"});
+    nc.write( out_pitch    , "pitch"   , {"wind"});
+    nc.write( out_thrust   , "thrust"  , {"wind"});
+    nc.write( out_torque   , "torque"  , {"wind"});
+    nc.write( out_power    , "power"   , {"wind"});
+    nc.write( out_C_T      , "C_T"     , {"wind"});
+    nc.write( out_C_P      , "C_P"     , {"wind"});
+    nc.write( out_C_Q      , "C_Q"     , {"wind"});
 
     yakl::timer_stop("main");
   }
