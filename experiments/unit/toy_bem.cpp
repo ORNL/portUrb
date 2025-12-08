@@ -239,10 +239,10 @@ struct turbine_BEM {
     Cd           = linear_interp( ref_alpha , ref_cdrag , alpha/M_PI*180. ,true ); // Coefficient of drag
     Cn           = Cl * std::cos(phi) + Cd * std::sin(phi);
     Ct           = Cl * std::sin(phi) - Cd * std::cos(phi);
-    // dT_dr        = 0.5 * rho * W*W * chord * Cn * num_blades;
-    // dQ_dr        = 0.5 * rho * W*W * chord * Ct * num_blades * r;
-    dT_dr        = 4*M_PI*r*rho*U_inf*U_inf*(1-a)*a*F;
-    dQ_dr        = 4*M_PI*r*r*r*rho*U_inf*omega*(1-a)*a_prime*F;
+    dT_dr        = 0.5 * rho * W*W * chord * Cn * num_blades;
+    dQ_dr        = 0.5 * rho * W*W * chord * Ct * num_blades * r;
+    // dT_dr        = 4*M_PI*r*rho*U_inf*U_inf*(1-a)*a*F;
+    // dQ_dr        = 4*M_PI*r*r*r*rho*U_inf*omega*(1-a)*a_prime*F;
     return std::max( std::abs(a_new - a) , std::abs(a_prime_new - a_prime) );
   }
 
