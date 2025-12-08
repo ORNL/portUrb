@@ -183,10 +183,10 @@ struct turbine_BEM {
                       real       & dQ_dr             ,         // output: torque per unit span (N·m/m) (all blades)
                       real       & F                 ,         // output: combined tip-hub loss factor (-)
                       real       & sigma             ) const { // output: local solidarity factor
-    a              = 0;                                    // Axial induction factor
-    a_prime        = 0;                                    // Tangential induction factor
-    sigma          = num_blades * chord / (2. * M_PI * r); // Local solidity
-    real theta     = twist + pitch;                        // Blade section angle (twist + pitch) (rad)
+    a          = 0;                                    // Axial induction factor
+    a_prime    = 0;                                    // Tangential induction factor
+    sigma      = num_blades * chord / (2. * M_PI * r); // Local solidity
+    real theta = twist + pitch;                        // Blade section angle (twist + pitch) (rad)
     real a_new;       // Next predicted iteration for axial induction factor
     real a_prime_new; // Next predicted iteration for tangential induction factor
     for (int iter = 0; iter < max_iter; iter++) {
@@ -199,7 +199,7 @@ struct turbine_BEM {
       Cd           = linear_interp( ref_alpha , ref_cdrag , alpha/M_PI*180. ,true ); // Coefficient of drag
       Cn           = Cl * std::cos(phi) + Cd * std::sin(phi); // Normal force coefficient
       Ct           = Cl * std::sin(phi) - Cd * std::cos(phi); // Tangential force coefficient
-      real F = 1;  // Total loss from tip and hub
+      F = 1;  // Total loss from tip and hub
       if (tip_loss) F *= prandtl_tip_loss( r , R     , num_blades , phi );  // Tip loss
       if (hub_loss) F *= prandtl_hub_loss( r , R_hub , num_blades , phi );  // Hub loss
       real sin_phi = std::sin(phi);    if (std::abs(sin_phi) < 1e-6) sin_phi = 1e-6;
@@ -239,8 +239,10 @@ struct turbine_BEM {
     Cd           = linear_interp( ref_alpha , ref_cdrag , alpha/M_PI*180. ,true ); // Coefficient of drag
     Cn           = Cl * std::cos(phi) + Cd * std::sin(phi);
     Ct           = Cl * std::sin(phi) - Cd * std::cos(phi);
-    dT_dr        = 0.5 * rho * W*W * chord * Cn * num_blades;
-    dQ_dr        = 0.5 * rho * W*W * chord * Ct * num_blades * r;
+    // dT_dr        = 0.5 * rho * W*W * chord * Cn * num_blades;
+    // dQ_dr        = 0.5 * rho * W*W * chord * Ct * num_blades * r;
+    dT_dr        = 4*M_PI*r*rho*U_inf*U_inf*(1-a)*a*F;
+    dQ_dr        = 4*M_PI*r*r*r*rho*U_inf*omega*(1-a)*a_prime*F;
     return std::max( std::abs(a_new - a) , std::abs(a_prime_new - a_prime) );
   }
 
@@ -257,6 +259,10 @@ struct turbine_BEM {
                    realHost1d & out_pitch       ,   // output: pitch angle (radians)
                    realHost2d & out_dT_dr       ,   // output: thrust values at section mid points
                    realHost2d & out_dQ_dr       ,   // output: torque values at section mid points
+                   realHost2d & out_a_r         ,   // output: axial induction factors at section mid points
+                   realHost2d & out_ap_r        ,   // output: tangential induction factors at section mid points
+                   realHost2d & out_alpha_r     ,   // output: angle of attack at section mid points
+                   realHost2d & out_phi_r       ,   // output: flow angle at section mid points
                    realHost1d & out_thrust      ,   // output: total thrust (N)
                    realHost1d & out_torque      ,   // output: total torque (N m)
                    realHost1d & out_power       ,   // output: power generation (W)
@@ -265,15 +271,19 @@ struct turbine_BEM {
                    realHost1d & out_C_Q         ) { // output: torque coefficient
     int  nwinds = winds.size();
     int  nseg   = foil_mid.size();
-    out_pitch  = realHost1d("out_pitch ",nwinds);
-    out_dT_dr  = realHost2d("out_dT_dr ",nwinds,nseg);
-    out_dQ_dr  = realHost2d("out_dQ_dr ",nwinds,nseg);
-    out_thrust = realHost1d("out_thrust",nwinds);
-    out_torque = realHost1d("out_torque",nwinds);
-    out_power  = realHost1d("out_power ",nwinds);
-    out_C_T    = realHost1d("out_C_T   ",nwinds);
-    out_C_P    = realHost1d("out_C_P   ",nwinds);
-    out_C_Q    = realHost1d("out_C_Q   ",nwinds);
+    out_pitch   = realHost1d("out_pitch  ",nwinds);
+    out_dT_dr   = realHost2d("out_dT_dr  ",nwinds,nseg);
+    out_dQ_dr   = realHost2d("out_dQ_dr  ",nwinds,nseg);
+    out_a_r     = realHost2d("out_a_r    ",nwinds,nseg);
+    out_ap_r    = realHost2d("out_ap_r   ",nwinds,nseg);
+    out_alpha_r = realHost2d("out_alpha_r",nwinds,nseg);
+    out_phi_r   = realHost2d("out_phi_r  ",nwinds,nseg);
+    out_thrust  = realHost1d("out_thrust ",nwinds);
+    out_torque  = realHost1d("out_torque ",nwinds);
+    out_power   = realHost1d("out_power  ",nwinds);
+    out_C_T     = realHost1d("out_C_T    ",nwinds);
+    out_C_P     = realHost1d("out_C_P    ",nwinds);
+    out_C_Q     = realHost1d("out_C_Q    ",nwinds);
     real pitch_min = 0;
     real pitch_max = M_PI/2.;
 
@@ -300,8 +310,12 @@ struct turbine_BEM {
                                    pitch , num_blades , rho , tloss , hloss , mxiter , tol ,       // inputs
                                    a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma ); // outputs
         if (conv > tol) std::cout << "NOT CONVERGED: r: " << r << ";  conv == " << conv << std::endl;
-        out_dT_dr(iwind,iseg) = dT_dr;
-        out_dQ_dr(iwind,iseg) = dQ_dr;
+        out_dT_dr  (iwind,iseg) = dT_dr;
+        out_dQ_dr  (iwind,iseg) = dQ_dr;
+        out_a_r    (iwind,iseg) = a;
+        out_ap_r   (iwind,iseg) = ap;
+        out_alpha_r(iwind,iseg) = alpha/M_PI*180.;
+        out_phi_r  (iwind,iseg) = phi/M_PI*180.;
         thrust += dT_dr*dr;
         torque += dQ_dr*dr;
       }
@@ -334,8 +348,12 @@ struct turbine_BEM {
                                        pitch , num_blades , rho , tloss , hloss , mxiter , tol ,       // inputs
                                        a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma ); // outputs
             if (conv > tol) std::cout << "NOT CONVERGED: r: " << r << ";  conv == " << conv << std::endl;
-            out_dT_dr(iwind,iseg) = dT_dr;
-            out_dQ_dr(iwind,iseg) = dQ_dr;
+            out_dT_dr  (iwind,iseg) = dT_dr;
+            out_dQ_dr  (iwind,iseg) = dQ_dr;
+            out_a_r    (iwind,iseg) = a;
+            out_ap_r   (iwind,iseg) = ap;
+            out_alpha_r(iwind,iseg) = alpha/M_PI*180.;
+            out_phi_r  (iwind,iseg) = phi/M_PI*180.;
             thrust += dT_dr*dr;
             torque += dQ_dr*dr;
           }
@@ -381,8 +399,12 @@ struct turbine_BEM {
                                      pitch , num_blades , rho , tloss , hloss , mxiter , tol ,       // inputs
                                      a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma ); // outputs
           if (conv > tol) std::cout << "NOT CONVERGED: r: " << r << ";  conv == " << conv << std::endl;
-          out_dT_dr(iwind,iseg) = dT_dr;
-          out_dQ_dr(iwind,iseg) = dQ_dr;
+          out_dT_dr  (iwind,iseg) = dT_dr;
+          out_dQ_dr  (iwind,iseg) = dQ_dr;
+          out_a_r    (iwind,iseg) = a;
+          out_ap_r   (iwind,iseg) = ap;
+          out_alpha_r(iwind,iseg) = alpha/M_PI*180.;
+          out_phi_r  (iwind,iseg) = phi/M_PI*180.;
           thrust += dT_dr*dr;
           torque += dQ_dr*dr;
         }
@@ -431,11 +453,11 @@ int main(int argc, char** argv) {
     real max_power       = 5.29661e6;
     real max_thrust_prop = 0.8;
 
-    realHost2d out_dT_dr, out_dQ_dr;
+    realHost2d out_dT_dr, out_dQ_dr, out_a_r, out_ap_r, out_alpha_r, out_phi_r;
     realHost1d out_pitch, out_thrust, out_torque, out_power, out_C_T, out_C_P, out_C_Q;
 
     bem.auto_pitch( winds , num_blades , rho , gen_eff , tloss , hloss , max_power , max_thrust_prop ,
-                    out_pitch , out_dT_dr , out_dQ_dr , out_thrust , out_torque , out_power ,
+                    out_pitch , out_dT_dr , out_dQ_dr , out_a_r , out_ap_r , out_alpha_r , out_phi_r , out_thrust , out_torque , out_power ,
                     out_C_T , out_C_P , out_C_Q );
 
     yakl::SimpleNetCDF nc;
@@ -444,6 +466,10 @@ int main(int argc, char** argv) {
     nc.write( bem.foil_mid , "segment" , {"segment"});
     nc.write( out_dT_dr    , "dT_dr"   , {"wind","segment"});
     nc.write( out_dQ_dr    , "dQ_dr"   , {"wind","segment"});
+    nc.write( out_a_r      , "a_r"     , {"wind","segment"});
+    nc.write( out_ap_r     , "ap_r"    , {"wind","segment"});
+    nc.write( out_alpha_r  , "alpha_r" , {"wind","segment"});
+    nc.write( out_phi_r    , "phi_r"   , {"wind","segment"});
     nc.write( out_pitch    , "pitch"   , {"wind"});
     nc.write( out_thrust   , "thrust"  , {"wind"});
     nc.write( out_torque   , "torque"  , {"wind"});
