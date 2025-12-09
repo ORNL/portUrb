@@ -136,21 +136,15 @@ struct turbine_BEM {
 
   // TODO: Near rated wind speed, this routine limits convergence of alpha to 1e-3 at the last blade segment
   static real prandtl_tip_loss(real r, real R, int num_blades, real phi_rad) {
-    if (std::abs(std::sin(phi_rad)) < 1e-6) return 1;
-    real f_tip = (num_blades / 2.0) * (R - r) / (r * std::sin(phi_rad));
-    if (f_tip > 50) return 1;
-    real F_tip = (2.0 / M_PI) * std::acos(std::exp(-f_tip));
-    return std::max(F_tip, (real)0.0001);
+    if (std::abs(std::sin(phi_rad)) < 1e-10) return 1;
+    return std::max( (2./M_PI)*std::acos(std::exp(-(num_blades/2.)*(R-r)/(r*std::sin(phi_rad)))) , (real) 1.e-10 );
   }
 
 
 
   static real prandtl_hub_loss(real r, real R_hub, int num_blades, real phi_rad) {
-      if (std::abs(std::sin(phi_rad)) < 1e-6) return 1;
-      real f_hub = (num_blades / 2.0) * (r - R_hub) / (r * std::sin(phi_rad));
-      if (f_hub > 50) return 1;
-      real F_hub = (2.0 / M_PI) * std::acos(std::exp(-f_hub));
-      return std::max(F_hub, (real) 0.0001);
+    if (std::abs(std::sin(phi_rad)) < 1e-10) return 1;
+    return std::max( (2./M_PI)*std::acos(std::exp(-(num_blades/2.)*(r-R_hub)/(r*std::sin(phi_rad)))) , (real) 1.e-10 );
   }
 
 
@@ -159,9 +153,14 @@ struct turbine_BEM {
                       real         twist             ,         // input : twist angle (radians)
                       real         chord             ,         // input : chord length (m)
                       real         omega             ,         // input : rotation rate (radians / sec)
-                      realHost1d & ref_alpha         ,         // input : look-up alpha for coefficients of lift and drag
-                      realHost1d & ref_clift         ,         // input : look-up for coefficient of lift based on alpha
-                      realHost1d & ref_cdrag         ,         // input : look-up for coefficient of drag based on alpha
+                      real         mult1             ,
+                      real         mult2             ,
+                      realHost1d & ref_alpha1        ,         // input : look-up alpha for coefficients of lift and drag
+                      realHost1d & ref_clift1        ,         // input : look-up for coefficient of lift based on alpha
+                      realHost1d & ref_cdrag1        ,         // input : look-up for coefficient of drag based on alpha
+                      realHost1d & ref_alpha2        ,         // input : look-up alpha for coefficients of lift and drag
+                      realHost1d & ref_clift2        ,         // input : look-up for coefficient of lift based on alpha
+                      realHost1d & ref_cdrag2        ,         // input : look-up for coefficient of drag based on alpha
                       real         U_inf             ,         // input : inflow wind speed
                       real         pitch             ,         // input : pitch of the blades (radians)
                       int          num_blades        ,         // input : number of blades
@@ -195,8 +194,12 @@ struct turbine_BEM {
       W            = std::sqrt(U_axial*U_axial + U_tang*U_tang); // Relative velocity magnitude
       phi          = std::atan2(U_axial, U_tang);                // Flow angle (rad)
       alpha        = phi - theta;                                // Angle of attack (rad)
-      Cl           = linear_interp( ref_alpha , ref_clift , alpha/M_PI*180. ,true ); // Coefficient of lift
-      Cd           = linear_interp( ref_alpha , ref_cdrag , alpha/M_PI*180. ,true ); // Coefficient of drag
+      real Cl1     = linear_interp( ref_alpha1 , ref_clift1 , alpha/M_PI*180. ,true ); // Coefficient of lift
+      real Cd1     = linear_interp( ref_alpha1 , ref_cdrag1 , alpha/M_PI*180. ,true ); // Coefficient of drag
+      real Cl2     = linear_interp( ref_alpha2 , ref_clift2 , alpha/M_PI*180. ,true ); // Coefficient of lift
+      real Cd2     = linear_interp( ref_alpha2 , ref_cdrag2 , alpha/M_PI*180. ,true ); // Coefficient of drag
+      Cl           = mult1*Cl1 + mult2*Cl2;
+      Cd           = mult1*Cd1 + mult2*Cd2;
       Cn           = Cl * std::cos(phi) + Cd * std::sin(phi); // Normal force coefficient
       Ct           = Cl * std::sin(phi) - Cd * std::cos(phi); // Tangential force coefficient
       F = 1;  // Total loss from tip and hub
@@ -235,8 +238,12 @@ struct turbine_BEM {
     W            = std::sqrt(U_axial*U_axial + U_tang*U_tang);
     phi          = std::atan2(U_axial, U_tang);
     alpha        = phi - theta;
-    Cl           = linear_interp( ref_alpha , ref_clift , alpha/M_PI*180. ,true ); // Coefficient of lift
-    Cd           = linear_interp( ref_alpha , ref_cdrag , alpha/M_PI*180. ,true ); // Coefficient of drag
+    real Cl1     = linear_interp( ref_alpha1 , ref_clift1 , alpha/M_PI*180. ,true ); // Coefficient of lift
+    real Cd1     = linear_interp( ref_alpha1 , ref_cdrag1 , alpha/M_PI*180. ,true ); // Coefficient of drag
+    real Cl2     = linear_interp( ref_alpha2 , ref_clift2 , alpha/M_PI*180. ,true ); // Coefficient of lift
+    real Cd2     = linear_interp( ref_alpha2 , ref_cdrag2 , alpha/M_PI*180. ,true ); // Coefficient of drag
+    Cl           = mult1*Cl1 + mult2*Cl2;
+    Cd           = mult1*Cd1 + mult2*Cd2;
     Cn           = Cl * std::cos(phi) + Cd * std::sin(phi);
     Ct           = Cl * std::sin(phi) - Cd * std::cos(phi);
     dT_dr        = 0.5 * rho * W*W * chord * Cn * num_blades;
@@ -244,6 +251,96 @@ struct turbine_BEM {
     // dT_dr        = 4*M_PI*r*rho*U_inf*U_inf*(1-a)*a*F;
     // dQ_dr        = 4*M_PI*r*r*r*rho*U_inf*omega*(1-a)*a_prime*F;
     return std::max( std::abs(a_new - a) , std::abs(a_prime_new - a_prime) );
+  }
+
+
+
+  void blade_integral( real         U_inf           ,   // input : inflow wind speed (m/s)
+                       int          num_blades      ,   // input : number of blades
+                       real         rho             ,   // input : total air density (kg/m^3)
+                       real         gen_eff         ,   // input : Proportion of torque that generates power
+                       bool         tloss           ,   // input : whether to include tip loss
+                       bool         hloss           ,   // input : whether to include hub loss
+                       real         pitch           ,   // input : pitch angle (radians)
+                       int          nrad            ,   // input : Number of points to sample along the blade
+                       realHost1d & out_dT_dr       ,   // output: thrust values at section mid points
+                       realHost1d & out_dQ_dr       ,   // output: torque values at section mid points
+                       real       & out_thrust      ,   // output: total thrust (N)
+                       real       & out_torque      ,   // output: total torque (N m)
+                       real       & out_power       ,   // output: power generation (W)
+                       real       & out_C_T         ,   // output: thrust coefficient
+                       real       & out_C_P         ,   // output: power coefficient
+                       real       & out_C_Q         ) { // output: torque coefficient
+    int  mxiter  = 200;            // Maximum number of iterations
+    real tol     = 1.e-6;          // Tolerance for convergence
+    real omega   = linear_interp(rwt_mag,rwt_rot,U_inf,false); // Rotation rate (rad/sec)
+    real thrust  = 0;              // For accumulating the total thrust
+    real torque  = 0;              // For accumulating the total torque
+    int  nseg    = foil_mid.size();
+    // Loop over blade segments and compute maximum
+    for (int irad = 0; irad < nrad; irad++) {
+      real       r          = R * (irad+0.5) / nrad;
+      real       dr         = R/nrad;
+      real       twist      = linear_interp(foil_mid,foil_twist,r,true);
+      real       chord      = linear_interp(foil_mid,foil_chord,r,true);
+      real       id         = linear_interp(foil_mid,foil_id   ,r,true);
+      real mult1, mult2;
+      realHost1d ref_alpha1;
+      realHost1d ref_clift1;
+      realHost1d ref_cdrag1;
+      realHost1d ref_alpha2;
+      realHost1d ref_clift2;
+      realHost1d ref_cdrag2;
+      if (r <= foil_mid(0)) {
+        mult1 = 0.5;
+        mult2 = 0.5;
+        ref_alpha1 = foil_alpha(foil_id(0));
+        ref_clift1 = foil_clift(foil_id(0));
+        ref_cdrag1 = foil_cdrag(foil_id(0));
+        ref_alpha2 = foil_alpha(foil_id(0));
+        ref_clift2 = foil_clift(foil_id(0));
+        ref_cdrag2 = foil_cdrag(foil_id(0));
+      } else if (r >= foil_mid(nseg-1)) {
+        mult1 = 0.5;
+        mult2 = 0.5;
+        ref_alpha1 = foil_alpha(foil_id(nseg-1));
+        ref_clift1 = foil_clift(foil_id(nseg-1));
+        ref_cdrag1 = foil_cdrag(foil_id(nseg-1));
+        ref_alpha2 = foil_alpha(foil_id(nseg-1));
+        ref_clift2 = foil_clift(foil_id(nseg-1));
+        ref_cdrag2 = foil_cdrag(foil_id(nseg-1));
+      } else {
+        int iseg1 = 0;
+        for (int i=0; i < nseg-1; i++) { if (r >= foil_mid(i) && r <= foil_mid(i+1)) { iseg1 = i; break; } }
+        int iseg2 = iseg1+1;
+        mult1 = (foil_mid(iseg2) - r)/(foil_mid(iseg2)-foil_mid(iseg1));
+        mult2 = (r - foil_mid(iseg1))/(foil_mid(iseg2)-foil_mid(iseg1));
+        ref_alpha1 = foil_alpha(foil_id(iseg1));
+        ref_clift1 = foil_clift(foil_id(iseg1));
+        ref_cdrag1 = foil_cdrag(foil_id(iseg1));
+        ref_alpha2 = foil_alpha(foil_id(iseg2));
+        ref_clift2 = foil_clift(foil_id(iseg2));
+        ref_cdrag2 = foil_cdrag(foil_id(iseg2));
+      }
+      real a, ap, phi, alpha, Cl, Cd, Cn, Ct, W, dT_dr, dQ_dr, F, sigma; // outputs
+      real conv = blade_element( r , twist , chord , omega , mult1 , mult2 ,                                 // inputs
+                                 ref_alpha1 , ref_clift1 , ref_cdrag1 ,                                      // inputs
+                                 ref_alpha2 , ref_clift2 , ref_cdrag2 ,                                      // inputs
+                                 U_inf , pitch , num_blades , rho , tloss , hloss , mxiter , tol ,           // inputs
+                                 a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma ); // outputs
+      // if (conv > tol) std::cout << "NOT CONVERGED: r: " << r << ";  conv == " << conv << std::endl;
+      out_dT_dr(irad) = dT_dr;
+      out_dQ_dr(irad) = dQ_dr;
+      thrust += dT_dr*dr;
+      torque += dQ_dr*dr;
+    }
+    real power = torque*omega*gen_eff;
+    out_thrust = thrust;
+    out_torque = torque;
+    out_power  = power ;
+    out_C_T    = thrust/(0.5*rho*M_PI*R*R*U_inf*U_inf)      ;
+    out_C_Q    = torque/(0.5*rho*M_PI*R*R*R*U_inf*U_inf)    ;
+    out_C_P    = power /(0.5*rho*M_PI*R*R*U_inf*U_inf*U_inf);
   }
 
 
@@ -256,13 +353,10 @@ struct turbine_BEM {
                    bool         hloss           ,   // input : whether to include hub loss
                    real         max_power       ,   // input : whether to include hub loss
                    real         max_thrust_prop ,   // input : whether to include hub loss
+                   int          nrad            ,   // input : number of points to sample along blade
                    realHost1d & out_pitch       ,   // output: pitch angle (radians)
                    realHost2d & out_dT_dr       ,   // output: thrust values at section mid points
                    realHost2d & out_dQ_dr       ,   // output: torque values at section mid points
-                   realHost2d & out_a_r         ,   // output: axial induction factors at section mid points
-                   realHost2d & out_ap_r        ,   // output: tangential induction factors at section mid points
-                   realHost2d & out_alpha_r     ,   // output: angle of attack at section mid points
-                   realHost2d & out_phi_r       ,   // output: flow angle at section mid points
                    realHost1d & out_thrust      ,   // output: total thrust (N)
                    realHost1d & out_torque      ,   // output: total torque (N m)
                    realHost1d & out_power       ,   // output: power generation (W)
@@ -270,14 +364,9 @@ struct turbine_BEM {
                    realHost1d & out_C_P         ,   // output: power coefficient
                    realHost1d & out_C_Q         ) { // output: torque coefficient
     int  nwinds = winds.size();
-    int  nseg   = foil_mid.size();
     out_pitch   = realHost1d("out_pitch  ",nwinds);
-    out_dT_dr   = realHost2d("out_dT_dr  ",nwinds,nseg);
-    out_dQ_dr   = realHost2d("out_dQ_dr  ",nwinds,nseg);
-    out_a_r     = realHost2d("out_a_r    ",nwinds,nseg);
-    out_ap_r    = realHost2d("out_ap_r   ",nwinds,nseg);
-    out_alpha_r = realHost2d("out_alpha_r",nwinds,nseg);
-    out_phi_r   = realHost2d("out_phi_r  ",nwinds,nseg);
+    out_dT_dr   = realHost2d("out_dT_dr  ",nwinds,nrad); // I'm adding a zero and radius point
+    out_dQ_dr   = realHost2d("out_dQ_dr  ",nwinds,nrad); // I'm adding a zero and radius point
     out_thrust  = realHost1d("out_thrust ",nwinds);
     out_torque  = realHost1d("out_torque ",nwinds);
     out_power   = realHost1d("out_power  ",nwinds);
@@ -289,85 +378,26 @@ struct turbine_BEM {
 
     // Determine the maximum thrust among the input wind speeds
     for (int iwind = 0; iwind < nwinds; iwind++) {
-      int  mxiter  = 200;            // Maximum number of iterations
-      real tol     = 1.e-6;          // Tolerance for convergence
-      real U_inf   = winds(iwind);   // Inflow wind speed
-      real omega   = linear_interp(rwt_mag,rwt_rot,U_inf,false); // Rotation rate (rad/sec)
-      real thrust  = 0;              // For accumulating the total thrust
-      real torque  = 0;              // For accumulating the total torque
-      real pitch   = 0;              // Initial pitch assumption
-      // Loop over blade segments and compute maximum
-      for (int iseg = 0; iseg < nseg; iseg++) {
-        real       r         = foil_mid  (iseg);
-        real       dr        = foil_len  (iseg);
-        real       twist     = foil_twist(iseg);
-        real       chord     = foil_chord(iseg);
-        realHost1d ref_alpha = foil_alpha(foil_id(iseg));
-        realHost1d ref_clift = foil_clift(foil_id(iseg));
-        realHost1d ref_cdrag = foil_cdrag(foil_id(iseg));
-        real a, ap, phi, alpha, Cl, Cd, Cn, Ct, W, dT_dr, dQ_dr, F, sigma; // outputs
-        real conv = blade_element( r , twist , chord , omega , ref_alpha , ref_clift , ref_cdrag , U_inf ,     // inputs
-                                   pitch , num_blades , rho , tloss , hloss , mxiter , tol ,       // inputs
-                                   a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma ); // outputs
-        if (conv > tol) std::cout << "NOT CONVERGED: r: " << r << ";  conv == " << conv << std::endl;
-        out_dT_dr  (iwind,iseg) = dT_dr;
-        out_dQ_dr  (iwind,iseg) = dQ_dr;
-        out_a_r    (iwind,iseg) = a;
-        out_ap_r   (iwind,iseg) = ap;
-        out_alpha_r(iwind,iseg) = alpha/M_PI*180.;
-        out_phi_r  (iwind,iseg) = phi/M_PI*180.;
-        thrust += dT_dr*dr;
-        torque += dQ_dr*dr;
-      }
-      real power = torque*omega*gen_eff;
-      out_pitch (iwind) = pitch ;
-      out_thrust(iwind) = thrust;
-      out_torque(iwind) = torque;
-      out_power (iwind) = power ;
-      out_C_T   (iwind) = thrust/(0.5*rho*M_PI*R*R*U_inf*U_inf)      ;
-      out_C_Q   (iwind) = torque/(0.5*rho*M_PI*R*R*R*U_inf*U_inf)    ;
-      out_C_P   (iwind) = power /(0.5*rho*M_PI*R*R*U_inf*U_inf*U_inf);
-      if (power > max_power) {
-        real p1 = pitch_min;
-        real p2 = pitch_max;
-        while ( std::abs(power-max_power) > 1 ) {
-          real pitch = (p1+p2)/2;
-          real thrust  = 0;              // For accumulating the total thrust
-          real torque  = 0;              // For accumulating the total torque
-          // Loop over blade segments and compute maximum
-          for (int iseg = 0; iseg < nseg; iseg++) {
-            real       r         = foil_mid  (iseg);
-            real       dr        = foil_len  (iseg);
-            real       twist     = foil_twist(iseg);
-            real       chord     = foil_chord(iseg);
-            realHost1d ref_alpha = foil_alpha(foil_id(iseg));
-            realHost1d ref_clift = foil_clift(foil_id(iseg));
-            realHost1d ref_cdrag = foil_cdrag(foil_id(iseg));
-            real a, ap, phi, alpha, Cl, Cd, Cn, Ct, W, dT_dr, dQ_dr, F, sigma; // outputs
-            real conv = blade_element( r , twist , chord , omega , ref_alpha , ref_clift , ref_cdrag , U_inf ,     // inputs
-                                       pitch , num_blades , rho , tloss , hloss , mxiter , tol ,       // inputs
-                                       a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma ); // outputs
-            if (conv > tol) std::cout << "NOT CONVERGED: r: " << r << ";  conv == " << conv << std::endl;
-            out_dT_dr  (iwind,iseg) = dT_dr;
-            out_dQ_dr  (iwind,iseg) = dQ_dr;
-            out_a_r    (iwind,iseg) = a;
-            out_ap_r   (iwind,iseg) = ap;
-            out_alpha_r(iwind,iseg) = alpha/M_PI*180.;
-            out_phi_r  (iwind,iseg) = phi/M_PI*180.;
-            thrust += dT_dr*dr;
-            torque += dQ_dr*dr;
-          }
-          power = torque*omega*gen_eff;
-          out_pitch (iwind) = pitch ;
-          out_thrust(iwind) = thrust;
-          out_torque(iwind) = torque;
-          out_power (iwind) = power ;
-          out_C_T   (iwind) = thrust/(0.5*rho*M_PI*R*R*U_inf*U_inf)      ;
-          out_C_Q   (iwind) = torque/(0.5*rho*M_PI*R*R*R*U_inf*U_inf)    ;
-          out_C_P   (iwind) = power /(0.5*rho*M_PI*R*R*U_inf*U_inf*U_inf);
-          if (power > max_power) { p1 = pitch; }
-          else                   { p2 = pitch; }
-        }
+      std::cout << winds(iwind) << std::endl;
+      real U_inf = winds(iwind);
+      real omega = linear_interp(rwt_mag,rwt_rot,U_inf,false); // Rotation rate (rad/sec)
+      real pitch = 0;
+      auto dT_dr_loc = out_dT_dr.slice<1>(iwind,0);
+      auto dQ_dr_loc = out_dQ_dr.slice<1>(iwind,0);
+      blade_integral( U_inf , num_blades , rho , gen_eff , tloss , hloss , pitch , nrad ,
+                      dT_dr_loc , dQ_dr_loc ,
+                      out_thrust(iwind) , out_torque(iwind) , out_power(iwind) , out_C_T(iwind) ,
+                      out_C_P(iwind) , out_C_Q(iwind) );
+      out_pitch(iwind) = pitch;
+      while (out_power(iwind) > max_power) {
+        pitch += 0.01/180.*M_PI;
+        auto dT_dr_loc = out_dT_dr.slice<1>(iwind,0);
+        auto dQ_dr_loc = out_dQ_dr.slice<1>(iwind,0);
+        blade_integral( U_inf , num_blades , rho , gen_eff , tloss , hloss , pitch , nrad ,
+                        dT_dr_loc , dQ_dr_loc ,
+                        out_thrust(iwind) , out_torque(iwind) , out_power(iwind) , out_C_T(iwind) ,
+                        out_C_P(iwind) , out_C_Q(iwind) );
+        out_pitch(iwind) = pitch;
       }
     }
 
@@ -375,50 +405,21 @@ struct turbine_BEM {
 
     // Determine the maximum thrust among the input wind speeds
     for (int iwind = 0; iwind < nwinds; iwind++) {
-      real thrust = out_thrust(iwind);
+      std::cout << winds(iwind) << std::endl;
+      real U_inf  = winds(iwind);
+      real omega  = linear_interp(rwt_mag,rwt_rot,U_inf,false); // Rotation rate (rad/sec)
       real pitch  = out_pitch (iwind);
-      while (thrust > max_thrust) {
+      while (out_thrust(iwind) > max_thrust) {
         pitch += 0.01/180.*M_PI;
-        int  mxiter  = 200;            // Maximum number of iterations
-        real tol     = 1.e-6;          // Tolerance for convergence
-        real U_inf   = winds(iwind);   // Inflow wind speed
-        real omega   = linear_interp(rwt_mag,rwt_rot,U_inf,false); // Rotation rate (rad/sec)
-        thrust       = 0;              // For accumulating the total thrust
-        real torque  = 0;              // For accumulating the total torque
-        // Loop over blade segments and compute maximum
-        for (int iseg = 0; iseg < nseg; iseg++) {
-          real       r         = foil_mid  (iseg);
-          real       dr        = foil_len  (iseg);
-          real       twist     = foil_twist(iseg);
-          real       chord     = foil_chord(iseg);
-          realHost1d ref_alpha = foil_alpha(foil_id(iseg));
-          realHost1d ref_clift = foil_clift(foil_id(iseg));
-          realHost1d ref_cdrag = foil_cdrag(foil_id(iseg));
-          real a, ap, phi, alpha, Cl, Cd, Cn, Ct, W, dT_dr, dQ_dr, F, sigma; // outputs
-          real conv = blade_element( r , twist , chord , omega , ref_alpha , ref_clift , ref_cdrag , U_inf ,     // inputs
-                                     pitch , num_blades , rho , tloss , hloss , mxiter , tol ,       // inputs
-                                     a , ap , phi , alpha , Cl , Cd , Cn , Ct , W , dT_dr , dQ_dr , F , sigma ); // outputs
-          if (conv > tol) std::cout << "NOT CONVERGED: r: " << r << ";  conv == " << conv << std::endl;
-          out_dT_dr  (iwind,iseg) = dT_dr;
-          out_dQ_dr  (iwind,iseg) = dQ_dr;
-          out_a_r    (iwind,iseg) = a;
-          out_ap_r   (iwind,iseg) = ap;
-          out_alpha_r(iwind,iseg) = alpha/M_PI*180.;
-          out_phi_r  (iwind,iseg) = phi/M_PI*180.;
-          thrust += dT_dr*dr;
-          torque += dQ_dr*dr;
-        }
-        real power = torque*omega*gen_eff;
-        out_pitch (iwind) = pitch ;
-        out_thrust(iwind) = thrust;
-        out_torque(iwind) = torque;
-        out_power (iwind) = power ;
-        out_C_T   (iwind) = thrust/(0.5*rho*M_PI*R*R*U_inf*U_inf)      ;
-        out_C_Q   (iwind) = torque/(0.5*rho*M_PI*R*R*R*U_inf*U_inf)    ;
-        out_C_P   (iwind) = power /(0.5*rho*M_PI*R*R*U_inf*U_inf*U_inf);
+        auto dT_dr_loc = out_dT_dr.slice<1>(iwind,0);
+        auto dQ_dr_loc = out_dQ_dr.slice<1>(iwind,0);
+        blade_integral( U_inf , num_blades , rho , gen_eff , tloss , hloss , pitch , nrad ,
+                        dT_dr_loc , dQ_dr_loc ,
+                        out_thrust(iwind) , out_torque(iwind) , out_power(iwind) , out_C_T(iwind) ,
+                        out_C_P(iwind) , out_C_Q(iwind) );
+        out_pitch(iwind) = pitch;
       }
     }
-
   }
 
 };
@@ -434,6 +435,32 @@ int main(int argc, char** argv) {
     turbine_BEM bem;
     bem.init("./inputs/NREL_5MW_126_RWT.yaml");
 
+    bool tloss           = true;   // Use tip loss?
+    bool hloss           = true;   // Use hub loss?
+    real gen_eff         = 0.944;  // Efficiency of power generation
+    int  num_blades      = 3;
+    real rho             = 1.225;  // Air density
+    real max_power       = 5.29661e6;
+    real max_thrust_prop = 0.8;
+
+    // real U_inf = 11;
+    // int  nrad  = 200;
+    // real pitch = 0;
+    // realHost1d out_dT_dr("out_dT_dr",nrad);
+    // realHost1d out_dQ_dr("out_dQ_dr",nrad);
+    // real out_thrust,out_torque,out_power,out_C_T, out_C_P, out_C_Q;
+    // bem.blade_integral( U_inf , num_blades , rho , gen_eff , tloss , hloss , pitch , nrad , out_dT_dr , out_dQ_dr ,
+    //                     out_thrust , out_torque , out_power , out_C_T , out_C_P , out_C_Q );
+    // std::ofstream fh("output.txt");
+    // for (int irad = 0; irad < nrad; irad++) {
+    //   real r = bem.R * (irad+0.5) / nrad;
+    //   fh << std::scientific << std::setw(15) <<     r           << "  "
+    //      << std::scientific << std::setw(15) << out_dT_dr(irad) << "  "
+    //      << std::scientific << std::setw(15) << out_dQ_dr(irad) << std::endl;
+    // }
+    // fh.close();
+
+
     real cut_in  = bem.rwt_mag(0);
     real cut_out = bem.rwt_mag(bem.rwt_mag.size()-1);
     realHost1d winds("winds",(int)((cut_out-cut_in)*10)+1);
@@ -441,35 +468,23 @@ int main(int argc, char** argv) {
       winds(i) = cut_in + (cut_out-cut_in)*((real)i)/(winds.size()-1.);
     }
 
-    bool tloss           = true;   // Use tip loss?
-    bool hloss           = true;   // Use hub loss?
-    int  mxiter          = 200;    // Maximum number of iterations
-    real tol             = 1.e-6;  // Tolerance for convergence
-    real pitch           = 0;      // Blade pitch
-    real U_inf           = 3;      // Inflow wind speed
-    real gen_eff         = 0.944;  // Efficiency of power generation
-    int  num_blades      = 3;
-    real rho             = 1.225;  // Air density
-    real max_power       = 5.29661e6;
-    real max_thrust_prop = 0.8;
+    int nrad = 200;
 
-    realHost2d out_dT_dr, out_dQ_dr, out_a_r, out_ap_r, out_alpha_r, out_phi_r;
+    realHost2d out_dT_dr, out_dQ_dr;
     realHost1d out_pitch, out_thrust, out_torque, out_power, out_C_T, out_C_P, out_C_Q;
 
-    bem.auto_pitch( winds , num_blades , rho , gen_eff , tloss , hloss , max_power , max_thrust_prop ,
-                    out_pitch , out_dT_dr , out_dQ_dr , out_a_r , out_ap_r , out_alpha_r , out_phi_r , out_thrust , out_torque , out_power ,
+    bem.auto_pitch( winds , num_blades , rho , gen_eff , tloss , hloss , max_power , max_thrust_prop , nrad ,
+                    out_pitch , out_dT_dr , out_dQ_dr , out_thrust , out_torque , out_power ,
                     out_C_T , out_C_P , out_C_Q );
 
+    realHost1d segment("segment",nrad);
+    for (int i=0; i < nrad; i++) { segment(i) = bem.R * (i+0.5) / nrad; }
     yakl::SimpleNetCDF nc;
     nc.create( "bem.nc" , yakl::NETCDF_MODE_REPLACE );
     nc.write( winds        , "wind"    , {"wind"});
-    nc.write( bem.foil_mid , "segment" , {"segment"});
+    nc.write( segment      , "segment" , {"segment"});
     nc.write( out_dT_dr    , "dT_dr"   , {"wind","segment"});
     nc.write( out_dQ_dr    , "dQ_dr"   , {"wind","segment"});
-    nc.write( out_a_r      , "a_r"     , {"wind","segment"});
-    nc.write( out_ap_r     , "ap_r"    , {"wind","segment"});
-    nc.write( out_alpha_r  , "alpha_r" , {"wind","segment"});
-    nc.write( out_phi_r    , "phi_r"   , {"wind","segment"});
     nc.write( out_pitch    , "pitch"   , {"wind"});
     nc.write( out_thrust   , "thrust"  , {"wind"});
     nc.write( out_torque   , "torque"  , {"wind"});
