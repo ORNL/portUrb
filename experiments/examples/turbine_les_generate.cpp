@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
     real        turbine_hubz      = node["hub_height"  ].as<real>();
     real        turbine_rad       = node["blade_radius"].as<real>();
     real        D                 = turbine_rad*2;
-    bool        is_restart        = true;
+    bool        is_restart        = false;
     int         restart_index     = 15;
 
     // This holds all of the model's variables, dimension sizes, and options
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
                                                 << coupler_prec.get_option<real>("hub_height_wind_mag")
                                                 << "] m/s" << std::endl;
       real        sim_time          = 3600*24+1;
-      real        xlen              = 10000;
+      real        xlen              = 110*D;
       real        ylen              = 12*D;
       real        zlen              = 5*D;
       int         nx_glob           = (int) std::round(xlen/dx);
@@ -99,8 +99,8 @@ int main(int argc, char** argv) {
       coupler_prec.set_option<real             >( "cfl"                      , 0.6          );
       coupler_prec.set_option<real             >( "dycore_max_wind"          , 50           );
       coupler_prec.set_option<bool             >( "dycore_buoyancy_theta"    , true         );
-      coupler_prec.set_option<real             >( "dycore_cs"                , 60           );
-      coupler_prec.set_option<std::vector<real>>( "turbine_x_locs"           , {6*D}        );
+      coupler_prec.set_option<real             >( "dycore_cs"                , 100          );
+      coupler_prec.set_option<std::vector<real>>( "turbine_x_locs"           , {10*D}       );
       coupler_prec.set_option<std::vector<real>>( "turbine_y_locs"           , {ylen/2}     );
       coupler_prec.set_option<std::vector<bool>>( "turbine_apply_thrust"     , {true}       );
       coupler_prec.set_option<real             >( "hub_height_wind_dir"      , hub_dir      );
@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
         {
           real u_in,v_in;
           windmills.disk_average_wind( coupler_prec , windmills.turbine_group.turbines.at(0).ref_turbine , u_in , v_in );
-          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_given(c,dt,u_in,v_in,u,v,300); } , "pg_forcing" );
+          coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_given(c,dt,u_in,v_in,u,v,10); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
           coupler_prec.run_module( [&] (Coupler &c) { modules::sponge_layer        (c,dt,300,0.1); } , "sponge" );
           coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_noturb );
 
         {
-          precursor_sponge( coupler_noturb , coupler_prec , {"density_dry","temp"} , (int)(D/dx) , nx_glob/10 , 0 , 0 );
+          precursor_sponge( coupler_noturb , coupler_prec , {"density_dry","temp"} , nx_glob/20 , nx_glob/20 , 0 , 0 );
           coupler_noturb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_noturb.run_module( [&] (Coupler &c) { col_nudge_noturb.nudge_to_column(c,dt,dt*2); } , "col_nudge");
           coupler_noturb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
@@ -264,7 +264,7 @@ int main(int argc, char** argv) {
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_turb );
 
         {
-          precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temp"} , (int)(D/dx) , nx_glob/10 , 0 , 0 );
+          precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temp"} , nx_glob/20 , nx_glob/20 , 0 , 0 );
           coupler_turb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_turb.run_module( [&] (Coupler &c) { col_nudge_turb.nudge_to_column(c,dt,dt*2); } , "col_nudge"  );
           coupler_turb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );

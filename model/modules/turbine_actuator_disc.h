@@ -291,11 +291,18 @@ namespace modules {
                                       ((x2*x2*x2)-3*(x2*x2)*x3+3*x2*(x3*x3)-(x3*x3*x3));
               return 0;
             };
+            auto no_thrust_shape = KOKKOS_LAMBDA (float x, float x2, float x3, float a) -> float {
+              if (x < x2) return 1;
+              if (x < x3) return -1.0*(2*(x*x*x)-3*(x*x)*x2-3*x2*(x3*x3)+(x3*x3*x3)-3*((x*x)-2*x*x2)*x3)/
+                                      ((x2*x2*x2)-3*(x2*x2)*x3+3*x2*(x3*x3)-(x3*x3*x3));
+              return 0;
+            };
             // This function defines the 1-D projection shaping function in the direction normal to the disk
             auto proj_shape_1d = KOKKOS_LAMBDA ( float x , float xr ) -> float {
               float term = 1-(x/xr)*(x/xr);
               return term <= 0 ? 0 : term*term;
             };
+            auto use_thrust_shape = coupler.get_option<bool>("turbine_thrust_shape",false);
             // Compute the local MPI task's contribution to the disk projection and sampling weights
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_z,num_y,num_x) , KOKKOS_LAMBDA (int k, int j, int i) {
               // Initial point in the y-z plane facing the negative x direction
@@ -305,7 +312,9 @@ namespace modules {
               float rloc = std::sqrt(y*y+z*z);  // radius of the point about the origin / hub center
               if (rloc <= rad*(1+decay/2)) {  // if within the disk + decay region
                 // Compute the 3-D shaping function for this point in reference space
-                float shp = thrust_shape(rloc/rad,1-decay/2,1+decay/2,0.5)*proj_shape_1d(x,xr);
+                float shp = proj_shape_1d(x,xr);
+                if (use_thrust_shape) { shp *= thrust_shape   (rloc/rad,1-decay/2,1+decay/2,0.5); }
+                else                  { shp *= no_thrust_shape(rloc/rad,1-decay/2,1+decay/2,0.5); }
                 // Rotate about z-axis for yaw angle, and translate to base location
                 float xp = base_x     + cos_yaw*x - sin_yaw*y;
                 float yp = base_y     + sin_yaw*x + cos_yaw*y;
@@ -456,14 +465,23 @@ namespace modules {
                                 ((x2*x2*x2)-3*(x2*x2)*x3+3*x2*(x3*x3)-(x3*x3*x3));
         return 0;
       };
+      auto no_thrust_shape = [&] (float x, float x2, float x3, float a) -> float {
+        if (x < x2) return 1;
+        if (x < x3) return -1.0*(2*(x*x*x)-3*(x*x)*x2-3*x2*(x3*x3)+(x3*x3*x3)-3*((x*x)-2*x*x2)*x3)/
+                                ((x2*x2*x2)-3*(x2*x2)*x3+3*x2*(x3*x3)-(x3*x3*x3));
+        return 0;
+      };
       // Compute the vertical shape function for the disk averaging
       realHost1d shp_host("shp",nz);
       shp_host = 0;
+      auto use_thrust_shape = coupler.get_option<bool>("turbine_thrust_shape",false);
       for (int k = 0; k < num_z; k++) { // Loop over sampling points in z-direction
         float z = -rad*(1+decay/2) + (2*rad*(1+decay/2)*k)/(num_z-1); // Compute reference z location
         float rloc = std::abs(z);
         if (rloc <= rad*(1+decay/2)) {  // if within the disk + decay region
-          float shp_loc = thrust_shape(rloc/rad,1-decay/2,1+decay/2,0.5); // Compute the 1-D shaping function
+          float shp_loc;
+          if (use_thrust_shape) { shp_loc = thrust_shape   (rloc/rad,1-decay/2,1+decay/2,0.5); }
+          else                  { shp_loc = no_thrust_shape(rloc/rad,1-decay/2,1+decay/2,0.5); }
           // Translate to hub height and accumulate to the correct vertical cell
           float zp = hub_height + z;
           int tk = 0;
