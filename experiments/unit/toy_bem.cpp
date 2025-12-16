@@ -135,6 +135,7 @@ struct turbine_BEM {
 
 
   static real prandtl_tip_loss(real r, real R, int B, real phi) {
+    // real s = std::max(std::abs(std::sin(phi)),0.05);
     real s = std::abs(std::sin(phi));
     if (s < 1e-10) return 1.0;           // phi ~ 0 => F ~ 1 (limit)
     real f = (B * 0.5) * (R - r) / (r * s);
@@ -157,8 +158,8 @@ struct turbine_BEM {
                       real         twist             ,         // input : twist angle (radians)
                       real         chord             ,         // input : chord length (m)
                       real         omega             ,         // input : rotation rate (radians / sec)
-                      real         mult1             ,
-                      real         mult2             ,
+                      real         mult1             ,         // input : Multiplier for interpolating lift and drag
+                      real         mult2             ,         // input : Multiplier for interpolating lift and drag
                       realHost1d & ref_alpha1        ,         // input : look-up alpha for coefficients of lift and drag
                       realHost1d & ref_clift1        ,         // input : look-up for coefficient of lift based on alpha
                       realHost1d & ref_cdrag1        ,         // input : look-up for coefficient of drag based on alpha
@@ -189,7 +190,7 @@ struct turbine_BEM {
     sigma         = num_blades * chord / (2. * M_PI * r); // Local solidity
     real theta    = twist + pitch;                        // Blade section angle (twist + pitch) (rad)
     real lambda_r = omega*r/U_inf;
-    a             = 0.3; // (2+M_PI*lambda_r*sigma-std::sqrt(4-4*M_PI*lambda_r*sigma+M_PI*lambda_r*lambda_r*sigma*(8*theta+M_PI*sigma)))/4;
+    a             = (2+M_PI*lambda_r*sigma-std::sqrt(4-4*M_PI*lambda_r*sigma+M_PI*lambda_r*lambda_r*sigma*(8*theta+M_PI*sigma)))/4;
     a_prime       = 0;                                    // Tangential induction factor
     real a_new;       // Next predicted iteration for axial induction factor
     real a_prime_new; // Next predicted iteration for tangential induction factor
@@ -211,19 +212,21 @@ struct turbine_BEM {
       F = 1;  // Total loss from tip and hub
       if (tip_loss) F *= prandtl_tip_loss( r , R     , num_blades , phi );  // Tip loss
       if (hub_loss) F *= prandtl_hub_loss( r , R_hub , num_blades , phi );  // Hub loss
-      real sin_phi = std::sin(phi);
+      real sin_phi = std::sin(phi);  if (std::abs(sin_phi) < 1.e-6) sin_phi = 1.e-6;
       real cos_phi = std::cos(phi);
       real C_T = (sigma*(1-a)*(1-a)*Cn)/(sin_phi*sin_phi);
       if (C_T > 0.96*F) {
         a_new = (18*F-20-3*std::sqrt(C_T*(50-36*F)+12*F*(3*F-4))) / (36*F-50);
       } else {
-        a_new = 1./(1+(4*F*sin_phi*sin_phi)/(sigma*Cn));
+        if (std::abs(sigma*Cn) < 1.e-10) { a_new = 0; }
+        else                             { a_new = 1./(1+(4*F*sin_phi*sin_phi)/(sigma*Cn)); }
       }
       // Compute new tangential induction factor
-      a_prime_new = 1./(-1.+(4*F*sin_phi*cos_phi)/(sigma*Ct));
+      if (std::abs(sigma*Ct) < 1.e-10) { a_prime_new = 0; }
+      else                             { a_prime_new = 1./(-1.+(4*F*sin_phi*cos_phi)/(sigma*Ct)); }
       // Clip new axial and tangential induction factors to realistic values
-      // a_new       = std::max((real)-0.5,std::min((real)0.95,a_new      ));
-      // a_prime_new = std::max((real)-0.5,std::min((real)0.50,a_prime_new));
+      a_new       = std::max((real)-0.5,std::min((real)0.95,a_new      ));
+      a_prime_new = std::max((real)-0.5,std::min((real)0.50,a_prime_new));
       // If converged, then exit and compute final values
       if (std::abs(a_new - a) < tol && std::abs(a_prime_new - a_prime) < tol) {
         a       = a_new;
@@ -411,13 +414,15 @@ struct turbine_BEM {
     real pitch_min = 0;
     real pitch_max = M_PI/2.;
 
+    real pitch_prev = 0;
+
     // Determine the maximum thrust among the input wind speeds
     for (int iwind = 0; iwind < nwinds; iwind++) {
       std::cout << winds(iwind) << std::endl;
       real U_inf = winds(iwind);
       real omega0 = linear_interp(rwt_mag,rwt_rot,U_inf,false); // Rotation rate (rad/sec)
       real omega = omega0;
-      real pitch = 0;
+      real pitch = pitch_prev;
       auto dT_dr_loc   = out_dT_dr  .slice<1>(iwind,0);
       auto dQ_dr_loc   = out_dQ_dr  .slice<1>(iwind,0);
       auto phi_r_loc   = out_phi_r  .slice<1>(iwind,0);
@@ -433,10 +438,10 @@ struct turbine_BEM {
                       a_r_loc , ap_r_loc );
       out_pitch(iwind) = pitch;
       out_omega(iwind) = omega;
-      while (out_power(iwind) > max_power) {
-        // if (yakl::intrinsics::minval(dT_dr_loc) >= 0) { pitch += 0.01/180.*M_PI; }
-        // else                                          { omega -= 0.01*2*M_PI/60.; }
-        pitch += 0.01/180*M_PI;
+      while (out_power(iwind) > max_power || yakl::intrinsics::minval(dT_dr_loc) < -500) {
+        if (yakl::intrinsics::minval(dT_dr_loc) >= -500) { pitch += 0.01/180.*M_PI; }
+        else                                             { omega -= 0.01*2*M_PI/60.;  pitch=pitch_prev; }
+        // pitch += 0.01/180*M_PI;
         blade_integral( U_inf , num_blades , rho , gen_eff , tloss , hloss , pitch , omega , nrad ,
                         dT_dr_loc , dQ_dr_loc ,
                         out_thrust(iwind) , out_torque(iwind) , out_power(iwind) , out_C_T(iwind) ,
@@ -445,6 +450,7 @@ struct turbine_BEM {
         out_pitch(iwind) = pitch;
         out_omega(iwind) = omega;
       }
+      pitch_prev = pitch;
     }
 
     real max_thrust = yakl::intrinsics::maxval(out_thrust)*max_thrust_prop;
