@@ -5,7 +5,7 @@
 #include "sc_init.h"
 #include "sc_perturb.h"
 #include "les_closure.h"
-#include "windmill_actuators_yaw.h"
+#include "turbine_actuator_line.h"
 #include "edge_sponge.h"
 
 int main(int argc, char** argv) {
@@ -28,8 +28,8 @@ int main(int argc, char** argv) {
 
     real        sim_time     = 150.1;
     real        xlen         = D*15;
-    real        ylen         = D*3;
-    real        zlen         = D*3;
+    real        ylen         = D*4;
+    real        zlen         = D*4;
     int         nx_glob      = std::ceil(xlen/dx);    xlen = nx_glob * dx;
     int         ny_glob      = std::ceil(ylen/dx);    ylen = ny_glob * dx;
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "dycore_cs"                , 80           );
 
     // Set the turbine
-    coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{2.5*D });
+    coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{6*D });
     coupler.set_option<std::vector<real>>("turbine_y_locs"      ,{ylen/2});
     coupler.set_option<std::vector<bool>>("turbine_apply_thrust",{true  });
 
@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     // modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
-    modules::WindmillActuators                 windmills;
+    modules::TurbineActuatorLine               windmills;
     modules::EdgeSponge                        edge_sponge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
@@ -97,9 +97,6 @@ int main(int argc, char** argv) {
     // time_averager.init        ( coupler );
     edge_sponge  .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
-
-    windmills.turbine_group.turbines[0].u_samp_inertial = coupler.get_option<real>("constant_uvel");
-    windmills.turbine_group.turbines[0].v_samp_inertial = coupler.get_option<real>("constant_vvel");
 
     // Get elapsed time (zero), and create counters for output and informing the user in stdout
     real etime = coupler.get_option<real>("elapsed_time");
