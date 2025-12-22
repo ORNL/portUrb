@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
 
-    real dx = 0.5;
+    real dx = 1;
     coupler.set_option<bool>("turbine_orig_C_T",true);
 
     std::string turbine_file = "./inputs/NREL_5MW_126_RWT.yaml";
@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 0.2;
+    real        out_freq     = 1.0;
     real        inform_freq  = 0.1;
     std::string out_prefix   = "test";
     bool        is_restart   = false;
@@ -53,15 +53,16 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "restart_file"             , restart_file );
     coupler.set_option<real       >( "latitude"                 , latitude     );
     coupler.set_option<real       >( "roughness"                , roughness    );
-    coupler.set_option<real       >( "constant_uvel"            , 10.0         );
+    coupler.set_option<real       >( "constant_uvel"            , 8.0          );
     coupler.set_option<real       >( "constant_vvel"            , 0            );
     coupler.set_option<real       >( "constant_temp"            , 300          );
     coupler.set_option<real       >( "constant_press"           , 1.e5         );
     coupler.set_option<std::string>( "turbine_file"             , turbine_file );
-    coupler.set_option<bool       >( "turbine_do_blades"        , true         );
-    coupler.set_option<real       >( "turbine_initial_yaw"      , 0./180.*M_PI );
-    coupler.set_option<bool       >( "turbine_fixed_yaw"        , true         );
-    coupler.set_option<bool       >( "turbine_floating_motions" , false        );
+    coupler.set_option<int        >( "turbine_num_radial_points", 60           );
+    coupler.set_option<real       >( "turbine_upstream_dir"     , 0            );
+    coupler.set_option<real       >( "turbine_inflow_mag"       , 8            );
+    coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
+    coupler.set_option<real       >( "turbine_max_power"        , 5.29661e6    );
     coupler.set_option<bool       >( "turbine_immerse_material" , true         );
     coupler.set_option<real       >( "dycore_max_wind"          , 20           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
