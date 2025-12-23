@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
     real D = config["blade_radius"].as<real>()*2;
 
-    real        sim_time     = 150.1;
+    real        sim_time     = 1000.1;
     real        xlen         = D*15;
     real        ylen         = D*4;
     real        zlen         = D*4;
@@ -35,8 +35,8 @@ int main(int argc, char** argv) {
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 1.0;
-    real        inform_freq  = 0.1;
+    real        out_freq     = 10.0;
+    real        inform_freq  = 1.0;
     std::string out_prefix   = "test";
     bool        is_restart   = false;
     std::string restart_file = "";
@@ -64,9 +64,9 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
     coupler.set_option<real       >( "turbine_max_power"        , 5.29661e6    );
     coupler.set_option<bool       >( "turbine_immerse_material" , true         );
-    coupler.set_option<real       >( "dycore_max_wind"          , 20           );
+    coupler.set_option<real       >( "dycore_max_wind"          , 40           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
-    coupler.set_option<real       >( "dycore_cs"                , 80           );
+    coupler.set_option<real       >( "dycore_cs"                , 100          );
 
     // Set the turbine
     coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{6*D });

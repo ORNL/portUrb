@@ -146,7 +146,7 @@ namespace modules {
         }
         auto nrad = coupler.get_option<int>("turbine_num_radial_points",std::ceil(R-R_hub));
         host_rad_locs = realHost1d("rad_locs",nrad);
-        for (int irad=0; irad < nrad; irad++) { host_rad_locs(irad) = R_hub + (R-R_hub)*(irad)/(nrad-1.); }
+        for (int irad=0; irad < nrad; irad++) { host_rad_locs(irad) = R_hub + (R-R_hub)*(irad+0.5)/nrad; }
         // CREATE DEVICE COPIES
         dev_rad_locs   = host_rad_locs  .createDeviceCopy();
         dev_foil_mid   = host_foil_mid  .createDeviceCopy();
@@ -461,9 +461,9 @@ namespace modules {
           ////////////////////////////////////////////////////////////////
           // Sample inflow wind speed ahead of each turbine blade point 
           ////////////////////////////////////////////////////////////////
-          real2d weight ("weight",B,nrad);  // Weights for inflow sampling
-          real2d inflow ("inflow",B,nrad);  // Inflow sample values
-          real2d density("inflow",B,nrad);  // Inflow sample values
+          real2d weight ("weight" ,B,nrad);  // Weights for inflow sampling
+          real2d inflow ("inflow" ,B,nrad);  // Inflow sample values
+          real2d density("density",B,nrad);  // Density
           weight  = 0;
           inflow  = 0;
           density = 0;
@@ -615,7 +615,7 @@ namespace modules {
           real min_rad_proj = std::max( R_hub , max_eps );
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(B,num_z,num_y,num_x) ,
                                             KOKKOS_LAMBDA (int iblade, int kk, int jj, int ii) {
-            real  z   = dz/nper*(kk+0.5);
+            real z   = dz/nper*(kk+0.5);
             real c   = linear_interp( dev_foil_mid , dev_foil_chord , z , true );
             real eps = std::max( c/2 , (real)(2*dx) );
             real x   = -3*eps + 6*eps*ii/(num_x-1.); // Compute reference x location
@@ -650,8 +650,8 @@ namespace modules {
               dm_tend_u(k,j,i) -= total_thrust_force(iblade)*thrust_weights(iblade,k,j,i)/(dx*dy*dz);
             }
             if (torque_weights(iblade,k,j,i) > 0) {
-              real z      = (      k+0.5)/dz - H;
-              real y      = (j_beg+j+0.5)/dy - base_y;
+              real z      = (      k+0.5)*dz - H;
+              real y      = (j_beg+j+0.5)*dy - base_y;
               real azmuth = std::atan2( z , -y );
               dm_tend_v(k,j,i) += total_torque_force(iblade)*torque_weights(iblade,k,j,i)*std::sin(azmuth)/(dx*dy*dz);
               dm_tend_w(k,j,i) += total_torque_force(iblade)*torque_weights(iblade,k,j,i)*std::cos(azmuth)/(dx*dy*dz);
