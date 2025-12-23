@@ -8,6 +8,8 @@ blade_radius: 63
 
 overhang: -5.
 
+num_blades: 3
+
 hub_radius: 1.5
 
 hub_flange_height: 4.8

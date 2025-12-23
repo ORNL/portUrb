@@ -90,8 +90,8 @@ int main(int argc, char** argv) {
 
     // Run the initialization modules
     custom_modules::sc_init   ( coupler );
-    coupler.set_option<std::string>("bc_y1","open");
-    coupler.set_option<std::string>("bc_y2","open");
+    coupler.set_option<std::string>("bc_y1","periodic");
+    coupler.set_option<std::string>("bc_y2","periodic");
     les_closure  .init        ( coupler );
     windmills    .init        ( coupler );
     dycore       .init        ( coupler ); // Important that dycore inits after windmills for base immersed boundaries

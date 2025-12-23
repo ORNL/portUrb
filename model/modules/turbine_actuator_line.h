@@ -51,6 +51,12 @@ namespace modules {
       real           R              ;
       real           R_hub          ;
       real           H              ;
+      real           overhang;          // Offset of blades from tower center (m). This is also the length of the hub flange
+      real           hub_radius;        // Radius of the hub, where there is no blade (m)
+      real           hub_flange_height; // Height (and width) of the hub flange (m)
+      real           tower_base_rad;    // Radius of the tower base at ground or water level (m)
+      real           tower_top_rad;     // Radius of the tower top connected to hub flange (m)
+      real           shaft_tilt;        // Shaft tilt in radians
       realHost1d     host_rad_locs  ;
       realHost1d     host_foil_mid  ;
       realHost1d     host_foil_len  ;
@@ -86,7 +92,13 @@ namespace modules {
         R                 = node["blade_radius"      ].as<real>();
         R_hub             = node["hub_radius"        ].as<real>();
         H                 = node["hub_height"        ].as<real>();
-        B                 = 3;
+        B                 = node["num_blades"        ].as<int>(3);
+        overhang          = node["overhang"          ].as<real>(-0.1 *R);
+        hub_radius        = node["hub_radius"        ].as<real>( 0.03*R);
+        hub_flange_height = node["hub_flange_height" ].as<real>( 0.04*R);
+        tower_base_rad    = node["tower_base_radius" ].as<real>(5);
+        tower_top_rad     = node["tower_top_radius"  ].as<real>(3);
+        shaft_tilt        = node["shaft_tilt_deg"    ].as<real>(0)/180.*M_PI;
         auto foil_summary = node["airfoil_summary"   ].as<std::vector<FOIL_LINE>>();
         auto foil_names   = node["airfoil_names"     ].as<std::vector<std::string>>();
         auto velmag       = node["velocity_magnitude"].as<std::vector<real>>();
@@ -403,6 +415,12 @@ namespace modules {
       auto R                 = ref_turbine.R;
       auto R_hub             = ref_turbine.R_hub;
       auto H                 = ref_turbine.H;
+      auto overhang          = ref_turbine.overhang         ;
+      auto hub_radius        = ref_turbine.hub_radius       ;
+      auto hub_flange_height = ref_turbine.hub_flange_height;
+      auto tower_base_rad    = ref_turbine.tower_base_rad   ;
+      auto tower_top_rad     = ref_turbine.tower_top_rad    ;
+      auto shaft_tilt        = ref_turbine.shaft_tilt       ;
       auto host_rwt_mag      = ref_turbine.host_rwt_mag   ;
       auto host_rwt_rot      = ref_turbine.host_rwt_rot   ;
       auto host_rad_locs     = ref_turbine.host_rad_locs  ;
@@ -481,16 +499,28 @@ namespace modules {
             real y = -3*eps + 6*eps*jj/(num_y-1.); // Compute reference y location
             real z = -3*eps + 6*eps*kk/(num_z-1.); // Compute reference z location
             real bl_ang = rot_angle + 2*M_PI*((real)iblade)/((real)B);
-            // Rotate about x-axis for rotation angle, and translate to the hub location and upwind offset
-            real xp = base_x + off_x + x;
-            real yp = base_y + off_y + std::cos(bl_ang)*y - std::sin(bl_ang)*(z+dev_rad_locs(irad));
-            real zp = H              + std::sin(bl_ang)*y + std::cos(bl_ang)*(z+dev_rad_locs(irad));
+            real hub_x = base_x + off_x + overhang;
+            real hub_y = base_y + off_y;
+            real hub_z = H;
+            real x_rot = x;
+            real y_rot =  std::cos(bl_ang)*y - std::sin(bl_ang)*(z+dev_rad_locs(irad));
+            real z_rot =  std::sin(bl_ang)*y + std::cos(bl_ang)*(z+dev_rad_locs(irad));
+            real x_tilt =  std::cos(shaft_tilt)*x_rot + std::sin(shaft_tilt)*z_rot;
+            real y_tilt =  y_rot;
+            real z_tilt = -std::sin(shaft_tilt)*x_rot + std::cos(shaft_tilt)*z_rot;
+            real xp = hub_x + x_tilt;
+            real yp = hub_y + y_tilt;
+            real zp = hub_z + z_tilt;
+            // // Rotate about x-axis for rotation angle, and translate to the hub location and upwind offset
+            // real xp = base_x + off_x + overhang + x;
+            // real yp = base_y + off_y            + std::cos(bl_ang)*y - std::sin(bl_ang)*(z+dev_rad_locs(irad));
+            // real zp = H                         + std::sin(bl_ang)*y + std::cos(bl_ang)*(z+dev_rad_locs(irad));
             // Translate to the hub location
             int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
             int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
             int tk = static_cast<int>(std::floor(zp/dz));
             if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
-              real vel  = dm_uvel(tk,tj,ti)*std::cos(up_dir)+dm_vvel(tk,tj,ti)*std::sin(up_dir);
+              real vel  = (dm_uvel(tk,tj,ti)*std::cos(up_dir)+dm_vvel(tk,tj,ti)*std::sin(up_dir))*std::cos(shaft_tilt);
               real rho  = dm_rho_d(tk,tj,ti);
               real proj = proj_shape_3d(x,y,z,eps);
               Kokkos::atomic_add( &(dm_samp_weights(tk,tj,ti)) , proj     );
@@ -621,11 +651,22 @@ namespace modules {
             real x   = -3*eps + 6*eps*ii/(num_x-1.); // Compute reference x location
             real y   = -3*eps + 6*eps*jj/(num_y-1.); // Compute reference y location
             real bl_ang = rot_angle + 2*M_PI*((real)iblade)/((real)B);
-            // Rotate about x-axis for rotation angle, and translate to the hub location and upwind offset
-            real xp = base_x + x;
-            real yp = base_y + std::cos(bl_ang)*y - std::sin(bl_ang)*z;
-            real zp = H      + std::sin(bl_ang)*y + std::cos(bl_ang)*z;
-            // Translate to the hub location
+            real hub_x = base_x + overhang;
+            real hub_y = base_y;
+            real hub_z = H;
+            real x_rot = x;
+            real y_rot =  std::cos(bl_ang)*y - std::sin(bl_ang)*z;
+            real z_rot =  std::sin(bl_ang)*y + std::cos(bl_ang)*z;
+            real x_tilt =  std::cos(shaft_tilt)*x_rot + std::sin(shaft_tilt)*z_rot;
+            real y_tilt =  y_rot;
+            real z_tilt = -std::sin(shaft_tilt)*x_rot + std::cos(shaft_tilt)*z_rot;
+            real xp = hub_x + x_tilt;
+            real yp = hub_y + y_tilt;
+            real zp = hub_z + z_tilt;
+            // // Rotate about x-axis for rotation angle
+            // real xp = base_x + overhang + x;
+            // real yp = base_y            + std::cos(bl_ang)*y - std::sin(bl_ang)*z;
+            // real zp = H                 + std::sin(bl_ang)*y + std::cos(bl_ang)*z;
             int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
             int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
             int tk = static_cast<int>(std::floor(zp/dz));
