@@ -504,14 +504,12 @@ namespace modules {
                                             KOKKOS_LAMBDA (int iblade, int irad, int kk, int jj, int ii) {
             real c      = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
             real eps    = std::max( c/2 , (real)(2*dx) );
-            real off_x  = -3*eps*std::cos(up_dir);
-            real off_y  = -3*eps*std::sin(up_dir);
             real x      = -3*eps + 6*eps*ii/(num_x-1.); // Compute reference x location
             real y      = -3*eps + 6*eps*jj/(num_y-1.); // Compute reference y location
             real z      = -3*eps + 6*eps*kk/(num_z-1.); // Compute reference z location
             real bl_ang = rot_angle + 2*M_PI*((real)iblade)/((real)B);
-            real hub_x  = base_x + off_x + overhang;
-            real hub_y  = base_y + off_y;
+            real hub_x  = base_x + overhang;
+            real hub_y  = base_y;
             real hub_z  = H;
             real x_rot  = x;
             real y_rot  =  std::cos(bl_ang)*y - std::sin(bl_ang)*(z+dev_rad_locs(irad));
