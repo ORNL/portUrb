@@ -160,7 +160,7 @@ namespace modules {
         real max_chord = yakl::intrinsics::maxval(host_foil_chord);
         real max_eps   = std::max( max_chord/2 , 2*dx );
         real deps      = max_eps/2;
-        int  nrad      = std::ceil(R-R_hub)/deps;
+        int  nrad      = (int) std::ceil((R-R_hub)/deps);
         host_rad_locs  = realHost1d("rad_locs",nrad);
         for (int irad=0; irad < nrad; irad++) { host_rad_locs(irad) = R_hub + (R-R_hub)*(irad+0.5)/nrad; }
         // CREATE DEVICE COPIES
