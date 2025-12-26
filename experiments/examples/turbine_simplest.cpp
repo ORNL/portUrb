@@ -64,9 +64,9 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
     coupler.set_option<real       >( "turbine_max_power"        , 5.29661e6    );
     coupler.set_option<bool       >( "turbine_immerse_material" , true         );
-    coupler.set_option<real       >( "dycore_max_wind"          , 40           );
+    coupler.set_option<real       >( "dycore_max_wind"          , 20           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
-    coupler.set_option<real       >( "dycore_cs"                , 100          );
+    coupler.set_option<real       >( "dycore_cs"                , 350          );
 
     // Set the turbine
     coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{6*D });

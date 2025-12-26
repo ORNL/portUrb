@@ -47,46 +47,47 @@ namespace modules {
     // This class holds information about a reference wind turbine, including lookup tables for various properties
     //   and turbine geometric properties
     struct RefTurbine {
-      int            B              ;
-      real           R              ;
-      real           R_hub          ;
-      real           H              ;
-      real           overhang;          // Offset of blades from tower center (m). This is also the length of the hub flange
-      real           hub_radius;        // Radius of the hub, where there is no blade (m)
+      int            B                ;
+      real           R                ;
+      real           R_hub            ;
+      real           H                ;
+      real           overhang         ; // Offset of blades from tower center (m). This is also the length of the hub flange
+      real           hub_radius       ; // Radius of the hub, where there is no blade (m)
       real           hub_flange_height; // Height (and width) of the hub flange (m)
-      real           tower_base_rad;    // Radius of the tower base at ground or water level (m)
-      real           tower_top_rad;     // Radius of the tower top connected to hub flange (m)
-      real           shaft_tilt;        // Shaft tilt in radians
-      realHost1d     host_rad_locs  ;
-      realHost1d     host_foil_mid  ;
-      realHost1d     host_foil_len  ;
-      realHost1d     host_foil_twist;
-      realHost1d     host_foil_chord;
-      realHost1d     host_foil_id   ;
-      MultiFieldHost host_foil_alpha;
-      MultiFieldHost host_foil_clift;
-      MultiFieldHost host_foil_cdrag;
-      realHost1d     host_rwt_mag   ;
-      realHost1d     host_rwt_ct    ;
-      realHost1d     host_rwt_cp    ;
-      realHost1d     host_rwt_pwr_mw;
-      realHost1d     host_rwt_rot   ;
-      real1d        dev_rad_locs  ;
-      real1d        dev_foil_mid  ;
-      real1d        dev_foil_len  ;
-      real1d        dev_foil_twist;
-      real1d        dev_foil_chord;
-      real1d        dev_foil_id   ;
-      MultiFieldDev dev_foil_alpha;
-      MultiFieldDev dev_foil_clift;
-      MultiFieldDev dev_foil_cdrag;
-      real1d        dev_rwt_mag   ;
-      real1d        dev_rwt_ct    ;
-      real1d        dev_rwt_cp    ;
-      real1d        dev_rwt_pwr_mw;
-      real1d        dev_rwt_rot   ;
+      real           tower_base_rad   ; // Radius of the tower base at ground or water level (m)
+      real           tower_top_rad    ; // Radius of the tower top connected to hub flange (m)
+      real           shaft_tilt       ; // Shaft tilt in radians
+      realHost1d     host_rad_locs    ;
+      realHost1d     host_foil_mid    ;
+      realHost1d     host_foil_len    ;
+      realHost1d     host_foil_twist  ;
+      realHost1d     host_foil_chord  ;
+      realHost1d     host_foil_id     ;
+      MultiFieldHost host_foil_alpha  ;
+      MultiFieldHost host_foil_clift  ;
+      MultiFieldHost host_foil_cdrag  ;
+      realHost1d     host_rwt_mag     ;
+      realHost1d     host_rwt_ct      ;
+      realHost1d     host_rwt_cp      ;
+      realHost1d     host_rwt_pwr_mw  ;
+      realHost1d     host_rwt_rot     ;
+      real1d         dev_rad_locs     ;
+      real1d         dev_foil_mid     ;
+      real1d         dev_foil_len     ;
+      real1d         dev_foil_twist   ;
+      real1d         dev_foil_chord   ;
+      real1d         dev_foil_id      ;
+      MultiFieldDev  dev_foil_alpha   ;
+      MultiFieldDev  dev_foil_clift   ;
+      MultiFieldDev  dev_foil_cdrag   ;
+      real1d         dev_rwt_mag      ;
+      real1d         dev_rwt_ct       ;
+      real1d         dev_rwt_cp       ;
+      real1d         dev_rwt_pwr_mw   ;
+      real1d         dev_rwt_rot      ;
       void init( core::Coupler const & coupler ) {
         typedef std::tuple<real,real,real,real,std::string> FOIL_LINE;
+        auto dx = coupler.get_dx();
         // GET YAML DATA
         YAML::Node node   = YAML::LoadFile(coupler.get_option<std::string>("turbine_file"));
         R                 = node["blade_radius"      ].as<real>();
@@ -156,8 +157,11 @@ namespace modules {
           host_rwt_pwr_mw(irwt) = power_mw.at(irwt);
           host_rwt_rot   (irwt) = rot_rpm .at(irwt)*2.*M_PI/60.;
         }
-        auto nrad = coupler.get_option<int>("turbine_num_radial_points",std::ceil(R-R_hub));
-        host_rad_locs = realHost1d("rad_locs",nrad);
+        real max_chord = yakl::intrinsics::maxval(host_foil_chord);
+        real max_eps   = std::max( max_chord/2 , 2*dx );
+        real deps      = max_eps/2;
+        int  nrad      = std::ceil(R-R_hub)/deps;
+        host_rad_locs  = realHost1d("rad_locs",nrad);
         for (int irad=0; irad < nrad; irad++) { host_rad_locs(irad) = R_hub + (R-R_hub)*(irad+0.5)/nrad; }
         // CREATE DEVICE COPIES
         dev_rad_locs   = host_rad_locs  .createDeviceCopy();
@@ -310,14 +314,10 @@ namespace modules {
       }
       trace_size = 0;  // Initialize trace size to zero
       dm.register_and_allocate<real>("turbine_samp_weights"  ,"",{nz,ny,nx});
-      dm.register_and_allocate<real>("turbine_thrust_weights","",{nz,ny,nx});
-      dm.register_and_allocate<real>("turbine_torque_weights","",{nz,ny,nx});
       dm.register_and_allocate<real>("turbine_tend_u"        ,"",{nz,ny,nx});
       dm.register_and_allocate<real>("turbine_tend_v"        ,"",{nz,ny,nx});
       dm.register_and_allocate<real>("turbine_tend_w"        ,"",{nz,ny,nx});
       coupler.register_output_variable<real>( "turbine_samp_weights"   , coupler.DIMS_3D );
-      coupler.register_output_variable<real>( "turbine_thrust_weights" , coupler.DIMS_3D );
-      coupler.register_output_variable<real>( "turbine_torque_weights" , coupler.DIMS_3D );
       coupler.register_output_variable<real>( "turbine_tend_u"         , coupler.DIMS_3D );
       coupler.register_output_variable<real>( "turbine_tend_v"         , coupler.DIMS_3D );
       coupler.register_output_variable<real>( "turbine_tend_w"         , coupler.DIMS_3D );
@@ -412,8 +412,6 @@ namespace modules {
       auto dm_vvel           = dm.get<real      ,3>("vvel");  // v-velocity
       auto dm_wvel           = dm.get<real      ,3>("wvel");  // w-velocity
       auto dm_samp_weights   = dm.get<real      ,3>("turbine_samp_weights");
-      auto dm_thrust_weights = dm.get<real      ,3>("turbine_thrust_weights");
-      auto dm_torque_weights = dm.get<real      ,3>("turbine_torque_weights");
       auto dm_tend_u         = dm.get<real      ,3>("turbine_tend_u"      );
       auto dm_tend_v         = dm.get<real      ,3>("turbine_tend_v"      );
       auto dm_tend_w         = dm.get<real      ,3>("turbine_tend_w"      );
@@ -457,20 +455,26 @@ namespace modules {
       int  nrad              = host_rad_locs.size();
 
       dm_samp_weights   = 0;
-      dm_thrust_weights = 0;
-      dm_torque_weights = 0;
 
       real cos_tlt = std::cos(shaft_tilt);
       real sin_tlt = std::sin(shaft_tilt);
 
       real pi_3_2 = std::pow(M_PI,3./2.);
 
-      auto proj_shape_1d = KOKKOS_LAMBDA (real x, real eps) -> real {
-        return std::exp(-(x*x)/(eps*eps))/(pi_3_2*eps*eps*eps);
+      // auto proj_shape_3d = KOKKOS_LAMBDA (real x, real y, real z, real eps) -> real {
+      //   return std::exp(-(x*x+y*y+z*z)/(eps*eps))/(pi_3_2*eps*eps*eps);
+      // };
+      auto int_proj_3d = KOKKOS_LAMBDA (real x1, real x2, real y1, real y2, real z1, real z2, real eps) -> real {
+        real erf_x1 = std::erf(x1/eps);
+        real erf_x2 = std::erf(x2/eps);
+        real erf_y1 = std::erf(y1/eps);
+        real erf_y2 = std::erf(y2/eps);
+        real erf_z1 = std::erf(z1/eps);
+        real erf_z2 = std::erf(z2/eps);
+        return -1./8.*((erf_x1 - erf_x2)*erf_y1 - (erf_x1 - erf_x2)*erf_y2)*erf_z1 +
+                1./8.*((erf_x1 - erf_x2)*erf_y1 - (erf_x1 - erf_x2)*erf_y2)*erf_z2;
       };
-      auto proj_shape_3d = KOKKOS_LAMBDA (real x, real y, real z, real eps) -> real {
-        return std::exp(-(x*x+y*y+z*z)/(eps*eps))/(pi_3_2*eps*eps*eps);
-      };
+
 
       // Allocate tendency arrays for u, v, w and initialize to zero
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -488,43 +492,49 @@ namespace modules {
           ////////////////////////////////////////////////////////////////
           // Sample inflow wind speed ahead of each turbine blade point 
           ////////////////////////////////////////////////////////////////
-          real2d weight ("weight" ,B,nrad);  // Weights for inflow sampling
           real2d inflow ("inflow" ,B,nrad);  // Inflow sample values
           real2d rotflow("rotflow",B,nrad);  // Inflow sample values
           real2d density("density",B,nrad);  // Density
-          weight  = 0;
           inflow  = 0;
           rotflow = 0;
           density = 0;
-          int nper = 10;
-          int num_x = 6*nper;
-          int num_y = 6*nper;
-          int num_z = 6*nper;
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,num_z,num_y,num_x) ,
+          real max_chord = yakl::intrinsics::maxval(host_foil_chord);
+          real max_eps   = std::max( max_chord/2 , 2*dx );
+          int num_z = (int) std::ceil(max_eps/dz*4);
+          int num_y = (int) std::ceil(max_eps/dy*4);
+          int num_x = (int) std::ceil(max_eps/dx*4);
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z,2*num_y,2*num_x) ,
                                             KOKKOS_LAMBDA (int iblade, int irad, int kk, int jj, int ii) {
-            real c      = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
-            real eps    = std::max( c/2 , (real)(2*dx) );
-            real x      = -3*eps + 6*eps*ii/(num_x-1.); // Compute reference x location
-            real y      = -3*eps + 6*eps*jj/(num_y-1.); // Compute reference y location
-            real z      = -3*eps + 6*eps*kk/(num_z-1.); // Compute reference z location
+            // Get center point for this Gaussian point projection
+            real x      = 0;
+            real y      = 0;
+            real z      = dev_rad_locs(irad);
             real bl_ang = rot_angle + 2*M_PI*((real)iblade)/((real)B);
             real hub_x  = base_x + overhang;
             real hub_y  = base_y;
             real hub_z  = H;
             real x_rot  = x;
-            real y_rot  =  std::cos(bl_ang)*y - std::sin(bl_ang)*(z+dev_rad_locs(irad));
-            real z_rot  =  std::sin(bl_ang)*y + std::cos(bl_ang)*(z+dev_rad_locs(irad));
+            real y_rot  = std::cos(bl_ang)*y - std::sin(bl_ang)*z;
+            real z_rot  = std::sin(bl_ang)*y + std::cos(bl_ang)*z;
             real x_tilt =  cos_tlt*x_rot + sin_tlt*z_rot;
             real y_tilt =  y_rot;
             real z_tilt = -sin_tlt*x_rot + cos_tlt*z_rot;
-            real xp     = hub_x + x_tilt;
-            real yp     = hub_y + y_tilt;
-            real zp     = hub_z + z_tilt;
-            // Translate to the hub location
-            int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-            int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
-            int tk = static_cast<int>(std::floor(zp/dz));
+            real x0     = hub_x + x_tilt;
+            real y0     = hub_y + y_tilt;
+            real z0     = hub_z + z_tilt;
+            int  i0     = static_cast<int>(std::floor(x0/dx))-i_beg;
+            int  j0     = static_cast<int>(std::floor(y0/dy))-j_beg;
+            int  k0     = static_cast<int>(std::floor(z0/dz));
+            int  ti     = i0-num_x+ii;
+            int  tj     = j0-num_y+jj;
+            int  tk     = k0-num_z+kk;
             if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
+              // Get chord length and epsilon
+              real c      = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
+              real eps    = std::max( c/2 , (real)(2*dx) );
+              real proj   = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
+                                         (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
+                                         (      tk)*dz-z0 , (      tk+1)*dz-z0 , eps );
               real rho  = dm_rho_d(tk,tj,ti);
               real u    = dm_uvel (tk,tj,ti);
               real v    = dm_vvel (tk,tj,ti);
@@ -532,25 +542,20 @@ namespace modules {
               real az   = std::atan2(z_rot,-y_rot);
               real rot  = (w*cos_tlt + u*sin_tlt)*std::cos(az) + v*std::sin(az);
               real vel  = u*cos_tlt - w*sin_tlt;
-              real proj = proj_shape_3d(x,y,z,eps);
               Kokkos::atomic_add( &(dm_samp_weights(tk,tj,ti)) , proj     );
               Kokkos::atomic_add( &(inflow (iblade,irad))      , proj*vel );
               Kokkos::atomic_add( &(rotflow(iblade,irad))      , proj*rot );
-              Kokkos::atomic_add( &(weight (iblade,irad))      , proj     );
               Kokkos::atomic_add( &(density(iblade,irad))      , proj*rho );
             }
           });
-          // Dividing by the weights here because the sum of a Gaussian over 3x3x3 cells isn't quite equal to one
-          //   and I'm integrating it by finite points as well
           auto inflow_glob  = turbine.par_comm.all_reduce( inflow  , MPI_SUM , "sum1" ).createHostCopy();
           auto rotflow_glob = turbine.par_comm.all_reduce( rotflow , MPI_SUM , "sum1" ).createHostCopy();
           auto density_glob = turbine.par_comm.all_reduce( density , MPI_SUM , "sum2" ).createHostCopy();
-          auto weight_glob  = turbine.par_comm.all_reduce( weight  , MPI_SUM , "sum3" ).createHostCopy();
-          auto U_axial    = inflow_glob  / weight_glob;
-          auto U_tang_air = rotflow_glob / weight_glob;
+          auto U_axial    = inflow_glob;
+          auto U_tang_air = rotflow_glob;
+          auto rho        = sum(density_glob)/density_glob.size();
           turbine.inflow_trace .push_back(U_axial);
           turbine.rotflow_trace.push_back(U_tang_air);
-          auto rho     = sum(density_glob/weight_glob)/density_glob.size();
           /////////////////////////////////////////////////////////////////////////////
           // Compute thrust and torque at each blade point using blade element theory
           /////////////////////////////////////////////////////////////////////////////
@@ -645,69 +650,55 @@ namespace modules {
           auto torque             = host_torque            .createDeviceCopy();
           auto total_thrust_force = total_thrust_force_host.createDeviceCopy();
           auto total_torque_force = total_torque_force_host.createDeviceCopy();
-          // Create projections for each of the individual blades onto the grid
-          real4d thrust_weights("thrust_weights",B,nz,ny,nx);
-          real4d torque_weights("torque_weights",B,nz,ny,nx);
-          thrust_weights = 0;
-          torque_weights = 0;
-          nper = 10;
-          num_x = 6*nper;
-          num_y = 6*nper;
-          num_z = (std::ceil(R/dz)+10)*nper;
-          real max_chord    = yakl::intrinsics::maxval(ref_turbine.host_foil_chord);
-          real max_eps      = std::max( max_chord/2 , (2*dx) );
-          real min_rad_proj = std::max( R_hub , max_eps );
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(B,num_z,num_y,num_x) ,
-                                            KOKKOS_LAMBDA (int iblade, int kk, int jj, int ii) {
-            real z      = dz/nper*(kk+0.5);
-            real c      = linear_interp( dev_foil_mid , dev_foil_chord , z , true );
-            real eps    = std::max( c/2 , (real)(2*dx) );
-            real x      = -3*eps + 6*eps*ii/(num_x-1.); // Compute reference x location
-            real y      = -3*eps + 6*eps*jj/(num_y-1.); // Compute reference y location
+          num_z = (int) std::ceil(max_eps/dz*4);
+          num_y = (int) std::ceil(max_eps/dy*4);
+          num_x = (int) std::ceil(max_eps/dx*4);
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z,2*num_y,2*num_x) ,
+                                            KOKKOS_LAMBDA (int iblade, int irad, int kk, int jj, int ii) {
+            // Get center point for this Gaussian point projection
+            real x      = 0;
+            real y      = 0;
+            real z      = dev_rad_locs(irad);
             real bl_ang = rot_angle + 2*M_PI*((real)iblade)/((real)B);
             real hub_x  = base_x + overhang;
             real hub_y  = base_y;
             real hub_z  = H;
             real x_rot  = x;
-            real y_rot  =  std::cos(bl_ang)*y - std::sin(bl_ang)*z;
-            real z_rot  =  std::sin(bl_ang)*y + std::cos(bl_ang)*z;
+            real y_rot  = std::cos(bl_ang)*y - std::sin(bl_ang)*z;
+            real z_rot  = std::sin(bl_ang)*y + std::cos(bl_ang)*z;
             real x_tilt =  cos_tlt*x_rot + sin_tlt*z_rot;
             real y_tilt =  y_rot;
             real z_tilt = -sin_tlt*x_rot + cos_tlt*z_rot;
-            real xp     = hub_x + x_tilt;
-            real yp     = hub_y + y_tilt;
-            real zp     = hub_z + z_tilt;
-            int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-            int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
-            int tk = static_cast<int>(std::floor(zp/dz));
+            real x0     = hub_x + x_tilt;
+            real y0     = hub_y + y_tilt;
+            real z0     = hub_z + z_tilt;
+            int  i0     = static_cast<int>(std::floor(x0/dx))-i_beg;
+            int  j0     = static_cast<int>(std::floor(y0/dy))-j_beg;
+            int  k0     = static_cast<int>(std::floor(z0/dz));
+            int  ti     = i0-num_x+ii;
+            int  tj     = j0-num_y+jj;
+            int  tk     = k0-num_z+kk;
             if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
-              real thrust_loc = linear_interp( dev_rad_locs , thrust , z , true );
-              real torque_loc = linear_interp( dev_rad_locs , torque , z , true );
-              real proj;
-              if      (z < min_rad_proj        ) { proj = proj_shape_3d(x,y,min_rad_proj-z        ,eps); }
-              else if (z > dev_rad_locs(nrad-1)) { proj = proj_shape_3d(x,y,z-dev_rad_locs(nrad-1),eps); }
-              else                               { proj = proj_shape_3d(x,y,0                     ,eps); }
-              Kokkos::atomic_add( &(thrust_weights(iblade,tk,tj,ti)) , proj*thrust_loc );
-              Kokkos::atomic_add( &(torque_weights(iblade,tk,tj,ti)) , proj*torque_loc );
-              Kokkos::atomic_add( &(dm_thrust_weights    (tk,tj,ti)) , proj*thrust_loc );
-              Kokkos::atomic_add( &(dm_torque_weights    (tk,tj,ti)) , proj*torque_loc );
-            }
-          });
-          thrust_weights = thrust_weights / turbine.par_comm.all_reduce( sum(thrust_weights) , MPI_SUM , "sum3" );
-          torque_weights = torque_weights / turbine.par_comm.all_reduce( sum(torque_weights) , MPI_SUM , "sum4" );
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(B,nz,ny,nx) ,
-                                            KOKKOS_LAMBDA (int iblade, int k, int j, int i) {
-            if (thrust_weights(iblade,k,j,i) > 0) {
-              dm_tend_u(k,j,i) -= total_thrust_force(iblade)*thrust_weights(iblade,k,j,i)*cos_tlt/(dx*dy*dz);
-              dm_tend_w(k,j,i) += total_thrust_force(iblade)*thrust_weights(iblade,k,j,i)*sin_tlt/(dx*dy*dz);
-            }
-            if (torque_weights(iblade,k,j,i) > 0) {
-              real z  = (      k+0.5)*dz - H;
-              real y  = (j_beg+j+0.5)*dy - base_y;
-              real az = std::atan2( z , -y );
-              dm_tend_v(k,j,i) += total_torque_force(iblade)*torque_weights(iblade,k,j,i)*std::sin(az)/(dx*dy*dz);
-              dm_tend_w(k,j,i) += total_torque_force(iblade)*torque_weights(iblade,k,j,i)*std::cos(az)*cos_tlt/(dx*dy*dz);
-              dm_tend_u(k,j,i) += total_torque_force(iblade)*torque_weights(iblade,k,j,i)*std::cos(az)*sin_tlt/(dx*dy*dz);
+              // Azimuth angle for this projection
+              real az      = std::atan2(z_rot,-y_rot);
+              // Get chord length and epsilon
+              real c      = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
+              real eps    = std::max( c/2 , (real)(2*dx) );
+              // Compute integral of the Gaussian over this cell
+              real proj   = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
+                                         (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
+                                         (      tk)*dz-z0 , (      tk+1)*dz-z0 , eps );
+              real F_axial = thrust(iblade,irad);
+              real F_tang  = torque(iblade,irad);
+              real tend_u  = -F_axial*cos_tlt/(dx*dy*dz);
+              real tend_v  =  0;
+              real tend_w  =  F_axial*sin_tlt/(dx*dy*dz);
+              tend_u      +=  F_tang*std::cos(az)*sin_tlt/(dx*dy*dz);
+              tend_v      +=  F_tang*std::sin(az)/(dx*dy*dz);
+              tend_w      +=  F_tang*std::cos(az)*cos_tlt/(dx*dy*dz);
+              Kokkos::atomic_add( &(dm_tend_u(tk,tj,ti)) , proj*tend_u );
+              Kokkos::atomic_add( &(dm_tend_v(tk,tj,ti)) , proj*tend_v );
+              Kokkos::atomic_add( &(dm_tend_w(tk,tj,ti)) , proj*tend_w );
             }
           });
           turbine.rot_angle -= omega*dt;
