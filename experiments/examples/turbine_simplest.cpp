@@ -59,14 +59,14 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "constant_press"           , 1.e5         );
     coupler.set_option<std::string>( "turbine_file"             , turbine_file );
     coupler.set_option<int        >( "turbine_num_radial_points", 60           );
-    coupler.set_option<real       >( "turbine_upstream_dir"     , 0            );
     coupler.set_option<real       >( "turbine_inflow_mag"       , 8            );
     coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
     coupler.set_option<real       >( "turbine_max_power"        , 5.29661e6    );
+    coupler.set_option<real       >( "turbine_omega_rad_sec"    , 9.1552*2.*M_PI/60. );
     coupler.set_option<bool       >( "turbine_immerse_material" , true         );
     coupler.set_option<real       >( "dycore_max_wind"          , 20           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
-    coupler.set_option<real       >( "dycore_cs"                , 350          );
+    coupler.set_option<real       >( "dycore_cs"                , 80           );
 
     // Set the turbine
     coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{6*D });
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 
     // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-    // modules::Time_Averager                     time_averager;
+    modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::TurbineActuatorLine               windmills;
     modules::EdgeSponge                        edge_sponge;
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
     les_closure  .init        ( coupler );
     windmills    .init        ( coupler );
     dycore       .init        ( coupler ); // Important that dycore inits after windmills for base immersed boundaries
-    // time_averager.init        ( coupler );
+    time_averager.init        ( coupler );
     edge_sponge  .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
 
@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"        );
         coupler.run_module( [&] (Coupler &c) { windmills.apply         (c,dt); } , "windmills"     );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"   );
-        // coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager" );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager" );
       }
 
       // Update time step
@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
       }
       if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
         coupler.write_output_file( out_prefix , true );
-        // time_averager.reset(coupler);
+        time_averager.reset(coupler);
         output_counter.reset();
       }
     } // End main simulation loop
