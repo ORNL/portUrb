@@ -215,7 +215,7 @@ namespace modules {
         // Add the turbine
         turbines.push_back(loc);
         // Add the base to immersed_proportion
-          if (loc.apply_thrust && coupler.get_option<bool>("turbine_immerse_material",false)) {
+        if (loc.apply_thrust && coupler.get_option<bool>("turbine_immerse_material",false)) {
           real tower_top      = ref_turbine.hub_height - ref_turbine.hub_flange_height/2;
           real tower_base_rad = ref_turbine.tower_base_rad;
           real tower_top_rad  = ref_turbine.tower_top_rad ;

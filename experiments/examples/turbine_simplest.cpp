@@ -5,7 +5,7 @@
 #include "sc_init.h"
 #include "sc_perturb.h"
 #include "les_closure.h"
-#include "windmill_actuators_yaw.h"
+#include "turbine_actuator_line.h"
 #include "edge_sponge.h"
 
 int main(int argc, char** argv) {
@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
 
-    real dx = 0.5;
+    real dx = 1;
     coupler.set_option<bool>("turbine_orig_C_T",true);
 
     std::string turbine_file = "./inputs/NREL_5MW_126_RWT.yaml";
@@ -26,17 +26,17 @@ int main(int argc, char** argv) {
     if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
     real D = config["blade_radius"].as<real>()*2;
 
-    real        sim_time     = 150.1;
+    real        sim_time     = 1000.1;
     real        xlen         = D*15;
-    real        ylen         = D*3;
-    real        zlen         = D*3;
+    real        ylen         = D*4;
+    real        zlen         = D*4;
     int         nx_glob      = std::ceil(xlen/dx);    xlen = nx_glob * dx;
     int         ny_glob      = std::ceil(ylen/dx);    ylen = ny_glob * dx;
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 0.2;
-    real        inform_freq  = 0.1;
+    real        out_freq     = 10.0;
+    real        inform_freq  = 1.0;
     std::string out_prefix   = "test";
     bool        is_restart   = false;
     std::string restart_file = "";
@@ -53,22 +53,23 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "restart_file"             , restart_file );
     coupler.set_option<real       >( "latitude"                 , latitude     );
     coupler.set_option<real       >( "roughness"                , roughness    );
-    coupler.set_option<real       >( "constant_uvel"            , 10.0         );
+    coupler.set_option<real       >( "constant_uvel"            , 8.0          );
     coupler.set_option<real       >( "constant_vvel"            , 0            );
     coupler.set_option<real       >( "constant_temp"            , 300          );
     coupler.set_option<real       >( "constant_press"           , 1.e5         );
     coupler.set_option<std::string>( "turbine_file"             , turbine_file );
-    coupler.set_option<bool       >( "turbine_do_blades"        , true         );
-    coupler.set_option<real       >( "turbine_initial_yaw"      , 0./180.*M_PI );
-    coupler.set_option<bool       >( "turbine_fixed_yaw"        , true         );
-    coupler.set_option<bool       >( "turbine_floating_motions" , false        );
+    coupler.set_option<int        >( "turbine_num_radial_points", 60           );
+    coupler.set_option<real       >( "turbine_inflow_mag"       , 8            );
+    coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
+    coupler.set_option<real       >( "turbine_max_power"        , 5.29661e6    );
+    coupler.set_option<real       >( "turbine_omega_rad_sec"    , 9.1552*2.*M_PI/60. );
     coupler.set_option<bool       >( "turbine_immerse_material" , true         );
     coupler.set_option<real       >( "dycore_max_wind"          , 20           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
     coupler.set_option<real       >( "dycore_cs"                , 80           );
 
     // Set the turbine
-    coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{2.5*D });
+    coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{6*D });
     coupler.set_option<std::vector<real>>("turbine_y_locs"      ,{ylen/2});
     coupler.set_option<std::vector<bool>>("turbine_apply_thrust",{true  });
 
@@ -78,9 +79,9 @@ int main(int argc, char** argv) {
 
     // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
-    // modules::Time_Averager                     time_averager;
+    modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
-    modules::WindmillActuators                 windmills;
+    modules::TurbineActuatorLine               windmills;
     modules::EdgeSponge                        edge_sponge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
@@ -89,17 +90,14 @@ int main(int argc, char** argv) {
 
     // Run the initialization modules
     custom_modules::sc_init   ( coupler );
-    coupler.set_option<std::string>("bc_y1","open");
-    coupler.set_option<std::string>("bc_y2","open");
+    coupler.set_option<std::string>("bc_y1","periodic");
+    coupler.set_option<std::string>("bc_y2","periodic");
     les_closure  .init        ( coupler );
     windmills    .init        ( coupler );
     dycore       .init        ( coupler ); // Important that dycore inits after windmills for base immersed boundaries
-    // time_averager.init        ( coupler );
+    time_averager.init        ( coupler );
     edge_sponge  .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
-
-    windmills.turbine_group.turbines[0].u_samp_inertial = coupler.get_option<real>("constant_uvel");
-    windmills.turbine_group.turbines[0].v_samp_inertial = coupler.get_option<real>("constant_vvel");
 
     // Get elapsed time (zero), and create counters for output and informing the user in stdout
     real etime = coupler.get_option<real>("elapsed_time");
@@ -133,7 +131,7 @@ int main(int argc, char** argv) {
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"        );
         coupler.run_module( [&] (Coupler &c) { windmills.apply         (c,dt); } , "windmills"     );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"   );
-        // coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager" );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager" );
       }
 
       // Update time step
@@ -145,7 +143,7 @@ int main(int argc, char** argv) {
       }
       if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
         coupler.write_output_file( out_prefix , true );
-        // time_averager.reset(coupler);
+        time_averager.reset(coupler);
         output_counter.reset();
       }
     } // End main simulation loop

@@ -58,7 +58,7 @@ struct turbine_BEM {
     // GET YAML DATA
     YAML::Node node   = YAML::LoadFile(turbine_file);
     R                 = node["blade_radius"      ].as<real>();
-    R_hub             = node["tower_top_radius"  ].as<real>();
+    R_hub             = node["hub_radius"        ].as<real>();
     auto foil_summary = node["airfoil_summary"   ].as<std::vector<FOIL_LINE>>();
     auto foil_names   = node["airfoil_names"     ].as<std::vector<std::string>>();
     auto velmag       = node["velocity_magnitude"].as<std::vector<real>>();
