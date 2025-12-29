@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 10.0;
+    real        out_freq     = 100.0;
     real        inform_freq  = 1.0;
     std::string out_prefix   = "test";
     bool        is_restart   = false;
@@ -58,15 +58,15 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "constant_temp"            , 300          );
     coupler.set_option<real       >( "constant_press"           , 1.e5         );
     coupler.set_option<std::string>( "turbine_file"             , turbine_file );
-    coupler.set_option<int        >( "turbine_num_radial_points", 60           );
     coupler.set_option<real       >( "turbine_inflow_mag"       , 8            );
     coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
     coupler.set_option<real       >( "turbine_max_power"        , 5.29661e6    );
     coupler.set_option<real       >( "turbine_omega_rad_sec"    , 9.1552*2.*M_PI/60. );
-    coupler.set_option<bool       >( "turbine_immerse_material" , true         );
+    coupler.set_option<bool       >( "turbine_immerse_material" , false        );
+    // coupler.set_option<real       >( "turbine_eps_fixed"        , 2.1          );
     coupler.set_option<real       >( "dycore_max_wind"          , 20           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
-    coupler.set_option<real       >( "dycore_cs"                , 80           );
+    coupler.set_option<real       >( "dycore_cs"                , 150          );
 
     // Set the turbine
     coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{6*D });

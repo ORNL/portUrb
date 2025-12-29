@@ -87,7 +87,8 @@ namespace modules {
       real1d         dev_rwt_rot      ;
       void init( core::Coupler const & coupler ) {
         typedef std::tuple<real,real,real,real,std::string> FOIL_LINE;
-        auto dx = coupler.get_dx();
+        auto dx        = coupler.get_dx();
+        auto eps_fixed = coupler.get_option<real>("turbine_eps_fixed",-1);
         // GET YAML DATA
         YAML::Node node   = YAML::LoadFile(coupler.get_option<std::string>("turbine_file"));
         R                 = node["blade_radius"      ].as<real>();
@@ -157,9 +158,7 @@ namespace modules {
           host_rwt_pwr_mw(irwt) = power_mw.at(irwt);
           host_rwt_rot   (irwt) = rot_rpm .at(irwt)*2.*M_PI/60.;
         }
-        real max_chord = yakl::intrinsics::maxval(host_foil_chord);
-        real max_eps   = std::max( max_chord/2 , 2*dx );
-        real deps      = max_eps/2;
+        real deps      = dx/4;
         int  nrad      = (int) std::ceil((R-R_hub)/deps);
         host_rad_locs  = realHost1d("rad_locs",nrad);
         for (int irad=0; irad < nrad; irad++) { host_rad_locs(irad) = R_hub + (R-R_hub)*(irad+0.5)/nrad; }
@@ -211,14 +210,15 @@ namespace modules {
                         real                  base_loc_x  ,
                         real                  base_loc_y  ,
                         RefTurbine const    & ref_turbine ) {
-        auto i_beg  = coupler.get_i_beg();  // Get the beginning x-direction index for this MPI task
-        auto j_beg  = coupler.get_j_beg();  // Get the beginning y-direction index for this MPI task
-        auto nx     = coupler.get_nx();     // Get the number of x-direction cells
-        auto ny     = coupler.get_ny();     // Get the number of y-direction cells
-        auto dx     = coupler.get_dx();     // Get the grid spacing in the x-direction
-        auto dy     = coupler.get_dy();     // Get the grid spacing in the y-direction
+        auto i_beg     = coupler.get_i_beg();  // Get the beginning x-direction index for this MPI task
+        auto j_beg     = coupler.get_j_beg();  // Get the beginning y-direction index for this MPI task
+        auto nx        = coupler.get_nx();     // Get the number of x-direction cells
+        auto ny        = coupler.get_ny();     // Get the number of y-direction cells
+        auto dx        = coupler.get_dx();     // Get the grid spacing in the x-direction
+        auto dy        = coupler.get_dy();     // Get the grid spacing in the y-direction
+        auto eps_fixed = coupler.get_option<real>("turbine_eps_fixed",-1);
         real max_chord = yakl::intrinsics::maxval(ref_turbine.host_foil_chord);
-        real max_eps   = std::max( max_chord/2 , 2*dx );
+        real max_eps   = eps_fixed > 0 ? eps_fixed : std::max( max_chord/2 , 2*dx );
         // bounds of this MPI task's domain
         real dom_x1  = (i_beg+0 )*dx;
         real dom_x2  = (i_beg+nx)*dx;
@@ -435,6 +435,7 @@ namespace modules {
       auto gen_eff           = coupler.get_option<real>("turbine_gen_eff");
       auto max_power         = coupler.get_option<real>("turbine_max_power");
       auto omega             = coupler.get_option<real>("turbine_omega_rad_sec",-999);
+      auto eps_fixed         = coupler.get_option<real>("turbine_eps_fixed",-1);
       int  nrad              = host_rad_locs.size();
 
       if (omega == -999) omega = linear_interp( host_rwt_mag , host_rwt_rot , U_inf , true );
@@ -470,14 +471,13 @@ namespace modules {
           ////////////////////////////////////////////////////////////////
           // Sample inflow wind speed ahead of each turbine blade point 
           ////////////////////////////////////////////////////////////////
-          real2d inflow_axial("inflow_axial",B,nrad);  // Inflow sample values
-          real2d inflow_tang ("inflow_tang" ,B,nrad);  // Inflow sample values
-          real2d density     ("density"     ,B,nrad);  // Density
-          inflow_axial = 0;
-          inflow_tang  = 0;
-          density      = 0;
+          int constexpr ID_AXIAL = 0;  // Axial inflow wind speed
+          int constexpr ID_TANG  = 1;  // Tangential inflow wind speed
+          int constexpr ID_RHO   = 2;  // Density
+          real3d inflow_props("inflow_props",3,B,nrad);
+          inflow_props = 0;
           real max_chord = yakl::intrinsics::maxval(host_foil_chord);
-          real max_eps   = std::max( max_chord/2 , 2*dx );
+          real max_eps   = eps_fixed > 0 ? eps_fixed : std::max( max_chord/2 , 2*dx );
           int num_z = (int) std::ceil(max_eps/dz*4);
           int num_y = (int) std::ceil(max_eps/dy*4);
           int num_x = (int) std::ceil(max_eps/dx*4);
@@ -509,7 +509,7 @@ namespace modules {
             if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
               // Get chord length and epsilon
               real c     = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
-              real eps   = std::max( c/2 , (real)(2*dx) );
+              real eps   = eps_fixed > 0 ? eps_fixed : std::max( c/2 , (real)(2*dx) );
               real proj  = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
                                         (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
                                         (      tk)*dz-z0 , (      tk+1)*dz-z0 , eps );
@@ -520,16 +520,19 @@ namespace modules {
               real az    = std::atan2(z_rot,-y_rot);
               real tang  = -(w*cos_tlt + u*sin_tlt)*std::cos(az) - v*std::sin(az);
               real axial = u*cos_tlt - w*sin_tlt;
-              Kokkos::atomic_add( &(inflow_axial(iblade,irad)) , proj*axial);
-              Kokkos::atomic_add( &(inflow_tang (iblade,irad)) , proj*tang );
-              Kokkos::atomic_add( &(density     (iblade,irad)) , proj*rho  );
+              Kokkos::atomic_add( &(inflow_props(ID_AXIAL,iblade,irad)) , proj*axial);
+              Kokkos::atomic_add( &(inflow_props(ID_TANG ,iblade,irad)) , proj*tang );
+              Kokkos::atomic_add( &(inflow_props(ID_RHO  ,iblade,irad)) , proj*rho  );
             }
           });
-          auto inflow_axial_glob = turbine.par_comm.all_reduce( inflow_axial , MPI_SUM , "sum1" ).createHostCopy();
-          auto inflow_tang_glob  = turbine.par_comm.all_reduce( inflow_tang  , MPI_SUM , "sum1" ).createHostCopy();
-          auto density_glob      = turbine.par_comm.all_reduce( density      , MPI_SUM , "sum2" ).createHostCopy();
-          turbine.inflow_axial_trace.push_back(inflow_axial_glob);
-          turbine.inflow_tang_trace .push_back(inflow_tang_glob );
+          inflow_props = turbine.par_comm.all_reduce( inflow_props , MPI_SUM , "sum1" );
+          auto inflow_props_host = inflow_props.createHostCopy();
+          realHost2d inflow_axial("inflow_axial",B,nrad);
+          realHost2d inflow_tang ("inflow_tang" ,B,nrad);
+          inflow_props_host.slice<2>(ID_AXIAL,0,0).deep_copy_to(inflow_axial);
+          inflow_props_host.slice<2>(ID_TANG ,0,0).deep_copy_to(inflow_tang );
+          turbine.inflow_axial_trace.push_back(inflow_axial);
+          turbine.inflow_tang_trace .push_back(inflow_tang );
           /////////////////////////////////////////////////////////////////////////////
           // Compute thrust and torque at each blade point using blade element theory
           /////////////////////////////////////////////////////////////////////////////
@@ -582,9 +585,10 @@ namespace modules {
                 ref_cdrag2 = host_foil_cdrag(host_foil_id(iseg2));
               }
               real theta  = twist + turbine.pitch;               // Blade section angle (twist + pitch) (rad)
-              real U_tang = omega*r + inflow_tang_glob(iblade,irad);
-              real W      = std::sqrt(inflow_axial_glob(iblade,irad)*inflow_axial_glob(iblade,irad) + U_tang*U_tang);
-              real phi    = std::atan2( inflow_axial_glob(iblade,irad) , U_tang );
+              real U_tang = omega*r + inflow_props_host(ID_TANG,iblade,irad);
+              real U_ax   = inflow_props_host(ID_AXIAL,iblade,irad);
+              real W      = std::sqrt(U_ax*U_ax + U_tang*U_tang);
+              real phi    = std::atan2( U_ax , U_tang );
               real alpha  = phi - theta;
               real Cl1    = linear_interp( ref_alpha1 , ref_clift1 , alpha/M_PI*180. ,true ); // Coefficient of lift
               real Cd1    = linear_interp( ref_alpha1 , ref_cdrag1 , alpha/M_PI*180. ,true ); // Coefficient of drag
@@ -594,8 +598,8 @@ namespace modules {
               real Cd     = mult1*Cd1 + mult2*Cd2;
               real Cn     = Cl * std::cos(phi) + Cd * std::sin(phi);
               real Ct     = Cl * std::sin(phi) - Cd * std::cos(phi);
-              real dT_dr  = 0.5 * density_glob(iblade,irad) * W*W * chord * Cn;
-              real dQ_dr  = 0.5 * density_glob(iblade,irad) * W*W * chord * Ct * r;
+              real dT_dr  = 0.5 * inflow_props_host(ID_RHO,iblade,irad) * W*W * chord * Cn;
+              real dQ_dr  = 0.5 * inflow_props_host(ID_RHO,iblade,irad) * W*W * chord * Ct * r;
               host_force_axial(iblade,irad) = dT_dr*dr  ;  
               host_force_tang (iblade,irad) = dQ_dr*dr/r;
               total_power                  += dQ_dr*dr*omega*gen_eff;
@@ -646,12 +650,12 @@ namespace modules {
             int  tk     = k0-num_z+kk;
             if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
               real c       = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
-              real eps     = std::max( c/2 , (real)(2*dx) );
+              real eps     = eps_fixed > 0 ? eps_fixed : std::max( c/2 , (real)(2*dx) );
               real proj    = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
                                           (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
                                           (      tk)*dz-z0 , (      tk+1)*dz-z0 , eps );
-              real F_axial = force_axial(iblade,irad)/dm_rho_d(tk,tj,ti);
-              real F_tang  = force_tang (iblade,irad)/dm_rho_d(tk,tj,ti);
+              real F_axial = force_axial(iblade,irad)/inflow_props(ID_RHO,iblade,irad);
+              real F_tang  = force_tang (iblade,irad)/inflow_props(ID_RHO,iblade,irad);
               real tend_u  = -F_axial*cos_tlt/(dx*dy*dz);
               real tend_v  =  0;
               real tend_w  =  F_axial*sin_tlt/(dx*dy*dz);
