@@ -8,7 +8,7 @@ R = 63
 H = 90
 R_hub = 1.5
 
-t_end = 7
+t_end = 6
 
 for i in range(1,t_end+1) :
   nc = Dataset(f"test_{i:08d}.nc","r")
@@ -17,6 +17,7 @@ for i in range(1,t_end+1) :
   if (i == t_end) :
     print(np.mean(p))
 plt.plot(pwr)
+plt.grid()
 plt.show()
 plt.close()
 
@@ -48,10 +49,8 @@ plt.show()
 k = np.argmin(np.abs(z-H))
 i = np.argmin(np.abs(x-7*D))
 
-for tind in range(t_end-1,t_end+1) :
-  nc = Dataset(f"test_{tind-1:08d}.nc","r")
-  u = np.array(nc["avg_u"][k,:,i]) if tind == t_end-1 else u+np.array(nc["avg_u"][k,:,i])
-u /= 2
+nc = Dataset(f"test_{t_end:08d}.nc","r")
+u = np.array(nc["avg_u"][k,:,i])
 plt.plot((y-ylen/2)/D,u/8,label=f"portUrb")
 plt.xlabel("y/D")
 plt.ylabel(r"$u/u_{\infty}$")
