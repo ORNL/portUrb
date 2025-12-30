@@ -8,7 +8,7 @@ R = 63
 H = 90
 R_hub = 1.5
 
-t_end = 6
+t_end = 5
 
 for i in range(1,t_end+1) :
   nc = Dataset(f"test_{i:08d}.nc","r")
@@ -17,6 +17,7 @@ for i in range(1,t_end+1) :
   if (i == t_end) :
     print(np.mean(p))
 plt.plot(pwr)
+plt.ylim(2e6,2.1e6)
 plt.grid()
 plt.show()
 plt.close()
@@ -36,9 +37,10 @@ pub_r = np.array([0.000792915,0.02681361,0.052525142,0.074846782,0.087100587,0.0
 
 pub_ax = np.array([0.961267269,0.955458606,0.951550847,0.947605692,0.9432949,0.938925937,0.932755791,0.926837021,0.919985458,0.913264776,0.90647346,0.899889893,0.892743326,0.878880233,0.864863405,0.836993871,0.809454659,0.796212735,0.784464527,0.776000831,0.773815311,0.776472421,0.779364288,0.780390568,0.778703646,0.773871403,0.767938091,0.761221564,0.754457256,0.748661057,0.74316194,0.737374052,0.730547419,0.723785187,0.717320037,0.711976732,0.708852187,0.708613275,0.709953256,0.710815415,0.709541913,0.706674977,0.702237457,0.697710606,0.693453828,0.693883868,0.702900177,0.715095045,0.728476161,0.742652955,0.756877532,0.770717773,0.785534434,0.799860808,0.813786226,0.829012153,0.843008206,0.8518043])
 
-nc = Dataset(f"test_{t_end:08d}.nc","r")
-inflow_axial = np.array(nc["inflow_axial_0"][:,:,:])
-plt.plot(rad/R,np.mean(inflow_axial,axis=(0,1))/8,label=f"portUrb")
+for i in range(1,t_end+1) :
+  nc = Dataset(f"test_{i:08d}.nc","r")
+  inflow_axial = np.array(nc["inflow_axial_0"][:,:,:])
+  plt.plot(rad/R,np.mean(inflow_axial,axis=(0,1))/8,label=f"portUrb {i}")
 plt.plot(pub_r,pub_ax,label=f"openFOAM")
 plt.xlabel("r/R")
 plt.ylabel(r"$u_{axial}/u_{\infty}$")
@@ -47,11 +49,26 @@ plt.grid()
 plt.show()
 
 k = np.argmin(np.abs(z-H))
-i = np.argmin(np.abs(x-7*D))
+i = np.argmin(np.abs(x-5*D))
 
 nc = Dataset(f"test_{t_end:08d}.nc","r")
 u = np.array(nc["avg_u"][k,:,i])
 plt.plot((y-ylen/2)/D,u/8,label=f"portUrb")
+plt.title("1 turbine diameter downstream")
+plt.xlabel("y/D")
+plt.ylabel(r"$u/u_{\infty}$")
+plt.xlim(-1.5,1.5)
+plt.ylim(0.4,1.1)
+plt.legend()
+plt.grid()
+plt.show()
+
+i = np.argmin(np.abs(x-8*D))
+
+nc = Dataset(f"test_{t_end:08d}.nc","r")
+u = np.array(nc["avg_u"][k,:,i])
+plt.plot((y-ylen/2)/D,u/8,label=f"portUrb")
+plt.title("4 turbine diameter downstream")
 plt.xlabel("y/D")
 plt.ylabel(r"$u/u_{\infty}$")
 plt.xlim(-1.5,1.5)
@@ -61,36 +78,52 @@ plt.grid()
 plt.show()
 
 
-#i = np.argmin(np.abs(x-6*D))
-#k = np.argmin(np.abs(z-H))
-#j1 = np.argmin(np.abs(y-1*D))
-#j2 = np.argmin(np.abs(y-3*D))
-#k2 = np.argmin(np.abs(z-1.5*D))
-#print(j1,j2,k2)
-#
-# Y,Z = np.meshgrid(y[j1:j2],z[:k2])
-# plt.contourf(Y,Z,tend_u[:k2,j1:j2,i-2],levels=100,cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
-# plt.xlabel("x-location")
-# plt.ylabel("y-location")
+i = np.argmin(np.abs(x-6*D))
+k = np.argmin(np.abs(z-H))
+i1 = np.argmin(np.abs(x-3.25*D))
+i2 = np.argmin(np.abs(x-9*D))
+j1 = np.argmin(np.abs(y-0.75*D))
+j2 = np.argmin(np.abs(y-3.25*D))
+
+X,Y = np.meshgrid(x[i1:i2],y[j1:j2])
+plt.contourf(X,Y,np.array(nc["avg_u"][k,j1:j2,i1:i2]),levels=np.arange(3,8,0.01),cmap="jet",extend="both")
+plt.xlabel("x-location")
+plt.ylabel("y-location")
 # plt.gca().invert_xaxis()
-# plt.gca().set_aspect("equal")
-# plt.colorbar(orientation="horizontal")
-# plt.tight_layout()
-# plt.show()
-# plt.close()
-# 
-# plt.contourf(Y,Z,tend_v[:k2,j1:j2,i-2],levels=100,cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
-# plt.gca().set_aspect("equal")
-# plt.colorbar(orientation="horizontal")
-# plt.gca().invert_xaxis()
-# plt.tight_layout()
-# plt.show()
-# plt.close()
-# 
-# plt.contourf(Y,Z,tend_w[:k2,j1:j2,i-2],levels=100,cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
-# plt.gca().set_aspect("equal")
-# plt.colorbar(orientation="horizontal")
-# plt.gca().invert_xaxis()
-# plt.tight_layout()
-# plt.show()
-# plt.close()
+plt.gca().set_aspect("equal")
+plt.colorbar(orientation="horizontal")
+plt.tight_layout()
+plt.show()
+plt.close()
+
+
+
+i  = np.argmin(np.abs(x-4.00*D))
+j1 = np.argmin(np.abs(y-1.25*D))
+j2 = np.argmin(np.abs(y-2.75*D))
+k2 = np.argmin(np.abs(z-1.50*D))
+Y,Z = np.meshgrid(y[j1:j2],z[:k2])
+
+plt.contourf(Y,Z,np.array(nc["turbine_tend_u"][:k2,j1:j2,i-4]),levels=100,cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
+plt.gca().set_aspect("equal")
+plt.colorbar(orientation="horizontal")
+plt.gca().invert_xaxis()
+plt.tight_layout()
+plt.show()
+plt.close()
+
+plt.contourf(Y,Z,np.array(nc["turbine_tend_v"][:k2,j1:j2,i-4]),levels=100,cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
+plt.gca().set_aspect("equal")
+plt.colorbar(orientation="horizontal")
+plt.gca().invert_xaxis()
+plt.tight_layout()
+plt.show()
+plt.close()
+
+plt.contourf(Y,Z,np.array(nc["turbine_tend_w"][:k2,j1:j2,i-4]),levels=100,cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
+plt.gca().set_aspect("equal")
+plt.colorbar(orientation="horizontal")
+plt.gca().invert_xaxis()
+plt.tight_layout()
+plt.show()
+plt.close()
