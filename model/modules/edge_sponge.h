@@ -48,15 +48,15 @@ namespace modules {
                                          real prop_y2 = 0.1 ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      int nx_glob   = coupler.get_nx_glob(); // Global number of cells in x-direction
-      int ny_glob   = coupler.get_ny_glob(); // Global number of cells in y-direction
-      int i_beg     = coupler.get_i_beg();   // Beginning index in x-direction for this MPI rank
-      int j_beg     = coupler.get_j_beg();   // Beginning index in y-direction for this MPI rank
-      int nx        = coupler.get_nx();      // Local number of cells in x-direction
-      int ny        = coupler.get_ny();      // Local number of cells in y-direction
-      int nz        = coupler.get_nz();      // Number of cells in z-direction
-      auto &dm      = coupler.get_data_manager_readwrite(); // Get read-write data manager
-      float pwr = 5;     // Power to use for weighting towards edges
+      int  nx_glob = coupler.get_nx_glob(); // Global number of cells in x-direction
+      int  ny_glob = coupler.get_ny_glob(); // Global number of cells in y-direction
+      int  i_beg   = coupler.get_i_beg();   // Beginning index in x-direction for this MPI rank
+      int  j_beg   = coupler.get_j_beg();   // Beginning index in y-direction for this MPI rank
+      int  nx      = coupler.get_nx();      // Local number of cells in x-direction
+      int  ny      = coupler.get_ny();      // Local number of cells in y-direction
+      int  nz      = coupler.get_nz();      // Number of cells in z-direction
+      auto &dm     = coupler.get_data_manager_readwrite(); // Get read-write data manager
+      real pwr     = 3;     // Power to use for weighting towards edges
       // Accrue 3-D fields for the specified names to apply the sponge
       core::MultiField<real,3> state;
       for (int i=0; i < names.size(); i++) { state.add_field( dm.get<real,3>(names.at(i)) ); }
@@ -65,28 +65,28 @@ namespace modules {
       // Apply the sponge towards each edge of the domain
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        real prop_x = static_cast<real>(i_beg+i)/nx_glob; // This cell's proportional x location in the global domain
-        real prop_y = static_cast<real>(j_beg+j)/ny_glob; // This cell's proportional y location in the global domain
+        real prop_x = static_cast<real>(i_beg+i)/(nx_glob-1); // This cell's proportional x location in the global domain
+        real prop_y = static_cast<real>(j_beg+j)/(ny_glob-1); // This cell's proportional y location in the global domain
         // Use convex weightings determined by the distance into the edge sponge to the fifth power
         //  with a stronger forcing closer to the edge
         if (prop_x1 > 0 && prop_x <= prop_x1) { // West edge sponge
-          real wt = (prop_x1-prop_x)/prop_x1;
-          wt = std::pow( wt , pwr );
+          real wt = (prop_x)/prop_x1;
+          wt = std::pow((std::cos(M_PI*wt)+1)/2,pwr);
           state(l,k,j,i) = wt*column(l,k) + (1-wt)*state(l,k,j,i);
         }
         if (prop_x2 > 0 && prop_x >= 1-prop_x2) { // East edge sponge
-          real wt = (prop_x-(1-prop_x2))/prop_x2;
-          wt = std::pow( wt , pwr );
+          real wt = (1-prop_x)/prop_x2;
+          wt = std::pow((std::cos(M_PI*wt)+1)/2,pwr);
           state(l,k,j,i) = wt*column(l,k) + (1-wt)*state(l,k,j,i);
         }
         if (prop_y1 > 0 && prop_y <= prop_y1) { // South edge sponge
-          real wt = (prop_y1-prop_y)/prop_y1;
-          wt = std::pow( wt , pwr );
+          real wt = (prop_y)/prop_y1;
+          wt = std::pow((std::cos(M_PI*wt)+1)/2,pwr);
           state(l,k,j,i) = wt*column(l,k) + (1-wt)*state(l,k,j,i);
         }
         if (prop_y2 > 0 && prop_y >= 1-prop_y2) { // North edge sponge
-          real wt = (prop_y-(1-prop_y2))/prop_y2;
-          wt = std::pow( wt , pwr );
+          real wt = (1-prop_y)/prop_y2;
+          wt = std::pow((std::cos(M_PI*wt)+1)/2,pwr);
           state(l,k,j,i) = wt*column(l,k) + (1-wt)*state(l,k,j,i);
         }
       });

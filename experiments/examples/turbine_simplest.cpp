@@ -7,6 +7,7 @@
 #include "les_closure.h"
 #include "turbine_actuator_line.h"
 #include "edge_sponge.h"
+#include "column_nudging.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -27,7 +28,7 @@ int main(int argc, char** argv) {
     real D = config["blade_radius"].as<real>()*2;
 
     real        sim_time     = 1000.1;
-    real        xlen         = D*15;
+    real        xlen         = D*10;
     real        ylen         = D*4;
     real        zlen         = D*4;
     int         nx_glob      = std::ceil(xlen/dx);    xlen = nx_glob * dx;
@@ -35,7 +36,7 @@ int main(int argc, char** argv) {
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 100.0;
+    real        out_freq     = 60./9.1552*10;
     real        inform_freq  = 1.0;
     std::string out_prefix   = "test";
     bool        is_restart   = false;
@@ -66,10 +67,10 @@ int main(int argc, char** argv) {
     // coupler.set_option<real       >( "turbine_eps_fixed"        , 2.1          );
     coupler.set_option<real       >( "dycore_max_wind"          , 20           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
-    coupler.set_option<real       >( "dycore_cs"                , 150          );
+    coupler.set_option<real       >( "dycore_cs"                , 100          );
 
     // Set the turbine
-    coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{6*D });
+    coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{4*D   });
     coupler.set_option<std::vector<real>>("turbine_y_locs"      ,{ylen/2});
     coupler.set_option<std::vector<bool>>("turbine_apply_thrust",{true  });
 
@@ -82,7 +83,9 @@ int main(int argc, char** argv) {
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::TurbineActuatorLine               windmills;
-    modules::EdgeSponge                        edge_sponge;
+    modules::EdgeSponge                        edge_sponge1;
+    modules::EdgeSponge                        edge_sponge2;
+    modules::ColumnNudger                      col_nudge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -90,13 +93,17 @@ int main(int argc, char** argv) {
 
     // Run the initialization modules
     custom_modules::sc_init   ( coupler );
+    coupler.set_option<std::string>("bc_x1","open"    );
+    coupler.set_option<std::string>("bc_x2","open"    );
     coupler.set_option<std::string>("bc_y1","periodic");
     coupler.set_option<std::string>("bc_y2","periodic");
+    col_nudge.set_column      ( coupler , {"density_dry","temp"} );
     les_closure  .init        ( coupler );
     windmills    .init        ( coupler );
     dycore       .init        ( coupler ); // Important that dycore inits after windmills for base immersed boundaries
     time_averager.init        ( coupler );
-    edge_sponge  .set_column  ( coupler );
+    edge_sponge1 .set_column  ( coupler , {"density_dry","uvel","vvel","wvel","temp"} );
+    edge_sponge2 .set_column  ( coupler , {"density_dry","temp"} );
     custom_modules::sc_perturb( coupler );
 
     // Get elapsed time (zero), and create counters for output and informing the user in stdout
@@ -127,11 +134,13 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
-        coupler.run_module( [&] (Coupler &c) { edge_sponge.apply       (c,0.05,0,0,0); } , "edge_sponge" );
-        coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"        );
-        coupler.run_module( [&] (Coupler &c) { windmills.apply         (c,dt); } , "windmills"     );
-        coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"   );
-        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager" );
+        coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply       (c,0.1,0,0,0); } , "edge_sponge1"  );
+        coupler.run_module( [&] (Coupler &c) { edge_sponge2.apply       (c,0,0.1,0,0); } , "edge_sponge2"  );
+        coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column(c,dt,dt*2);   } , "col_nudge"     );
+        coupler.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);        } , "dycore"        );
+        coupler.run_module( [&] (Coupler &c) { windmills.apply          (c,dt);        } , "windmills"     );
+        coupler.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);        } , "les_closure"   );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);        } , "time_averager" );
       }
 
       // Update time step
