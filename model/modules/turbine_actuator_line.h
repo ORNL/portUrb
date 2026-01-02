@@ -584,25 +584,28 @@ namespace modules {
                 ref_clift2 = host_foil_clift(host_foil_id(iseg2));
                 ref_cdrag2 = host_foil_cdrag(host_foil_id(iseg2));
               }
-              real theta  = twist + turbine.pitch;               // Blade section angle (twist + pitch) (rad)
-              real U_tang = omega*r + inflow_props_host(ID_TANG,iblade,irad);
-              real U_ax   = inflow_props_host(ID_AXIAL,iblade,irad);
-              real W      = std::sqrt(U_ax*U_ax + U_tang*U_tang);
-              real phi    = std::atan2( U_ax , U_tang );
-              real alpha  = phi - theta;
-              real Cl1    = linear_interp( ref_alpha1 , ref_clift1 , alpha/M_PI*180. ,true ); // Coefficient of lift
-              real Cd1    = linear_interp( ref_alpha1 , ref_cdrag1 , alpha/M_PI*180. ,true ); // Coefficient of drag
-              real Cl2    = linear_interp( ref_alpha2 , ref_clift2 , alpha/M_PI*180. ,true ); // Coefficient of lift
-              real Cd2    = linear_interp( ref_alpha2 , ref_cdrag2 , alpha/M_PI*180. ,true ); // Coefficient of drag
-              real Cl     = mult1*Cl1 + mult2*Cl2;
-              real Cd     = mult1*Cd1 + mult2*Cd2;
-              real Cn     = Cl * std::cos(phi) + Cd * std::sin(phi);
-              real Ct     = Cl * std::sin(phi) - Cd * std::cos(phi);
-              real dT_dr  = 0.5 * inflow_props_host(ID_RHO,iblade,irad) * W*W * chord * Cn;
-              real dQ_dr  = 0.5 * inflow_props_host(ID_RHO,iblade,irad) * W*W * chord * Ct * r;
-              host_force_axial(iblade,irad) = dT_dr*dr  ;  
-              host_force_tang (iblade,irad) = dQ_dr*dr/r;
-              total_power                  += dQ_dr*dr*omega*gen_eff;
+              real theta     = twist + turbine.pitch;               // Blade section angle (twist + pitch) (rad)
+              real U_tang    = omega*r - inflow_props_host(ID_TANG,iblade,irad);
+              real U_ax      = inflow_props_host(ID_AXIAL,iblade,irad);
+              real W         = std::sqrt(U_ax*U_ax + U_tang*U_tang);
+              real phi       = std::atan2( U_ax , U_tang );
+              real alpha     = phi - theta;
+              real Cl1       = linear_interp( ref_alpha1 , ref_clift1 , alpha/M_PI*180. ,true ); // Coefficient of lift
+              real Cd1       = linear_interp( ref_alpha1 , ref_cdrag1 , alpha/M_PI*180. ,true ); // Coefficient of drag
+              real Cl2       = linear_interp( ref_alpha2 , ref_clift2 , alpha/M_PI*180. ,true ); // Coefficient of lift
+              real Cd2       = linear_interp( ref_alpha2 , ref_cdrag2 , alpha/M_PI*180. ,true ); // Coefficient of drag
+              real Cl        = mult1*Cl1 + mult2*Cl2;
+              real Cd        = mult1*Cd1 + mult2*Cd2;
+              real Cn        = Cl * std::cos(phi) + Cd * std::sin(phi);
+              real Ct        = Cl * std::sin(phi) - Cd * std::cos(phi);
+              real dT_dr     = 0.5 * inflow_props_host(ID_RHO,iblade,irad) * W*W * chord * Cn;
+              real dQ_dr     = 0.5 * inflow_props_host(ID_RHO,iblade,irad) * W*W * chord * Ct * r;
+              real d         = 0.95;
+              real x         = std::clamp(r/R,d,(real)1);
+              real tip_decay = (3*(d+1)*x*x-2*x*x*x- 6*d*x+3*d-1)/(d*d*d-3*d*d+3*d-1);
+              host_force_axial(iblade,irad) = dT_dr*dr              *tip_decay;
+              host_force_tang (iblade,irad) = dQ_dr*dr/r            *tip_decay;
+              total_power                  += dQ_dr*dr*omega*gen_eff*tip_decay;
             }
           }
           turbine.power_trace      .push_back(total_power     );
@@ -685,7 +688,7 @@ namespace modules {
           real base_x = turbine.base_loc_x;  // Tower base x-location
           real base_y = turbine.base_loc_y;  // Tower base y-location
           if (coupler.get_option<bool>("turbine_immerse_material",false)) {
-            int constexpr N = 10;
+            int constexpr N = 3;
             real ov  = overhang;
             real hr  = R_hub;
             real fh  = hub_flange_height;
@@ -700,9 +703,9 @@ namespace modules {
               for (int kk=0; kk < N; kk++) {
                 for (int jj=0; jj < N; jj++) {
                   for (int ii=0; ii < N; ii++) {
-                    real x   = (i_beg+i)*dx + ii*dx/(N-1);
-                    real y   = (j_beg+j)*dy + jj*dy/(N-1);
-                    real z   = (      k)*dz + kk*dz/(N-1);
+                    real x   = (i_beg+i)*dx + (ii+0.5)*dx/N;
+                    real y   = (j_beg+j)*dy + (jj+0.5)*dy/N;
+                    real z   = (      k)*dz + (kk+0.5)*dz/N;
                     real xp  = x-bx;
                     real yp  = y-by;
                     real zp  = z-H;

@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
     coupler.set_option<real       >( "turbine_max_power"        , 5.29661e6    );
     coupler.set_option<real       >( "turbine_omega_rad_sec"    , 9.1552*2.*M_PI/60. );
-    coupler.set_option<bool       >( "turbine_immerse_material" , false        );
+    coupler.set_option<bool       >( "turbine_immerse_material" , true         );
     // coupler.set_option<real       >( "turbine_eps_fixed"        , 2.1          );
     coupler.set_option<real       >( "dycore_max_wind"          , 20           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
