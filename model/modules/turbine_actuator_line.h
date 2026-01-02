@@ -437,6 +437,7 @@ namespace modules {
       auto omega             = coupler.get_option<real>("turbine_omega_rad_sec",-999);
       auto eps_fixed         = coupler.get_option<real>("turbine_eps_fixed",-1);
       int  nrad              = host_rad_locs.size();
+      real drad              = R / nrad;
 
       if (omega == -999) omega = linear_interp( host_rwt_mag , host_rwt_rot , U_inf , true );
       real cos_tlt = std::cos(shaft_tilt);
@@ -444,13 +445,14 @@ namespace modules {
       real pi_3_2 = std::pow(M_PI,3./2.);
 
       // This integrates the function: std::exp(-(x*x+y*y+z*z)/(eps*eps))/(pi_3_2*eps*eps*eps)
-      auto int_proj_3d = KOKKOS_LAMBDA (real x1, real x2, real y1, real y2, real z1, real z2, real eps) -> real {
-        real erf_x1 = std::erf(x1/eps);
-        real erf_x2 = std::erf(x2/eps);
-        real erf_y1 = std::erf(y1/eps);
-        real erf_y2 = std::erf(y2/eps);
-        real erf_z1 = std::erf(z1/eps);
-        real erf_z2 = std::erf(z2/eps);
+      auto int_proj_3d = KOKKOS_LAMBDA (real x1, real x2, real y1, real y2, real z1, real z2,
+                                        real eps_x, real eps_y, real eps_z) -> real {
+        real erf_x1 = std::erf(x1/eps_x);
+        real erf_x2 = std::erf(x2/eps_x);
+        real erf_y1 = std::erf(y1/eps_y);
+        real erf_y2 = std::erf(y2/eps_y);
+        real erf_z1 = std::erf(z1/eps_z);
+        real erf_z2 = std::erf(z2/eps_z);
         return -1./8.*((erf_x1 - erf_x2)*erf_y1 - (erf_x1 - erf_x2)*erf_y2)*erf_z1 +
                 1./8.*((erf_x1 - erf_x2)*erf_y1 - (erf_x1 - erf_x2)*erf_y2)*erf_z2;
       };
@@ -509,10 +511,13 @@ namespace modules {
             if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
               // Get chord length and epsilon
               real c     = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
-              real eps   = eps_fixed > 0 ? eps_fixed : std::max( c/2 , (real)(2*dx) );
+              real eps_x = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c , (real)(dx) );
+              real eps_y = eps_fixed > 0 ? eps_fixed : std::max( 0.4*c , (real)(dx) );
+              real eps_z = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c , (real)(dx) );
               real proj  = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
                                         (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
-                                        (      tk)*dz-z0 , (      tk+1)*dz-z0 , eps );
+                                        (      tk)*dz-z0 , (      tk+1)*dz-z0 ,
+                                        eps_x , eps_y , eps_z );
               real rho   = dm_rho_d(tk,tj,ti);
               real u     = dm_uvel (tk,tj,ti);
               real v     = dm_vvel (tk,tj,ti);
@@ -653,10 +658,13 @@ namespace modules {
             int  tk     = k0-num_z+kk;
             if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
               real c       = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
-              real eps     = eps_fixed > 0 ? eps_fixed : std::max( c/2 , (real)(2*dx) );
+              real eps_x   = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c , (real)(dx) );
+              real eps_y   = eps_fixed > 0 ? eps_fixed : std::max( 0.4*c , (real)(dx) );
+              real eps_z   = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c , (real)(dx) );
               real proj    = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
                                           (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
-                                          (      tk)*dz-z0 , (      tk+1)*dz-z0 , eps );
+                                          (      tk)*dz-z0 , (      tk+1)*dz-z0 ,
+                                          eps_x , eps_y , eps_z );
               real F_axial = force_axial(iblade,irad)/inflow_props(ID_RHO,iblade,irad);
               real F_tang  = force_tang (iblade,irad)/inflow_props(ID_RHO,iblade,irad);
               real tend_u  = -F_axial*cos_tlt/(dx*dy*dz);

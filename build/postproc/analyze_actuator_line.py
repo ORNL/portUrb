@@ -9,7 +9,7 @@ H = 90
 R_hub = 1.5
 V = 8
 
-t_end = 4
+t_end = 1
 
 for i in range(1,t_end+1) :
   nc = Dataset(f"test_{i:08d}.nc","r")
@@ -18,7 +18,7 @@ for i in range(1,t_end+1) :
   t  = np.sum(np.array(nc["force_axial_0"][:,:,:]),axis=(1,2))
   thr = t if i==1 else np.concatenate((thr,t))
   if (i == t_end) :
-    print( np.mean(np.array(nc["density_dry"][:,:,:])) )
+    print( np.mean( np.array(nc["density_dry"][:,:,:])) )
     print( np.mean( p/np.mean(np.array(nc["density_dry"][:,:,:]))*1.225 ) )
     print( np.mean( p/(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V*V) ) )
     print( np.mean( t/(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V  ) ) )
