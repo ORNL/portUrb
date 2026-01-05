@@ -9,6 +9,18 @@
 #include "edge_sponge.h"
 #include "column_nudging.h"
 
+// Research on Aerodynamic Characteristics of Three Offshore Wind Turbines Based on Large Eddy Simulation and Actuator Line Model
+// https://www.mdpi.com/2077-1312/12/8/1341
+// NREL 5MW
+// U_inf = 11.4
+// omega_rpm = 12.1 and variable
+// coupler.set_option<bool       >( "turbine_immerse_material" , false        );
+// coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
+// coupler.set_option<real       >( "turbine_eps_fixed"        , 3.5          );
+// coupler.set_option<real       >( "dycore_max_wind"          , 30           );
+// coupler.set_option<real       >( "dycore_cs"                , 100          );
+
+
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
   Kokkos::initialize();
@@ -18,6 +30,10 @@ int main(int argc, char** argv) {
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
+
+    real U_inf     = 11.4;
+    real tsr       = 8;
+    real omega_rpm = tsr*U_inf/63./(2.*M_PI)*60.;
 
     real dx = 1;
     coupler.set_option<bool>("turbine_orig_C_T",true);
@@ -36,9 +52,9 @@ int main(int argc, char** argv) {
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 60./9.1552*10;
+    real        out_freq     = 30.; // /omega_rpm*10;
     real        inform_freq  = 1.0;
-    std::string out_prefix   = "test";
+    std::string out_prefix   = std::string("fu_2024_tsr_")+std::to_string((int)tsr);
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
@@ -54,18 +70,21 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "restart_file"             , restart_file );
     coupler.set_option<real       >( "latitude"                 , latitude     );
     coupler.set_option<real       >( "roughness"                , roughness    );
-    coupler.set_option<real       >( "constant_uvel"            , 8.0          );
+    coupler.set_option<real       >( "constant_uvel"            , U_inf        );
     coupler.set_option<real       >( "constant_vvel"            , 0            );
     coupler.set_option<real       >( "constant_temp"            , 300          );
-    coupler.set_option<real       >( "constant_press"           , 1.e5         );
+    coupler.set_option<real       >( "constant_press"           , 105386.4     );
     coupler.set_option<std::string>( "turbine_file"             , turbine_file );
-    coupler.set_option<real       >( "turbine_inflow_mag"       , 8            );
+    coupler.set_option<real       >( "turbine_inflow_mag"       , U_inf        );
     coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
-    coupler.set_option<real       >( "turbine_max_power"        , 5.29661e6    );
-    coupler.set_option<real       >( "turbine_omega_rad_sec"    , 9.1552*2.*M_PI/60. );
-    coupler.set_option<bool       >( "turbine_immerse_material" , true         );
-    // coupler.set_option<real       >( "turbine_eps_fixed"        , 2.1          );
-    coupler.set_option<real       >( "dycore_max_wind"          , 20           );
+    coupler.set_option<real       >( "turbine_max_power"        , 5e6          );
+    coupler.set_option<real       >( "turbine_tip_decay_beg"    , 0.9783       );
+    coupler.set_option<real       >( "turbine_min_eps"          , 0.01         );
+    coupler.set_option<real       >( "turbine_omega_rad_sec"    , omega_rpm*2.*M_PI/60. );
+    coupler.set_option<bool       >( "turbine_immerse_material" , false        );
+    coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
+    // coupler.set_option<real       >( "turbine_eps_fixed"        , 3.5          );
+    coupler.set_option<real       >( "dycore_max_wind"          , 30           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
     coupler.set_option<real       >( "dycore_cs"                , 100          );
 

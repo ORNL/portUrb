@@ -3,27 +3,28 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cmap import Colormap
 
+prefix = "fu_2024_tsr_8_"
 D = 126
 R = 63
 H = 90
 R_hub = 1.5
-V = 8
+V = 11.4
+gen_eff = 0.944
 
-t_end = 1
+t_end = 3
 
 for i in range(1,t_end+1) :
-  nc = Dataset(f"test_{i:08d}.nc","r")
-  p  = np.array(nc["power_0"][:])
+  nc = Dataset(f"{prefix}{i:08d}.nc","r")
+  p  = np.array(nc["power0"][:])
   pwr = p if i==1 else np.concatenate((pwr,p))
-  t  = np.sum(np.array(nc["force_axial_0"][:,:,:]),axis=(1,2))
+  t  = np.sum(np.array(nc["force_axial0"][:,:,:]),axis=(1,2))
   thr = t if i==1 else np.concatenate((thr,t))
   if (i == t_end) :
     print( np.mean( np.array(nc["density_dry"][:,:,:])) )
-    print( np.mean( p/np.mean(np.array(nc["density_dry"][:,:,:]))*1.225 ) )
-    print( np.mean( p/(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V*V) ) )
-    print( np.mean( t/(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V  ) ) )
-plt.plot(pwr)
-# plt.ylim(2e6,2.1e6)
+    print( np.mean( p ) )
+    print( "C_P: " , np.mean( p/gen_eff/(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V*V) ) )
+    print( "C_T: " , np.mean( t        /(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V  ) ) )
+plt.plot(pwr/1e6)
 plt.grid()
 plt.show()
 plt.close()
@@ -39,7 +40,12 @@ xlen = x[-1]+dx/2
 ylen = y[-1]+dy/2
 zlen = z[-1]+dz/2
 
-plt.plot(rad,np.mean(np.array(nc["inflow_tang_0"][:,:,:]),axis=(0,1)))
+plt.plot(np.array(nc["pitch0"][:])/np.pi*180)
+plt.ylabel("pitch angle (deg)")
+plt.show()
+plt.close()
+
+plt.plot(rad,np.mean(np.array(nc["inflow_tang0"][:,:,:]),axis=(0,1)))
 plt.show()
 plt.close()
 
@@ -47,8 +53,8 @@ pub_r = np.array([0.000792915,0.02681361,0.052525142,0.074846782,0.087100587,0.0
 
 pub_ax = np.array([0.961267269,0.955458606,0.951550847,0.947605692,0.9432949,0.938925937,0.932755791,0.926837021,0.919985458,0.913264776,0.90647346,0.899889893,0.892743326,0.878880233,0.864863405,0.836993871,0.809454659,0.796212735,0.784464527,0.776000831,0.773815311,0.776472421,0.779364288,0.780390568,0.778703646,0.773871403,0.767938091,0.761221564,0.754457256,0.748661057,0.74316194,0.737374052,0.730547419,0.723785187,0.717320037,0.711976732,0.708852187,0.708613275,0.709953256,0.710815415,0.709541913,0.706674977,0.702237457,0.697710606,0.693453828,0.693883868,0.702900177,0.715095045,0.728476161,0.742652955,0.756877532,0.770717773,0.785534434,0.799860808,0.813786226,0.829012153,0.843008206,0.8518043])
 
-nc = Dataset(f"test_{t_end:08d}.nc","r")
-inflow_axial = np.array(nc["inflow_axial_0"][:,:,:])
+nc = Dataset(f"{prefix}{t_end:08d}.nc","r")
+inflow_axial = np.array(nc["inflow_axial0"][:,:,:])
 plt.plot(rad/R,np.mean(inflow_axial,axis=(0,1))/V,label=f"portUrb")
 plt.plot(pub_r,pub_ax,label=f"openFOAM")
 plt.xlabel("r/R")
@@ -57,8 +63,8 @@ plt.legend()
 plt.grid()
 plt.show()
 
-nc = Dataset(f"test_{t_end:08d}.nc","r")
-inflow_axial = np.array(nc["force_axial_0"][:,:,:])
+nc = Dataset(f"{prefix}{t_end:08d}.nc","r")
+inflow_axial = np.array(nc["force_axial0"][:,:,:])
 plt.plot(rad/R,np.mean(inflow_axial,axis=(0,1)),label=f"portUrb")
 plt.xlabel("r/R")
 plt.ylabel(r"axial force (N)")
@@ -66,8 +72,8 @@ plt.legend()
 plt.grid()
 plt.show()
 
-nc = Dataset(f"test_{t_end:08d}.nc","r")
-inflow_axial = np.array(nc["force_tang_0"][:,:,:])
+nc = Dataset(f"{prefix}{t_end:08d}.nc","r")
+inflow_axial = np.array(nc["force_tang0"][:,:,:])
 plt.plot(rad/R,np.mean(inflow_axial,axis=(0,1))*rad,label=f"portUrb")
 plt.xlabel("r/R")
 plt.ylabel(r"Torque (N m)")
@@ -75,10 +81,29 @@ plt.legend()
 plt.grid()
 plt.show()
 
+nc = Dataset(f"{prefix}{t_end:08d}.nc","r")
+inflow_axial = np.array(nc["alpha0"][:,:,:])
+plt.plot(rad/R,np.mean(inflow_axial,axis=(0,1))/np.pi*180,label=f"portUrb")
+plt.ylim(2,10)
+plt.xlabel("r/R")
+plt.ylabel(r"Angle of Attack (deg)")
+plt.legend()
+plt.grid()
+plt.show()
+
+nc = Dataset(f"{prefix}{t_end:08d}.nc","r")
+inflow_axial = np.array(nc["inflow_axial0"][:,:,:])
+plt.plot(rad/R,1-np.mean(inflow_axial,axis=(0,1))/V,label=f"portUrb")
+plt.xlabel("r/R")
+plt.ylabel(r"Axial induction factor")
+plt.legend()
+plt.grid()
+plt.show()
+
 k = np.argmin(np.abs(z-H))
 i = np.argmin(np.abs(x-5*D))
 
-nc = Dataset(f"test_{t_end:08d}.nc","r")
+nc = Dataset(f"{prefix}{t_end:08d}.nc","r")
 u = np.array(nc["avg_u"][k,:,i])
 plt.plot((y-ylen/2)/D,u/V,label=f"portUrb")
 plt.title("1 turbine diameter downstream")
@@ -92,7 +117,7 @@ plt.show()
 
 i = np.argmin(np.abs(x-8*D))
 
-nc = Dataset(f"test_{t_end:08d}.nc","r")
+nc = Dataset(f"{prefix}{t_end:08d}.nc","r")
 u = np.array(nc["avg_u"][k,:,i])
 plt.plot((y-ylen/2)/D,u/V,label=f"portUrb")
 plt.title("4 turbine diameter downstream")

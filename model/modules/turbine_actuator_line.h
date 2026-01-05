@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <unordered_map>
 #include "main_header.h"
 #include "coupler.h"
 
@@ -52,7 +53,6 @@ namespace modules {
       real           R_hub            ;
       real           H                ;
       real           overhang         ; // Offset of blades from tower center (m). This is also the length of the hub flange
-      real           hub_radius       ; // Radius of the hub, where there is no blade (m)
       real           hub_flange_height; // Height (and width) of the hub flange (m)
       real           tower_base_rad   ; // Radius of the tower base at ground or water level (m)
       real           tower_top_rad    ; // Radius of the tower top connected to hub flange (m)
@@ -96,7 +96,6 @@ namespace modules {
         H                 = node["hub_height"        ].as<real>();
         B                 = node["num_blades"        ].as<int>(3);
         overhang          = node["overhang"          ].as<real>(-0.1 *R);
-        hub_radius        = node["hub_radius"        ].as<real>( 0.03*R);
         hub_flange_height = node["hub_flange_height" ].as<real>( 0.04*R);
         tower_base_rad    = node["tower_base_radius" ].as<real>(5);
         tower_top_rad     = node["tower_top_radius"  ].as<real>(3);
@@ -158,7 +157,7 @@ namespace modules {
           host_rwt_pwr_mw(irwt) = power_mw.at(irwt);
           host_rwt_rot   (irwt) = rot_rpm .at(irwt)*2.*M_PI/60.;
         }
-        real deps      = dx/4;
+        real deps      = dx/2;
         int  nrad      = (int) std::ceil((R-R_hub)/deps);
         host_rad_locs  = realHost1d("rad_locs",nrad);
         for (int irad=0; irad < nrad; irad++) { host_rad_locs(irad) = R_hub + (R-R_hub)*(irad+0.5)/nrad; }
@@ -184,6 +183,58 @@ namespace modules {
 
 
 
+    struct TraceEntry {
+      std::string             name;
+      bool                    dims_pnts;
+      std::vector<real      > vals_1;
+      std::vector<realHost2d> vals_pnts;
+    };
+
+
+
+    struct Traces {
+      std::vector<TraceEntry> entries;
+      void register_entry( std::string name , bool dims_pnts ) {
+        entries.push_back( {name,dims_pnts,std::vector<real>(),std::vector<realHost2d>()} );
+      }
+      std::vector<real> & get_1( std::string name ) {
+        for (auto & entry : entries) {
+          if (name==entry.name) {
+            if (entry.dims_pnts) {
+              Kokkos::abort("ERROR: Retrieving trace as 1 when it's declared at pnts");
+              return entry.vals_1;
+            } else {
+              return entry.vals_1;
+            }
+          }
+        }
+        Kokkos::abort("ERROR: Retriving trace that wasn't registered");
+        return entries[0].vals_1;
+      }
+      std::vector<realHost2d> & get_pnts( std::string name ) {
+        for (auto & entry : entries) {
+          if (name==entry.name) {
+            if (entry.dims_pnts) {
+              return entry.vals_pnts;
+            } else {
+              Kokkos::abort("ERROR: Retrieving trace as pnts when it's declared as 1");
+              return entry.vals_pnts;
+            }
+          }
+        }
+        Kokkos::abort("ERROR: Retriving trace that wasn't registered");
+        return entries[0].vals_pnts;
+      }
+      void clear_all() {
+        for (auto & entry : entries) {
+          entry.vals_1   .clear();
+          entry.vals_pnts.clear();
+        }
+      }
+    };
+
+
+
     // This holds information about an individual turbine in the simulation (there can be multiple turbines)
     struct Turbine {
       bool                    active;             // Whether this turbine affects this MPI task
@@ -192,11 +243,7 @@ namespace modules {
       real                    rot_angle;          // Rotation angle in radians
       real                    pitch;              // blade pitch angle in radians
       core::ParallelComm      par_comm;           // MPI communicator for this turbine
-      std::vector<realHost2d> force_axial_trace;  // Time trace axial force along radius for all blades
-      std::vector<realHost2d> force_tang_trace;   // Time trace tangental force along radius for all blades
-      std::vector<realHost2d> inflow_axial_trace; // Time trace axial inflow speed along radius for all blades
-      std::vector<realHost2d> inflow_tang_trace;  // Time trace tangential inflow speed along radius for all blades
-      std::vector<real>       power_trace;  
+      Traces                  traces;             // 
     };
 
 
@@ -217,8 +264,9 @@ namespace modules {
         auto dx        = coupler.get_dx();     // Get the grid spacing in the x-direction
         auto dy        = coupler.get_dy();     // Get the grid spacing in the y-direction
         auto eps_fixed = coupler.get_option<real>("turbine_eps_fixed",-1);
+        auto min_eps   = coupler.get_option<real>("turbine_min_eps",2*dx);
         real max_chord = yakl::intrinsics::maxval(ref_turbine.host_foil_chord);
-        real max_eps   = eps_fixed > 0 ? eps_fixed : std::max( max_chord/2 , 2*dx );
+        real max_eps   = eps_fixed > 0 ? eps_fixed : std::max( max_chord/2 , min_eps );
         // bounds of this MPI task's domain
         real dom_x1  = (i_beg+0 )*dx;
         real dom_x2  = (i_beg+nx)*dx;
@@ -239,7 +287,7 @@ namespace modules {
         loc.base_loc_x  = base_loc_x;
         loc.base_loc_y  = base_loc_y;
         loc.rot_angle   = 0;
-        loc.pitch       = 0;
+        loc.pitch       = std::max(coupler.get_option<real>("turbine_pitch_fixed",-1),(real)0);
         loc.par_comm.create( active , coupler.get_parallel_comm().get_mpi_comm() );
         turbines.push_back(loc);
       }
@@ -310,6 +358,21 @@ namespace modules {
         auto y_locs = coupler.get_option<std::vector<real>>("turbine_y_locs");
         for (int iturb = 0; iturb < x_locs.size(); iturb++) {
           turbine_group.add_turbine( coupler , x_locs.at(iturb) , y_locs.at(iturb) , ref_turbine );
+          turbine_group.turbines.at(iturb).traces.register_entry( "inflow_axial" , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "inflow_tang"  , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "force_axial"  , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "force_tang"   , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "U_rel_tang"   , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "W"            , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "phi"          , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "alpha"        , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "Cl"           , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "Cd"           , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "Cn"           , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "Ct"           , true  );
+          turbine_group.turbines.at(iturb).traces.register_entry( "power"        , false );
+          turbine_group.turbines.at(iturb).traces.register_entry( "omega"        , false );
+          turbine_group.turbines.at(iturb).traces.register_entry( "pitch"        , false );
         }
       }
       trace_size = 0;  // Initialize trace size to zero
@@ -328,56 +391,48 @@ namespace modules {
           nc.create_dim( "nblades" , ref_turbine.B );
           nc.create_dim( "nrad"    , nrad          );
           nc.create_var<real>( std::string("radial_points") , {"nrad"} );
-          // Add a trace variable for each turbine for power, and inflow wind speed
+          // Add trace variables for each turbine
           for (int iturb=0; iturb < turbine_group.turbines.size(); iturb++) {
-            std::string turb_str = std::to_string(iturb);
-            nc.create_var<real>( std::string("force_axial_" )+turb_str , {"ndt","nblades","nrad"} );
-            nc.create_var<real>( std::string("force_tang_"  )+turb_str , {"ndt","nblades","nrad"} );
-            nc.create_var<real>( std::string("inflow_axial_")+turb_str , {"ndt","nblades","nrad"} );
-            nc.create_var<real>( std::string("inflow_tang_" )+turb_str , {"ndt","nblades","nrad"} );
-            nc.create_var<real>( std::string("power_"       )+turb_str , {"ndt"                 } );
+            auto &turbine = turbine_group.turbines.at(iturb); // Grab a reference to this turbine for convenience
+            for (const auto & entry : turbine.traces.entries) {
+              if ( entry.dims_pnts ) {
+                nc.create_var<real>( entry.name+std::to_string(iturb) , {"ndt","nblades","nrad"} );
+              } else {
+                nc.create_var<real>( entry.name+std::to_string(iturb) , {"ndt"                 } );
+              }
+            }
           }
           nc.enddef();  // Exit define mode to write data
           nc.begin_indep_data();  // Begin independent data section for writing from only the owning MPI task
-          if (coupler.is_mainproc()) {
-            nc.write( ref_turbine.host_rad_locs , std::string("radial_points") );
-          }
+          if (coupler.is_mainproc()) { nc.write( ref_turbine.host_rad_locs , std::string("radial_points") ); }
           for (int iturb=0; iturb < turbine_group.turbines.size(); iturb++) {  // Loop over all turbines
             auto &turbine = turbine_group.turbines.at(iturb); // Grab a reference to this turbine for convenience
             // Only write this data from the MPI task that contains the base location
             if (turbine.base_loc_x >= i_beg*dx && turbine.base_loc_x < (i_beg+nx)*dx &&
                 turbine.base_loc_y >= j_beg*dy && turbine.base_loc_y < (j_beg+ny)*dy ) {
-              realHost3d force_axial_arr ("force_axial_arr" ,trace_size,ref_turbine.B,nrad);
-              realHost3d force_tang_arr  ("force_tang_arr"  ,trace_size,ref_turbine.B,nrad);
-              realHost3d inflow_axial_arr("inflow_axial_arr",trace_size,ref_turbine.B,nrad);
-              realHost3d inflow_tang_arr ("inflow_tang_arr" ,trace_size,ref_turbine.B,nrad);
-              realHost1d power_arr       ("power_arr"       ,trace_size                   );
-              // Load data from std:;vector to yakl::Array for writing
-              for (int i1=0; i1 < trace_size; i1++) {
-                for (int i2=0; i2 < ref_turbine.B; i2++) {
-                  for (int i3=0; i3 < nrad; i3++) {
-                    force_axial_arr (i1,i2,i3) = turbine.force_axial_trace .at(i1)(i2,i3);
-                    force_tang_arr  (i1,i2,i3) = turbine.force_tang_trace  .at(i1)(i2,i3);
-                    inflow_axial_arr(i1,i2,i3) = turbine.inflow_axial_trace.at(i1)(i2,i3);
-                    inflow_tang_arr (i1,i2,i3) = turbine.inflow_tang_trace .at(i1)(i2,i3);
+              for (const auto & entry : turbine.traces.entries) {
+                if ( entry.dims_pnts ) {
+                  auto data = turbine.traces.get_pnts(entry.name);
+                  realHost3d arr("arr",trace_size,ref_turbine.B,nrad);
+                  for (int i1=0; i1 < trace_size; i1++) {
+                    for (int i2=0; i2 < ref_turbine.B; i2++) {
+                      for (int i3=0; i3 < nrad; i3++) {
+                        arr(i1,i2,i3) = data.at(i1)(i2,i3);
+                      }
+                    }
                   }
+                  nc.write( arr , entry.name+std::to_string(iturb) );
+                } else {
+                  auto data = turbine.traces.get_1(entry.name);
+                  realHost1d arr("arr",trace_size);
+                  for (int i1=0; i1 < trace_size; i1++) { arr(i1) = data.at(i1); }
+                  nc.write( arr , entry.name+std::to_string(iturb) );
                 }
-                power_arr(i1) = turbine.power_trace.at(i1);
               }
-              // Write the data arrays to file
-              nc.write( force_axial_arr  , std::string("force_axial_" )+std::to_string(iturb) );
-              nc.write( force_tang_arr   , std::string("force_tang_"  )+std::to_string(iturb) );
-              nc.write( inflow_axial_arr , std::string("inflow_axial_")+std::to_string(iturb) );
-              nc.write( inflow_tang_arr  , std::string("inflow_tang_" )+std::to_string(iturb) );
-              nc.write( power_arr        , std::string("power_"       )+std::to_string(iturb) );
             }
             coupler.get_parallel_comm().barrier();
             // Clear the trace data after writing
-            turbine.force_axial_trace .clear();
-            turbine.force_tang_trace  .clear();
-            turbine.inflow_axial_trace.clear();
-            turbine.inflow_tang_trace .clear();
-            turbine.power_trace       .clear();
+            turbine.traces.clear_all();
           }
           nc.end_indep_data();  // End independent data section
         }
@@ -413,7 +468,6 @@ namespace modules {
       auto R_hub             = ref_turbine.R_hub            ;
       auto H                 = ref_turbine.H                ;
       auto overhang          = ref_turbine.overhang         ;
-      auto hub_radius        = ref_turbine.hub_radius       ;
       auto hub_flange_height = ref_turbine.hub_flange_height;
       auto tower_base_rad    = ref_turbine.tower_base_rad   ;
       auto tower_top_rad     = ref_turbine.tower_top_rad    ;
@@ -436,6 +490,8 @@ namespace modules {
       auto max_power         = coupler.get_option<real>("turbine_max_power");
       auto omega             = coupler.get_option<real>("turbine_omega_rad_sec",-999);
       auto eps_fixed         = coupler.get_option<real>("turbine_eps_fixed",-1);
+      auto min_eps           = coupler.get_option<real>("turbine_min_eps",2*dx);
+      auto decay_beg         = coupler.get_option<real>("turbine_tip_decay_beg",0.95);
       int  nrad              = host_rad_locs.size();
       real drad              = R / nrad;
 
@@ -479,7 +535,7 @@ namespace modules {
           real3d inflow_props("inflow_props",3,B,nrad);
           inflow_props = 0;
           real max_chord = yakl::intrinsics::maxval(host_foil_chord);
-          real max_eps   = eps_fixed > 0 ? eps_fixed : std::max( max_chord/2 , 2*dx );
+          real max_eps   = eps_fixed > 0 ? eps_fixed : std::max( max_chord/2 , min_eps );
           int num_z = (int) std::ceil(max_eps/dz*4);
           int num_y = (int) std::ceil(max_eps/dy*4);
           int num_x = (int) std::ceil(max_eps/dx*4);
@@ -511,9 +567,9 @@ namespace modules {
             if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
               // Get chord length and epsilon
               real c     = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
-              real eps_x = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c , (real)(dx) );
-              real eps_y = eps_fixed > 0 ? eps_fixed : std::max( 0.4*c , (real)(dx) );
-              real eps_z = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c , (real)(dx) );
+              real eps_x = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c  , min_eps );
+              real eps_y = eps_fixed > 0 ? eps_fixed : std::max( 0.4*c  , min_eps );
+              real eps_z = eps_fixed > 0 ? eps_fixed : std::max( drad*2 , min_eps );
               real proj  = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
                                         (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
                                         (      tk)*dz-z0 , (      tk+1)*dz-z0 ,
@@ -536,14 +592,22 @@ namespace modules {
           realHost2d inflow_tang ("inflow_tang" ,B,nrad);
           inflow_props_host.slice<2>(ID_AXIAL,0,0).deep_copy_to(inflow_axial);
           inflow_props_host.slice<2>(ID_TANG ,0,0).deep_copy_to(inflow_tang );
-          turbine.inflow_axial_trace.push_back(inflow_axial);
-          turbine.inflow_tang_trace .push_back(inflow_tang );
+          turbine.traces.get_pnts("inflow_axial").push_back(inflow_axial);
+          turbine.traces.get_pnts("inflow_tang" ).push_back(inflow_tang );
           /////////////////////////////////////////////////////////////////////////////
           // Compute thrust and torque at each blade point using blade element theory
           /////////////////////////////////////////////////////////////////////////////
           int        nseg = host_foil_id.size();
           realHost2d host_force_axial("force_axial",B,nrad);
           realHost2d host_force_tang ("force_tang" ,B,nrad);
+          realHost2d host_U_rel_tang ("U_rel_tang" ,B,nrad);
+          realHost2d host_W          ("W"          ,B,nrad);
+          realHost2d host_phi        ("phi"        ,B,nrad);
+          realHost2d host_alpha      ("alpha"      ,B,nrad);
+          realHost2d host_Cl         ("Cl"         ,B,nrad);
+          realHost2d host_Cd         ("Cd"         ,B,nrad);
+          realHost2d host_Cn         ("Cn"         ,B,nrad);
+          realHost2d host_Ct         ("Ct"         ,B,nrad);
           real       total_power = 0;
           for (int iblade = 0; iblade < B; iblade++) {
             for (int irad = 0; irad < nrad; irad++) {
@@ -595,34 +659,54 @@ namespace modules {
               real W         = std::sqrt(U_ax*U_ax + U_tang*U_tang);
               real phi       = std::atan2( U_ax , U_tang );
               real alpha     = phi - theta;
-              real Cl1       = linear_interp( ref_alpha1 , ref_clift1 , alpha/M_PI*180. ,true ); // Coefficient of lift
-              real Cd1       = linear_interp( ref_alpha1 , ref_cdrag1 , alpha/M_PI*180. ,true ); // Coefficient of drag
-              real Cl2       = linear_interp( ref_alpha2 , ref_clift2 , alpha/M_PI*180. ,true ); // Coefficient of lift
-              real Cd2       = linear_interp( ref_alpha2 , ref_cdrag2 , alpha/M_PI*180. ,true ); // Coefficient of drag
+              real Cl1       = linear_interp( ref_alpha1 , ref_clift1 , alpha/M_PI*180. ,true );
+              real Cd1       = linear_interp( ref_alpha1 , ref_cdrag1 , alpha/M_PI*180. ,true );
+              real Cl2       = linear_interp( ref_alpha2 , ref_clift2 , alpha/M_PI*180. ,true );
+              real Cd2       = linear_interp( ref_alpha2 , ref_cdrag2 , alpha/M_PI*180. ,true );
               real Cl        = mult1*Cl1 + mult2*Cl2;
               real Cd        = mult1*Cd1 + mult2*Cd2;
               real Cn        = Cl * std::cos(phi) + Cd * std::sin(phi);
               real Ct        = Cl * std::sin(phi) - Cd * std::cos(phi);
               real dT_dr     = 0.5 * inflow_props_host(ID_RHO,iblade,irad) * W*W * chord * Cn;
               real dQ_dr     = 0.5 * inflow_props_host(ID_RHO,iblade,irad) * W*W * chord * Ct * r;
-              real d         = 0.95;
+              real d         = decay_beg;
               real x         = std::clamp(r/R,d,(real)1);
-              real tip_decay = (3*(d+1)*x*x-2*x*x*x- 6*d*x+3*d-1)/(d*d*d-3*d*d+3*d-1);
+              real tip_decay = 1 + (0-1)/(1-d)*(x-d);
               host_force_axial(iblade,irad) = dT_dr*dr              *tip_decay;
               host_force_tang (iblade,irad) = dQ_dr*dr/r            *tip_decay;
+              host_U_rel_tang (iblade,irad) = U_tang;
+              host_W          (iblade,irad) = W;
+              host_phi        (iblade,irad) = phi;
+              host_alpha      (iblade,irad) = alpha;
+              host_Cl         (iblade,irad) = Cl;
+              host_Cd         (iblade,irad) = Cd;
+              host_Cn         (iblade,irad) = Cn;
+              host_Ct         (iblade,irad) = Ct;
               total_power                  += dQ_dr*dr*omega*gen_eff*tip_decay;
             }
           }
-          turbine.power_trace      .push_back(total_power     );
-          turbine.force_axial_trace.push_back(host_force_axial);
-          turbine.force_tang_trace .push_back(host_force_tang );
+          turbine.traces.get_pnts("force_axial").push_back(host_force_axial);
+          turbine.traces.get_pnts("force_tang" ).push_back(host_force_tang );
+          turbine.traces.get_pnts("U_rel_tang" ).push_back(host_U_rel_tang );
+          turbine.traces.get_pnts("W"          ).push_back(host_W          );
+          turbine.traces.get_pnts("phi"        ).push_back(host_phi        );
+          turbine.traces.get_pnts("alpha"      ).push_back(host_alpha      );
+          turbine.traces.get_pnts("Cl"         ).push_back(host_Cl         );
+          turbine.traces.get_pnts("Cd"         ).push_back(host_Cd         );
+          turbine.traces.get_pnts("Cn"         ).push_back(host_Cn         );
+          turbine.traces.get_pnts("Ct"         ).push_back(host_Ct         );
+          turbine.traces.get_1   ("power"      ).push_back(total_power     );
+          turbine.traces.get_1   ("omega"      ).push_back(omega           );
+          turbine.traces.get_1   ("pitch"      ).push_back(turbine.pitch   );
           ////////////////////////////////////////////////////////////////
           // Change blade pitch to reach max power if possible
           ////////////////////////////////////////////////////////////////
           real pitch_rate = 0.1; // radians per second
-          if (total_power > max_power) { turbine.pitch += pitch_rate * dt; }
-          if (total_power < max_power) { turbine.pitch -= pitch_rate * dt; }
-          turbine.pitch = std::max(turbine.pitch,(real)0); // Don't let pitch get negative
+          if (coupler.get_option<real>("turbine_pitch_fixed",-1) < 0) {
+            if (total_power > max_power) { turbine.pitch += pitch_rate * dt; }
+            if (total_power < max_power) { turbine.pitch -= pitch_rate * dt; }
+            turbine.pitch = std::max(turbine.pitch,(real)0); // Don't let pitch get negative
+          }
           ////////////////////////////////////////////////////////////////
           // Apply thrust and torque to the flow for each blade
           ////////////////////////////////////////////////////////////////
@@ -658,9 +742,9 @@ namespace modules {
             int  tk     = k0-num_z+kk;
             if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
               real c       = linear_interp( dev_foil_mid , dev_foil_chord , dev_rad_locs(irad) , true );
-              real eps_x   = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c , (real)(dx) );
-              real eps_y   = eps_fixed > 0 ? eps_fixed : std::max( 0.4*c , (real)(dx) );
-              real eps_z   = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c , (real)(dx) );
+              real eps_x   = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c  , min_eps );
+              real eps_y   = eps_fixed > 0 ? eps_fixed : std::max( 0.4*c  , min_eps );
+              real eps_z   = eps_fixed > 0 ? eps_fixed : std::max( drad*2 , min_eps );
               real proj    = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
                                           (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
                                           (      tk)*dz-z0 , (      tk+1)*dz-z0 ,
