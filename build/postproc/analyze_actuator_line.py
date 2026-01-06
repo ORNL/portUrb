@@ -14,20 +14,42 @@ gen_eff = 0.944
 t_end = 3
 
 for i in range(1,t_end+1) :
-  nc = Dataset(f"{prefix}{i:08d}.nc","r")
-  p  = np.array(nc["power0"][:])
-  pwr = p if i==1 else np.concatenate((pwr,p))
-  t  = np.sum(np.array(nc["force_axial0"][:,:,:]),axis=(1,2))
-  thr = t if i==1 else np.concatenate((thr,t))
+  nc   = Dataset(f"{prefix}{i:08d}.nc","r")
+  p    = np.array(nc["power0"][:])
+  pwr  = p if i==1 else np.concatenate((pwr,p))
+  t    = np.sum(np.array(nc["force_axial0"][:,:,:]),axis=(1,2))
+  thr  = t if i==1 else np.concatenate((thr,t))
+  tmp  = np.mean(np.array(nc["W0"][:,:,:]),axis=(1,2))
+  W    = tmp if i==1 else np.concatenate((W,tmp))
+  tmp  = np.mean(np.array(nc["inflow_axial0"][:,:,:]),axis=(1,2))
+  Uax  = tmp if i==1 else np.concatenate((Uax,tmp))
+  tmp  = np.mean(np.array(nc["inflow_tang0"][:,:,:]),axis=(1,2))
+  Utan = tmp if i==1 else np.concatenate((Utan,tmp))
   if (i == t_end) :
     print( np.mean( np.array(nc["density_dry"][:,:,:])) )
     print( np.mean( p ) )
     print( "C_P: " , np.mean( p/gen_eff/(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V*V) ) )
     print( "C_T: " , np.mean( t        /(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V  ) ) )
 plt.plot(pwr/1e6)
+plt.title("power")
 plt.grid()
 plt.show()
 plt.close()
+# plt.plot(thr/1e6)
+# plt.title("thrust")
+# plt.grid()
+# plt.show()
+# plt.close()
+# plt.plot(Uax)
+# plt.title("axial flow")
+# plt.grid()
+# plt.show()
+# plt.close()
+# plt.plot(Utan)
+# plt.title("tangential flow")
+# plt.grid()
+# plt.show()
+# plt.close()
 
 x    = np.array(nc["x"             ][:])
 y    = np.array(nc["y"             ][:])
@@ -40,12 +62,36 @@ xlen = x[-1]+dx/2
 ylen = y[-1]+dy/2
 zlen = z[-1]+dz/2
 
-plt.plot(np.array(nc["pitch0"][:])/np.pi*180)
-plt.ylabel("pitch angle (deg)")
+# plt.plot(np.array(nc["pitch0"][:])/np.pi*180)
+# plt.ylabel("pitch angle (deg)")
+# plt.show()
+# plt.close()
+
+fig,ax = plt.subplots(4,3,figsize=(12,12))
+axlist = ax.flatten()
+i = 0
+for var in ["Cl","Cd","Cn","Ct","alpha","phi","W","U_rel_tang","force_axial","force_tang","inflow_axial","inflow_tang"] :
+  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,0,:]),label="blade 0")
+  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,1,:]),label="blade 1")
+  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,2,:]),label="blade 2")
+  axlist[i].set_title(f"{var} instantaneous")
+  axlist[i].legend()
+  i += 1
+fig.tight_layout()
 plt.show()
 plt.close()
 
-plt.plot(rad,np.mean(np.array(nc["inflow_tang0"][:,:,:]),axis=(0,1)))
+fig,ax = plt.subplots(4,3,figsize=(12,12))
+axlist = ax.flatten()
+i = 0
+for var in ["Cl","Cd","Cn","Ct","alpha","phi","W","U_rel_tang","force_axial","force_tang","inflow_axial","inflow_tang"] :
+  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,0,:]),axis=(0)),label="blade 0")
+  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,1,:]),axis=(0)),label="blade 1")
+  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,2,:]),axis=(0)),label="blade 2")
+  axlist[i].set_title(f"{var} time_averaged")
+  axlist[i].legend()
+  i += 1
+fig.tight_layout()
 plt.show()
 plt.close()
 
@@ -54,8 +100,8 @@ pub_r = np.array([0.000792915,0.02681361,0.052525142,0.074846782,0.087100587,0.0
 pub_ax = np.array([0.961267269,0.955458606,0.951550847,0.947605692,0.9432949,0.938925937,0.932755791,0.926837021,0.919985458,0.913264776,0.90647346,0.899889893,0.892743326,0.878880233,0.864863405,0.836993871,0.809454659,0.796212735,0.784464527,0.776000831,0.773815311,0.776472421,0.779364288,0.780390568,0.778703646,0.773871403,0.767938091,0.761221564,0.754457256,0.748661057,0.74316194,0.737374052,0.730547419,0.723785187,0.717320037,0.711976732,0.708852187,0.708613275,0.709953256,0.710815415,0.709541913,0.706674977,0.702237457,0.697710606,0.693453828,0.693883868,0.702900177,0.715095045,0.728476161,0.742652955,0.756877532,0.770717773,0.785534434,0.799860808,0.813786226,0.829012153,0.843008206,0.8518043])
 
 nc = Dataset(f"{prefix}{t_end:08d}.nc","r")
-inflow_axial = np.array(nc["inflow_axial0"][:,:,:])
-plt.plot(rad/R,np.mean(inflow_axial,axis=(0,1))/V,label=f"portUrb")
+inflow_axial = np.array(nc["inflow_axial0"][-1,:,:])
+plt.plot(rad/R,np.mean(inflow_axial,axis=(0))/V,label=f"portUrb")
 plt.plot(pub_r,pub_ax,label=f"openFOAM")
 plt.xlabel("r/R")
 plt.ylabel(r"$u_{axial}/u_{\infty}$")

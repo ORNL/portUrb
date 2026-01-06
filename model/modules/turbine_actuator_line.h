@@ -532,14 +532,15 @@ namespace modules {
           int constexpr ID_AXIAL = 0;  // Axial inflow wind speed
           int constexpr ID_TANG  = 1;  // Tangential inflow wind speed
           int constexpr ID_RHO   = 2;  // Density
-          real3d inflow_props("inflow_props",3,B,nrad);
+          int constexpr ID_PROJ  = 3;  // Projection integral
+          real3d inflow_props("inflow_props",4,B,nrad);
           inflow_props = 0;
           real max_chord = yakl::intrinsics::maxval(host_foil_chord);
           real max_eps   = eps_fixed > 0 ? eps_fixed : std::max( max_chord/2 , min_eps );
           int num_z = (int) std::ceil(max_eps/dz*4);
           int num_y = (int) std::ceil(max_eps/dy*4);
           int num_x = (int) std::ceil(max_eps/dx*4);
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z,2*num_y,2*num_x) ,
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z+1,2*num_y+1,2*num_x+1) ,
                                             KOKKOS_LAMBDA (int iblade, int irad, int kk, int jj, int ii) {
             // Get center point for this Gaussian point projection
             real x      = 0;
@@ -584,6 +585,7 @@ namespace modules {
               Kokkos::atomic_add( &(inflow_props(ID_AXIAL,iblade,irad)) , proj*axial);
               Kokkos::atomic_add( &(inflow_props(ID_TANG ,iblade,irad)) , proj*tang );
               Kokkos::atomic_add( &(inflow_props(ID_RHO  ,iblade,irad)) , proj*rho  );
+              Kokkos::atomic_add( &(inflow_props(ID_PROJ ,iblade,irad)) , proj      );
             }
           });
           inflow_props = turbine.par_comm.all_reduce( inflow_props , MPI_SUM , "sum1" );
@@ -611,6 +613,7 @@ namespace modules {
           real       total_power = 0;
           for (int iblade = 0; iblade < B; iblade++) {
             for (int irad = 0; irad < nrad; irad++) {
+              if ( std::abs(1-inflow_props_host(ID_PROJ,iblade,irad)) >= 1.e-6 ) Kokkos::abort("ERROR: proj doesn't sum to one");
               real r     = host_rad_locs(irad);
               real dr    = (R-R_hub)/nrad;
               real twist = linear_interp(host_foil_mid,host_foil_twist,r,true);
@@ -715,7 +718,7 @@ namespace modules {
           num_z = (int) std::ceil(max_eps/dz*4);
           num_y = (int) std::ceil(max_eps/dy*4);
           num_x = (int) std::ceil(max_eps/dx*4);
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z,2*num_y,2*num_x) ,
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z+1,2*num_y+1,2*num_x+1) ,
                                             KOKKOS_LAMBDA (int iblade, int irad, int kk, int jj, int ii) {
             // Get center point for this Gaussian point projection
             real x      = 0;

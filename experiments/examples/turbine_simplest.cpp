@@ -10,7 +10,10 @@
 #include "column_nudging.h"
 
 // Research on Aerodynamic Characteristics of Three Offshore Wind Turbines Based on Large Eddy Simulation and Actuator Line Model
+// Analyzing scaling effects on offshore wind turbines using CFD
 // https://www.mdpi.com/2077-1312/12/8/1341
+// Compare C_T and C_P over a range of TSR
+// Compare wakes at x/D=3,5,4
 // NREL 5MW
 // U_inf = 11.4
 // omega_rpm = 12.1 and variable
@@ -20,6 +23,32 @@
 // coupler.set_option<real       >( "dycore_max_wind"          , 30           );
 // coupler.set_option<real       >( "dycore_cs"                , 100          );
 
+// Accuracy of State-of-the-Art Actuator-Line Modeling for Wind Turbine Wakes
+// Compare spanwise angle of attack, normal force coefficient, and tangential force coefficient
+// NREL 5MW
+// U_inf = 8
+// omega_rpm = 9.156
+// coupler.set_option<bool       >( "turbine_immerse_material" , false        );
+// coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
+// coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
+
+// A Comparison of Actuator Disk and Actuator Line Wind Turbine Models and Best Practices for Their Use
+// To compare spanwise angle of attack, spanwise axial velocity, wake shape at x/D=1,4, mean hub velocity contours, vorticity contours, and power production, use epsilon=4.2m
+// NREL 5MW
+// U_inf = 8
+// omega_rpm = 9.1552
+// coupler.set_option<bool       >( "turbine_immerse_material" , false        );
+// coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
+// coupler.set_option<real       >( "turbine_eps_fixed"        , 4.2          );
+
+// Study on Actuator Line Modeling of Two NREL 5-MW Wind Turbine Wakes
+// This shows periodic time variability in power production and thrust
+// Not clear yet what rotations rates are used at different inflow speeds.
+// Not clear yet what epsilon values are used
+// NREL 5MW
+// U_inf = variable
+// omega_rpm = variable
+// coupler.set_option<bool       >( "turbine_immerse_material" , false        );
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -78,12 +107,12 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "turbine_inflow_mag"       , U_inf        );
     coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
     coupler.set_option<real       >( "turbine_max_power"        , 5e6          );
-    coupler.set_option<real       >( "turbine_tip_decay_beg"    , 0.9783       );
-    coupler.set_option<real       >( "turbine_min_eps"          , 0.01         );
+    coupler.set_option<real       >( "turbine_tip_decay_beg"    , 0.97         );
+    coupler.set_option<real       >( "turbine_min_eps"          , dx           );
     coupler.set_option<real       >( "turbine_omega_rad_sec"    , omega_rpm*2.*M_PI/60. );
     coupler.set_option<bool       >( "turbine_immerse_material" , false        );
     coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
-    // coupler.set_option<real       >( "turbine_eps_fixed"        , 3.5          );
+    coupler.set_option<real       >( "turbine_eps_fixed"        , 3.5          );
     coupler.set_option<real       >( "dycore_max_wind"          , 30           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
     coupler.set_option<real       >( "dycore_cs"                , 100          );
