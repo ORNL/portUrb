@@ -88,7 +88,6 @@ namespace modules {
       void init( core::Coupler const & coupler ) {
         typedef std::tuple<real,real,real,real,std::string> FOIL_LINE;
         auto dx        = coupler.get_dx();
-        auto eps_fixed = coupler.get_option<real>("turbine_eps_fixed",-1);
         // GET YAML DATA
         YAML::Node node   = YAML::LoadFile(coupler.get_option<std::string>("turbine_file"));
         R                 = node["blade_radius"      ].as<real>();
@@ -273,10 +272,10 @@ namespace modules {
         real dom_y1  = (j_beg+0 )*dy;
         real dom_y2  = (j_beg+ny)*dy;
         // Rectangular bounds of this turbine's potential influence
-        real turb_x1 = base_loc_x-20*max_eps;
-        real turb_x2 = base_loc_x+20*max_eps;
-        real turb_y1 = base_loc_y-20*max_eps;
-        real turb_y2 = base_loc_y+20*max_eps;
+        real turb_x1 = base_loc_x+ref_turbine.overhang-(0.50*ref_turbine.R);
+        real turb_x2 = base_loc_x+ref_turbine.overhang+(0.50*ref_turbine.R);
+        real turb_y1 = base_loc_y                     -(1.50*ref_turbine.R);
+        real turb_y2 = base_loc_y                     +(1.50*ref_turbine.R);
         bool active = !( turb_x1 > dom_x2 || // Turbine's to the right
                          turb_x2 < dom_x1 || // Turbine's to the left
                          turb_y1 > dom_y2 || // Turbine's above
@@ -492,6 +491,7 @@ namespace modules {
       auto eps_fixed         = coupler.get_option<real>("turbine_eps_fixed",-1);
       auto min_eps           = coupler.get_option<real>("turbine_min_eps",2*dx);
       auto decay_beg         = coupler.get_option<real>("turbine_tip_decay_beg",0.95);
+      auto use_decay         = coupler.get_option<bool>("turbine_use_tip_decay",false);
       int  nrad              = host_rad_locs.size();
       real drad              = R / nrad;
 
@@ -613,7 +613,12 @@ namespace modules {
           real       total_power = 0;
           for (int iblade = 0; iblade < B; iblade++) {
             for (int irad = 0; irad < nrad; irad++) {
-              if ( std::abs(1-inflow_props_host(ID_PROJ,iblade,irad)) >= 1.e-6 ) Kokkos::abort("ERROR: proj doesn't sum to one");
+              if ( std::abs(1-inflow_props_host(ID_PROJ,iblade,irad)) >= 1.e-6 ) {
+                std::cout << "iblade,irad,1-proj: " << iblade << " , "
+                                                    << irad   << " , "
+                                                    << std::abs(1-inflow_props_host(ID_PROJ,iblade,irad)) << std::endl;
+                Kokkos::abort("ERROR: proj doesn't sum to one");
+              }
               real r     = host_rad_locs(irad);
               real dr    = (R-R_hub)/nrad;
               real twist = linear_interp(host_foil_mid,host_foil_twist,r,true);
@@ -674,7 +679,7 @@ namespace modules {
               real dQ_dr     = 0.5 * inflow_props_host(ID_RHO,iblade,irad) * W*W * chord * Ct * r;
               real d         = decay_beg;
               real x         = std::clamp(r/R,d,(real)1);
-              real tip_decay = 1 + (0-1)/(1-d)*(x-d);
+              real tip_decay = use_decay ? 1 + (0-1)/(1-d)*(x-d) : 1;
               host_force_axial(iblade,irad) = dT_dr*dr              *tip_decay;
               host_force_tang (iblade,irad) = dQ_dr*dr/r            *tip_decay;
               host_U_rel_tang (iblade,irad) = U_tang;

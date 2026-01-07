@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cmap import Colormap
 
-prefix = "fu_2024_tsr_8_"
+prefix = "fu_2024_tsr_7_"
 D = 126
 R = 63
 H = 90
@@ -27,7 +27,6 @@ for i in range(1,t_end+1) :
   Utan = tmp if i==1 else np.concatenate((Utan,tmp))
   if (i == t_end) :
     print( np.mean( np.array(nc["density_dry"][:,:,:])) )
-    print( np.mean( p ) )
     print( "C_P: " , np.mean( p/gen_eff/(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V*V) ) )
     print( "C_T: " , np.mean( t        /(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V  ) ) )
 plt.plot(pwr/1e6)

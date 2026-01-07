@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
     core::Coupler coupler;
 
     real U_inf     = 11.4;
-    real tsr       = 8;
+    real tsr       = 7;
     real omega_rpm = tsr*U_inf/63./(2.*M_PI)*60.;
 
     real dx = 1;
@@ -107,8 +107,9 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "turbine_inflow_mag"       , U_inf        );
     coupler.set_option<real       >( "turbine_gen_eff"          , 0.944        );
     coupler.set_option<real       >( "turbine_max_power"        , 5e6          );
+    coupler.set_option<bool       >( "turbine_use_tip_decay"    , false        );
     coupler.set_option<real       >( "turbine_tip_decay_beg"    , 0.97         );
-    coupler.set_option<real       >( "turbine_min_eps"          , dx           );
+    coupler.set_option<real       >( "turbine_min_eps"          , 2*dx         );
     coupler.set_option<real       >( "turbine_omega_rad_sec"    , omega_rpm*2.*M_PI/60. );
     coupler.set_option<bool       >( "turbine_immerse_material" , false        );
     coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
