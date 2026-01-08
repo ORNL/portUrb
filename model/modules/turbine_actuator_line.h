@@ -6,26 +6,24 @@
 #include "coupler.h"
 
 namespace YAML {
-  template<> struct convert<std::tuple<real,real,real,real,std::string>> {
-    static Node encode(const std::tuple<real,real,real,real,std::string>& rhs) {
+  template<> struct convert<std::tuple<real,real,real,std::string>> {
+    static Node encode(const std::tuple<real,real,real,std::string>& rhs) {
       Node node;
       node.push_back(std::get<0>(rhs));
       node.push_back(std::get<1>(rhs));
       node.push_back(std::get<2>(rhs));
       node.push_back(std::get<3>(rhs));
-      node.push_back(std::get<4>(rhs));
       return node;
     }
 
-    static bool decode(const Node& node, std::tuple<real,real,real,real,std::string>& rhs) {
-      if (!node.IsSequence() || node.size() != 5) {
+    static bool decode(const Node& node, std::tuple<real,real,real,std::string>& rhs) {
+      if (!node.IsSequence() || node.size() != 4) {
         return false;
       }
-      rhs = std::tuple<real,real,real,real,std::string>(node[0].as<real>(),
-                                                        node[1].as<real>(),
-                                                        node[2].as<real>(),
-                                                        node[3].as<real>(),
-                                                        node[4].as<std::string>());
+      rhs = std::tuple<real,real,real,std::string>(node[0].as<real>(),
+                                                   node[1].as<real>(),
+                                                   node[2].as<real>(),
+                                                   node[3].as<std::string>());
       return true;
     }
   };
@@ -59,7 +57,6 @@ namespace modules {
       real           shaft_tilt       ; // Shaft tilt in radians
       realHost1d     host_rad_locs    ;
       realHost1d     host_foil_mid    ;
-      realHost1d     host_foil_len    ;
       realHost1d     host_foil_twist  ;
       realHost1d     host_foil_chord  ;
       realHost1d     host_foil_id     ;
@@ -73,7 +70,6 @@ namespace modules {
       realHost1d     host_rwt_rot     ;
       real1d         dev_rad_locs     ;
       real1d         dev_foil_mid     ;
-      real1d         dev_foil_len     ;
       real1d         dev_foil_twist   ;
       real1d         dev_foil_chord   ;
       real1d         dev_foil_id      ;
@@ -86,7 +82,7 @@ namespace modules {
       real1d         dev_rwt_pwr_mw   ;
       real1d         dev_rwt_rot      ;
       void init( core::Coupler const & coupler ) {
-        typedef std::tuple<real,real,real,real,std::string> FOIL_LINE;
+        typedef std::tuple<real,real,real,std::string> FOIL_LINE;
         auto dx        = coupler.get_dx();
         // GET YAML DATA
         YAML::Node node   = YAML::LoadFile(coupler.get_option<std::string>("turbine_file"));
@@ -114,18 +110,16 @@ namespace modules {
         int nseg  = foil_summary.size();
         int nfoil = foil_names.size();
         host_foil_mid   = realHost1d("foil_mid"  ,nseg);
-        host_foil_len   = realHost1d("foil_len"  ,nseg);
         host_foil_twist = realHost1d("foil_twist",nseg);
         host_foil_chord = realHost1d("foil_chord",nseg);
         host_foil_id    = realHost1d("foil_id"   ,nseg);
         for (int iseg=0; iseg < nseg ; iseg++) {
           host_foil_mid  (iseg) = std::get<0>(foil_summary.at(iseg));
           host_foil_twist(iseg) = std::get<1>(foil_summary.at(iseg))/180.*M_PI;
-          host_foil_len  (iseg) = std::get<2>(foil_summary.at(iseg));
-          host_foil_chord(iseg) = std::get<3>(foil_summary.at(iseg));
+          host_foil_chord(iseg) = std::get<2>(foil_summary.at(iseg));
           int id = -1;
           for (int ifoil = 0; ifoil < nfoil; ifoil++) {
-            if (std::get<4>(foil_summary.at(iseg)) == foil_names.at(ifoil)) { id = ifoil; break; }
+            if (std::get<3>(foil_summary.at(iseg)) == foil_names.at(ifoil)) { id = ifoil; break; }
           }
           host_foil_id   (iseg) = id;
         }
@@ -163,7 +157,6 @@ namespace modules {
         // CREATE DEVICE COPIES
         dev_rad_locs   = host_rad_locs  .createDeviceCopy();
         dev_foil_mid   = host_foil_mid  .createDeviceCopy();
-        dev_foil_len   = host_foil_len  .createDeviceCopy();
         dev_foil_twist = host_foil_twist.createDeviceCopy();
         dev_foil_chord = host_foil_chord.createDeviceCopy();
         dev_foil_id    = host_foil_id   .createDeviceCopy();

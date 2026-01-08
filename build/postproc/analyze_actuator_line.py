@@ -3,15 +3,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cmap import Colormap
 
-prefix = "fu_2024_tsr_7_"
+prefix = "jha2013_2m_"
 D = 126
 R = 63
 H = 90
 R_hub = 1.5
-V = 11.4
+# V = 11.4
+V = 8
 gen_eff = 0.944
 
-t_end = 3
+t_end = 2
 
 for i in range(1,t_end+1) :
   nc   = Dataset(f"{prefix}{i:08d}.nc","r")
@@ -34,10 +35,10 @@ plt.title("power")
 plt.grid()
 plt.show()
 plt.close()
-# plt.plot(thr/1e6)
-# plt.title("thrust")
-# plt.grid()
-# plt.show()
+plt.plot(thr/1e6)
+plt.title("thrust")
+plt.grid()
+plt.show()
 # plt.close()
 # plt.plot(Uax)
 # plt.title("axial flow")
@@ -70,9 +71,13 @@ fig,ax = plt.subplots(4,3,figsize=(12,12))
 axlist = ax.flatten()
 i = 0
 for var in ["Cl","Cd","Cn","Ct","alpha","phi","W","U_rel_tang","force_axial","force_tang","inflow_axial","inflow_tang"] :
-  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,0,:]),label="blade 0")
-  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,1,:]),label="blade 1")
-  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,2,:]),label="blade 2")
+  mult = 180/np.pi  if (var=="alpha" or var=="phi")  else  1
+  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,0,:])*mult,label="blade 0")
+  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,1,:])*mult,label="blade 1")
+  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,2,:])*mult,label="blade 2")
+  axlist[i].grid(True)
+  if var == "alpha" :
+    axlist[i].set_ylim(0,25)
   axlist[i].set_title(f"{var} instantaneous")
   axlist[i].legend()
   i += 1
@@ -84,9 +89,13 @@ fig,ax = plt.subplots(4,3,figsize=(12,12))
 axlist = ax.flatten()
 i = 0
 for var in ["Cl","Cd","Cn","Ct","alpha","phi","W","U_rel_tang","force_axial","force_tang","inflow_axial","inflow_tang"] :
-  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,0,:]),axis=(0)),label="blade 0")
-  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,1,:]),axis=(0)),label="blade 1")
-  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,2,:]),axis=(0)),label="blade 2")
+  mult = 180/np.pi  if (var=="alpha" or var=="phi")  else  1
+  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,0,:]),axis=(0))*mult,label="blade 0")
+  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,1,:]),axis=(0))*mult,label="blade 1")
+  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,2,:]),axis=(0))*mult,label="blade 2")
+  axlist[i].grid(True)
+  if var == "alpha" :
+    axlist[i].set_ylim(0,25)
   axlist[i].set_title(f"{var} time_averaged")
   axlist[i].legend()
   i += 1

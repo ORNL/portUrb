@@ -23,15 +23,6 @@
 // coupler.set_option<real       >( "dycore_max_wind"          , 30           );
 // coupler.set_option<real       >( "dycore_cs"                , 100          );
 
-// Accuracy of State-of-the-Art Actuator-Line Modeling for Wind Turbine Wakes
-// Compare spanwise angle of attack, normal force coefficient, and tangential force coefficient
-// NREL 5MW
-// U_inf = 8
-// omega_rpm = 9.156
-// coupler.set_option<bool       >( "turbine_immerse_material" , false        );
-// coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
-// coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
-
 // A Comparison of Actuator Disk and Actuator Line Wind Turbine Models and Best Practices for Their Use
 // To compare spanwise angle of attack, spanwise axial velocity, wake shape at x/D=1,4, mean hub velocity contours, vorticity contours, and power production, use epsilon=4.2m
 // NREL 5MW
@@ -50,6 +41,16 @@
 // omega_rpm = variable
 // coupler.set_option<bool       >( "turbine_immerse_material" , false        );
 
+// Accuracy of State-of-the-Art Actuator-Line Modeling for Wind Turbine Wakes
+// Jha et al 2013
+// Compare spanwise angle of attack, normal force coefficient, and tangential force coefficient
+// NREL 5MW
+// U_inf = 8
+// omega_rpm = 9.156
+// coupler.set_option<bool       >( "turbine_immerse_material" , false        );
+// coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
+// coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
+
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
   Kokkos::initialize();
@@ -60,9 +61,12 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
 
-    real U_inf     = 11.4;
-    real tsr       = 7;
-    real omega_rpm = tsr*U_inf/63./(2.*M_PI)*60.;
+    // real U_inf     = 11.4;
+    // real tsr       = 8;
+    // real omega_rpm = tsr*U_inf/63./(2.*M_PI)*60.;
+
+    real U_inf     = 8;
+    real omega_rpm = 9.156;
 
     real dx = 1;
     coupler.set_option<bool>("turbine_orig_C_T",true);
@@ -83,7 +87,7 @@ int main(int argc, char** argv) {
     std::string init_data    = "constant";
     real        out_freq     = 30.; // /omega_rpm*10;
     real        inform_freq  = 1.0;
-    std::string out_prefix   = std::string("fu_2024_tsr_")+std::to_string((int)tsr);
+    std::string out_prefix   = std::string("jha2013");
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
@@ -109,11 +113,11 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "turbine_max_power"        , 5e6          );
     coupler.set_option<bool       >( "turbine_use_tip_decay"    , false        );
     coupler.set_option<real       >( "turbine_tip_decay_beg"    , 0.97         );
-    coupler.set_option<real       >( "turbine_min_eps"          , 2*dx         );
+    coupler.set_option<real       >( "turbine_min_eps"          , dx           );
     coupler.set_option<real       >( "turbine_omega_rad_sec"    , omega_rpm*2.*M_PI/60. );
     coupler.set_option<bool       >( "turbine_immerse_material" , false        );
     coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
-    coupler.set_option<real       >( "turbine_eps_fixed"        , 3.5          );
+    coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
     coupler.set_option<real       >( "dycore_max_wind"          , 30           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
     coupler.set_option<real       >( "dycore_cs"                , 100          );
