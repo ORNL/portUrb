@@ -12,7 +12,7 @@ R_hub = 1.5
 V = 8
 gen_eff = 0.944
 
-t_end = 1
+t_end = 10
 
 for i in range(1,t_end+1) :
   nc   = Dataset(f"{prefix}{i:08d}.nc","r")
@@ -28,6 +28,7 @@ for i in range(1,t_end+1) :
   Utan = tmp if i==1 else np.concatenate((Utan,tmp))
   if (i == t_end) :
     print( np.mean( np.array(nc["density_dry"][:,:,:])) )
+    print( np.mean( p ) )
     print( "C_P: " , np.mean( p/gen_eff/(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V*V) ) )
     print( "C_T: " , np.mean( t        /(0.5*np.mean(np.array(nc["density_dry"][:,:,:]))*np.pi*R*R*V*V  ) ) )
 plt.plot(pwr/1e6)
@@ -178,7 +179,7 @@ plt.title("4 turbine diameter downstream")
 plt.xlabel("y/D")
 plt.ylabel(r"$u/u_{\infty}$")
 plt.xlim(-1.5,1.5)
-plt.ylim(0.4,1.1)
+plt.ylim(0.3,1.1)
 plt.legend()
 plt.grid()
 plt.show()
@@ -204,7 +205,7 @@ plt.close()
 
 u = np.array(nc["uvel"][k,j1:j2,i1:i2])
 v = np.array(nc["vvel"][k,j1:j2,i1:i2])
-vort = np.gradient(v, dx, axis=1) - np.gradient(u, dy, axis=0)
+vort = np.gradient(v,dx,axis=1) - np.gradient(u,dy,axis=0)
 
 X,Y = np.meshgrid(x[i1:i2],y[j1:j2])
 plt.contourf(X,Y,np.abs(vort),levels=np.arange(0,0.35,0.35/100),cmap="jet",extend="both")
