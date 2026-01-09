@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cmap import Colormap
 
-prefix = "jha2013_2m_"
+prefix = "martinez2012_"
 D = 126
 R = 63
 H = 90
@@ -12,7 +12,7 @@ R_hub = 1.5
 V = 8
 gen_eff = 0.944
 
-t_end = 2
+t_end = 1
 
 for i in range(1,t_end+1) :
   nc   = Dataset(f"{prefix}{i:08d}.nc","r")
@@ -72,12 +72,12 @@ axlist = ax.flatten()
 i = 0
 for var in ["Cl","Cd","Cn","Ct","alpha","phi","W","U_rel_tang","force_axial","force_tang","inflow_axial","inflow_tang"] :
   mult = 180/np.pi  if (var=="alpha" or var=="phi")  else  1
-  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,0,:])*mult,label="blade 0")
-  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,1,:])*mult,label="blade 1")
-  axlist[i].plot(rad,np.array(nc[f"{var}0"][-1,2,:])*mult,label="blade 2")
+  axlist[i].plot(rad/R,np.array(nc[f"{var}0"][-1,0,:])*mult,label="blade 0")
+  axlist[i].plot(rad/R,np.array(nc[f"{var}0"][-1,1,:])*mult,label="blade 1")
+  axlist[i].plot(rad/R,np.array(nc[f"{var}0"][-1,2,:])*mult,label="blade 2")
   axlist[i].grid(True)
   if var == "alpha" :
-    axlist[i].set_ylim(0,25)
+    axlist[i].set_ylim(0,10)
   axlist[i].set_title(f"{var} instantaneous")
   axlist[i].legend()
   i += 1
@@ -90,12 +90,12 @@ axlist = ax.flatten()
 i = 0
 for var in ["Cl","Cd","Cn","Ct","alpha","phi","W","U_rel_tang","force_axial","force_tang","inflow_axial","inflow_tang"] :
   mult = 180/np.pi  if (var=="alpha" or var=="phi")  else  1
-  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,0,:]),axis=(0))*mult,label="blade 0")
-  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,1,:]),axis=(0))*mult,label="blade 1")
-  axlist[i].plot(rad,np.mean(np.array(nc[f"{var}0"][:,2,:]),axis=(0))*mult,label="blade 2")
+  axlist[i].plot(rad/R,np.mean(np.array(nc[f"{var}0"][:,0,:]),axis=(0))*mult,label="blade 0")
+  axlist[i].plot(rad/R,np.mean(np.array(nc[f"{var}0"][:,1,:]),axis=(0))*mult,label="blade 1")
+  axlist[i].plot(rad/R,np.mean(np.array(nc[f"{var}0"][:,2,:]),axis=(0))*mult,label="blade 2")
   axlist[i].grid(True)
   if var == "alpha" :
-    axlist[i].set_ylim(0,25)
+    axlist[i].set_ylim(0,10)
   axlist[i].set_title(f"{var} time_averaged")
   axlist[i].legend()
   i += 1
@@ -108,8 +108,8 @@ pub_r = np.array([0.000792915,0.02681361,0.052525142,0.074846782,0.087100587,0.0
 pub_ax = np.array([0.961267269,0.955458606,0.951550847,0.947605692,0.9432949,0.938925937,0.932755791,0.926837021,0.919985458,0.913264776,0.90647346,0.899889893,0.892743326,0.878880233,0.864863405,0.836993871,0.809454659,0.796212735,0.784464527,0.776000831,0.773815311,0.776472421,0.779364288,0.780390568,0.778703646,0.773871403,0.767938091,0.761221564,0.754457256,0.748661057,0.74316194,0.737374052,0.730547419,0.723785187,0.717320037,0.711976732,0.708852187,0.708613275,0.709953256,0.710815415,0.709541913,0.706674977,0.702237457,0.697710606,0.693453828,0.693883868,0.702900177,0.715095045,0.728476161,0.742652955,0.756877532,0.770717773,0.785534434,0.799860808,0.813786226,0.829012153,0.843008206,0.8518043])
 
 nc = Dataset(f"{prefix}{t_end:08d}.nc","r")
-inflow_axial = np.array(nc["inflow_axial0"][-1,:,:])
-plt.plot(rad/R,np.mean(inflow_axial,axis=(0))/V,label=f"portUrb")
+inflow_axial = np.array(nc["inflow_axial0"][:,:,:])
+plt.plot(rad/R,np.mean(inflow_axial,axis=(0,1))/V,label=f"portUrb")
 plt.plot(pub_r,pub_ax,label=f"openFOAM")
 plt.xlabel("r/R")
 plt.ylabel(r"$u_{axial}/u_{\infty}$")
@@ -207,7 +207,7 @@ v = np.array(nc["vvel"][k,j1:j2,i1:i2])
 vort = np.gradient(v, dx, axis=1) - np.gradient(u, dy, axis=0)
 
 X,Y = np.meshgrid(x[i1:i2],y[j1:j2])
-plt.contourf(X,Y,np.abs(vort),levels=np.arange(0,1,1/100),cmap="jet",extend="both")
+plt.contourf(X,Y,np.abs(vort),levels=np.arange(0,0.35,0.35/100),cmap="jet",extend="both")
 plt.xlabel("x-location")
 plt.ylabel("y-location")
 # plt.gca().invert_xaxis()
