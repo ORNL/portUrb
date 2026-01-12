@@ -3,16 +3,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 from cmap import Colormap
 
-prefix = "martinez2012_"
+prefix = "fu2024_tsr_4_"
 D = 126
 R = 63
 H = 90
 R_hub = 1.5
-# V = 11.4
-V = 8
+V = 11.4
+# V = 8
 gen_eff = 0.944
 
-t_end = 10
+t_end = 3
 
 for i in range(1,t_end+1) :
   nc   = Dataset(f"{prefix}{i:08d}.nc","r")
