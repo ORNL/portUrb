@@ -29,12 +29,28 @@
 // A Comparison of Actuator Disk and Actuator Line Wind Turbine Models and Best Practices for Their Use
 // To compare spanwise angle of attack, spanwise axial velocity, wake shape at x/D=1,4, mean hub velocity contours, vorticity contours, and power production, use epsilon=4.2m
 // NREL 5MW
+// std::string out_prefix   = std::string("martinez2012");
 // dx = 2.1
 // U_inf = 8
 // omega_rpm = 9.1552
 // coupler.set_option<bool       >( "turbine_immerse_material" , false        );
 // coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
 // coupler.set_option<real       >( "turbine_eps_fixed"        , 4.2          );
+
+// Accuracy of State-of-the-Art Actuator-Line Modeling for Wind Turbine Wakes
+// Jha et al 2013
+// A number of non-standard choices are made, the biggest likely being that "the angle of attack is taken to be equal to the local flow angle"
+//   so I'm going to table this one for now. Angle of attack and normal force coefficient match quite well, but tangential force angle does not unless
+//   I make deep changes to the code. They also don't have a model surface but doubly periodic in z and y dimensions.
+// Compare spanwise angle of attack, normal force coefficient, and tangential force coefficient
+// NREL 5MW
+// std::string out_prefix   = std::string("jha2013");
+// dx = 2
+// U_inf = 8
+// omega_rpm = 9.156
+// coupler.set_option<bool       >( "turbine_immerse_material" , false        );
+// coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
+// coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
 
 // Study on Actuator Line Modeling of Two NREL 5-MW Wind Turbine Wakes
 // This shows periodic time variability in power production and thrust
@@ -44,19 +60,6 @@
 // U_inf = variable
 // omega_rpm = variable
 // coupler.set_option<bool       >( "turbine_immerse_material" , false        );
-
-// Accuracy of State-of-the-Art Actuator-Line Modeling for Wind Turbine Wakes
-// Jha et al 2013
-// A number of non-standard choices are made, the biggest likely being that "the angle of attack is taken to be equal to the local flow angle"
-//   so I'm going to table this one for now. Angle of attack and normal force coefficient match quite well, but tangential force angle does not unless
-//   I make deep changes to the code. They also don't have a model surface but doubly periodic in z and y dimensions.
-// Compare spanwise angle of attack, normal force coefficient, and tangential force coefficient
-// NREL 5MW
-// U_inf = 8
-// omega_rpm = 9.156
-// coupler.set_option<bool       >( "turbine_immerse_material" , false        );
-// coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
-// coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -68,14 +71,14 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
 
-    real U_inf     = 11.4;
-    real tsr       = 4;
-    real omega_rpm = tsr*U_inf/63./(2.*M_PI)*60.;
+    // real U_inf     = 11.4;
+    // real tsr       = 8;
+    // real omega_rpm = tsr*U_inf/63./(2.*M_PI)*60.;
 
-    // real U_inf     = 8;
-    // real omega_rpm = 9.1552;
+    real U_inf     = 8;
+    real omega_rpm = 9.156;
 
-    real dx = 1.75;
+    real dx = 2;
     coupler.set_option<bool>("turbine_orig_C_T",true);
 
     std::string turbine_file = "./inputs/NREL_5MW_126_RWT.yaml";
@@ -83,7 +86,7 @@ int main(int argc, char** argv) {
     if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
     real D = config["blade_radius"].as<real>()*2;
 
-    real        sim_time     = 1201;
+    real        sim_time     = 120*10+1;
     real        xlen         = D*10;
     real        ylen         = D*4;
     real        zlen         = D*4;
@@ -94,7 +97,7 @@ int main(int argc, char** argv) {
     std::string init_data    = "constant";
     real        out_freq     = 120;
     real        inform_freq  = 10.0;
-    std::string out_prefix   = std::string("fu2024_tsr_")+std::to_string((int)tsr);
+    std::string out_prefix   = std::string("jha2013");
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
@@ -124,7 +127,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "turbine_omega_rad_sec"    , omega_rpm*2.*M_PI/60. );
     coupler.set_option<bool       >( "turbine_immerse_material" , false        );
     coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
-    coupler.set_option<real       >( "turbine_eps_fixed"        , 3.5          );
+    coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
     coupler.set_option<real       >( "dycore_max_wind"          , 30           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
     coupler.set_option<real       >( "dycore_cs"                , 100          );
