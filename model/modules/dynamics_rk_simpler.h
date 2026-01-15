@@ -1941,9 +1941,9 @@ namespace modules {
         nc.create_var<real>( "hy_dens_cells"     , {"z_halo"});    // Define hydrostatic density variable
         nc.create_var<real>( "hy_theta_cells"    , {"z_halo"});    // Define hydrostatic potential temperature variable
         nc.create_var<real>( "hy_pressure_cells" , {"z_halo"});    // Define hydrostatic pressure variable
-        nc.create_var<real>( "theta_pert"        , {"z","y","x"}); // Define potential temperature perturbation variable
-        nc.create_var<real>( "pressure_pert"     , {"z","y","x"}); // Define pressure perturbation variable
-        nc.create_var<real>( "density_pert"      , {"z","y","x"}); // Define density perturbation variable
+        // nc.create_var<real>( "theta_pert"        , {"z","y","x"}); // Define potential temperature perturbation variable
+        // nc.create_var<real>( "pressure_pert"     , {"z","y","x"}); // Define pressure perturbation variable
+        // nc.create_var<real>( "density_pert"      , {"z","y","x"}); // Define density perturbation variable
         nc.enddef(); // Exit define mode to write data
         nc.begin_indep_data(); // Enter independent data mode to write 1-D arrays from main task only
         auto &dm = coupler.get_data_manager_readonly(); // Get data manager as read-only
@@ -1952,31 +1952,31 @@ namespace modules {
         if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_theta_cells"   ) , "hy_theta_cells"    );
         if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_pressure_cells") , "hy_pressure_cells" );
         nc.end_indep_data(); // Exit independent data mode to write 3-D perturbation arrays
-        // Allocate state and tracer arrays, and convert coupler data to dynamics format to compute perturbations
-        real4d state  ("state"  ,num_state  ,nz,ny,nx);
-        real4d tracers("tracers",num_tracers,nz,ny,nx);
-        convert_coupler_to_dynamics( coupler , state , tracers );
-        // Define the offset for writing the 3-D perturbation arrays for this MPI rank
-        std::vector<MPI_Offset> start_3d = {0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
-        real3d data("data",nz,ny,nx); // Holds local 3-D perturbation data before writing
-        auto hy_dens_cells = dm.get<real const,1>("hy_dens_cells");
-        // Compute and write perturbation density
-        yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          data(k,j,i) = state(idR,k,j,i) - hy_dens_cells(hs+k);
-        });
-        nc.write_all(data,"density_pert",start_3d);
-        // Compute and write perturbation potential temperature
-        auto hy_theta_cells = dm.get<real const,1>("hy_theta_cells");
-        yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          data(k,j,i) = state(idT,k,j,i) / state(idR,k,j,i) - hy_theta_cells(hs+k);
-        });
-        nc.write_all(data,"theta_pert",start_3d);
-        // Compute and write perturbation pressure
-        auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");
-        yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          data(k,j,i) = C0 * std::pow( state(idT,k,j,i) , gamma ) - hy_pressure_cells(hs+k);
-        });
-        nc.write_all(data,"pressure_pert",start_3d);
+        // // Allocate state and tracer arrays, and convert coupler data to dynamics format to compute perturbations
+        // real4d state  ("state"  ,num_state  ,nz,ny,nx);
+        // real4d tracers("tracers",num_tracers,nz,ny,nx);
+        // convert_coupler_to_dynamics( coupler , state , tracers );
+        // // Define the offset for writing the 3-D perturbation arrays for this MPI rank
+        // std::vector<MPI_Offset> start_3d = {0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
+        // real3d data("data",nz,ny,nx); // Holds local 3-D perturbation data before writing
+        // auto hy_dens_cells = dm.get<real const,1>("hy_dens_cells");
+        // // Compute and write perturbation density
+        // yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        //   data(k,j,i) = state(idR,k,j,i) - hy_dens_cells(hs+k);
+        // });
+        // nc.write_all(data,"density_pert",start_3d);
+        // // Compute and write perturbation potential temperature
+        // auto hy_theta_cells = dm.get<real const,1>("hy_theta_cells");
+        // yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        //   data(k,j,i) = state(idT,k,j,i) / state(idR,k,j,i) - hy_theta_cells(hs+k);
+        // });
+        // nc.write_all(data,"theta_pert",start_3d);
+        // // Compute and write perturbation pressure
+        // auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");
+        // yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        //   data(k,j,i) = C0 * std::pow( state(idT,k,j,i) , gamma ) - hy_pressure_cells(hs+k);
+        // });
+        // nc.write_all(data,"pressure_pert",start_3d);
       } );
 
       // Register a restart module to read in hydrostatic profiles from file

@@ -6,7 +6,7 @@ from cmap import Colormap
 import xarray
 
 workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
-prefix = "ABL_neutral_variable"
+prefix = "ABL_neutral"
 
 def spectra(T,dx = 1) :
   spd  = np.abs( np.fft.rfft(T[0,0,:]) )**2
@@ -130,7 +130,7 @@ freq,spd1 = spectra(mag[kind:kind+1,:,:],dx=dx)
 fig = plt.figure(figsize=(6,3))
 ax = fig.gca()
 ax.plot(freq,spd1,label="Wind Speed spectra")
-ax.plot(freq[1:],2e5*freq[1:]**(-5/3),label=r"$f^{-5/3}$")
+ax.plot(freq[1:],1.2e6*freq[1:]**(-5/3),label=r"$f^{-5/3}$")
 ax.vlines(2*np.pi/(2 *dx),1.e-3,1.e3,linestyle="--",color="red")
 ax.vlines(2*np.pi/(4 *dx),1.e-3,1.e3,linestyle="--",color="red")
 ax.vlines(2*np.pi/(8 *dx),1.e-3,1.e3,linestyle="--",color="red")
@@ -245,16 +245,32 @@ plt.close()
 nc0  = Dataset(f"{workdir}/{prefix}_00000000.nc","r")
 nc8  = Dataset(f"{workdir}/{prefix}_00000016.nc","r")
 nc10 = Dataset(f"{workdir}/{prefix}_00000020.nc","r")
-hs = 5
-u0  = np.mean(np.array(nc0 ["theta_pert"])+np.array(nc0 ["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis],axis=(1,2))
-u8  = np.mean(np.array(nc8 ["theta_pert"])+np.array(nc8 ["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis],axis=(1,2))
-u10 = np.mean(np.array(nc10["theta_pert"])+np.array(nc10["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis],axis=(1,2))
+R_d     = 287.
+cp_d    = 1003.
+R_v     = 461.
+cp_v    = 1859
+p0      = 1.e5
+grav    = 9.81
+cv_d    = cp_d-R_d
+gamma_d = cp_d/cv_d
+kappa_d = R_d/cp_d
+cv_v    = cp_v-R_v
+C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d);
+rho0  = np.array(nc0 ["density_dry"][:,:,:])
+rho8  = np.array(nc8 ["density_dry"][:,:,:])
+rho10 = np.array(nc10["density_dry"][:,:,:])
+T0    = np.array(nc0 ["temperature"][:,:,:])
+T8    = np.array(nc8 ["temperature"][:,:,:])
+T10   = np.array(nc10["temperature"][:,:,:])
+th0   = np.mean(np.pow((rho0 *R_d*T0 )/C0,1./gamma_d)/rho0 ,axis=(1,2))
+th8   = np.mean(np.pow((rho8 *R_d*T8 )/C0,1./gamma_d)/rho8 ,axis=(1,2))
+th10  = np.mean(np.pow((rho10*R_d*T10)/C0,1./gamma_d)/rho10,axis=(1,2))
 z2 = get_ind(z,0.75)
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
-ax.plot(u0 [:z2],z[:z2],color="black",linestyle="--",label="t=0 hr")
-ax.plot(u8 [:z2],z[:z2],color="red",label="t=8 hr")
-ax.plot(u10[:z2],z[:z2],color="blue",label="t=10hr")
+ax.plot(th0 [:z2],z[:z2],color="black",linestyle="--",label="t=0 hr")
+ax.plot(th8 [:z2],z[:z2],color="red",label="t=8 hr")
+ax.plot(th10[:z2],z[:z2],color="blue",label="t=10hr")
 ax.set_xlabel("Potential Temperature (K)")
 ax.set_ylabel("z-location (km)")
 ax.legend(loc="upper left")

@@ -16,12 +16,12 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real dx = 10;
+    real dx = 4;
 
-    real        sim_time    = 3600*1+1;
-    real        xlen        = 4000;
-    real        ylen        = 4000;
-    real        zlen        = 1000;
+    real        sim_time    = 3600*10+1;
+    real        xlen        = 4096;
+    real        ylen        = 4096;
+    real        zlen        = 896;
     int         nx_glob     = (int) std::round(xlen/dx);
     int         ny_glob     = (int) std::round(ylen/dx);
     int         nz          = (int) std::round(zlen/dx);
