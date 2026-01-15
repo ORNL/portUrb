@@ -408,7 +408,8 @@ namespace modules {
             tke_source(k,j,i) += -(grav*rho*km)/(t*Pr_t)*(dt_dz+dth_dz);
           }
           // TKE dissipation
-          tke_source(k,j,i) -= 0.19*rho*std::pow(K,1.5)/std::max(ell,1.e-10);
+          real c_eps = 0.19 + 0.74*ell/delta;
+          tke_source(k,j,i) -= c_eps*rho*std::pow(K,1.5)/std::max(ell,1.e-10);
           // Shear production
           // Compute indices that do not reach into immersed boundaries
           int im1 = immersed(hs+k,hs+j,hs+i-1) > 0 ? i : i-1;
