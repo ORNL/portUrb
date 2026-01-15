@@ -267,7 +267,6 @@ namespace modules {
       enforce_immersed_boundaries( coupler , state , tracers );
 
       // Stage 1
-      coupler.set_option<bool>("dycore_use_weno",false); // Do not use WENO in the first and second stages
       // Compute time derivatives of the state and tracers using a time steyp of dt/3
       compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/3,0,icycle);
       // Apply tendencies for the first stage for state and tracers
@@ -296,7 +295,6 @@ namespace modules {
       });
 
       // Stage 3
-      coupler.set_option<bool>("dycore_use_weno",true); // Use WENO in the last stage
       // Compute time derivatives of the state and tracers using a time step of dt/1
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,2,icycle);
       // Apply tendencies for the third stage for state and tracers
@@ -359,7 +357,6 @@ namespace modules {
       enforce_immersed_boundaries( coupler , state , tracers );
 
       // Stage 1
-      coupler.set_option<bool>("dycore_use_weno",false); // Do not use WENO in the first three stages
       // Compute time derivatives of the state and tracers using a time steyp of dt/4
       compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/4,0,icycle);
       // Apply tendencies for the first stage for state and tracers
@@ -402,7 +399,6 @@ namespace modules {
       });
 
       // Stage 4
-      coupler.set_option<bool>("dycore_use_weno",true); // Use WENO in the last stage
       // Compute time derivatives of the state and tracers using a time step of dt/1
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,3,icycle);
       // Apply tendencies for the fourth stage for state and tracers

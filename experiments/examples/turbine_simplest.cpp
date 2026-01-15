@@ -10,8 +10,9 @@
 #include "column_nudging.h"
 
 // Research on Aerodynamic Characteristics of Three Offshore Wind Turbines Based on Large Eddy Simulation and Actuator Line Model
-// Analyzing scaling effects on offshore wind turbines using CFD
 // Fu et al 2024
+// Analyzing scaling effects on offshore wind turbines using CFD
+// Make and Vaz, 2015
 // https://www.mdpi.com/2077-1312/12/8/1341
 // Compare C_T and C_P over a range of TSR
 // Compare wakes at x/D=3,5,4
@@ -27,6 +28,7 @@
 // coupler.set_option<real       >( "dycore_cs"                , 100          );
 
 // A Comparison of Actuator Disk and Actuator Line Wind Turbine Models and Best Practices for Their Use
+// Martinez et al 2012
 // To compare spanwise angle of attack, spanwise axial velocity, wake shape at x/D=1,4, mean hub velocity contours, vorticity contours, and power production, use epsilon=4.2m
 // NREL 5MW
 // std::string out_prefix   = std::string("martinez2012");

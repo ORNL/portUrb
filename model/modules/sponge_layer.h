@@ -80,5 +80,33 @@ namespace modules {
     });
   }
 
+
+  // Applies a sponge layer to the top of the model domain to force variables toward their horizontal averages
+  //   and force vertical velocity to zero
+  // coupler     : core::Coupler object containing the model state
+  // dt          : Timestep size in seconds
+  // time_scale  : Time scale for sponge layer damping in seconds
+  // top_prop    : Proportion of the domain height to apply the sponge layer over
+  inline void sponge_layer_w( core::Coupler &coupler , real dt , real time_scale , real top_prop ) {
+    using yakl::c::parallel_for;
+    using yakl::c::SimpleBounds;
+    auto nz   = coupler.get_nz  ();    // number of cells in z direction
+    auto ny   = coupler.get_ny  ();    // local number of cells in y direction
+    auto nx   = coupler.get_nx  ();    // local number of cells in x direction
+    auto zlen = coupler.get_zlen();    // domain length in z direction
+    auto zmid = coupler.get_zmid();    // mid-point heights on device (1-D array of size nz)
+    auto &dm  = coupler.get_data_manager_readwrite(); // Get DataManager for read/write access
+    auto dm_w = dm.get<real,3>("wvel"); // Get 3-D w-velocity array from DataManager
+    real z1 = zlen*(1-top_prop);  // bottom height of sponge layer
+    real p  = 2;                  // exponent for sponge layer relaxation profile
+    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      real z = zmid(k);
+      if (z > z1) {
+        real factor = std::pow((z-z1)/(zlen-z1),p) * dt / time_scale;
+        dm_w(k,j,i) = factor*0 + (1-factor)*dm_w(k,j,i);
+      }
+    });
+  }
+
 }
 

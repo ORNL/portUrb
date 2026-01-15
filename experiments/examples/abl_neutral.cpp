@@ -16,18 +16,20 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real        sim_time    = 3600*10+1;
-    int         nx_glob     = 200;
-    int         ny_glob     = 200;
-    int         nz          = 50;
+    real dx = 10;
+
+    real        sim_time    = 3600*1+1;
     real        xlen        = 4000;
     real        ylen        = 4000;
     real        zlen        = 1000;
+    int         nx_glob     = (int) std::round(xlen/dx);
+    int         ny_glob     = (int) std::round(ylen/dx);
+    int         nz          = (int) std::round(zlen/dx);
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 1;
+    int         dyn_cycle   = 2;
     real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_neutral_rss_10";
+    std::string out_prefix  = "ABL_neutral";
     bool        is_restart  = false;
     real        u_g         = 10;
     real        v_g         = 0 ;
@@ -45,7 +47,8 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "enable_gravity"        , true          );
     coupler.set_option<real       >( "dycore_max_wind"       , 15            );
     coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
-    coupler.set_option<real       >( "dycore_cs"             , 10            );
+    coupler.set_option<real       >( "dycore_cs"             , 30            );
+    coupler.set_option<bool       >( "dycore_use_weno"       , false         );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
@@ -92,12 +95,12 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         coupler.track_max_wind();
-        auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
-        auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
-        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,100,0.1);       };
-        auto run_surf_flux = [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);               };
-        auto run_les       = [&] (Coupler &c) { les_closure.apply                (c,dt);               };
-        auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate         (c,dt);               };
+        auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing_indiv(c,dt,lat_g,u_g,v_g); };
+        auto run_dycore    = [&] (Coupler &c) { dycore.time_step                       (c,dt);               };
+        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer_w                (c,dt,1000,0.05);     };
+        auto run_surf_flux = [&] (Coupler &c) { modules::apply_surface_fluxes          (c,dt);               };
+        auto run_les       = [&] (Coupler &c) { les_closure.apply                      (c,dt);               };
+        auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate               (c,dt);               };
         coupler.run_module( run_geo       , "geostrophic_forcing" );
         coupler.run_module( run_dycore    , "dycore"              );
         coupler.run_module( run_sponge    , "sponge"              );
