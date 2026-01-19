@@ -57,6 +57,7 @@ int main(int argc, char** argv) {
                   ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+    modules::SurfaceFlux                       sfc_flux;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::Microphysics_Kessler              micro;
@@ -66,6 +67,7 @@ int main(int argc, char** argv) {
     custom_modules::sc_init   ( coupler );
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
+    sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler );
     col_nudge.set_column      ( coupler , {"water_vapor","temp"} );
     custom_modules::sc_perturb( coupler );
@@ -103,12 +105,11 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
-        using modules::apply_surface_fluxes;
         coupler.track_max_wind();
         // coupler.run_module( [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); } , "geo"  );
         coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column_strict (c,dt,1000); } , "col_nudge"     );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);      } , "dycore"        );
-        coupler.run_module( [&] (Coupler &c) { apply_surface_fluxes             (c,dt);      } , "surface_flux"  );
+        coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                   (c,dt);      } , "surface_flux"  );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);      } , "les_closure"   );
         coupler.run_module( [&] (Coupler &c) { micro.time_step                  (c,dt);      } , "microphysics"  );
         coupler.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);      } , "time_averager" );

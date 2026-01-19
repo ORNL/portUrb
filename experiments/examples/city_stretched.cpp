@@ -82,6 +82,7 @@ int main(int argc, char** argv) {
     if (coupler_main.is_mainproc()) std::cout << mesh;
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+    modules::SurfaceFlux                       sfc_flux;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::ColumnNudger                      col_nudge_prec;
@@ -120,12 +121,14 @@ int main(int argc, char** argv) {
     // Perform initializations on precursor simulation
     les_closure  .init        ( coupler_prec );
     dycore       .init        ( coupler_prec );
+    sfc_flux     .init        ( coupler_prec );
     time_averager.init        ( coupler_prec );
     custom_modules::sc_perturb( coupler_prec );
 
     // Perform initializations on main simulation
     les_closure  .init        ( coupler_main );
     dycore       .init        ( coupler_main );
+    sfc_flux     .init        ( coupler_main );
     time_averager.init        ( coupler_main );
     custom_modules::sc_perturb( coupler_main );
 
@@ -156,7 +159,6 @@ int main(int argc, char** argv) {
       using modules::geostrophic_wind_forcing;
       using modules::geostrophic_wind_forcing_specified;
       using modules::sponge_layer;
-      using modules::apply_surface_fluxes;
       using modules::precursor_sponge;
       real u_g   = 10;
       real v_g   = 0 ;
@@ -167,7 +169,7 @@ int main(int argc, char** argv) {
       coupler_prec.run_module( [&] (Coupler &c) { col = geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); } , "pg_forcing" );
       coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);               } , "les_closure"    );
       coupler_prec.run_module( [&] (Coupler &c) { sponge_layer             (c,dt,300,0.05);      } , "sponge"         );
-      coupler_prec.run_module( [&] (Coupler &c) { apply_surface_fluxes     (c,dt);               } , "surface_fluxes" );
+      coupler_prec.run_module( [&] (Coupler &c) { sfc_flux.apply           (c,dt);               } , "surface_fluxes" );
       coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);               } , "dycore"         );
       coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);               } , "time_averager"  );
 
@@ -184,7 +186,7 @@ int main(int argc, char** argv) {
       coupler_main.run_module( [&] (Coupler &c) { geostrophic_wind_forcing_specified(c,dt,lat_g,u_g,v_g,col); } , "pg_forcing" );
       coupler_main.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);               } , "les_closure"    );
       coupler_main.run_module( [&] (Coupler &c) { sponge_layer             (c,dt,300,0.05);      } , "sponge"         );
-      coupler_main.run_module( [&] (Coupler &c) { apply_surface_fluxes     (c,dt);               } , "surface_fluxes" );
+      coupler_main.run_module( [&] (Coupler &c) { sfc_flux.apply           (c,dt);               } , "surface_fluxes" );
       coupler_main.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);               } , "dycore"         );
       coupler_main.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);               } , "time_averager"  );
 

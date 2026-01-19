@@ -99,6 +99,7 @@ int main(int argc, char** argv) {
 
       // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
       modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+      modules::SurfaceFlux                       sfc_flux;
       modules::Time_Averager                     time_averager;
       modules::LES_Closure                       les_closure;
 
@@ -110,6 +111,7 @@ int main(int argc, char** argv) {
       custom_modules::sc_init   ( coupler );
       les_closure  .init        ( coupler );
       dycore       .init        ( coupler ); // Dycore should initialize its own state here
+      sfc_flux     .init        ( coupler );
       time_averager.init        ( coupler );
       custom_modules::sc_perturb( coupler );
 
@@ -149,7 +151,7 @@ int main(int argc, char** argv) {
           coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );
           coupler.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt);             } , "dycore"         );
           coupler.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt);             } , "les_closure"    );
-          coupler.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt);             } , "surface_fluxes" );
+          coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt);             } , "surface_fluxes" );
           coupler.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt);             } , "time_averager"  );
         }
 

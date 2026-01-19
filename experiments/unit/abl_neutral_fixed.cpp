@@ -52,6 +52,7 @@ int main(int argc, char** argv) {
                   ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV     dycore;
+    modules::SurfaceFlux                          sfc_flux;
     modules::Time_Averager                        time_averager;
     modules::LES_Closure                          les_closure;
 
@@ -62,6 +63,7 @@ int main(int argc, char** argv) {
     custom_modules::sc_init   ( coupler );
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
+    sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler );
     custom_modules::sc_perturb( coupler );
 
@@ -95,7 +97,7 @@ int main(int argc, char** argv) {
         auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
         auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
         auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,100,0.1);       };
-        auto run_surf_flux = [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);               };
+        auto run_surf_flux = [&] (Coupler &c) { sfc_flux.apply                   (c,dt);               };
         auto run_les       = [&] (Coupler &c) { les_closure.apply                (c,dt);               };
         auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate         (c,dt);               };
         coupler.run_module( run_geo       , "geostrophic_forcing" );

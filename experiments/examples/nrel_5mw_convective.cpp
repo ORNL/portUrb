@@ -107,6 +107,7 @@ int main(int argc, char** argv) {
 
     // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+    modules::SurfaceFlux                       sfc_flux;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::TurbineActuatorDisc               turbines;
@@ -123,6 +124,7 @@ int main(int argc, char** argv) {
     custom_modules::sc_init   ( coupler_main );
     les_closure  .init        ( coupler_main );
     dycore       .init        ( coupler_main ); // Important that dycore inits after turbines for base immersed boundaries
+    sfc_flux     .init        ( coupler_main );
 
     /////////////////////////////////////////////////////////////////////////
     // Everything previous to this is now replicated in coupler_precursor
@@ -220,7 +222,7 @@ int main(int argc, char** argv) {
         }
         coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
         coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
-        coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
+        coupler_prec.run_module( [&] (Coupler &c) { sfc_flux.apply                   (c,dt);           } , "surface_fluxes" );
         coupler_prec.run_module( [&] (Coupler &c) { modules::surface_heat_flux       (c,dt);           } , "heat_fluxes"    );
         coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
         coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);           } , "time_averager"  );
@@ -235,7 +237,7 @@ int main(int argc, char** argv) {
         coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column   (c,dt,dt*100);    } , "col_nudge"      );
         coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
         coupler_main.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
-        coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);           } , "surface_fluxes" );
+        coupler_main.run_module( [&] (Coupler &c) { sfc_flux.apply                   (c,dt);           } , "surface_fluxes" );
         coupler_main.run_module( [&] (Coupler &c) { modules::surface_heat_flux       (c,dt);           } , "heat_fluxes"    );
         coupler_main.run_module( [&] (Coupler &c) { turbines.apply                   (c,dt);           } , "turbines"       );
         coupler_main.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );

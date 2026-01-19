@@ -8,7 +8,6 @@
 #include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
-#include "surface_cooling.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -28,7 +27,7 @@ int main(int argc, char** argv) {
     int         dyn_cycle   = 1;
     real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_stable_rss_20";
+    std::string out_prefix  = "ABL_stable";
     bool        is_restart  = false;
     real        u_g         = 8;
     real        v_g         = 0;
@@ -46,15 +45,16 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "cfl"            , 0.6              );
     coupler.set_option<bool       >( "enable_gravity" , true             );
     coupler.set_option<real       >( "sfc_cool_rate"  , scr              );
-    coupler.set_option<real       >( "dycore_max_wind"       , 10        );
+    coupler.set_option<real       >( "dycore_max_wind"       , 15        );
     coupler.set_option<bool       >( "dycore_buoyancy_theta" , true      );
-    coupler.set_option<real       >( "dycore_cs"             , 20        );
+    coupler.set_option<real       >( "dycore_cs"             , 100       );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
                   ny_glob , nx_glob , ylen , xlen );
 
     modules::Dynamics_Euler_Stratified_WenoFV     dycore;
+    modules::SurfaceFlux                          sfc_flux;
     modules::Time_Averager                        time_averager;
     modules::LES_Closure                          les_closure;
 
@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
     custom_modules::sc_init   ( coupler );
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
+    sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler );
     custom_modules::sc_perturb( coupler );
 
@@ -95,11 +96,11 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         coupler.track_max_wind();
-        auto run_scr       = [&] (Coupler &c) { modules::surface_cooling         (c,dt);               };
+        auto run_scr       = [&] (Coupler &c) { sfc_flux.change_surface_theta    (c,dt,-scr);          };
         auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
         auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
         auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);    };
-        auto run_surf_flux = [&] (Coupler &c) { modules::apply_surface_fluxes    (c,dt);               };
+        auto run_surf_flux = [&] (Coupler &c) { sfc_flux.apply                   (c,dt,true,true);     };
         auto run_les       = [&] (Coupler &c) { les_closure.apply                (c,dt);               };
         auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate         (c,dt);               };
         coupler.run_module( run_scr       , "sfc_cooling"         );

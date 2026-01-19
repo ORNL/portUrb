@@ -119,6 +119,7 @@ int main(int argc, char** argv) {
       // Classes that can work on multiple couplers without issue (no internal state)
       modules::LES_Closure                       les_closure;
       modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+      modules::SurfaceFlux                       sfc_flux;
       modules::Time_Averager                     time_averager;
       modules::TurbineActuatorDisc               windmills;
 
@@ -164,16 +165,19 @@ int main(int argc, char** argv) {
       // Initialize the modules (init les_closure before dycore so that SGS TKE is registered as a tracer)
       les_closure  .init        ( coupler_prec );
       dycore       .init        ( coupler_prec );
+      sfc_flux     .init        ( coupler_prec );
       time_averager.init        ( coupler_prec );
       custom_modules::sc_perturb( coupler_prec );
 
       les_closure  .init        ( coupler_noturb );
       dycore       .init        ( coupler_noturb );
+      sfc_flux     .init        ( coupler_noturb );
       time_averager.init        ( coupler_noturb );
       custom_modules::sc_perturb( coupler_noturb );
 
       les_closure  .init        ( coupler_turb );
       dycore       .init        ( coupler_turb );
+      sfc_flux     .init        ( coupler_turb );
       time_averager.init        ( coupler_turb );
       custom_modules::sc_perturb( coupler_turb );
       windmills    .init        ( coupler_turb );
@@ -231,7 +235,7 @@ int main(int argc, char** argv) {
           coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_given(c,dt,u_in,v_in,u,v,10); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
           coupler_prec.run_module( [&] (Coupler &c) { modules::sponge_layer        (c,dt,300,0.1); } , "sponge" );
-          coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );
+          coupler_prec.run_module( [&] (Coupler &c) { sfc_flux.apply               (c,dt); } , "surface_fluxes" );
           coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply            (c,dt); } , "les_closure"    );
           coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate     (c,dt); } , "time_averager"  );
         }
@@ -252,7 +256,7 @@ int main(int argc, char** argv) {
           coupler_noturb.run_module( [&] (Coupler &c) { col_nudge_noturb.nudge_to_column(c,dt,dt*2); } , "col_nudge");
           coupler_noturb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
           coupler_noturb.run_module( [&] (Coupler &c) { modules::sponge_layer         (c,dt,300,0.1); } , "sponge"    );
-          coupler_noturb.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
+          coupler_noturb.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt); } , "surface_fluxes"    );
           coupler_noturb.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt); } , "les_closure"       );
           coupler_noturb.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt); } , "time_averager"     );
         }
@@ -269,7 +273,7 @@ int main(int argc, char** argv) {
           coupler_turb.run_module( [&] (Coupler &c) { col_nudge_turb.nudge_to_column(c,dt,dt*2); } , "col_nudge"  );
           coupler_turb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
           coupler_turb.run_module( [&] (Coupler &c) { modules::sponge_layer         (c,dt,300,0.1); } , "sponge"    );
-          coupler_turb.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
+          coupler_turb.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt); } , "surface_fluxes"    );
           coupler_turb.run_module( [&] (Coupler &c) { windmills.apply               (c,dt); } , "windmillactuators" );
           coupler_turb.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt); } , "les_closure"       );
           coupler_turb.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt); } , "time_averager"     );

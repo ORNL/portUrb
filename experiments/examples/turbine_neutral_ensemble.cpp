@@ -154,6 +154,7 @@ int main(int argc, char** argv) {
       // Classes that can work on multiple couplers without issue (no internal state)
       modules::LES_Closure                       les_closure;
       modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+      modules::SurfaceFlux                       sfc_flux;
       modules::Time_Averager                     time_averager;
       modules::WindmillActuators                 windmills;
       modules::ColumnNudger                      col_nudge_prec;
@@ -163,6 +164,7 @@ int main(int argc, char** argv) {
       custom_modules::sc_init     ( coupler_main );
       les_closure  .init          ( coupler_main );
       dycore       .init          ( coupler_main );
+      sfc_flux     .init          ( coupler_main );
 
       /////////////////////////////////////////////////////////////////////////
       // Everything previous to this is now replicated in coupler_precursor
@@ -244,7 +246,7 @@ int main(int argc, char** argv) {
 
           coupler_prec.run_module( [&] (Coupler &c) { std::tie(pgu,pgv) = uniform_pg_wind_forcing_height(c,dt,h,u,v,10); } , "pg_forcing" );
           coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
-          coupler_prec.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );
+          coupler_prec.run_module( [&] (Coupler &c) { sfc_flux.apply               (c,dt); } , "surface_fluxes" );
           coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply            (c,dt); } , "les_closure"    );
           coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate     (c,dt); } , "time_averager"  );
         }
@@ -269,7 +271,7 @@ int main(int argc, char** argv) {
           coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100); } , "col_nudge"  );
           coupler_main.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
-          coupler_main.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes (c,dt); } , "surface_fluxes"    );
+          coupler_main.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt); } , "surface_fluxes"    );
           coupler_main.run_module( [&] (Coupler &c) { windmills.apply               (c,dt); } , "windmillactuators" );
           coupler_main.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt); } , "les_closure"       );
           coupler_main.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt); } , "time_averager"     );

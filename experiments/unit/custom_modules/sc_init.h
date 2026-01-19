@@ -71,9 +71,7 @@ namespace custom_modules {
     if (! dm.entry_exists("water_vapor"        )) dm.register_and_allocate<real>("water_vapor"        ,"",dims3d);
     if (! dm.entry_exists("immersed_proportion")) dm.register_and_allocate<real>("immersed_proportion","",dims3d);
     if (! dm.entry_exists("immersed_roughness" )) dm.register_and_allocate<real>("immersed_roughness" ,"",dims3d);
-    if (! dm.entry_exists("immersed_temp"      )) dm.register_and_allocate<real>("immersed_temp"      ,"",dims3d);
     if (! dm.entry_exists("surface_roughness"  )) dm.register_and_allocate<real>("surface_roughness"  ,"",dims2d);
-    if (! dm.entry_exists("surface_temp"       )) dm.register_and_allocate<real>("surface_temp"       ,"",dims2d);
     auto dm_rho_d          = dm.get<real,3>("density_dry"        );
     auto dm_uvel           = dm.get<real,3>("uvel"               );
     auto dm_vvel           = dm.get<real,3>("vvel"               );
@@ -82,14 +80,10 @@ namespace custom_modules {
     auto dm_rho_v          = dm.get<real,3>("water_vapor"        );
     auto dm_immersed_prop  = dm.get<real,3>("immersed_proportion");
     auto dm_immersed_rough = dm.get<real,3>("immersed_roughness" );
-    auto dm_immersed_temp  = dm.get<real,3>("immersed_temp"      );
     auto dm_surface_rough  = dm.get<real,2>("surface_roughness"  );
-    auto dm_surface_temp   = dm.get<real,2>("surface_temp"       );
     dm_immersed_prop  = 0;
     dm_immersed_rough = roughness;
-    dm_immersed_temp  = 0;
     dm_surface_rough  = roughness;
-    dm_surface_temp   = 0;
     dm_rho_v          = 0;
     // Quadrature parameters
     const int nqpoints = 9;
@@ -161,7 +155,6 @@ namespace custom_modules {
             }
           }
         }
-        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
       std::chrono::duration<double> dur = std::chrono::high_resolution_clock::now() - t1;
       if (coupler.is_mainproc()) std::cout << "*** Finished setup in [" << dur.count() << "] seconds ***" << std::endl;
@@ -201,7 +194,6 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable") {
@@ -239,7 +231,6 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "constant") {
@@ -262,7 +253,6 @@ namespace custom_modules {
         dm_wvel (k,j,i) = w;
         dm_temp (k,j,i) = T;
         dm_rho_v(k,j,i) = 0;
-        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
@@ -301,7 +291,6 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
@@ -342,7 +331,6 @@ namespace custom_modules {
           dm_temp (k,j,i) += T     * wt;
           dm_rho_v(k,j,i) += rho_v * wt;
         }
-        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "supercell") {
@@ -430,7 +418,6 @@ namespace custom_modules {
             }
           }
         }
-        // if (k == 0) dm_surface_temp(j,i) = dm_temp(k,j,i);
       });
 
     } // if (init_data == ...)
@@ -440,40 +427,30 @@ namespace custom_modules {
       core::MultiField<real,3> fields;
       fields.add_field( dm_immersed_prop  );
       fields.add_field( dm_immersed_rough );
-      fields.add_field( dm_immersed_temp  );
       auto fields_halos = coupler.create_and_exchange_halos( fields , hs );
       std::vector<std::string> dim_names = {"z_halo1","y_halo1","x_halo1"};
       dm.register_and_allocate<real>("immersed_proportion_halos","",{nz+2*hs,ny+2*hs,nx+2*hs},dim_names);
       dm.register_and_allocate<real>("immersed_roughness_halos" ,"",{nz+2*hs,ny+2*hs,nx+2*hs},dim_names);
-      dm.register_and_allocate<real>("immersed_temp_halos"      ,"",{nz+2*hs,ny+2*hs,nx+2*hs},dim_names);
       fields_halos.get_field(0).deep_copy_to( dm.get<real,3>("immersed_proportion_halos") );
       fields_halos.get_field(1).deep_copy_to( dm.get<real,3>("immersed_roughness_halos" ) );
-      fields_halos.get_field(2).deep_copy_to( dm.get<real,3>("immersed_temp_halos"      ) );
     }
     {
       core::MultiField<real,2> fields;
       fields.add_field( dm_surface_rough );
-      fields.add_field( dm_surface_temp  );
       auto fields_halos = coupler.create_and_exchange_halos( fields , hs );
       std::vector<std::string> dim_names = {"y_halo1","x_halo1"};
       dm.register_and_allocate<real>("surface_roughness_halos" ,"",{ny+2*hs,nx+2*hs},dim_names);
-      dm.register_and_allocate<real>("surface_temp_halos"      ,"",{ny+2*hs,nx+2*hs},dim_names);
       fields_halos.get_field(0).deep_copy_to( dm.get<real,2>("surface_roughness_halos" ) );
-      fields_halos.get_field(1).deep_copy_to( dm.get<real,2>("surface_temp_halos"      ) );
     }
 
     auto imm_prop  = dm.get<real,3>("immersed_proportion_halos");
     auto imm_rough = dm.get<real,3>("immersed_roughness_halos" );
-    auto imm_temp  = dm.get<real,3>("immersed_temp_halos"      );
     auto sfc_rough = dm.get<real,2>("surface_roughness_halos"  );
-    auto sfc_temp  = dm.get<real,2>("surface_temp_halos"       );
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
       imm_prop (      kk,j,i) = 1;
       imm_rough(      kk,j,i) = sfc_rough(j,i);
-      imm_temp (      kk,j,i) = sfc_temp (j,i);
       imm_prop (hs+nz+kk,j,i) = 0;
       imm_rough(hs+nz+kk,j,i) = 0;
-      imm_temp (hs+nz+kk,j,i) = 0;
     });
   }
 

@@ -124,6 +124,7 @@ int main(int argc, char** argv) {
       // Classes that can work on multiple couplers without issue (no internal state)
       modules::LES_Closure                       les_closure;
       modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+      modules::SurfaceFlux                       sfc_flux;
       modules::Time_Averager                     time_averager;
       modules::TurbineFitch                      windmills;
 
@@ -167,6 +168,7 @@ int main(int argc, char** argv) {
       // Initialize the modules (init les_closure before dycore so that SGS TKE is registered as a tracer)
       les_closure  .init( coupler );
       dycore       .init( coupler );
+      sfc_flux     .init( coupler );
       time_averager.init( coupler );
       windmills    .init( coupler );
 
@@ -212,7 +214,7 @@ int main(int argc, char** argv) {
           coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_given(c,dt,u_in,v_in,u,v,300); } , "pg_forcing" );
           coupler.run_module( [&] (Coupler &c) { dycore.time_step             (c,dt); } , "dycore"         );
           coupler.run_module( [&] (Coupler &c) { modules::sponge_layer        (c,dt,300,0.1); } , "sponge" );
-          coupler.run_module( [&] (Coupler &c) { modules::apply_surface_fluxes(c,dt); } , "surface_fluxes" );
+          coupler.run_module( [&] (Coupler &c) { sfc_flux.apply               (c,dt); } , "surface_fluxes" );
           coupler.run_module( [&] (Coupler &c) { windmills.apply              (c,dt); } , "windmills"      );
           coupler.run_module( [&] (Coupler &c) { les_closure.apply            (c,dt); } , "les_closure"    );
           coupler.run_module( [&] (Coupler &c) { time_averager.accumulate     (c,dt); } , "time_averager"  );

@@ -974,7 +974,7 @@ namespace core {
       using yakl::c::SimpleBounds;
       typedef unsigned char uchar; // Define uchar type for unsigned char for output variables of that type
       yakl::timer_start("coupler_output"); // Start timer for output operation
-      if (verbose && is_mainproc()) std::cout << "*** Beginning outputOutput/restart file ***" << std::endl;
+      if (verbose && is_mainproc()) std::cout << "*** Beginning output/restart file ***" << std::endl;
       auto nx          = get_nx();                         // Local number of x grid points
       auto ny          = get_ny();                         // Local number of y grid points
       auto nz          = get_nz();                         // Number of z grid points
