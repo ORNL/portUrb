@@ -2,7 +2,7 @@
 #SBATCH -A stf006
 #SBATCH -J portUrb
 #SBATCH -o %x-%j.out
-#SBATCH -t 3:00:00
+#SBATCH -t 4:00:00
 #SBATCH -N 4
 #SBATCH --partition batch
 

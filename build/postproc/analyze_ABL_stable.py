@@ -5,17 +5,30 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
 import xarray
 
-workdir = "/lustre/storm/nwp501/scratch/imn/ABL_stable"
+workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
 
 
 def get_ind(arr,val) :
     return np.argmin(np.abs(arr-val))
 
 
-nc = Dataset(f"{workdir}/ABL_stable_00000018.nc","r")
-x = np.array(nc["x"])/1000
-y = np.array(nc["y"])/1000
-z = np.array(nc["z"])/1000
+R_d     = 287.
+cp_d    = 1003.
+R_v     = 461.
+cp_v    = 1859
+p0      = 1.e5
+grav    = 9.81
+cv_d    = cp_d-R_d
+gamma_d = cp_d/cv_d
+kappa_d = R_d/cp_d
+cv_v    = cp_v-R_v
+C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d);
+
+
+nc = Dataset(f"{workdir}/ABL_stable_2m_00000005.nc","r")
+x = np.array(nc["x"][:])/1000
+y = np.array(nc["y"][:])/1000
+z = np.array(nc["z"][:])/1000
 nx = len(x)
 ny = len(y)
 nz = len(z)
@@ -25,11 +38,12 @@ dz = z[1]-z[0]
 xlen = x[-1]+dx/2
 ylen = y[-1]+dy/2
 zlen = z[-1]+dz/2
-hs   = 5
-uvel  = np.array(nc["uvel"])
-vvel  = np.array(nc["vvel"])
-wvel  = np.array(nc["wvel"])
-theta = np.array(nc["theta_pert"]) + np.array(nc["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis]
+uvel  = np.array(nc["uvel"       ][:,:,:])
+vvel  = np.array(nc["vvel"       ][:,:,:])
+wvel  = np.array(nc["wvel"       ][:,:,:])
+rho   = np.array(nc["density_dry"][:,:,:])
+T     = np.array(nc["temperature"][:,:,:])
+theta = np.pow((rho*R_d*T)/C0,1./gamma_d)/rho
 mag   = np.sqrt(uvel*uvel+vvel*vvel)
 
 

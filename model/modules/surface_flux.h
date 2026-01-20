@@ -42,6 +42,45 @@ namespace modules {
         imm_theta(0    ,j,i) = imm_theta(1      ,j,i);
         imm_theta(hs+nz,j,i) = imm_theta(hs+nz-1,j,i);
       });
+      coupler.register_write_output_module( [=] (core::Coupler &coupler , yakl::SimplePNetCDF &nc) {
+        using yakl::c::parallel_for;
+        using yakl::c::SimpleBounds;
+        auto nz        = coupler.get_nz();
+        auto ny        = coupler.get_ny();
+        auto nx        = coupler.get_nx();
+        auto i_beg     = coupler.get_i_beg();
+        auto j_beg     = coupler.get_j_beg();
+        auto &dm       = coupler.get_data_manager_readonly(); // Get reference to the data manager (read/write)
+        auto imm_theta = dm.get<real const,3>("surface_flux_imm_theta");
+        nc.redef();
+        if (! nc.dim_exists("nzp2")) nc.create_dim( "zp2" , nz+2 );
+        nc.create_var<real>( "surface_flux_imm_theta" , {"zp2","y","x"} );
+        nc.enddef();
+        real3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          imm_theta_loc(k,j,i) = imm_theta(k,hs+j,hs+i);
+        });
+        std::vector<MPI_Offset> start = {(MPI_Offset)0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
+        nc.write_all( imm_theta_loc , "surface_flux_imm_theta" , start );
+      });
+      coupler.register_overwrite_with_restart_module( [=] (core::Coupler &coupler , yakl::SimplePNetCDF &nc) {
+        auto nz        = coupler.get_nz();
+        auto ny        = coupler.get_ny();
+        auto nx        = coupler.get_nx();
+        auto i_beg     = coupler.get_i_beg();
+        auto j_beg     = coupler.get_j_beg();
+        auto &dm       = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
+        auto imm_theta = dm.get<real,3>("surface_flux_imm_theta");
+        real3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
+        std::vector<MPI_Offset> start = {(MPI_Offset)0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
+        nc.read_all( imm_theta_loc , "surface_flux_imm_theta" , start );
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          imm_theta(k,hs+j,hs+i) = imm_theta_loc(k,j,i);
+        });
+        core::MultiField<real,3> fields;
+        fields.add_field(imm_theta);
+        coupler.halo_exchange( fields , hs );
+      });
     }
     
 

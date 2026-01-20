@@ -16,18 +16,20 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
+    real dx = 2;
+
     real        sim_time    = 3600*9+1;
-    int         nx_glob     = 100;
-    int         ny_glob     = 100;
-    int         nz          = 150;
-    real        xlen        = 200;
-    real        ylen        = 200;
-    real        zlen        = 300;
+    real        xlen        = 400;
+    real        ylen        = 400;
+    real        zlen        = 400;
+    int         nx_glob     = (int) std::ceil(xlen/dx);
+    int         ny_glob     = (int) std::ceil(ylen/dx);
+    int         nz          = (int) std::ceil(zlen/dx);
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 1;
+    int         dyn_cycle   = 3;
     real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_stable";
+    std::string out_prefix  = "ABL_stable_2m";
     bool        is_restart  = false;
     real        u_g         = 8;
     real        v_g         = 0;
@@ -39,7 +41,7 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "init_data"      , "ABL_stable"     );
     coupler.set_option<real       >( "out_freq"       , out_freq         );
     coupler.set_option<bool       >( "is_restart"     , is_restart       );
-    coupler.set_option<std::string>( "restart_file"   , ""               );
+    coupler.set_option<std::string>( "restart_file"   , "" );
     coupler.set_option<real       >( "latitude"       , 0.               );
     coupler.set_option<real       >( "roughness"      , 0.05             );
     coupler.set_option<real       >( "cfl"            , 0.6              );
@@ -48,6 +50,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "dycore_max_wind"       , 15        );
     coupler.set_option<bool       >( "dycore_buoyancy_theta" , true      );
     coupler.set_option<real       >( "dycore_cs"             , 100       );
+    coupler.set_option<bool       >( "dycore_use_weno"       , false     );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
