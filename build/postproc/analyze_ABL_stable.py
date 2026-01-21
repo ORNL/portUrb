@@ -24,7 +24,7 @@ kappa_d = R_d/cp_d
 cv_v    = cp_v-R_v
 C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d);
 
-tval = 14
+tval = 18
 
 etime  = []
 ustar2 = []
@@ -188,4 +188,18 @@ plt.savefig("ABL_convective_contourf.png",dpi=600)
 plt.show()
 plt.close()
 
+
+fig,ax = plt.subplots(1,2,figsize=(6,4))
+ax[0].plot(np.mean(np.sqrt(uvel**2+vvel**2+wvel**2),axis=(1,2)),z)
+ax[0].set_xlim(0,10)
+ax[0].set_ylim(0,300)
+ax[0].grid(True)
+
+ax[1].plot(np.mean(theta,axis=(1,2)),z)
+ax[1].set_xlim(262,268)
+ax[1].set_ylim(0,300)
+ax[1].grid(True)
+
+plt.show()
+plt.close()
 
