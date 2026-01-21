@@ -24,14 +24,15 @@ kappa_d = R_d/cp_d
 cv_v    = cp_v-R_v
 C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d);
 
-tval = 18
+tval = 62
 
 etime  = []
 ustar2 = []
 bflux  = []
 blhgt  = []
 for i in range(1,tval+1) :
-  nc = Dataset(f"{workdir}/ABL_stable_2m_{i:08d}.nc","r")
+  print(f"{i}/{tval}")
+  nc = Dataset(f"{workdir}/ABL_stable_1m_{i:08d}.nc","r")
   x = np.array(nc["x"][:])
   y = np.array(nc["y"][:])
   z = np.array(nc["z"][:])
@@ -106,7 +107,7 @@ fig.tight_layout()
 plt.show()
 plt.close()
 
-nc = Dataset(f"{workdir}/ABL_stable_2m_{tval:08d}.nc","r")
+nc = Dataset(f"{workdir}/ABL_stable_1m_{tval:08d}.nc","r")
 x = np.array(nc["x"][:])
 y = np.array(nc["y"][:])
 z = np.array(nc["z"][:])

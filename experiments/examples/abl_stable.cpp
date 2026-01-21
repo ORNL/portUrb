@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real dx = 2;
+    real dx = 1;
 
     real        sim_time    = 3600*9+1;
     real        xlen        = 400;
@@ -27,9 +27,9 @@ int main(int argc, char** argv) {
     int         nz          = (int) std::ceil(zlen/dx);
     real        dtphys_in   = 0;    // Use dycore time step
     int         dyn_cycle   = 4;
-    real        out_freq    = 1800;
+    real        out_freq    = 60;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_stable_2m";
+    std::string out_prefix  = "ABL_stable_1m";
     bool        is_restart  = false;
     real        u_g         = 8;
     real        v_g         = 0;
