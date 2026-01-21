@@ -24,11 +24,92 @@ kappa_d = R_d/cp_d
 cv_v    = cp_v-R_v
 C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d);
 
+tval = 14
 
-nc = Dataset(f"{workdir}/ABL_stable_2m_00000005.nc","r")
-x = np.array(nc["x"][:])/1000
-y = np.array(nc["y"][:])/1000
-z = np.array(nc["z"][:])/1000
+etime  = []
+ustar2 = []
+bflux  = []
+blhgt  = []
+for i in range(1,tval+1) :
+  nc = Dataset(f"{workdir}/ABL_stable_2m_{i:08d}.nc","r")
+  x = np.array(nc["x"][:])
+  y = np.array(nc["y"][:])
+  z = np.array(nc["z"][:])
+  nx = len(x)
+  ny = len(y)
+  nz = len(z)
+  dx = x[1]-x[0]
+  dy = y[1]-y[0]
+  dz = z[1]-z[0]
+  k1 = np.argmin(np.abs(z-25))
+  usloc = np.mean(np.array(nc['surface_flux_sfc_ustar'    ][:,:])**2)
+  rho   = np.array(nc["density_dry"][:,:,:])
+  u     = np.array(nc["uvel"       ][:,:,:])
+  v     = np.array(nc["vvel"       ][:,:,:])
+  w     = np.array(nc["wvel"       ][:,:,:])
+  T     = np.array(nc["temperature"][:,:,:])
+  K     = np.array(nc["TKE"        ][:,:,:])/rho
+  theta = np.pow((rho*R_d*T)/C0,1./gamma_d)/rho
+  up    = u - np.mean(u,axis=(1,2))[:,np.newaxis,np.newaxis]
+  vp    = v - np.mean(v,axis=(1,2))[:,np.newaxis,np.newaxis]
+  wp    = w - np.mean(w,axis=(1,2))[:,np.newaxis,np.newaxis]
+  upwp  = np.mean(up*wp,axis=(1,2))
+  vpwp  = np.mean(vp*wp,axis=(1,2))
+  dt_dz = np.gradient(theta,dz,axis=0)
+  du_dz = np.gradient(u    ,dz,axis=0)
+  dv_dz = np.gradient(v    ,dz,axis=0)
+  dw_dx = np.gradient(w    ,dx,axis=2)
+  dw_dy = np.gradient(w    ,dy,axis=1)
+  N     = np.where( dt_dz >= 0 , np.sqrt(grav/theta*(dt_dz)) , 0 )
+  delta = np.pow( dx*dy*dz , 1./3. )
+  ell   = np.minimum( 0.76*np.sqrt(K)/np.maximum(N,1.e-10) , delta )
+  km    = 0.1 * ell * np.sqrt(K)
+  tau_xz = -km*(dw_dx + du_dz)
+  tau_yz = -km*(dw_dy + dv_dz)
+  xz     = upwp+np.mean(tau_xz,axis=(1,2))
+  yz     = vpwp+np.mean(tau_yz,axis=(1,2))
+  stress = np.sqrt(xz**2+yz**2)
+  bl_loc = -1
+  for k in range(k1,nz) :
+    if (stress[k] < 0.05*usloc) :
+      z1, z2 = z[k-1], z[k]
+      s1, s2 = stress[k-1], stress[k]
+      bl_loc = z1 + (0.05*usloc - s1) * (z2 - z1) / (s2 - s1 + 1e-30)
+      break
+  etime  += [nc['etime'][0]]
+  ustar2 += [np.mean(np.array(nc['surface_flux_sfc_ustar'    ][:,:])**2)]
+  bflux  += [np.mean(np.array(nc['surface_flux_sfc_buoy_flux'][:,:])   )]
+  blhgt  += [0.95*bl_loc]
+  # plt.plot(stress,z)
+  # plt.show()
+  # plt.close()
+  
+fig,ax = plt.subplots(3,1,figsize=(6,6))
+ax[0].plot(etime,ustar2)
+ax[0].set_xlim(0,9*3600)
+ax[0].set_ylim(0,0.2   )
+ax[0].grid(True)
+ax[0].margins(x=0)
+
+ax[1].plot(etime,bflux)
+ax[1].set_xlim(0,9*3600)
+ax[1].set_ylim(0,0.0006)
+ax[1].grid(True)
+ax[1].margins(x=0)
+
+ax[2].plot(etime,blhgt)
+ax[2].set_xlim(0,9*3600)
+ax[2].set_ylim(0,300)
+ax[2].grid(True)
+ax[2].margins(x=0)
+fig.tight_layout()
+plt.show()
+plt.close()
+
+nc = Dataset(f"{workdir}/ABL_stable_2m_{tval:08d}.nc","r")
+x = np.array(nc["x"][:])
+y = np.array(nc["y"][:])
+z = np.array(nc["z"][:])
 nx = len(x)
 ny = len(y)
 nz = len(z)
@@ -50,8 +131,8 @@ mag   = np.sqrt(uvel*uvel+vvel*vvel)
 t1 = 262.75
 t2 = 265.25
 fig,((ax1,ax2),(ax3,ax4)) = plt.subplots(2,2,figsize=(12,10))
-X,Y = np.meshgrid(x,y)
-zind = get_ind(z,.100)
+X,Y = np.meshgrid(x/1000,y/1000)
+zind = get_ind(z,100)
 print(zind, z[zind])
 mn = np.min(theta[zind,:,:])
 mx = np.max(theta[zind,:,:])
@@ -78,9 +159,9 @@ cbar2 = plt.colorbar(CS2,orientation="horizontal",cax=cax2)
 cbar2.ax.tick_params(labelrotation=30)
 
 yind = get_ind(y,ylen/2)
-zind = get_ind(z,.275)
+zind = get_ind(z,275)
 print(zind, z[zind])
-X,Z = np.meshgrid(x,z[:zind+1])
+X,Z = np.meshgrid(x/1000,z[:zind+1]/1000)
 CS3 = ax3.contourf(X,Z,theta[:zind+1,yind,:],levels=np.arange(t1,t2,(t2-t1)/200),cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
 ax3.axis('scaled')
 ax3.set_xlabel("x-location (km)")

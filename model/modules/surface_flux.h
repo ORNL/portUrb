@@ -30,6 +30,15 @@ namespace modules {
       real4d state  ("state"  ,num_state  ,nz,ny,nx);
       real4d tracers("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
+      dm.register_and_allocate<real>("surface_flux_sfc_ustar","",{ny,nx});
+      coupler.register_output_variable<real>("surface_flux_sfc_ustar",core::Coupler::DIMS_SURFACE);
+      dm.register_and_allocate<real>("surface_flux_sfc_thstar","",{ny,nx});
+      coupler.register_output_variable<real>("surface_flux_sfc_thstar",core::Coupler::DIMS_SURFACE);
+      dm.register_and_allocate<real>("surface_flux_sfc_buoy_flux","",{ny,nx});
+      coupler.register_output_variable<real>("surface_flux_sfc_buoy_flux",core::Coupler::DIMS_SURFACE);
+      dm.get<real,2>("surface_flux_sfc_ustar") = 0;
+      dm.get<real,2>("surface_flux_sfc_thstar") = 0;
+      dm.get<real,2>("surface_flux_sfc_buoy_flux") = 0;
       dm.register_and_allocate<real>("surface_flux_imm_theta","",{nz+2*hs,ny+2*hs,nx+2*hs});
       auto imm_theta = dm.get<real,3>("surface_flux_imm_theta");
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -90,10 +99,7 @@ namespace modules {
     // coupler : Coupler object containing the data manager and options
     // dt      : Timestep size in seconds
     void apply( core::Coupler &coupler   ,
-                real dt                  ,
-                bool force_theta = false ,
-                bool stab_corr   = false ,
-                real nu = 1.5e-5         ) {
+                real dt                  ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
       auto nx          = coupler.get_nx();  // Get local number of grid points in x-direction
@@ -111,6 +117,13 @@ namespace modules {
       auto imm_prop    = dm.get<real const,3>("immersed_proportion_halos"); // Get immersed boundary proportion array
       auto imm_rough   = dm.get<real const,3>("immersed_roughness_halos" ); // Get immersed boundary roughness array
       auto imm_theta   = dm.get<real const,3>("surface_flux_imm_theta"   );
+      auto sfc_ustar   = dm.get<real      ,2>("surface_flux_sfc_ustar");
+      auto sfc_thstar  = dm.get<real      ,2>("surface_flux_sfc_thstar");
+      auto sfc_bflux   = dm.get<real      ,2>("surface_flux_sfc_buoy_flux");
+      auto force_theta = coupler.get_option<bool>("surface_flux_force_theta"          ,false );
+      auto stab_corr   = coupler.get_option<bool>("surface_flux_stability_corrections",false );
+      auto nu          = coupler.get_option<real>("surface_flux_kinematic_viscosity"  ,1.5e-5);
+      auto use_z0h     = coupler.get_option<bool>("surface_flux_predict_z0h"          ,true  );
       real4d state  ("state"  ,num_state  ,nz,ny,nx);
       real4d tracers("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
@@ -151,7 +164,7 @@ namespace modules {
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dx;
           if (force_theta) {
             real th0        = imm_theta(indk,indj,indi);
-            real z0h        = z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu));
+            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
             real thstar     = vk*(th-th0)/std::log((dx/2+z0h)/z0h);
             tend_th(k,j,i) += -ustar*thstar/dx;
           }
@@ -169,7 +182,7 @@ namespace modules {
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dx;
           if (force_theta) {
             real th0        = imm_theta(indk,indj,indi);
-            real z0h        = z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu));
+            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
             real thstar     = vk*(th-th0)/std::log((dx/2+z0h)/z0h);
             tend_th(k,j,i) += -ustar*thstar/dx;
           }
@@ -187,7 +200,7 @@ namespace modules {
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dy;
           if (force_theta) {
             real th0        = imm_theta(indk,indj,indi);
-            real z0h        = z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu));
+            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
             real thstar     = vk*(th-th0)/std::log((dy/2+z0h)/z0h);
             tend_th(k,j,i) += -ustar*thstar/dy;
           }
@@ -205,7 +218,7 @@ namespace modules {
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dy;
           if (force_theta) {
             real th0        = imm_theta(indk,indj,indi);
-            real z0h        = z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu));
+            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
             real thstar     = vk*(th-th0)/std::log((dy/2+z0h)/z0h);
             tend_th(k,j,i) += -ustar*thstar/dy;
           }
@@ -220,12 +233,17 @@ namespace modules {
           real mag    = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
           real ustar  = vk*mag/std::log((dz(k)/2+z0)/z0);
           real th0    = imm_theta(indk,indj,indi);
-          real z0h    = z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu));
+          real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
           real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
-          if (stab_corr && force_theta) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),false,ustar,thstar);
+          if (stab_corr && force_theta) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),use_z0h,ustar,thstar);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
           if (force_theta) tend_th(k,j,i) += -ustar*thstar/dz(k);
+          if (k == 0) {
+            sfc_ustar (j,i) = ustar;
+            sfc_thstar(j,i) = thstar;
+            sfc_bflux (j,i) = grav/th0*ustar*thstar;
+          }
         }
         
         // Top neighbor
@@ -237,9 +255,8 @@ namespace modules {
           real mag    = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
           real ustar  = vk*mag/std::log((dz(k)/2+z0)/z0);
           real th0    = imm_theta(indk,indj,indi);
-          real z0h    = z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu));
+          real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
           real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
-          if (stab_corr && force_theta) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),true,ustar,thstar);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
           if (force_theta) tend_th(k,j,i) += -ustar*thstar/dz(k);
@@ -261,7 +278,7 @@ namespace modules {
 
     KOKKOS_INLINE_FUNCTION static void stability_correction( real vk , real mag , real z0 , real th , real th0 ,
                                                              real grav , real Czil , real nu , real dzloc ,
-                                                             bool wall_at_top ,
+                                                             bool use_z0h ,
                                                              real & ustar , real & thstar ) {
       using std::sqrt;
       using std::log;
@@ -277,9 +294,8 @@ namespace modules {
       for (int iter = 0; iter < max_iter; iter++) {
         real ustar_prev  = ustar ;
         real thstar_prev = thstar;
-        real z0h   = z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu));
+        real z0h   = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
         real wpthp = -ustar*thstar;
-        if (wall_at_top) wpthp *= -1;
         wpthp      = std::copysign( std::max( std::abs(wpthp) , 1.e-6 ) , wpthp );
         real L     = -ustar*ustar*ustar*th/(vk*grav*wpthp);
         real zeta  = std::max(zmin,std::min(zmax,(dzloc/2+z0)/L));

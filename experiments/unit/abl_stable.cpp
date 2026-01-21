@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
     real        ylen        = 400;
     real        zlen        = 400;
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 1;
+    int         dyn_cycle   = 2;
     real        out_freq    = 900;
     real        inform_freq = 10;
     std::string out_prefix  = "ABL_stable";
@@ -47,7 +47,11 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "sfc_cool_rate"  , scr              );
     coupler.set_option<real       >( "dycore_max_wind"       , 10        );
     coupler.set_option<bool       >( "dycore_buoyancy_theta" , true      );
-    coupler.set_option<real       >( "dycore_cs"             , 100       );
+    coupler.set_option<real       >( "dycore_cs"             , 50        );
+    coupler.set_option<bool       >("surface_flux_force_theta"          ,false );
+    coupler.set_option<bool       >("surface_flux_stability_corrections",false );
+    coupler.set_option<real       >("surface_flux_kinematic_viscosity"  ,1.5e-5);
+    coupler.set_option<bool       >("surface_flux_predict_z0h"          ,false );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
@@ -100,7 +104,7 @@ int main(int argc, char** argv) {
         auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
         auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
         auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);    };
-        auto run_surf_flux = [&] (Coupler &c) { sfc_flux.apply                   (c,dt,true,true);     };
+        auto run_surf_flux = [&] (Coupler &c) { sfc_flux.apply                   (c,dt);               };
         auto run_les       = [&] (Coupler &c) { les_closure.apply                (c,dt);               };
         auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate         (c,dt);               };
         coupler.run_module( run_scr       , "sfc_cooling"         );
