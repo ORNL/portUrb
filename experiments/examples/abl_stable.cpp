@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     int         nz          = (int) std::ceil(zlen/dx);
     real        dtphys_in   = 0;    // Use dycore time step
     int         dyn_cycle   = 4;
-    real        out_freq    = 60;
+    real        out_freq    = 1800;
     real        inform_freq = 10;
     std::string out_prefix  = "ABL_stable_1m";
     bool        is_restart  = false;
