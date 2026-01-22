@@ -37,24 +37,23 @@ int main(int argc, char** argv) {
     real        scr         = 0.25/3600.;  // sfc cooling rate in K / hr
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"     , out_prefix       );
-    coupler.set_option<std::string>( "init_data"      , "ABL_stable"     );
-    coupler.set_option<real       >( "out_freq"       , out_freq         );
-    coupler.set_option<bool       >( "is_restart"     , is_restart       );
-    coupler.set_option<std::string>( "restart_file"   , "" );
-    coupler.set_option<real       >( "latitude"       , 0.               );
-    coupler.set_option<real       >( "roughness"      , 0.05             );
-    coupler.set_option<real       >( "cfl"            , 0.6              );
-    coupler.set_option<bool       >( "enable_gravity" , true             );
-    coupler.set_option<real       >( "sfc_cool_rate"  , scr              );
-    coupler.set_option<real       >( "dycore_max_wind"       , 15        );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true      );
-    coupler.set_option<real       >( "dycore_cs"             , 50        );
-    coupler.set_option<bool       >( "dycore_use_weno"       , false     );
-    coupler.set_option<bool       >("surface_flux_force_theta"          ,true  );
-    coupler.set_option<bool       >("surface_flux_stability_corrections",true  );
-    coupler.set_option<real       >("surface_flux_kinematic_viscosity"  ,1.5e-5);
-    coupler.set_option<bool       >("surface_flux_predict_z0h"          ,false );
+    coupler.set_option<std::string>( "out_prefix"                         , out_prefix   );
+    coupler.set_option<std::string>( "init_data"                          , "ABL_stable" );
+    coupler.set_option<real       >( "out_freq"                           , out_freq     );
+    coupler.set_option<bool       >( "is_restart"                         , is_restart   );
+    coupler.set_option<std::string>( "restart_file"                       , ""           );
+    coupler.set_option<real       >( "latitude"                           , 0.           );
+    coupler.set_option<real       >( "roughness"                          , 0.05         );
+    coupler.set_option<real       >( "cfl"                                , 0.6          );
+    coupler.set_option<bool       >( "enable_gravity"                     , true         );
+    coupler.set_option<real       >( "dycore_max_wind"                    , 15           );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"              , true         );
+    coupler.set_option<real       >( "dycore_cs"                          , 50           );
+    coupler.set_option<bool       >( "dycore_use_weno"                    , false        );
+    coupler.set_option<bool       >( "surface_flux_force_theta"           , true         );
+    coupler.set_option<bool       >( "surface_flux_stability_corrections" , true         );
+    coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5       );
+    coupler.set_option<bool       >( "surface_flux_predict_z0h"           , false        );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,

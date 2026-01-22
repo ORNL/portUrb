@@ -5,7 +5,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
 import xarray
 
-workdir = "/lustre/storm/nwp501/scratch/imn/ABL_convective"
+workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
 
 def spectra(T,dx = 1) :
   spd  = np.abs( np.fft.rfft(T[0,0,:]) )**2
@@ -22,11 +22,22 @@ def spectra(T,dx = 1) :
 def get_ind(arr,val) :
     return np.argmin(np.abs(arr-val))
 
+R_d     = 287.
+cp_d    = 1003.
+R_v     = 461.
+cp_v    = 1859
+p0      = 1.e5
+grav    = 9.81
+cv_d    = cp_d-R_d
+gamma_d = cp_d/cv_d
+kappa_d = R_d/cp_d
+cv_v    = cp_v-R_v
+C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d);
 
-nc = Dataset(f"{workdir}/ABL_convective_00000004.nc","r")
-x = np.array(nc["x"])/1000
-y = np.array(nc["y"])/1000
-z = np.array(nc["z"])/1000
+nc = Dataset(f"{workdir}/ABL_convective_10m_00000004.nc","r")
+x = np.array(nc["x"][:])/1000
+y = np.array(nc["y"][:])/1000
+z = np.array(nc["z"][:])/1000
 nx = len(x)
 ny = len(y)
 nz = len(z)
@@ -36,11 +47,13 @@ dz = z[1]-z[0]
 xlen = x[-1]+dx/2
 ylen = y[-1]+dy/2
 zlen = z[-1]+dz/2
-hs   = 5
-uvel  = np.array(nc["uvel"])
-vvel  = np.array(nc["vvel"])
-wvel  = np.array(nc["wvel"])
-theta = np.array(nc["theta_pert"]) + np.array(nc["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis]
+rho   = np.array(nc["density_dry"][:,:,:])
+uvel  = np.array(nc["uvel"       ][:,:,:])
+vvel  = np.array(nc["vvel"       ][:,:,:])
+wvel  = np.array(nc["wvel"       ][:,:,:])
+T     = np.array(nc["temperature"][:,:,:])
+K     = np.array(nc["TKE"        ][:,:,:])/rho
+theta = np.pow((rho*R_d*T)/C0,1./gamma_d)/rho
 mag   = np.sqrt(uvel*uvel+vvel*vvel)
 
 
@@ -123,10 +136,10 @@ ax.vlines(2*np.pi/(2 *dx),2.e-4,1.e1,linestyle="--",color="red")
 ax.vlines(2*np.pi/(4 *dx),2.e-4,1.e1,linestyle="--",color="red")
 ax.vlines(2*np.pi/(8 *dx),2.e-4,1.e1,linestyle="--",color="red")
 ax.vlines(2*np.pi/(16*dx),2.e-4,1.e1,linestyle="--",color="red")
-ax.text(0.9*2*np.pi/(2 *dx),2.e1,"$2  \Delta x$")
-ax.text(0.9*2*np.pi/(4 *dx),2.e1,"$4  \Delta x$")
-ax.text(0.9*2*np.pi/(8 *dx),2.e1,"$8  \Delta x$")
-ax.text(0.9*2*np.pi/(16*dx),2.e1,"$16 \Delta x$")
+ax.text(0.9*2*np.pi/(2 *dx),2.e1,r"$2  \Delta x$")
+ax.text(0.9*2*np.pi/(4 *dx),2.e1,r"$4  \Delta x$")
+ax.text(0.9*2*np.pi/(8 *dx),2.e1,r"$8  \Delta x$")
+ax.text(0.9*2*np.pi/(16*dx),2.e1,r"$16 \Delta x$")
 ax.set_xscale("log")
 ax.set_yscale("log")
 ax.set_xlabel("Frequency")
@@ -414,7 +427,7 @@ wrf_z = [\
 235.18711018711,\
 239.345114345114,\
 244.282744282744]
-files = [f"{workdir}/ABL_convective_{i:08d}.nc" for i in range(5,7)]
+files = [f"{workdir}/ABL_convective_10m_{i:08d}.nc" for i in range(5,7)]
 for i in range(len(files)) :
   nc = Dataset(files[i],"r")
   u = np.array(nc["avg_u"][:,:,:])
@@ -457,7 +470,7 @@ plt.close()
 
 
 
-files = [f"{workdir}/ABL_convective_{i:08d}.nc" for i in range(5,7)]
+files = [f"{workdir}/ABL_convective_10m_{i:08d}.nc" for i in range(5,7)]
 for i in range(len(files)) :
   nc = Dataset(files[i],"r")
   x = np.array(nc["x"])/1000

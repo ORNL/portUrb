@@ -124,6 +124,8 @@ namespace modules {
       auto stab_corr   = coupler.get_option<bool>("surface_flux_stability_corrections",false );
       auto nu          = coupler.get_option<real>("surface_flux_kinematic_viscosity"  ,1.5e-5);
       auto use_z0h     = coupler.get_option<bool>("surface_flux_predict_z0h"          ,true  );
+      auto presc_wpthp = coupler.get_option<bool>("surface_flux_prescribe_wpthetap"   ,false );
+      auto sfc_wpthp   = coupler.get_option<real>("surface_flux_sfc_wpthetap"         ,0     );
       real4d state  ("state"  ,num_state  ,nz,ny,nx);
       real4d tracers("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
@@ -235,10 +237,10 @@ namespace modules {
           real th0    = imm_theta(indk,indj,indi);
           real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
           real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
-          if (stab_corr && force_theta) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),use_z0h,ustar,thstar);
+          if (stab_corr) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),use_z0h,presc_wpthp,sfc_wpthp,ustar,thstar);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
-          if (force_theta) tend_th(k,j,i) += -ustar*thstar/dz(k);
+          if (force_theta || presc_wpthp) tend_th(k,j,i) += -ustar*thstar/dz(k);
           if (k == 0) {
             sfc_ustar (j,i) = ustar;
             sfc_thstar(j,i) = thstar;
@@ -278,11 +280,12 @@ namespace modules {
 
     KOKKOS_INLINE_FUNCTION static void stability_correction( real vk , real mag , real z0 , real th , real th0 ,
                                                              real grav , real Czil , real nu , real dzloc ,
-                                                             bool use_z0h ,
+                                                             bool use_z0h , bool presc_wpthp , real sfc_wpthp ,
                                                              real & ustar , real & thstar ) {
       using std::sqrt;
       using std::log;
       using std::atan;
+      if (presc_wpthp) thstar = -sfc_wpthp/std::max(ustar,1e-10);
       int  max_iter = 20;
       real beta_m   = 5;
       real beta_h   = 5;
@@ -334,6 +337,7 @@ namespace modules {
         }
         ustar  = vk*mag     /std::max(1.e-3,log((dzloc/2+z0 )/z0 ) - psi_m_1 + psi_m_2);
         thstar = vk*(th-th0)/std::max(1.e-3,log((dzloc/2+z0h)/z0h) - psi_h_1 + psi_h_2);
+        if (presc_wpthp) thstar = -sfc_wpthp/std::max(ustar,1e-10);
         if (std::abs(ustar-ustar_prev) <= tol && std::abs(thstar-thstar_prev) <= tol) break;
       }
     }
