@@ -21,13 +21,13 @@ int main(int argc, char** argv) {
     real xlen  = 12;
     real ylen  = 6;
     real zlen  = 2;
+    real npnts = 128;        // USER PARAMETER 1
 
-    real u0    = 2;
-    real npnts = 128;
-    real z0    = zlen/npnts/2;
+    real u0    = 0.1;        // USER PARAMETER 2
+    real dx    = zlen/npnts;
+    real z0    = dx/2;       // USER PARAMETER 3
 
     real        sim_time     = xlen/u0*40+0.01;
-    real        dx           = zlen/npnts;
     int         nx_glob      = std::round(xlen/dx);
     int         ny_glob      = std::round(ylen/dx);
     int         nz           = std::round(zlen/dx);
@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     std::string init_data    = "channel";
     real        out_freq     = xlen/u0*0.5;
     real        inform_freq  = xlen/u0*0.05;
-    std::string out_prefix   = "channel";
+    std::string out_prefix   = std::string("channel_u0-")+std::to_string(u0)+std::string("_z0-")+std::to_string(z0);
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
