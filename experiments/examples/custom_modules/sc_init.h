@@ -207,6 +207,32 @@ namespace custom_modules {
         dm_rho_v(k,j,i) = 0;
       });
 
+    } else if (coupler.get_option<std::string>("init_data") == "channel") {
+
+      coupler.set_option<std::string>("bc_x1","periodic");
+      coupler.set_option<std::string>("bc_x2","periodic");
+      coupler.set_option<std::string>("bc_y1","periodic");
+      coupler.set_option<std::string>("bc_y2","periodic");
+      coupler.set_option<std::string>("bc_z1","wall_free_slip");
+      coupler.set_option<std::string>("bc_z2","wall_free_slip");
+      coupler.set_option<bool>("enable_gravity",false);
+      real u0 = coupler.get_option<real>( "constant_uvel"  , 1.   );
+      real v0 = coupler.get_option<real>( "constant_vvel"  , 0.   );
+      real w0 = 0;
+      real T0 = coupler.get_option<real>( "constant_temp"  , 300. );
+      real p0 = coupler.get_option<real>( "constant_press" , 1.e5 );
+      real r0 = p0/(R_d*T0);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        real z    = std::min( zmid(k) , zlen - zmid(k) );
+        real umag = u0*std::log((z+roughness)/roughness)/std::log((zlen/2+roughness)/roughness);
+        dm_rho_d(k,j,i) = r0;
+        dm_uvel (k,j,i) = umag;
+        dm_vvel (k,j,i) = v0;
+        dm_wvel (k,j,i) = w0;
+        dm_temp (k,j,i) = T0;
+        dm_rho_v(k,j,i) = 0;
+      });
+
     } else if (coupler.get_option<std::string>("init_data") == "city_stretched") {
 
       dm_immersed_rough = coupler.get_option<real>("building_roughness");
@@ -867,11 +893,12 @@ namespace custom_modules {
     auto imm_prop  = dm.get<real,3>("immersed_proportion_halos");
     auto imm_rough = dm.get<real,3>("immersed_roughness_halos" );
     auto sfc_rough = dm.get<real,2>("surface_roughness_halos"  );
+    auto top_fric  = coupler.get_option<std::string>("init_data") == "channel";
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
       imm_prop (      kk,j,i) = 1;
       imm_rough(      kk,j,i) = sfc_rough(j,i);
-      imm_prop (hs+nz+kk,j,i) = 0;
-      imm_rough(hs+nz+kk,j,i) = 0;
+      imm_prop (hs+nz+kk,j,i) = top_fric ? 1 : 0;
+      imm_rough(hs+nz+kk,j,i) = sfc_rough(j,i);
     });
   }
 

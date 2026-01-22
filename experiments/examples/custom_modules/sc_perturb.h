@@ -65,6 +65,16 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "constant") {
 
+    } else if (coupler.get_option<std::string>("init_data") == "channel") {
+
+      real u0 = coupler.get_option<real>( "constant_uvel" , 1. );
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        yakl::Random rng(3*(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + i_beg+i));
+        dm_uvel(k,j,i) += rng.genFP<real>(-0.2,0.2)*u0;
+        dm_vvel(k,j,i) += rng.genFP<real>(-0.2,0.2)*u0;
+        dm_wvel(k,j,i) += rng.genFP<real>(-0.2,0.2)*u0;
+      });
+
     } else if (coupler.get_option<std::string>("init_data") == "nrel_5mw_convective") {
 
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
