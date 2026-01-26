@@ -2,7 +2,7 @@ from netCDF4 import Dataset
 import numpy as np
 import matplotlib.pyplot as plt
 
-tend = 19
+tend = 1
 for i in range(max(0,tend-2),tend+1) :
   nc = Dataset(f"channel_{i:08d}.nc","r")
   x = np.array(nc["x"][:])

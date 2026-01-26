@@ -615,19 +615,6 @@ namespace modules {
 
 
 
-    // Compute hyperviscosity derivatives from a stencil of values
-    // s   : Stencil of values to compute hyperviscosity from
-    // ord : Order of hyperviscosity (must be odd: 3,5,...)
-    real static KOKKOS_INLINE_FUNCTION hypervis( SArray<FLOC,1,ord> const &s) {
-      if      constexpr (ord == 3 ) { return  ( 1.00000000f*s(0)-2.00000000f*s(1)+1.00000000f*s(2) )/4; }
-      else if constexpr (ord == 5 ) { return -( 1.00000000f*s(0)-4.00000000f*s(1)+6.00000000f*s(2)-4.00000000f*s(3)+1.00000000f*s(4) )/16; }
-      else if constexpr (ord == 7 ) { return  ( 1.00000000f*s(0)-6.00000000f*s(1)+15.0000000f*s(2)-20.0000000f*s(3)+15.0000000f*s(4)-6.00000000f*s(5)+1.00000000f*s(6) )/64; }
-      else if constexpr (ord == 9 ) { return -( 1.00000000f*s(0)-8.00000000f*s(1)+28.0000000f*s(2)-56.0000000f*s(3)+70.0000000f*s(4)-56.0000000f*s(5)+28.0000000f*s(6)-8.00000000f*s(7)+1.00000000f*s(8) )/256; }
-      else if constexpr (ord == 11) { return  ( 1.00000000f*s(0)-10.0000000f*s(1)+1.00000000f*s(10)+45.0000000f*s(2)-120.000000f*s(3)+210.000000f*s(4)-252.000000f*s(5)+210.000000f*s(6)-120.000000f*s(7)+45.0000000f*s(8)-10.0000000f*s(9) )/1024; }
-    }
-
-
-
     int static constexpr idP = 5; // Index of pressure in total array of num_state+1+num_tracers in compute_tendencies
 
     // Compute the tendencies (time derivatives) of the state and tracer variables
@@ -809,34 +796,52 @@ namespace modules {
         // Load the stencils for cell immersion and pressure with the cell to the left of the edge as the center cell
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii); }
+        bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy;  // To hold left pressure and dummy right pressure
-        // WENO reconstruction of pressure at this edge from the left side
-        Limiter::compute_limited_edges( s , dummy , p_L , { false , false , false } );
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
+        } else {
+          p_L = 0;
+          for (int ii=0; ii < ord; ii++) { p_L += wt(ord-1-ii)*s(ii); }
+        }
 
         // Load the stencil for momentum with the cell to the left of the edge as the center cell
-        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*
-                                                          fields_loc (idU,hs+k,hs+j,i+ii); }
+        for (int ii = 0; ii < ord; ii++) { s(ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*
+                                                    fields_loc(idU,hs+k,hs+j,i+ii); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC ru_L = 0;
-        for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , dummy , ru_L , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
+        } else {
+          for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
+        }
 
         // Load the stencils for cell immersion and pressure with the cell to the right of the edge as the center cell
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > 0; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii+1); }
+        do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        // WENO reconstruction of pressure at this edge from the right side
-        Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
+        } else {
+          p_R = 0;
+          for (int ii=0; ii < ord; ii++) { p_R += wt(ii)*s(ii); }
+        }
 
         // Load the stencil for momentum with the cell to the right of the edge as the center cell
-        for (int ii = 0; ii < ord; ii++) { s       (ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*
-                                                          fields_loc (idU,hs+k,hs+j,i+ii+1); }
+        for (int ii = 0; ii < ord; ii++) { s(ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*
+                                                    fields_loc(idU,hs+k,hs+j,i+ii+1); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC ru_R = 0;
-        for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , ru_R , dummy , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
+        } else {
+          for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
+        }
         // Compute the upwind state of pressure and momentum at this edge
         p_x (k,j,i) = 0.5f*(p_L  + p_R  - cs*(ru_R-ru_L)   );
         ru_x(k,j,i) = 0.5f*(ru_L + ru_R -    (p_R -p_L )/cs);
@@ -850,34 +855,52 @@ namespace modules {
         // Load the stencils for cell immersion and pressure with the cell left of the edge as the center cell
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj,hs+i); }
+        bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        // WENO reconstruction of pressure at this edge from the left side
-        Limiter::compute_limited_edges( s , dummy , p_L , { false , false , false } );
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
+        } else {
+          p_L = 0;
+          for (int jj=0; jj < ord; jj++) { p_L += wt(ord-1-jj)*s(jj); }
+        }
 
         // Load the stencil for momentum with the cell left of the edge as the center cell
-        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*
-                                                          fields_loc (idV,hs+k,j+jj,hs+i); }
+        for (int jj = 0; jj < ord; jj++) { s(jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*
+                                                    fields_loc(idV,hs+k,j+jj,hs+i); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rv_L = 0;
-        for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , dummy , rv_L , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
+        } else {
+          for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
+        }
 
         // Load the stencils for cell immersion and pressure with the cell right of the edge as the center cell
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > 0; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj+1,hs+i); }
+        do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        // WENO reconstruction of pressure at this edge from the right side
-        Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
+        } else {
+          p_R = 0;
+          for (int jj=0; jj < ord; jj++) { p_R += wt(jj)*s(jj); }
+        }
 
         // Load the stencil for momentum with the cell right of the edge as the center cell
-        for (int jj = 0; jj < ord; jj++) { s       (jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*
-                                                          fields_loc (idV,hs+k,j+jj+1,hs+i); }
+        for (int jj = 0; jj < ord; jj++) { s(jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*
+                                                    fields_loc(idV,hs+k,j+jj+1,hs+i); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rv_R = 0;
-        for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , rv_R , dummy , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
+        } else {
+          for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
+        }
         // Compute the upwind state of pressure and momentum at this edge
         p_y (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rv_R-rv_L)   );
         rv_y(k,j,i) = 0.5f*(rv_L + rv_R -    (p_R -p_L )/cs);
@@ -892,21 +915,30 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > 0; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk,hs+j,hs+i); }
         for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
+        bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        // WENO reconstruction of pressure at this edge from the left side
-        Limiter::compute_limited_edges( s , dummy , p_L , { false , false , false } );
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
+        } else {
+          p_L = 0;
+          for (int kk=0; kk < ord; kk++) { p_L += wt(ord-1-kk)*s(kk); }
+        }
         p_L /= metjac_edges(1+k-1,1);
 
         // Load the stencil for momentum with the cell left of the edge as the center cell
-        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk,hs+j,hs+i)+hy_dens_cells(k+kk))*
-                                                          fields_loc (idW,k+kk,hs+j,hs+i); }
+        for (int kk = 0; kk < ord; kk++) { s(kk) = (fields_loc(idR,k+kk,hs+j,hs+i)+hy_dens_cells(k+kk))*
+                                                    fields_loc(idW,k+kk,hs+j,hs+i); }
         // Multiply by normalized grid spacing to transform into zeta space
-        for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
+        for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rw_L = 0;
-        for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , dummy , rw_L , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
+        } else {
+          for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
+        }
         rw_L /= metjac_edges(1+k-1,1);  // Divide by metric jacobian at this edge to transform to physical space
         if (wall_z1 && k == 0 ) rw_L = 0; // Impose wall boundary condition
         if (wall_z2 && k == nz) rw_L = 0; // Impose wall boundary condition
@@ -916,21 +948,30 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk+1,hs+j,hs+i); }
         // Multiply by normalized grid spacing to transform into zeta space
         for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
+        do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        // WENO reconstruction of pressure at this edge from the right side
-        Limiter::compute_limited_edges( s , p_R , dummy , { false , false , false } );
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
+        } else {
+          p_R = 0;
+          for (int kk=0; kk < ord; kk++) { p_R += wt(kk)*s(kk); }
+        }
         p_R /= metjac_edges(1+k,0); // Divide by metric jacobian at this edge to transform to physical space
 
         // Load the stencil for momentum with the cell right of the edge as the center cell
-        for (int kk = 0; kk < ord; kk++) { s       (kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*
-                                                          fields_loc (idW,k+kk+1,hs+j,hs+i); }
+        for (int kk = 0; kk < ord; kk++) { s(kk) = (fields_loc(idR,k+kk+1,hs+j,hs+i)+hy_dens_cells(k+kk+1))*
+                                                    fields_loc(idW,k+kk+1,hs+j,hs+i); }
         // Multiply by normalized grid spacing to transform into zeta space
-        for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
+        for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rw_R = 0;
-        for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
+        if (use_weno) {
+          Limiter::compute_limited_edges( s , rw_R , dummy , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
+        } else {
+          for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
+        }
         rw_R /= metjac_edges(1+k,0); // Divide by metric jacobian at this edge to transform to physical space
         if (wall_z1 && k == 0 ) rw_R = 0; // Impose wall boundary condition
         if (wall_z2 && k == nz) rw_R = 0; // Impose wall boundary condition
@@ -962,6 +1003,7 @@ namespace modules {
         int ind = ru > 0 ? 0 : 1;     // Determine index offset based on flow direction
         // Load the cell immersersion stencil based on upwind offset
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,i+ii+ind) > 0; }
+        bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
           // Gather the stencil values based on upwind offset
           SArray<FLOC,1,ord> s;
@@ -974,7 +1016,7 @@ namespace modules {
             for (int ii=0; ii < ord; ii++) { val += wt(ru>0?ord-1-ii:ii)*s(ii); }
           } else {         // WENO reconstruction
             FLOC val_L, val_R;
-            Limiter::compute_limited_edges( s , val_L , val_R , { true , immersed(hsm1-1) , immersed(hsm1+1) } );
+            Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = ru > 0 ? val_R : val_L;  // Choose value based on flow direction
           }
           if (l == idT) val += hy_theta_cells(hs+k); // Add hydrostatic potential temperature back in
@@ -991,6 +1033,7 @@ namespace modules {
         int ind = rv > 0 ? 0 : 1;     // Determine index offset based on flow direction
         // Load the cell immersion stencil based on upwind offset
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,j+jj+ind,hs+i) > 0; }
+        bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
           // Gather the stencil values based on upwind offset
           SArray<FLOC,1,ord> s;
@@ -1003,7 +1046,7 @@ namespace modules {
             for (int jj=0; jj < ord; jj++) { val += wt(rv>0?ord-1-jj:jj)*s(jj); }
           } else {         // WENO reconstruction
             FLOC val_L, val_R;
-            Limiter::compute_limited_edges( s , val_L , val_R , { true , immersed(hsm1-1) , immersed(hsm1+1) } );
+            Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = rv > 0 ? val_R : val_L; // Choose value based on flow direction
           }
           if (l == idT) val += hy_theta_cells(hs+k); // Add hydrostatic potential temperature back in
@@ -1020,6 +1063,7 @@ namespace modules {
         int ind = rw > 0 ? 0 : 1;     // Determine index offset based on flow direction
         // Load the cell immersion stencil based on upwind offset
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(k+kk+ind,hs+j,hs+i) > 0; }
+        bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
           // Gather the stencil values based on upwind offset
           SArray<FLOC,1,ord> s;
@@ -1035,7 +1079,7 @@ namespace modules {
             for (int kk=0; kk < ord; kk++) { val += wt(rw>0?ord-1-kk:kk)*s(kk); }
           } else {         // WENO reconstruction
             FLOC val_L, val_R;
-            Limiter::compute_limited_edges( s , val_L , val_R , { true , immersed(hsm1-1) , immersed(hsm1+1) } );
+            Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = rw > 0 ? val_R : val_L; // Choose value based on flow direction
           }
           // Divide by metric jacobian at this edge to transform to physical space
@@ -1081,72 +1125,6 @@ namespace modules {
           tracers_tend(l,k,j,i) = -( flux_x(num_state+l,k,j,i+1) - flux_x(num_state+l,k,j,i) ) * r_dx
                                   -( flux_y(num_state+l,k,j+1,i) - flux_y(num_state+l,k,j,i) ) * r_dy 
                                   -( flux_z(num_state+l,k+1,j,i) - flux_z(num_state+l,k,j,i) ) / dz(k);
-        }
-      });
-
-      //////////////////////////////////////////////////////////////////////////////////////////////
-      // ADD HYPERVISCOSITY NEAR IMMERSED BOUNDARIES TO TENDENCIES
-      //////////////////////////////////////////////////////////////////////////////////////////////
-
-      // Same as advected fields, the viscous fields do not include pressure
-      core::MultiField<FLOC,3> fields_visc;
-      for (int l=0; l < num_state  ; l++) { fields_visc.add_field(fields_loc.slice<3>(            l,0,0,0)); }
-      for (int l=0; l < num_tracers; l++) { fields_visc.add_field(fields_loc.slice<3>(num_state+1+l,0,0,0)); }
-
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        FLOC hv_beta = 0;  // This is a multiplier to the maximum stable hyperviscosity coefficient
-        // any_immersed* are pre-computed arrays that indicate if there is any immersed boundary within
-        //  a certain number of cells of the current cell in any direction (including diagonals)
-        // The goal is to apply stronger hyperviscosity the closer we are to an immersed boundary
-        if      (any_immersed2 (k,j,i)) { hv_beta = 1.f/4.f/2.f;  }
-        else if (any_immersed4 (k,j,i)) { hv_beta = 1.f/4.f/4.f;  }
-        else if (any_immersed6 (k,j,i)) { hv_beta = 1.f/4.f/8.f;  }
-        else if (any_immersed8 (k,j,i)) { hv_beta = 1.f/4.f/16.f; }
-        else if (any_immersed10(k,j,i)) { hv_beta = 1.f/4.f/32.f; }
-        if (hv_beta > 0) {  // Only apply hyperviscosity if near an immersed boundary
-          SArray<bool ,1,ord> immersed; // Whether a stencil cell is immersed
-          // Gather cell immersion stencil in x-direction
-          for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,1+i+ii) > 0; }
-          for (int l=0; l < num_state+num_tracers; l++) { // Loop over all advected fields
-            SArray<FLOC,1,ord> s; // Stencil values
-            // Gather stencil values in x-direction
-            for (int ii = 0; ii < ord; ii++) { s(ii) = fields_visc(l,hs+k,hs+j,1+i+ii); }
-            // For transverse velocities, modify stencil for immersed boundary zero-derivative condition
-            //  to avoid mixing zero velocities without consideration of roughness length
-            if (l==idV || l==idW) modify_stencil_immersed_der0( s , immersed );
-            // Apply hyperviscosity contribution to tendencies
-            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                  hv_beta*hypervis(s)/dt; }
-            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
-            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
-          }
-          // Gather cell immersion stencil in y-direction
-          for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,1+j+jj,hs+i) > 0; }
-          for (int l=0; l < num_state+num_tracers; l++) { // Loop over all advected fields
-            SArray<FLOC,1,ord> s; // Stencil values
-            // Gather stencil values in y-direction
-            for (int jj = 0; jj < ord; jj++) { s(jj) = fields_visc(l,hs+k,1+j+jj,hs+i); }
-            // For transverse velocities, modify stencil for immersed boundary zero-derivative condition
-            //  to avoid mixing zero velocities without consideration of roughness length
-            if (l==idU || l==idW) modify_stencil_immersed_der0( s , immersed );
-            // Apply hyperviscosity contribution to tendencies
-            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                  hv_beta*hypervis(s)/dt; }
-            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
-            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
-          }
-          // Gather cell immersion stencil in z-direction
-          for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(1+k+kk,hs+j,hs+i) > 0; }
-          for (int l=0; l < num_state+num_tracers; l++) { // Loop over all advected fields
-            SArray<FLOC,1,ord> s; // Stencil values
-            // Gather stencil values in z-direction
-            for (int kk = 0; kk < ord; kk++) { s(kk) = fields_visc(l,1+k+kk,hs+j,hs+i); }
-            // For transverse velocities, modify stencil for immersed boundary zero-derivative condition
-            //  to avoid mixing zero velocities without consideration of roughness length
-            if (l==idU || l==idV) modify_stencil_immersed_der0( s , immersed );
-            // Apply hyperviscosity contribution to tendencies
-            if      (l == idR)      { state_tend  (l          ,k,j,i) +=                  hv_beta*hypervis(s)/dt; }
-            else if (l < num_state) { state_tend  (l          ,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
-            else                    { tracers_tend(l-num_state,k,j,i) += state(idR,k,j,i)*hv_beta*hypervis(s)/dt; }
-          }
         }
       });
 
@@ -1441,68 +1419,6 @@ namespace modules {
 
 
 
-    // For idealized forcing for non-turbulent forced simulations, copy the average column into the ghost cell storage
-    // coupler : reference to the coupler object
-    // col     : average column computed by compute_average_ghost_column
-    void column_to_ghost_cells( real2d const & col , core::Coupler & coupler ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
-      auto px       = coupler.get_px();      // MPI rank in x-direction
-      auto py       = coupler.get_py();      // MPI rank in y-direction
-      auto npx      = coupler.get_nproc_x(); // Number of MPI ranks in x-direction
-      auto npy      = coupler.get_nproc_y(); // Number of MPI ranks in y-direction
-      auto nz       = coupler.get_nz();      // Number of cells in z-direction
-      auto ny       = coupler.get_ny();      // Number of cells in y-direction
-      auto nx       = coupler.get_nx();      // Number of cells in x-direction
-      auto &dm      = coupler.get_data_manager_readwrite(); // Get data manager as read-write
-      if (px == 0) { // If my rank is on the west edge of the domain
-        auto ghost_x1 = dm.get<FLOC,6>("dycore_ghost_x1");
-        auto ncycles  = ghost_x1.extent(0);
-        auto nstage   = ghost_x1.extent(1);
-        auto nvar     = ghost_x1.extent(2);
-        // Copy average column into ghost cell storage
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(ncycles,nstage,nvar,nz,ny,hs) ,
-                                          KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int j, int ii) {
-          ghost_x1(icycle,istage,l,k,j,ii) = col(l,k);
-        });
-      }
-      if (px == npx-1) { // If my rank is on the east edge of the domain
-        auto ghost_x2 = dm.get<FLOC,6>("dycore_ghost_x2");
-        auto ncycles  = ghost_x2.extent(0);
-        auto nstage   = ghost_x2.extent(1);
-        auto nvar     = ghost_x2.extent(2);
-        // Copy average column into ghost cell storage
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(ncycles,nstage,nvar,nz,ny,hs) ,
-                                          KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int j, int ii) {
-          ghost_x2(icycle,istage,l,k,j,ii) = col(l,k);
-        });
-      }
-      if (py == 0) { // If my rank is on the south edge of the domain
-        auto ghost_y1 = dm.get<FLOC,6>("dycore_ghost_y1");
-        auto ncycles  = ghost_y1.extent(0);
-        auto nstage   = ghost_y1.extent(1);
-        auto nvar     = ghost_y1.extent(2);
-        // Copy average column into ghost cell storage
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(ncycles,nstage,nvar,nz,hs,nx) ,
-                                          KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int jj, int i) {
-          ghost_y1(icycle,istage,l,k,jj,i) = col(l,k);
-        });
-      }
-      if (py == npy-1) { // If my rank is on the north edge of the domain
-        auto ghost_y2 = dm.get<FLOC,6>("dycore_ghost_y2");
-        auto ncycles  = ghost_y2.extent(0);
-        auto nstage   = ghost_y2.extent(1);
-        auto nvar     = ghost_y2.extent(2);
-        // Copy average column into ghost cell storage
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(ncycles,nstage,nvar,nz,hs,nx) ,
-                                          KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int jj, int i) {
-          ghost_y2(icycle,istage,l,k,jj,i) = col(l,k);
-        });
-      }
-    }
-
-
-
     // For simulations forced by a concurrent turbulent precursor, copy the ghost cell data from the precursor coupler to the main coupler
     // coupler_prec : reference to the precursor coupler object
     // coupler_main : reference to the main coupler object
@@ -1736,6 +1652,8 @@ namespace modules {
         auto ny     = coupler.get_ny  (); // Number of cells in y-direction (not including halos)
         auto nx     = coupler.get_nx  (); // Number of cells in x-direction (not including halos)
         auto &dm    = coupler.get_data_manager_readwrite(); // Get data manager as read-write
+        auto wall_B = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
+        auto wall_T = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
         if (!dm.entry_exists("dycore_immersed_proportion_halos")) {
           // Get the immersed_proportion field from the coupler data manager that is initialized before
           //  calling this module's init function
@@ -1751,8 +1669,8 @@ namespace modules {
           // Fill in the dycore's top and bottom halos with 1's to indicate fully immersed
           // This does not affect the immersed_proportion DataManager array since we are assigning to a different array
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
-            fields_halos(0,      kk,j,i) = 1;
-            fields_halos(0,hs+nz+kk,j,i) = 1;
+            fields_halos(0,      kk,j,i) = wall_B ? 1 : 0;
+            fields_halos(0,hs+nz+kk,j,i) = wall_T ? 1 : 0;
           });
           // Copy the field with halos into the coupler data manager array
           fields_halos.get_field(0).deep_copy_to( dm.get<real,3>("dycore_immersed_proportion_halos") );
@@ -1769,8 +1687,8 @@ namespace modules {
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
                                               KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = 0;
+              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
+              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
             });
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               any_immersed(k,j,i) = false;
@@ -1790,8 +1708,8 @@ namespace modules {
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
                                               KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = 0;
+              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
+              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
             });
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               any_immersed(k,j,i) = false;
@@ -1811,8 +1729,8 @@ namespace modules {
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
                                               KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = 0;
+              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
+              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
             });
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               any_immersed(k,j,i) = false;
@@ -1832,8 +1750,8 @@ namespace modules {
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
                                               KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = 0;
+              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
+              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
             });
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               any_immersed(k,j,i) = false;
@@ -1853,8 +1771,8 @@ namespace modules {
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
                                               KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = 0;
+              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
+              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
             });
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               any_immersed(k,j,i) = false;

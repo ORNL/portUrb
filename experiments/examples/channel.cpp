@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
-    real        roughness    = 0.001;
+    real        roughness    = z0;
     int         dyn_cycle    = 3;
 
     // Things the coupler might need to know about
