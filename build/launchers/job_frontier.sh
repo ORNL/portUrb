@@ -3,7 +3,7 @@
 #SBATCH -J portUrb
 #SBATCH -o %x-%j.out
 #SBATCH -t 4:00:00
-#SBATCH -N 4
+#SBATCH -N 2
 #SBATCH --partition batch
 
 # #SBATCH --partition extended

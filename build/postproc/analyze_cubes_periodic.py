@@ -10,9 +10,9 @@ def get_ind(arr,val) :
 workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
 
 t1 = 6
-t2 = 6
-prefixes = ["cubes_periodic_nosgs_40_"]
-labels = ["ILES","SGS"]
+t2 = 14
+prefixes = ["cubes_periodic_nosgs_20_","cubes_periodic_sgs0.3_20_","cubes_periodic_sgs1.0_20_"]
+labels = ["ILES 20","SGS0.3 20","SGS1.0 20"]
 fnames = [ [f"{workdir}/{prefix}{i:08}.nc" for i in range(t1,t2+1)] for prefix in prefixes]
 
 u0    = [0. for i in range(len(prefixes))]
@@ -35,6 +35,7 @@ upwp0 = [0. for i in range(len(prefixes))]
 upwp1 = [0. for i in range(len(prefixes))]
 upwp2 = [0. for i in range(len(prefixes))]
 upwp3 = [0. for i in range(len(prefixes))]
+zpnts = [0. for i in range(len(prefixes))]
 for k in range(len(prefixes)) :
   nc   = Dataset(fnames[k][0],"r")
   x    = np.array(nc["x"][:])
@@ -58,7 +59,7 @@ for k in range(len(prefixes)) :
   p3_x = [get_ind(x,2*xlen/8),get_ind(x,6*xlen/8),get_ind(x,2*xlen/8),get_ind(x,6*xlen/8)];
   p3_y = [get_ind(y,4*ylen/8),get_ind(y,2*ylen/8),get_ind(y,0*ylen/8),get_ind(y,6*ylen/8)];
   for i in range(len(fnames[k])) :
-    print(f"{k}/{len(prefixes)} : {i}/{len(fnames[k])-1}")
+    print(f"{k+1}/{len(prefixes)} : {i+1}/{len(fnames[k])}")
     nc = Dataset(fnames[k][i],"r")
     for j in range(len(p0_x)) :
       u0   [k] += np.array(nc["avg_u"    ][:,p0_y[j],p0_x[j]])
@@ -101,6 +102,7 @@ for k in range(len(prefixes)) :
   upwp1[k] /= len(fnames[k])*len(p0_x)
   upwp2[k] /= len(fnames[k])*len(p0_x)
   upwp3[k] /= len(fnames[k])*len(p0_x)
+  zpnts[k] = z
 
 
 u0_x         = np.array([0.393298519,0.405794912,0.421607921,0.432379455,0.44110289,0.452935145,0.464457739,0.472195153,0.484524493,0.492113868,0.505091047,0.510720604,0.524751712,0.532213421,0.538234126,0.548634884,0.555986581,0.56742497,0.580523026,0.585246692])
@@ -152,195 +154,131 @@ nupwp1_hwa_y = np.array([0.17668,0.18549,0.19493,0.20528,0.21573,0.2268,0.23842,
 nupwp2_hwa_x = np.array([0.00543,0.00515,0.00495,0.00496,0.00412,0.00411,0.0038,0.00387,0.00399,0.00379,0.00389,0.00375,0.00383,0.00374,0.00342,0.00327])
 nupwp2_hwa_y = np.array([0.17684,0.1861,0.19509,0.20528,0.22696,0.23811,0.25064,0.26273,0.277,0.29056,0.30561,0.32072,0.33702,0.3543,0.37266,0.39085])
 
+obs_zmin = max(upup1_lda_y[ 0],vpvp1_lda_y[ 0],wpwp1_lda_y[ 0])
+obs_zmax = min(upup1_lda_y[-1],vpvp1_lda_y[-1],wpwp1_lda_y[-1])
+obs_z1   = np.arange(obs_zmin,obs_zmax,0.005)
+obs_upup1 = np.interp(obs_z1,upup1_lda_y,upup1_lda_x)
+obs_vpvp1 = np.interp(obs_z1,vpvp1_lda_y,vpvp1_lda_x)
+obs_wpwp1 = np.interp(obs_z1,wpwp1_lda_y,wpwp1_lda_x)
+obs_tke1  = (obs_upup1+obs_vpvp1+obs_wpwp1)/2
+obs_zmin = max(upup2_lda_y[ 0],vpvp2_lda_y[ 0],wpwp2_lda_y[ 0])
+obs_zmax = min(upup2_lda_y[-1],vpvp2_lda_y[-1],wpwp2_lda_y[-1])
+obs_z2   = np.arange(obs_zmin,obs_zmax,0.005)
+obs_upup2 = np.interp(obs_z2,upup2_lda_y,upup2_lda_x)
+obs_vpvp2 = np.interp(obs_z2,vpvp2_lda_y,vpvp2_lda_x)
+obs_wpwp2 = np.interp(obs_z2,wpwp2_lda_y,wpwp2_lda_x)
+obs_tke2  = (obs_upup2+obs_vpvp2+obs_wpwp2)/2
+
 fig,ax = plt.subplots(2,2,figsize=(8,8))
 for k in range(len(prefixes)) :
-  ax[0,0].plot(u0[k]/10,z/.02,label=f"{labels[k]} P0")
-ax[0,0].scatter(u0_x,u0_y/.135,label="LDA P0",facecolors='none',edgecolors='r',s=35)
+  ax[0,0].plot(u0[k]/10,zpnts[k]/.02,label=f"{labels[k]} P0")
+ax[0,0].scatter(u0_x,u0_y/.135,label="LDA P0",facecolors='r',edgecolors='r',s=35)
 ax[0,0].set_xlim(-0.2,0.8)
 ax[0,0].set_ylim(0,3)
 ax[0,0].grid(True)
 ax[0,0].legend()
 ax[0,0].margins(x=0)
 for k in range(len(prefixes)) :
-  ax[0,1].plot(u1[k]/10,z/.02,label=f"{labels[k]} P1")
-ax[0,1].scatter(u1_x,u1_y/.135,label="LDA P1",facecolors='none',edgecolors='r',s=35)
+  ax[0,1].plot(u1[k]/10,zpnts[k]/.02,label=f"{labels[k]} P1")
+ax[0,1].scatter(u1_x,u1_y/.135,label="LDA P1",facecolors='r',edgecolors='r',s=35)
 ax[0,1].set_xlim(-0.2,0.8)
 ax[0,1].set_ylim(0,3)
 ax[0,1].grid(True)
 ax[0,1].legend()
 ax[0,1].margins(x=0)
 for k in range(len(prefixes)) :
-  ax[1,0].plot(u2[k]/10,z/.02,label=f"{labels[k]} P2")
-ax[1,0].scatter(u2_x,u2_y/.135,label="LDA P2",facecolors='none',edgecolors='r',s=35)
+  ax[1,0].plot(u2[k]/10,zpnts[k]/.02,label=f"{labels[k]} P2")
+ax[1,0].scatter(u2_x,u2_y/.135,label="LDA P2",facecolors='r',edgecolors='r',s=35)
 ax[1,0].set_xlim(-0.2,0.8)
 ax[1,0].set_ylim(0,3)
 ax[1,0].grid(True)
 ax[1,0].legend()
 ax[1,0].margins(x=0)
 for k in range(len(prefixes)) :
-  ax[1,1].plot(u3[k]/10,z/.02,label=f"{labels[k]} P3")
-ax[1,1].scatter(u3_x,u3_y/.135,label="LDA P3",facecolors='none',edgecolors='r',s=35)
+  ax[1,1].plot(u3[k]/10,zpnts[k]/.02,label=f"{labels[k]} P3")
+ax[1,1].scatter(u3_x,u3_y/.135,label="LDA P3",facecolors='r',edgecolors='r',s=35)
 ax[1,1].set_xlim(-0.2,0.8)
 ax[1,1].set_ylim(0,3)
 ax[1,1].grid(True)
 ax[1,1].legend()
 ax[1,1].margins(x=0)
 fig.tight_layout()
+plt.savefig("u.png")
 plt.show()
 plt.close()
 
 fig,ax = plt.subplots(2,2,figsize=(8,8))
 for k in range(len(prefixes)) :
-  ax[0,0].plot(upup0[k]/10/10,z/.02,label=f"{labels[k]} P0")
+  ax[0,0].plot((upup0[k]+vpvp0[k]+wpwp0[k])/2/10/10,zpnts[k]/.02,label=f"{labels[k]} P0")
 ax[0,0].set_xlim(0,0.025)
 ax[0,0].set_ylim(0,3)
 ax[0,0].grid(True)
 ax[0,0].legend()
 ax[0,0].margins(x=0)
 for k in range(len(prefixes)) :
-  ax[0,1].plot(upup1[k]/10/10,z/.02,label=f"{labels[k]} P1")
-ax[0,1].scatter(upup1_lda_x,upup1_lda_y/.135,label="LDA P1",facecolors='none',edgecolors='r',s=35)
-ax[0,1].scatter(upup1_hwa_x,upup1_hwa_y/.135,label="HWA P1",facecolors='none',edgecolors='b',s=35)
+  ax[0,1].plot((upup1[k]+vpvp1[k]+wpwp1[k])/2/10/10,zpnts[k]/.02,label=f"{labels[k]} P1")
+ax[0,1].scatter(obs_tke1,obs_z1/.135,label="LDA P1",facecolors='r',edgecolors='r',s=35)
 ax[0,1].set_xlim(0,0.025)
 ax[0,1].set_ylim(0,3)
 ax[0,1].grid(True)
 ax[0,1].legend()
 ax[0,1].margins(x=0)
 for k in range(len(prefixes)) :
-  ax[1,0].plot(upup2[k]/10/10,z/.02,label=f"{labels[k]} P2")
-ax[1,0].scatter(upup2_lda_x,upup2_lda_y/.135,label="LDA P2",facecolors='none',edgecolors='r',s=35)
-ax[1,0].scatter(upup2_hwa_x,upup2_hwa_y/.135,label="HWA P2",facecolors='none',edgecolors='b',s=35)
+  ax[1,0].plot((upup2[k]+vpvp2[k]+wpwp2[k])/2/10/10,zpnts[k]/.02,label=f"{labels[k]} P2")
+ax[1,0].scatter(obs_tke2,obs_z2/.135,label="LDA P2",facecolors='r',edgecolors='r',s=35)
 ax[1,0].set_xlim(0,0.025)
 ax[1,0].set_ylim(0,3)
 ax[1,0].grid(True)
 ax[1,0].legend()
 ax[1,0].margins(x=0)
 for k in range(len(prefixes)) :
-  ax[1,1].plot(upup3[k]/10/10,z/.02,label=f"{labels[k]} P3")
-ax[1,1].scatter(upup3_lda_x,upup3_lda_y/.135,label="LDA P3",facecolors='none',edgecolors='r',s=35)
-ax[1,1].scatter(upup3_hwa_x,upup3_hwa_y/.135,label="HWA P3",facecolors='none',edgecolors='b',s=35)
+  ax[1,1].plot((upup3[k]+vpvp3[k]+wpwp3[k])/2/10/10,zpnts[k]/.02,label=f"{labels[k]} P3")
 ax[1,1].set_xlim(0,0.025)
 ax[1,1].set_ylim(0,3)
 ax[1,1].grid(True)
 ax[1,1].legend()
 ax[1,1].margins(x=0)
 fig.tight_layout()
+plt.savefig("tke.png")
 plt.show()
 plt.close()
 
 
 fig,ax = plt.subplots(2,2,figsize=(8,8))
 for k in range(len(prefixes)) :
-  ax[0,0].plot(vpvp0[k]/10/10,z/.02,label=f"{labels[k]} P0")
-ax[0,0].set_xlim(0,0.015)
-ax[0,0].set_ylim(0,3)
-ax[0,0].grid(True)
-ax[0,0].legend()
-ax[0,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[0,1].plot(vpvp1[k]/10/10,z/.02,label=f"{labels[k]} P1")
-ax[0,1].scatter(vpvp1_lda_x,vpvp1_lda_y/.135,label="LDA P1",facecolors='none',edgecolors='r',s=35)
-ax[0,1].scatter(vpvp1_hwa_x,vpvp1_hwa_y/.135,label="HWA P1",facecolors='none',edgecolors='b',s=35)
-ax[0,1].set_xlim(0,0.015)
-ax[0,1].set_ylim(0,3)
-ax[0,1].grid(True)
-ax[0,1].legend()
-ax[0,1].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,0].plot(vpvp2[k]/10/10,z/.02,label=f"{labels[k]} P2")
-ax[1,0].scatter(vpvp2_lda_x,vpvp2_lda_y/.135,label="LDA P2",facecolors='none',edgecolors='r',s=35)
-ax[1,0].scatter(vpvp2_hwa_x,vpvp2_hwa_y/.135,label="HWA P2",facecolors='none',edgecolors='b',s=35)
-ax[1,0].set_xlim(0,0.015)
-ax[1,0].set_ylim(0,3)
-ax[1,0].grid(True)
-ax[1,0].legend()
-ax[1,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,1].plot(vpvp3[k]/10/10,z/.02,label=f"{labels[k]} P3")
-ax[1,1].scatter(vpvp3_lda_x,vpvp3_lda_y/.135,label="LDA P3",facecolors='none',edgecolors='r',s=35)
-ax[1,1].scatter(vpvp3_hwa_x,vpvp3_hwa_y/.135,label="HWA P3",facecolors='none',edgecolors='b',s=35)
-ax[1,1].set_xlim(0,0.015)
-ax[1,1].set_ylim(0,3)
-ax[1,1].grid(True)
-ax[1,1].legend()
-ax[1,1].margins(x=0)
-fig.tight_layout()
-plt.show()
-plt.close()
-
-
-fig,ax = plt.subplots(2,2,figsize=(8,8))
-for k in range(len(prefixes)) :
-  ax[0,0].plot(wpwp0[k]/10/10,z/.02,label=f"{labels[k]} P0")
-ax[0,0].set_xlim(0,0.012)
-ax[0,0].set_ylim(0,3)
-ax[0,0].grid(True)
-ax[0,0].legend()
-ax[0,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[0,1].plot(wpwp1[k]/10/10,z/.02,label=f"{labels[k]} P1")
-ax[0,1].scatter(wpwp1_lda_x,wpwp1_lda_y/.135,label="LDA P1",facecolors='none',edgecolors='r',s=35)
-ax[0,1].scatter(wpwp1_hwa_x,wpwp1_hwa_y/.135,label="HWA P1",facecolors='none',edgecolors='b',s=35)
-ax[0,1].set_xlim(0,0.012)
-ax[0,1].set_ylim(0,3)
-ax[0,1].grid(True)
-ax[0,1].legend()
-ax[0,1].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,0].plot(wpwp2[k]/10/10,z/.02,label=f"{labels[k]} P2")
-ax[1,0].scatter(wpwp2_lda_x,wpwp2_lda_y/.135,label="LDA P2",facecolors='none',edgecolors='r',s=35)
-ax[1,0].scatter(wpwp2_hwa_x,wpwp2_hwa_y/.135,label="HWA P2",facecolors='none',edgecolors='b',s=35)
-ax[1,0].set_xlim(0,0.012)
-ax[1,0].set_ylim(0,3)
-ax[1,0].grid(True)
-ax[1,0].legend()
-ax[1,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,1].plot(wpwp3[k]/10/10,z/.02,label=f"{labels[k]} P3")
-ax[1,1].set_xlim(0,0.012)
-ax[1,1].set_ylim(0,3)
-ax[1,1].grid(True)
-ax[1,1].legend()
-ax[1,1].margins(x=0)
-fig.tight_layout()
-plt.show()
-plt.close()
-
-
-fig,ax = plt.subplots(2,2,figsize=(8,8))
-for k in range(len(prefixes)) :
-  ax[0,0].plot(-upwp0[k]/10/10,z/.02,label=f"{labels[k]} P0")
+  ax[0,0].plot(-upwp0[k]/10/10,zpnts[k]/.02,label=f"{labels[k]} P0")
 ax[0,0].set_xlim(-0.002,0.01)
 ax[0,0].set_ylim(0,3)
 ax[0,0].grid(True)
 ax[0,0].legend()
 ax[0,0].margins(x=0)
 for k in range(len(prefixes)) :
-  ax[0,1].plot(-upwp1[k]/10/10,z/.02,label=f"{labels[k]} P1")
-ax[0,1].scatter(nupwp1_lda_x,nupwp1_lda_y/.135,label="LDA P1",facecolors='none',edgecolors='r',s=35)
-ax[0,1].scatter(nupwp1_hwa_x,nupwp1_hwa_y/.135,label="HWA P1",facecolors='none',edgecolors='b',s=35)
+  ax[0,1].plot(-upwp1[k]/10/10,zpnts[k]/.02,label=f"{labels[k]} P1")
+ax[0,1].scatter(nupwp1_lda_x,nupwp1_lda_y/.135,label="LDA P1",facecolors='r',edgecolors='r',s=35)
+ax[0,1].scatter(nupwp1_hwa_x,nupwp1_hwa_y/.135,label="HWA P1",facecolors='b',edgecolors='b',s=35)
 ax[0,1].set_xlim(-0.002,0.01)
 ax[0,1].set_ylim(0,3)
 ax[0,1].grid(True)
 ax[0,1].legend()
 ax[0,1].margins(x=0)
 for k in range(len(prefixes)) :
-  ax[1,0].plot(-upwp2[k]/10/10,z/.02,label=f"{labels[k]} P2")
-ax[1,0].scatter(nupwp2_lda_x,nupwp2_lda_y/.135,label="LDA P2",facecolors='none',edgecolors='r',s=35)
-ax[1,0].scatter(nupwp2_hwa_x,nupwp2_hwa_y/.135,label="HWA P2",facecolors='none',edgecolors='b',s=35)
+  ax[1,0].plot(-upwp2[k]/10/10,zpnts[k]/.02,label=f"{labels[k]} P2")
+ax[1,0].scatter(nupwp2_lda_x,nupwp2_lda_y/.135,label="LDA P2",facecolors='r',edgecolors='r',s=35)
+ax[1,0].scatter(nupwp2_hwa_x,nupwp2_hwa_y/.135,label="HWA P2",facecolors='b',edgecolors='b',s=35)
 ax[1,0].set_xlim(-0.002,0.01)
 ax[1,0].set_ylim(0,3)
 ax[1,0].grid(True)
 ax[1,0].legend()
 ax[1,0].margins(x=0)
 for k in range(len(prefixes)) :
-  ax[1,1].plot(-upwp3[k]/10/10,z/.02,label=f"{labels[k]} P3")
+  ax[1,1].plot(-upwp3[k]/10/10,zpnts[k]/.02,label=f"{labels[k]} P3")
 ax[1,1].set_xlim(-0.002,0.01)
 ax[1,1].set_ylim(0,3)
 ax[1,1].grid(True)
 ax[1,1].legend()
 ax[1,1].margins(x=0)
 fig.tight_layout()
+plt.savefig("upwp.png")
 plt.show()
 plt.close()
 

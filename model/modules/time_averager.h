@@ -52,10 +52,16 @@ namespace modules {
     void reset( core::Coupler &coupler ) {
       coupler.set_option<real>("time_averager_etime",0);
       auto &dm  = coupler.get_data_manager_readwrite(); // Get DataManager for read/write access
-      dm.get<real,3>("avg_u"  ) = 0;
-      dm.get<real,3>("avg_v"  ) = 0;
-      dm.get<real,3>("avg_w"  ) = 0;
-      dm.get<real,3>("avg_tke") = 0;
+      dm.get<real,3>("avg_u"    ) = 0;
+      dm.get<real,3>("avg_v"    ) = 0;
+      dm.get<real,3>("avg_w"    ) = 0;
+      dm.get<real,3>("avg_tke"  ) = 0;
+      dm.get<real,3>("avg_up_up") = 0;
+      dm.get<real,3>("avg_up_vp") = 0;
+      dm.get<real,3>("avg_up_wp") = 0;
+      dm.get<real,3>("avg_vp_vp") = 0;
+      dm.get<real,3>("avg_vp_wp") = 0;
+      dm.get<real,3>("avg_wp_wp") = 0;
     }
 
 
@@ -77,9 +83,9 @@ namespace modules {
       auto avg_v      = dm.get<real      ,3>("avg_v"      );
       auto avg_w      = dm.get<real      ,3>("avg_w"      );
       auto avg_tke    = dm.get<real      ,3>("avg_tke"    );
-      auto corr_avg_u = dm.get<real      ,3>("avg_u"      );
-      auto corr_avg_v = dm.get<real      ,3>("avg_v"      );
-      auto corr_avg_w = dm.get<real      ,3>("avg_w"      );
+      auto corr_avg_u = dm.get<real      ,3>("corr_avg_u" );
+      auto corr_avg_v = dm.get<real      ,3>("corr_avg_v" );
+      auto corr_avg_w = dm.get<real      ,3>("corr_avg_w" );
       auto avg_up_up  = dm.get<real      ,3>("avg_up_up"  );
       auto avg_up_vp  = dm.get<real      ,3>("avg_up_vp"  );
       auto avg_up_wp  = dm.get<real      ,3>("avg_up_wp"  );
