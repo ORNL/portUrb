@@ -44,6 +44,7 @@ namespace custom_modules {
     auto dm_wvel  = dm.get<real,3>("wvel"       );
     auto dm_temp  = dm.get<real,3>("temp"       );
     auto dm_rho_v = dm.get<real,3>("water_vapor");
+    auto dm_imm   = dm.get<real,3>("immersed_proportion");
 
     const int nqpoints = 9;
     SArray<real,1,nqpoints> qpoints;
@@ -62,6 +63,16 @@ namespace custom_modules {
     } else if (coupler.get_option<std::string>("init_data") == "buildings_periodic") {
 
     } else if (coupler.get_option<std::string>("init_data") == "cubes_periodic") {
+
+      real u0 = 10;
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (dm_imm(k,j,i) == 0) {
+          yakl::Random rng(3*(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + i_beg+i));
+          dm_uvel(k,j,i) += rng.genFP<real>(-0.1,0.1)*u0;
+          dm_vvel(k,j,i) += rng.genFP<real>(-0.1,0.1)*u0;
+          dm_wvel(k,j,i) += rng.genFP<real>(-0.1,0.1)*u0;
+        }
+      });
 
     } else if (coupler.get_option<std::string>("init_data") == "constant") {
 

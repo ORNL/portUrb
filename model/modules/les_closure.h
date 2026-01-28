@@ -144,6 +144,7 @@ namespace modules {
       auto grav           = coupler.get_option<real>("grav");                   // Gravitational acceleration
       auto nu             = coupler.get_option<real>("kinematic_viscosity",0);  // Kinematic viscosity (m^2/s)
       auto dns            = coupler.get_option<bool>("dns",false);              // Whether to run in DNS mode (no LES closure)
+      auto delta_mult     = coupler.get_option<real>("les_closure_delta_multiplier",0.3); // Whether to run in DNS mode (no LES closure)
       auto &dm            = coupler.get_data_manager_readwrite();               // DataManager for reading/writing variables
       auto immersed       = dm.get<real const,3>("immersed_proportion_halos");  // Immersed boundary proportion array with halos
       real constexpr Pr = 0.7;  // Prandtl number for SGS diffusivity
@@ -248,7 +249,7 @@ namespace modules {
             real K           = dns ? 0 : 0.5 * ( tke      (hs+k,hs+j,hs+i-1) + tke      (hs+k,hs+j,hs+i) );
             real tref        = hy_t(hs+k);
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
-            real delta       = std::pow( dx*dy*dz(k) , 1./3. );
+            real delta       = std::pow( dx*dy*dz(k) , 1./3. ) * delta_mult;
             real ell         = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
             real km          = 0.1 * ell * std::sqrt(K);
             real Pr_t        = 0.85;
@@ -304,7 +305,7 @@ namespace modules {
             real K           = dns ? 0 : 0.5 * ( tke      (hs+k,hs+j-1,hs+i) + tke      (hs+k,hs+j,hs+i) );
             real tref        = hy_t(hs+k);
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
-            real delta       = std::pow( dx*dy*dz(k) , 1./3. );
+            real delta       = std::pow( dx*dy*dz(k) , 1./3. ) * delta_mult;
             real ell         = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
             real km          = 0.1 * ell * std::sqrt(K);
             real Pr_t        = 0.85;
@@ -358,7 +359,7 @@ namespace modules {
             real K           = dns ? 0 : 0.5 * ( tke      (hs+k-1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
             real tref        = 0.5 * ( hy_t(hs+k-1) + hy_t(hs+k) );
             real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
-            real delta       = std::pow( dx*dy*dzloc , 1./3. );
+            real delta       = std::pow( dx*dy*dzloc , 1./3. ) * delta_mult;
             real ell         = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
             real km          = 0.1 * ell * std::sqrt(K);
             real Pr_t        = 0.85;
@@ -396,7 +397,7 @@ namespace modules {
         real dt_dz  = ( state(idT,hs+k+1,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i) ) / (dz2);
         real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(dz2);
         real N      = dt_dz+dth_dz >= 0 ? std::sqrt(grav/t*(dt_dz+dth_dz)) : 0;
-        real delta  = std::pow( dx*dy*dz(k) , 1./3. );
+        real delta  = std::pow( dx*dy*dz(k) , 1./3. ) * delta_mult;
         real ell    = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
         real km     = 0.1 * ell * std::sqrt(K);
         real Pr_t   = 0.85;

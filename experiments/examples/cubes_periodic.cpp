@@ -9,6 +9,7 @@
 #include "uniform_pg_wind_forcing.h"
 #include "Ensembler.h"
 #include <sstream>
+#include "sponge_layer.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -18,9 +19,9 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
     real constexpr h = 0.02;
-    real constexpr dx = 0.001;
+    real constexpr dx = 0.0005;
 
-    real        sim_time     = 50;
+    real        sim_time     = 50+0.01;
     real        xlen         = 4*h;
     real        ylen         = 4*h;
     real        zlen         = 10*h;
@@ -29,66 +30,76 @@ int main(int argc, char** argv) {
     int         nz           = zlen/dx;
     real        dtphys_in    = 0;
     std::string init_data    = "cubes_periodic";
-    real        out_freq     = 0.1;
-    real        inform_freq  = 1.e-3;
-    std::string out_prefix   = "cubes_periodic";
+    real        out_freq     = 1;
+    real        inform_freq  = 1.e-2;
+    std::string out_prefix   = "cubes_periodic_nosgs_40";
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
-    int         dyn_cycle    = 1;
+    int         dyn_cycle    = 4;
 
     // Things the coupler might need to know about
-    coupler.set_option<std::string>( "out_prefix"          , out_prefix   );
-    coupler.set_option<std::string>( "ensemble_stdout"     , "ensemble_"  );
-    coupler.set_option<std::string>( "init_data"           , init_data    );
-    coupler.set_option<real       >( "out_freq"            , out_freq     );
-    coupler.set_option<bool       >( "is_restart"          , is_restart   );
-    coupler.set_option<std::string>( "restart_file"        , restart_file );
-    coupler.set_option<real       >( "latitude"            , latitude     );
-    coupler.set_option<bool       >( "dns"                 , false        );
-    coupler.set_option<real       >( "kinematic_viscosity" , 1.5e-5       );
-    coupler.set_option<bool       >( "enable_gravity"      , false        );
+    coupler.set_option<std::string>( "out_prefix"                         , out_prefix   );
+    coupler.set_option<std::string>( "init_data"                          , init_data    );
+    coupler.set_option<real       >( "out_freq"                           , out_freq     );
+    coupler.set_option<bool       >( "is_restart"                         , is_restart   );
+    coupler.set_option<std::string>( "restart_file"                       , restart_file );
+    coupler.set_option<real       >( "latitude"                           , latitude     );
+    coupler.set_option<bool       >( "dns"                                , false        );
+    coupler.set_option<real       >( "kinematic_viscosity"                , 1.5e-5       );
+    coupler.set_option<bool       >( "enable_gravity"                     , false        );
+    coupler.set_option<real       >( "dycore_max_wind"                    , 20           );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"              , true         );
+    coupler.set_option<real       >( "dycore_cs"                          , 40           );
+    coupler.set_option<bool       >( "dycore_use_weno"                    , false        );
+    coupler.set_option<bool       >( "dycore_immersed_hyeprvis"           , true         );
+    coupler.set_option<real       >( "les_closure_delta_multiplier"       , 0.3          );
+    coupler.set_option<bool       >( "surface_flux_force_theta"           , false        );
+    coupler.set_option<bool       >( "surface_flux_stability_corrections" , false        );
+    coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5       );
+    coupler.set_option<bool       >( "surface_flux_predict_z0h"           , false        );
+    coupler.set_option<real       >( "roughness"                          , 0.10*dx      );
+    coupler.set_option<real       >( "cubes_sfc_roughness"                , 0.10*dx      );
+    coupler.set_option<bool       >( "output_correlations"                , true         );
+    coupler.set_option<real       >( "correlation_time_scale"             , 5            );
 
-    core::Ensembler ensembler;
+    // core::Ensembler ensembler;
+    // // Add roughness dimension (used for cubes)
+    // {
+    //   auto func_nranks  = [=] (int ind) { return 1; };
+    //   auto func_coupler = [=] (int ind, core::Coupler &coupler) {
+    //     real roughness;
+    //     if (ind == 0) roughness = 1.0e-6;
+    //     coupler.set_option<real>("roughness",roughness);
+    //     std::stringstream tag;
+    //     tag << "z0cube-" << std::scientific << std::setprecision(2) << roughness;
+    //     ensembler.append_coupler_string(coupler,"ensemble_stdout",tag.str());
+    //     ensembler.append_coupler_string(coupler,"out_prefix"     ,tag.str());
+    //   };
+    //   ensembler.register_dimension( 1 , func_nranks , func_coupler );
+    // }
+    // // Add surface roughness dimension
+    // {
+    //   auto func_nranks  = [=] (int ind) { return 1; };
+    //   auto func_coupler = [=] (int ind, core::Coupler &coupler) {
+    //     real roughness;
+    //     if (ind == 0) roughness = 1.0e-7;
+    //     coupler.set_option<real>("cubes_sfc_roughness",roughness);
+    //     std::stringstream tag;
+    //     tag << "z0sfc-" << std::scientific << std::setprecision(2) << roughness;
+    //     ensembler.append_coupler_string(coupler,"ensemble_stdout",tag.str());
+    //     ensembler.append_coupler_string(coupler,"out_prefix"     ,tag.str());
+    //   };
+    //   ensembler.register_dimension( 1 , func_nranks , func_coupler );
+    // }
+    // auto par_comm = ensembler.create_coupler_comm( coupler , 64 , MPI_COMM_WORLD );
+    // auto ostr = std::ofstream(coupler.get_option<std::string>("ensemble_stdout")+std::string(".out"));
+    // auto orig_cout_buf = std::cout.rdbuf();
+    // auto orig_cerr_buf = std::cerr.rdbuf();
+    // std::cout.rdbuf(ostr.rdbuf());
+    // std::cerr.rdbuf(ostr.rdbuf());
 
-    // Add roughness dimension (used for cubes)
-    {
-      auto func_nranks  = [=] (int ind) { return 1; };
-      auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        real roughness;
-        if (ind == 0) roughness = 1.0e-7;
-        if (ind == 1) roughness = 1.0e-6;
-        if (ind == 2) roughness = 1.0e-5;
-        coupler.set_option<real>("roughness",roughness);
-        std::stringstream tag;
-        tag << "z0cube-" << std::scientific << std::setprecision(2) << roughness;
-        ensembler.append_coupler_string(coupler,"ensemble_stdout",tag.str());
-        ensembler.append_coupler_string(coupler,"out_prefix"     ,tag.str());
-      };
-      ensembler.register_dimension( 3 , func_nranks , func_coupler );
-    }
-    // Add surface roughness dimension
-    {
-      auto func_nranks  = [=] (int ind) { return 1; };
-      auto func_coupler = [=] (int ind, core::Coupler &coupler) {
-        real roughness;
-        if (ind == 0) roughness = 1.0e-7;
-        if (ind == 1) roughness = 1.0e-6;
-        if (ind == 2) roughness = 1.0e-5;
-        coupler.set_option<real>("cubes_sfc_roughness",roughness);
-        std::stringstream tag;
-        tag << "z0sfc-" << std::scientific << std::setprecision(2) << roughness;
-        ensembler.append_coupler_string(coupler,"ensemble_stdout",tag.str());
-        ensembler.append_coupler_string(coupler,"out_prefix"     ,tag.str());
-      };
-      ensembler.register_dimension( 3 , func_nranks , func_coupler );
-    }
-    auto par_comm = ensembler.create_coupler_comm( coupler , 12 , MPI_COMM_WORLD );
-    auto ostr = std::ofstream(coupler.get_option<std::string>("ensemble_stdout")+std::string(".out"));
-    auto orig_cout_buf = std::cout.rdbuf();
-    auto orig_cerr_buf = std::cerr.rdbuf();
-    std::cout.rdbuf(ostr.rdbuf());
-    std::cerr.rdbuf(ostr.rdbuf());
+    core::ParallelComm par_comm(MPI_COMM_WORLD);
 
     if (par_comm.valid()) {
       yakl::timer_start("main");
@@ -147,12 +158,13 @@ int main(int argc, char** argv) {
           real hr = 0.0431636373017616;
           real ur = 5.83201679518752;
           real vr = 0;
-          real tr = dt*100;
+          real tr = dt*2;
           coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );
           coupler.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt);             } , "dycore"         );
-          coupler.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt);             } , "les_closure"    );
-          coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt);             } , "surface_fluxes" );
+          // coupler.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt);             } , "les_closure"    );
+          // coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt);             } , "surface_fluxes" );
           coupler.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt);             } , "time_averager"  );
+          coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w       (c,dt,dt*1e3,0.05); } , "sponge"         );
         }
 
         // Update time step

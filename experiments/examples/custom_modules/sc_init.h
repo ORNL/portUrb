@@ -156,6 +156,13 @@ namespace custom_modules {
       real constexpr theta0 = 300;
       real constexpr u0     = 10;
       real constexpr h      = .02;
+      coupler.add_option<std::string>("bc_x1","periodic");
+      coupler.add_option<std::string>("bc_x2","periodic");
+      coupler.add_option<std::string>("bc_y1","periodic");
+      coupler.add_option<std::string>("bc_y2","periodic");
+      coupler.add_option<std::string>("bc_z1","wall_free_slip");
+      coupler.add_option<std::string>("bc_z2","wall_free_slip");
+      auto enable_gravity = coupler.get_option<bool>("enable_gravity",false);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real x  = (i_beg+i+0.5_fp)*dx;
         real y  = (j_beg+j+0.5_fp)*dy;

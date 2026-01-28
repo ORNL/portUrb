@@ -2,7 +2,7 @@ from netCDF4 import Dataset
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from cubes_periodic_data import *
+# from cubes_periodic_data import *
 from scipy.stats import pearsonr
 import xarray
 
@@ -10,8 +10,8 @@ def get_ind(arr,val) :
   return np.argmin(np.abs(arr-val))
 
 nadd = 9
-times = np.array([i for i in range(1,19)])
-prefixes = ["/lustre/storm/nwp501/scratch/imn/cubes_periodic/cubes_periodic_z0cube-1.00e-06_z0sfc-1.00e-07_"]
+times = np.array([i for i in range(4,6)])
+prefixes = ["/lustre/orion/stf006/scratch/imn/portUrb/build/cubes_periodic_"]
 
 # prefixes = ["/lustre/storm/nwp501/scratch/imn/portUrb/build/cubes_periodic_dx0.005_z0-1.000e-07_"]
 
@@ -19,6 +19,7 @@ errs_glob = np.array([10000. for i in range(len(prefixes))])
 for k in range(len(prefixes)) :
   prefix = prefixes[k]
   fnames = [f"{prefix}{i:08}.nc" for i in times]
+  print(fnames)
   nc   = xarray.open_dataset(fnames[0])
   x    = np.array(nc["x"])
   y    = np.array(nc["y"])
