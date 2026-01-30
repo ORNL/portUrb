@@ -58,10 +58,13 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , true         );
     coupler.set_option<real       >( "dycore_cs"                          , u0*1.4*2     );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false        );
+    coupler.set_option<bool       >( "dycore_immersed_hyeprvis"           , true         );
+    coupler.set_option<real       >( "les_closure_delta_multiplier"       , 0.3          );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false        );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false        );
     coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5       );
     coupler.set_option<bool       >( "surface_flux_predict_z0h"           , false        );
+    coupler.set_option<bool       >( "output_correlations"                , false        );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
@@ -117,7 +120,7 @@ int main(int argc, char** argv) {
         real hr = zlen/2;
         real ur = u0;
         real vr = 0;
-        real tr = dt*100;
+        real tr = xlen/u0;
         coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing" );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"         );
         coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );

@@ -7,102 +7,163 @@ import xarray
 def get_ind(arr,val) :
   return np.argmin(np.abs(arr-val))
 
+def spectra(T,dx = 1) :
+  spd  = np.abs( np.fft.rfft(T[0,0,:]) )**2
+  freq = np.fft.rfftfreq(len(T[0,0,:]))
+  spd[:] = 0
+  for k in range(T.shape[0]) :
+    for j in range(T.shape[1]) :
+      spd[:] += np.abs( np.fft.rfft(T[k,j,:]) )**2
+      spd[:] += np.abs( np.fft.rfft(T[k,:,j]) )**2
+  spd[:] /= T.shape[0]*T.shape[1]*2
+  return freq*2*2*np.pi/(2*dx) , spd
+
+def cospec_kx_from_plane(up, wp, dx, window="hann"):
+  cosp = np.fft.rfft(up[0,0,:])
+  freq = np.fft.rfftfreq(len(up[0,0,:]))
+  cosp[:] = 0
+  up -= np.mean(up,axis=(1,2))[:,np.newaxis,np.newaxis]
+  wp -= np.mean(wp,axis=(1,2))[:,np.newaxis,np.newaxis]
+  for k in range(up.shape[0]) :
+    for j in range(up.shape[1]) :
+      fu = np.fft.rfft(up[k,j,:])
+      fw = np.fft.rfft(wp[k,j,:])
+      cosp[:] += np.real(fu*np.conj(fw))
+      fu = np.fft.rfft(up[k,:,j])
+      fw = np.fft.rfft(wp[k,:,j])
+      cosp[:] += np.real(fu*np.conj(fw))
+  cosp[:] /= up.shape[0]*up.shape[1]*2
+  return freq*2*np.pi , cosp
+
+
 workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
 
 t1 = 6
-t2 = 14
-prefixes = ["cubes_periodic_nosgs_20_","cubes_periodic_sgs0.3_20_","cubes_periodic_sgs1.0_20_"]
-labels = ["ILES 20","SGS0.3 20","SGS1.0 20"]
-fnames = [ [f"{workdir}/{prefix}{i:08}.nc" for i in range(t1,t2+1)] for prefix in prefixes]
+t2 = 10
+# prefixes = ["cubes_periodic_nosgs_20_","cubes_periodic_sgs0.3_20_","cubes_periodic_sgs1.0_20_","cubes_periodic_nosgs_40_","cubes_periodic_sgs1.0_40_"]
+prefixes = ["cubes_periodic_nosgs_new_"]
+labels   = ["ILES old","ILES new"]
+has_tke  = [False,False]
+colors   = ["blue","magenta","orange","purple"]
+fnames   = [ [f"{workdir}/{prefix}{i:08}.nc" for i in range(t1,t2+1)] for prefix in prefixes]
 
-u0    = [0. for i in range(len(prefixes))]
-u1    = [0. for i in range(len(prefixes))]
-u2    = [0. for i in range(len(prefixes))]
-u3    = [0. for i in range(len(prefixes))]
-upup0 = [0. for i in range(len(prefixes))]
-upup1 = [0. for i in range(len(prefixes))]
-upup2 = [0. for i in range(len(prefixes))]
-upup3 = [0. for i in range(len(prefixes))]
-vpvp0 = [0. for i in range(len(prefixes))]
-vpvp1 = [0. for i in range(len(prefixes))]
-vpvp2 = [0. for i in range(len(prefixes))]
-vpvp3 = [0. for i in range(len(prefixes))]
-wpwp0 = [0. for i in range(len(prefixes))]
-wpwp1 = [0. for i in range(len(prefixes))]
-wpwp2 = [0. for i in range(len(prefixes))]
-wpwp3 = [0. for i in range(len(prefixes))]
-upwp0 = [0. for i in range(len(prefixes))]
-upwp1 = [0. for i in range(len(prefixes))]
-upwp2 = [0. for i in range(len(prefixes))]
-upwp3 = [0. for i in range(len(prefixes))]
-zpnts = [0. for i in range(len(prefixes))]
+nc   = Dataset(fnames[0][0],"r")
+x    = np.array(nc["x"][:])
+y    = np.array(nc["y"][:])
+z    = np.array(nc["z"][:])
+nx   = len(x)
+ny   = len(y)
+nz   = len(z)
+dx   = x[1]-x[0]
+dy   = y[1]-y[0]
+dz   = z[1]-z[0]
+xlen = x[-1]+dx/2
+ylen = y[-1]+dy/2
+zlen = z[-1]+dz/2
+p0_x = [get_ind(x,2*xlen/8),get_ind(x,6*xlen/8),get_ind(x,2*xlen/8),get_ind(x,6*xlen/8)]
+p0_y = [get_ind(y,6*ylen/8),get_ind(y,4*ylen/8),get_ind(y,2*ylen/8),get_ind(y,0*ylen/8)]
+p1_x = [get_ind(x,4*xlen/8),get_ind(x,0*xlen/8),get_ind(x,4*xlen/8),get_ind(x,0*xlen/8)]
+p1_y = [get_ind(y,6*ylen/8),get_ind(y,4*ylen/8),get_ind(y,2*ylen/8),get_ind(y,0*ylen/8)]
+p2_x = [get_ind(x,4*xlen/8),get_ind(x,0*xlen/8),get_ind(x,4*xlen/8),get_ind(x,0*xlen/8)]
+p2_y = [get_ind(y,4*ylen/8),get_ind(y,2*ylen/8),get_ind(y,0*ylen/8),get_ind(y,6*ylen/8)]
+p3_x = [get_ind(x,2*xlen/8),get_ind(x,6*xlen/8),get_ind(x,2*xlen/8),get_ind(x,6*xlen/8)]
+p3_y = [get_ind(y,4*ylen/8),get_ind(y,2*ylen/8),get_ind(y,0*ylen/8),get_ind(y,6*ylen/8)]
+
+
+
+# k1 = get_ind(z,.021)
+# k2 = get_ind(z,.041)
+# fig = plt.figure(figsize=(6,3))
+# ax = fig.gca()
+# for k in range(len(prefixes)) :
+#   nc  = Dataset(fnames[k][-1],"r")
+#   u   = np.array(nc["uvel"][:,:,:])
+#   v   = np.array(nc["vvel"][:,:,:])
+#   w   = np.array(nc["wvel"][:,:,:])
+#   mag = np.sqrt(u**2+v**2+w**2)
+#   freq,spd = spectra(mag[k1:k2+1,:,:],dx=dx)
+#   ax.plot(freq,spd,label=f"{labels[k]}")
+# ax.plot(freq[1:],1.2e6*freq[1:]**(-5/3),label=r"$f^{-5/3}$")
+# ax.vlines(2*np.pi/(2 *dx),1.e-3,1.e3,linestyle="--",color="red")
+# ax.vlines(2*np.pi/(4 *dx),1.e-3,1.e3,linestyle="--",color="red")
+# ax.vlines(2*np.pi/(8 *dx),1.e-3,1.e3,linestyle="--",color="red")
+# ax.vlines(2*np.pi/(16*dx),1.e-3,1.e3,linestyle="--",color="red")
+# ax.text(0.9*2*np.pi/(2 *dx),2.e3,r"$2  \Delta x$")
+# ax.text(0.9*2*np.pi/(4 *dx),2.e3,r"$4  \Delta x$")
+# ax.text(0.9*2*np.pi/(8 *dx),2.e3,r"$8  \Delta x$")
+# ax.text(0.9*2*np.pi/(16*dx),2.e3,r"$16 \Delta x$")
+# ax.set_xscale("log")
+# ax.set_yscale("log")
+# ax.set_xlabel("Frequency")
+# ax.set_ylabel("Spectral Power")
+# ax.legend(loc='lower left')
+# # ax.set_ylim(top=1.e6)
+# ax.margins(x=0)
+# plt.margins(x=0)
+# plt.tight_layout()
+# plt.show()
+# plt.close()
+
+
+
+u0    = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+u1    = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+u2    = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+u3    = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+tke0  = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+tke1  = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+tke2  = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+tke3  = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+upwp0 = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+upwp1 = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+upwp2 = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+upwp3 = np.zeros((len(prefixes),len(fnames[0]),4,nz))
+mn_u0    = np.zeros((len(prefixes),nz))
+mn_u1    = np.zeros((len(prefixes),nz))
+mn_u2    = np.zeros((len(prefixes),nz))
+mn_u3    = np.zeros((len(prefixes),nz))
+mn_tke0  = np.zeros((len(prefixes),nz))
+mn_tke1  = np.zeros((len(prefixes),nz))
+mn_tke2  = np.zeros((len(prefixes),nz))
+mn_tke3  = np.zeros((len(prefixes),nz))
+mn_upwp0 = np.zeros((len(prefixes),nz))
+mn_upwp1 = np.zeros((len(prefixes),nz))
+mn_upwp2 = np.zeros((len(prefixes),nz))
+mn_upwp3 = np.zeros((len(prefixes),nz))
 for k in range(len(prefixes)) :
-  nc   = Dataset(fnames[k][0],"r")
-  x    = np.array(nc["x"][:])
-  y    = np.array(nc["y"][:])
-  z    = np.array(nc["z"][:])
-  nx   = len(x)
-  ny   = len(y)
-  nz   = len(z)
-  dx   = x[1]-x[0]
-  dy   = y[1]-y[0]
-  dz   = z[1]-z[0]
-  xlen = x[-1]+dx/2
-  ylen = y[-1]+dy/2
-  zlen = z[-1]+dz/2
-  p0_x = [get_ind(x,2*xlen/8),get_ind(x,6*xlen/8),get_ind(x,2*xlen/8),get_ind(x,6*xlen/8)];
-  p0_y = [get_ind(y,6*ylen/8),get_ind(y,4*ylen/8),get_ind(y,2*ylen/8),get_ind(y,0*ylen/8)];
-  p1_x = [get_ind(x,4*ylen/8),get_ind(x,0*ylen/8),get_ind(x,4*ylen/8),get_ind(x,0*ylen/8)];
-  p1_y = [get_ind(y,6*ylen/8),get_ind(y,4*ylen/8),get_ind(y,2*ylen/8),get_ind(y,0*ylen/8)];
-  p2_x = [get_ind(x,4*xlen/8),get_ind(x,0*xlen/8),get_ind(x,4*xlen/8),get_ind(x,0*xlen/8)];
-  p2_y = [get_ind(y,4*ylen/8),get_ind(y,2*ylen/8),get_ind(y,0*ylen/8),get_ind(y,6*ylen/8)];
-  p3_x = [get_ind(x,2*xlen/8),get_ind(x,6*xlen/8),get_ind(x,2*xlen/8),get_ind(x,6*xlen/8)];
-  p3_y = [get_ind(y,4*ylen/8),get_ind(y,2*ylen/8),get_ind(y,0*ylen/8),get_ind(y,6*ylen/8)];
   for i in range(len(fnames[k])) :
     print(f"{k+1}/{len(prefixes)} : {i+1}/{len(fnames[k])}")
     nc = Dataset(fnames[k][i],"r")
     for j in range(len(p0_x)) :
-      u0   [k] += np.array(nc["avg_u"    ][:,p0_y[j],p0_x[j]])
-      u1   [k] += np.array(nc["avg_u"    ][:,p1_y[j],p1_x[j]])
-      u2   [k] += np.array(nc["avg_u"    ][:,p2_y[j],p2_x[j]])
-      u3   [k] += np.array(nc["avg_u"    ][:,p3_y[j],p3_x[j]])
-      upup0[k] += np.array(nc["avg_up_up"][:,p0_y[j],p0_x[j]])
-      upup1[k] += np.array(nc["avg_up_up"][:,p1_y[j],p1_x[j]])
-      upup2[k] += np.array(nc["avg_up_up"][:,p2_y[j],p2_x[j]])
-      upup3[k] += np.array(nc["avg_up_up"][:,p3_y[j],p3_x[j]])
-      vpvp0[k] += np.array(nc["avg_vp_vp"][:,p0_y[j],p0_x[j]])
-      vpvp1[k] += np.array(nc["avg_vp_vp"][:,p1_y[j],p1_x[j]])
-      vpvp2[k] += np.array(nc["avg_vp_vp"][:,p2_y[j],p2_x[j]])
-      vpvp3[k] += np.array(nc["avg_vp_vp"][:,p3_y[j],p3_x[j]])
-      wpwp0[k] += np.array(nc["avg_wp_wp"][:,p0_y[j],p0_x[j]])
-      wpwp1[k] += np.array(nc["avg_wp_wp"][:,p1_y[j],p1_x[j]])
-      wpwp2[k] += np.array(nc["avg_wp_wp"][:,p2_y[j],p2_x[j]])
-      wpwp3[k] += np.array(nc["avg_wp_wp"][:,p3_y[j],p3_x[j]])
-      upwp0[k] += np.array(nc["avg_up_wp"][:,p0_y[j],p0_x[j]])
-      upwp1[k] += np.array(nc["avg_up_wp"][:,p1_y[j],p1_x[j]])
-      upwp2[k] += np.array(nc["avg_up_wp"][:,p2_y[j],p2_x[j]])
-      upwp3[k] += np.array(nc["avg_up_wp"][:,p3_y[j],p3_x[j]])
-  u0   [k] /= len(fnames[k])*len(p0_x)
-  u1   [k] /= len(fnames[k])*len(p0_x)
-  u2   [k] /= len(fnames[k])*len(p0_x)
-  u3   [k] /= len(fnames[k])*len(p0_x)
-  upup0[k] /= len(fnames[k])*len(p0_x)
-  upup1[k] /= len(fnames[k])*len(p0_x)
-  upup2[k] /= len(fnames[k])*len(p0_x)
-  upup3[k] /= len(fnames[k])*len(p0_x)
-  vpvp0[k] /= len(fnames[k])*len(p0_x)
-  vpvp1[k] /= len(fnames[k])*len(p0_x)
-  vpvp2[k] /= len(fnames[k])*len(p0_x)
-  vpvp3[k] /= len(fnames[k])*len(p0_x)
-  wpwp0[k] /= len(fnames[k])*len(p0_x)
-  wpwp1[k] /= len(fnames[k])*len(p0_x)
-  wpwp2[k] /= len(fnames[k])*len(p0_x)
-  wpwp3[k] /= len(fnames[k])*len(p0_x)
-  upwp0[k] /= len(fnames[k])*len(p0_x)
-  upwp1[k] /= len(fnames[k])*len(p0_x)
-  upwp2[k] /= len(fnames[k])*len(p0_x)
-  upwp3[k] /= len(fnames[k])*len(p0_x)
-  zpnts[k] = z
+      u0   [k,i,j,:] = np.array(nc["avg_u"    ][:,p0_y[j],p0_x[j]])
+      u1   [k,i,j,:] = np.array(nc["avg_u"    ][:,p1_y[j],p1_x[j]])
+      u2   [k,i,j,:] = np.array(nc["avg_u"    ][:,p2_y[j],p2_x[j]])
+      u3   [k,i,j,:] = np.array(nc["avg_u"    ][:,p3_y[j],p3_x[j]])
+      tke0 [k,i,j,:] = (np.array(nc["avg_up_up"][:,p0_y[j],p0_x[j]])+np.array(nc["avg_vp_vp"][:,p0_y[j],p0_x[j]])+np.array(nc["avg_wp_wp"][:,p0_y[j],p0_x[j]]))/2
+      tke1 [k,i,j,:] = (np.array(nc["avg_up_up"][:,p1_y[j],p1_x[j]])+np.array(nc["avg_vp_vp"][:,p1_y[j],p1_x[j]])+np.array(nc["avg_wp_wp"][:,p1_y[j],p1_x[j]]))/2
+      tke2 [k,i,j,:] = (np.array(nc["avg_up_up"][:,p2_y[j],p2_x[j]])+np.array(nc["avg_vp_vp"][:,p2_y[j],p2_x[j]])+np.array(nc["avg_wp_wp"][:,p2_y[j],p2_x[j]]))/2
+      tke3 [k,i,j,:] = (np.array(nc["avg_up_up"][:,p3_y[j],p3_x[j]])+np.array(nc["avg_vp_vp"][:,p3_y[j],p3_x[j]])+np.array(nc["avg_wp_wp"][:,p3_y[j],p3_x[j]]))/2
+      # if (has_tke[k]) :
+      #   tke0[k,i,j,:] += np.array(nc["avg_tke"][:,p0_y[j],p0_x[j]])/np.array(nc["density_dry"][:,p0_y[j],p0_x[j]])
+      #   tke1[k,i,j,:] += np.array(nc["avg_tke"][:,p1_y[j],p1_x[j]])/np.array(nc["density_dry"][:,p1_y[j],p1_x[j]])
+      #   tke2[k,i,j,:] += np.array(nc["avg_tke"][:,p2_y[j],p2_x[j]])/np.array(nc["density_dry"][:,p2_y[j],p2_x[j]])
+      #   tke3[k,i,j,:] += np.array(nc["avg_tke"][:,p3_y[j],p3_x[j]])/np.array(nc["density_dry"][:,p3_y[j],p3_x[j]])
+      upwp0[k,i,j,:] = np.array(nc["avg_up_wp"][:,p0_y[j],p0_x[j]])
+      upwp1[k,i,j,:] = np.array(nc["avg_up_wp"][:,p1_y[j],p1_x[j]])
+      upwp2[k,i,j,:] = np.array(nc["avg_up_wp"][:,p2_y[j],p2_x[j]])
+      upwp3[k,i,j,:] = np.array(nc["avg_up_wp"][:,p3_y[j],p3_x[j]])
+  mn_u0   [k,:] = np.mean(u0   [k,:,:,:],axis=(0,1))
+  mn_u1   [k,:] = np.mean(u1   [k,:,:,:],axis=(0,1))
+  mn_u2   [k,:] = np.mean(u2   [k,:,:,:],axis=(0,1))
+  mn_u3   [k,:] = np.mean(u3   [k,:,:,:],axis=(0,1))
+  mn_tke0 [k,:] = np.mean(tke0 [k,:,:,:],axis=(0,1))
+  mn_tke1 [k,:] = np.mean(tke1 [k,:,:,:],axis=(0,1))
+  mn_tke2 [k,:] = np.mean(tke2 [k,:,:,:],axis=(0,1))
+  mn_tke3 [k,:] = np.mean(tke3 [k,:,:,:],axis=(0,1))
+  mn_upwp0[k,:] = np.mean(upwp0[k,:,:,:],axis=(0,1))
+  mn_upwp1[k,:] = np.mean(upwp1[k,:,:,:],axis=(0,1))
+  mn_upwp2[k,:] = np.mean(upwp2[k,:,:,:],axis=(0,1))
+  mn_upwp3[k,:] = np.mean(upwp3[k,:,:,:],axis=(0,1))
 
 
 u0_x         = np.array([0.393298519,0.405794912,0.421607921,0.432379455,0.44110289,0.452935145,0.464457739,0.472195153,0.484524493,0.492113868,0.505091047,0.510720604,0.524751712,0.532213421,0.538234126,0.548634884,0.555986581,0.56742497,0.580523026,0.585246692])
@@ -169,75 +230,47 @@ obs_vpvp2 = np.interp(obs_z2,vpvp2_lda_y,vpvp2_lda_x)
 obs_wpwp2 = np.interp(obs_z2,wpwp2_lda_y,wpwp2_lda_x)
 obs_tke2  = (obs_upup2+obs_vpvp2+obs_wpwp2)/2
 
+
 fig,ax = plt.subplots(2,2,figsize=(8,8))
 for k in range(len(prefixes)) :
-  ax[0,0].plot(u0[k]/10,zpnts[k]/.02,label=f"{labels[k]} P0")
-ax[0,0].scatter(u0_x,u0_y/.135,label="LDA P0",facecolors='r',edgecolors='r',s=35)
-ax[0,0].set_xlim(-0.2,0.8)
-ax[0,0].set_ylim(0,3)
-ax[0,0].grid(True)
-ax[0,0].legend()
-ax[0,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[0,1].plot(u1[k]/10,zpnts[k]/.02,label=f"{labels[k]} P1")
-ax[0,1].scatter(u1_x,u1_y/.135,label="LDA P1",facecolors='r',edgecolors='r',s=35)
-ax[0,1].set_xlim(-0.2,0.8)
-ax[0,1].set_ylim(0,3)
-ax[0,1].grid(True)
-ax[0,1].legend()
-ax[0,1].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,0].plot(u2[k]/10,zpnts[k]/.02,label=f"{labels[k]} P2")
-ax[1,0].scatter(u2_x,u2_y/.135,label="LDA P2",facecolors='r',edgecolors='r',s=35)
-ax[1,0].set_xlim(-0.2,0.8)
-ax[1,0].set_ylim(0,3)
-ax[1,0].grid(True)
-ax[1,0].legend()
-ax[1,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,1].plot(u3[k]/10,zpnts[k]/.02,label=f"{labels[k]} P3")
-ax[1,1].scatter(u3_x,u3_y/.135,label="LDA P3",facecolors='r',edgecolors='r',s=35)
-ax[1,1].set_xlim(-0.2,0.8)
-ax[1,1].set_ylim(0,3)
-ax[1,1].grid(True)
-ax[1,1].legend()
-ax[1,1].margins(x=0)
+  ax[0,0].plot(mn_u0[k,:]/10,z/.02,label=f"{labels[k]} P0",color=colors[k],linestyle='-')
+  ax[0,1].plot(mn_u1[k,:]/10,z/.02,label=f"{labels[k]} P1",color=colors[k],linestyle='-')
+  ax[1,0].plot(mn_u2[k,:]/10,z/.02,label=f"{labels[k]} P2",color=colors[k],linestyle='-')
+  ax[1,1].plot(mn_u3[k,:]/10,z/.02,label=f"{labels[k]} P3",color=colors[k],linestyle='-')
+ax[0,0].scatter(u0_x,u0_y/.135,label="LDA P0",facecolors='black',edgecolors='black',s=25)
+ax[0,1].scatter(u1_x,u1_y/.135,label="LDA P1",facecolors='black',edgecolors='black',s=25)
+ax[1,0].scatter(u2_x,u2_y/.135,label="LDA P2",facecolors='black',edgecolors='black',s=25)
+ax[1,1].scatter(u3_x,u3_y/.135,label="LDA P3",facecolors='black',edgecolors='black',s=25)
+for axloc in ax.flatten() :
+  axloc.set_xlim(-0.2,0.8)
+  axloc.set_ylim(0,3)
+  axloc.grid(True)
+  axloc.legend()
+  axloc.margins(x=0)
+  axloc.set_xlabel(r"$u/u_\infty$")
+  axloc.set_ylabel(r"$z/h$")
 fig.tight_layout()
 plt.savefig("u.png")
 plt.show()
 plt.close()
 
+
 fig,ax = plt.subplots(2,2,figsize=(8,8))
 for k in range(len(prefixes)) :
-  ax[0,0].plot((upup0[k]+vpvp0[k]+wpwp0[k])/2/10/10,zpnts[k]/.02,label=f"{labels[k]} P0")
-ax[0,0].set_xlim(0,0.025)
-ax[0,0].set_ylim(0,3)
-ax[0,0].grid(True)
-ax[0,0].legend()
-ax[0,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[0,1].plot((upup1[k]+vpvp1[k]+wpwp1[k])/2/10/10,zpnts[k]/.02,label=f"{labels[k]} P1")
-ax[0,1].scatter(obs_tke1,obs_z1/.135,label="LDA P1",facecolors='r',edgecolors='r',s=35)
-ax[0,1].set_xlim(0,0.025)
-ax[0,1].set_ylim(0,3)
-ax[0,1].grid(True)
-ax[0,1].legend()
-ax[0,1].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,0].plot((upup2[k]+vpvp2[k]+wpwp2[k])/2/10/10,zpnts[k]/.02,label=f"{labels[k]} P2")
-ax[1,0].scatter(obs_tke2,obs_z2/.135,label="LDA P2",facecolors='r',edgecolors='r',s=35)
-ax[1,0].set_xlim(0,0.025)
-ax[1,0].set_ylim(0,3)
-ax[1,0].grid(True)
-ax[1,0].legend()
-ax[1,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,1].plot((upup3[k]+vpvp3[k]+wpwp3[k])/2/10/10,zpnts[k]/.02,label=f"{labels[k]} P3")
-ax[1,1].set_xlim(0,0.025)
-ax[1,1].set_ylim(0,3)
-ax[1,1].grid(True)
-ax[1,1].legend()
-ax[1,1].margins(x=0)
+  ax[0,0].plot(mn_tke0[k]/10/10,z/.02,label=f"{labels[k]} P0",color=colors[k],linestyle='-')
+  ax[0,1].plot(mn_tke1[k]/10/10,z/.02,label=f"{labels[k]} P1",color=colors[k],linestyle='-')
+  ax[1,0].plot(mn_tke2[k]/10/10,z/.02,label=f"{labels[k]} P2",color=colors[k],linestyle='-')
+  ax[1,1].plot(mn_tke3[k]/10/10,z/.02,label=f"{labels[k]} P3",color=colors[k],linestyle='-')
+ax[0,1].scatter(obs_tke1,obs_z1/.135,label="LDA P1",facecolors='black',edgecolors='black',s=25)
+ax[1,0].scatter(obs_tke2,obs_z2/.135,label="LDA P2",facecolors='black',edgecolors='black',s=25)
+for axloc in ax.flatten() :
+  axloc.set_xlim(0,0.025)
+  axloc.set_ylim(0,3)
+  axloc.grid(True)
+  axloc.legend()
+  axloc.margins(x=0)
+  axloc.set_xlabel(r"$TKE_{resolved}/{u_\infty^2}$")
+  axloc.set_ylabel(r"$z/h$")
 fig.tight_layout()
 plt.savefig("tke.png")
 plt.show()
@@ -246,39 +279,25 @@ plt.close()
 
 fig,ax = plt.subplots(2,2,figsize=(8,8))
 for k in range(len(prefixes)) :
-  ax[0,0].plot(-upwp0[k]/10/10,zpnts[k]/.02,label=f"{labels[k]} P0")
-ax[0,0].set_xlim(-0.002,0.01)
-ax[0,0].set_ylim(0,3)
-ax[0,0].grid(True)
-ax[0,0].legend()
-ax[0,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[0,1].plot(-upwp1[k]/10/10,zpnts[k]/.02,label=f"{labels[k]} P1")
-ax[0,1].scatter(nupwp1_lda_x,nupwp1_lda_y/.135,label="LDA P1",facecolors='r',edgecolors='r',s=35)
-ax[0,1].scatter(nupwp1_hwa_x,nupwp1_hwa_y/.135,label="HWA P1",facecolors='b',edgecolors='b',s=35)
-ax[0,1].set_xlim(-0.002,0.01)
-ax[0,1].set_ylim(0,3)
-ax[0,1].grid(True)
-ax[0,1].legend()
-ax[0,1].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,0].plot(-upwp2[k]/10/10,zpnts[k]/.02,label=f"{labels[k]} P2")
-ax[1,0].scatter(nupwp2_lda_x,nupwp2_lda_y/.135,label="LDA P2",facecolors='r',edgecolors='r',s=35)
-ax[1,0].scatter(nupwp2_hwa_x,nupwp2_hwa_y/.135,label="HWA P2",facecolors='b',edgecolors='b',s=35)
-ax[1,0].set_xlim(-0.002,0.01)
-ax[1,0].set_ylim(0,3)
-ax[1,0].grid(True)
-ax[1,0].legend()
-ax[1,0].margins(x=0)
-for k in range(len(prefixes)) :
-  ax[1,1].plot(-upwp3[k]/10/10,zpnts[k]/.02,label=f"{labels[k]} P3")
-ax[1,1].set_xlim(-0.002,0.01)
-ax[1,1].set_ylim(0,3)
-ax[1,1].grid(True)
-ax[1,1].legend()
-ax[1,1].margins(x=0)
+  ax[0,0].plot(-mn_upwp0[k,:]/10/10,z/.02,label=f"{labels[k]} P0",color=colors[k],linestyle='-')
+  ax[0,1].plot(-mn_upwp1[k,:]/10/10,z/.02,label=f"{labels[k]} P1",color=colors[k],linestyle='-')
+  ax[1,0].plot(-mn_upwp2[k,:]/10/10,z/.02,label=f"{labels[k]} P2",color=colors[k],linestyle='-')
+  ax[1,1].plot(-mn_upwp3[k,:]/10/10,z/.02,label=f"{labels[k]} P3",color=colors[k],linestyle='-')
+ax[0,1].scatter(nupwp1_lda_x,nupwp1_lda_y/.135,label="LDA P1",facecolors='black',edgecolors='black',s=25)
+ax[1,0].scatter(nupwp2_lda_x,nupwp2_lda_y/.135,label="LDA P2",facecolors='black',edgecolors='black',s=25)
+ax[0,1].scatter(nupwp1_hwa_x,nupwp1_hwa_y/.135,label="HWA P1",facecolors='red'  ,edgecolors='red'  ,s=25)
+ax[1,0].scatter(nupwp2_hwa_x,nupwp2_hwa_y/.135,label="HWA P2",facecolors='red'  ,edgecolors='red'  ,s=25)
+for axloc in ax.flatten() :
+  axloc.set_xlim(-0.002,0.01)
+  axloc.set_ylim(0,3)
+  axloc.grid(True)
+  axloc.legend()
+  axloc.margins(x=0)
+  axloc.set_xlabel(r"$-\overline{u'w'}/{u_\infty^2}$")
+  axloc.set_ylabel(r"$z/h$")
 fig.tight_layout()
 plt.savefig("upwp.png")
 plt.show()
 plt.close()
+
 

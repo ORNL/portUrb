@@ -56,12 +56,14 @@ namespace modules {
       dm.get<real,3>("avg_v"    ) = 0;
       dm.get<real,3>("avg_w"    ) = 0;
       dm.get<real,3>("avg_tke"  ) = 0;
-      dm.get<real,3>("avg_up_up") = 0;
-      dm.get<real,3>("avg_up_vp") = 0;
-      dm.get<real,3>("avg_up_wp") = 0;
-      dm.get<real,3>("avg_vp_vp") = 0;
-      dm.get<real,3>("avg_vp_wp") = 0;
-      dm.get<real,3>("avg_wp_wp") = 0;
+      if (coupler.get_option<bool>("output_correlations",false)) {
+        dm.get<real,3>("avg_up_up") = 0;
+        dm.get<real,3>("avg_up_vp") = 0;
+        dm.get<real,3>("avg_up_wp") = 0;
+        dm.get<real,3>("avg_vp_vp") = 0;
+        dm.get<real,3>("avg_vp_wp") = 0;
+        dm.get<real,3>("avg_wp_wp") = 0;
+      }
     }
 
 
@@ -83,15 +85,6 @@ namespace modules {
       auto avg_v      = dm.get<real      ,3>("avg_v"      );
       auto avg_w      = dm.get<real      ,3>("avg_w"      );
       auto avg_tke    = dm.get<real      ,3>("avg_tke"    );
-      auto corr_avg_u = dm.get<real      ,3>("corr_avg_u" );
-      auto corr_avg_v = dm.get<real      ,3>("corr_avg_v" );
-      auto corr_avg_w = dm.get<real      ,3>("corr_avg_w" );
-      auto avg_up_up  = dm.get<real      ,3>("avg_up_up"  );
-      auto avg_up_vp  = dm.get<real      ,3>("avg_up_vp"  );
-      auto avg_up_wp  = dm.get<real      ,3>("avg_up_wp"  );
-      auto avg_vp_vp  = dm.get<real      ,3>("avg_vp_vp"  );
-      auto avg_vp_wp  = dm.get<real      ,3>("avg_vp_wp"  );
-      auto avg_wp_wp  = dm.get<real      ,3>("avg_wp_wp"  );
       auto etime      = coupler.get_option<real>("time_averager_etime"); // Get elapsed time for time-averaging since last reset
       real inertia = etime / (etime + dt);  // Compute inertia
       // Update time-averaged fields using moving average formula
@@ -103,6 +96,15 @@ namespace modules {
       });
       coupler.set_option<real>("time_averager_etime",etime+dt);  // Update elapsed time for time-averaging since last reset
       if (coupler.get_option<bool>("output_correlations",false)) {
+        auto corr_avg_u = dm.get<real,3>("corr_avg_u" );
+        auto corr_avg_v = dm.get<real,3>("corr_avg_v" );
+        auto corr_avg_w = dm.get<real,3>("corr_avg_w" );
+        auto avg_up_up  = dm.get<real,3>("avg_up_up"  );
+        auto avg_up_vp  = dm.get<real,3>("avg_up_vp"  );
+        auto avg_up_wp  = dm.get<real,3>("avg_up_wp"  );
+        auto avg_vp_vp  = dm.get<real,3>("avg_vp_vp"  );
+        auto avg_vp_wp  = dm.get<real,3>("avg_vp_wp"  );
+        auto avg_wp_wp  = dm.get<real,3>("avg_wp_wp"  );
         real tau = coupler.get_option<real>("correlation_time_scale");
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           corr_avg_u(k,j,i) = (tau-dt)/tau*corr_avg_u(k,j,i) + dt/tau*uvel(k,j,i);
