@@ -8,6 +8,9 @@
 #include "surface_flux.h"
 #include "uniform_pg_wind_forcing.h"
 
+// u_center \in {0.05, 2  }
+// z_0      \in {1e-4, 0.5}
+
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
   Kokkos::initialize();
@@ -27,7 +30,7 @@ int main(int argc, char** argv) {
     real dx    = zlen/npnts;
     real z0    = dx/2;       // USER PARAMETER 3
 
-    real        sim_time     = xlen/u0*40+0.01;
+    real        sim_time     = xlen/u0*80+0.01;
     int         nx_glob      = std::round(xlen/dx);
     int         ny_glob      = std::round(ylen/dx);
     int         nz           = std::round(zlen/dx);
