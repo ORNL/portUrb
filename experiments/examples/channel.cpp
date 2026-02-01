@@ -9,7 +9,7 @@
 #include "uniform_pg_wind_forcing.h"
 
 // u_center \in {0.05, 2  }
-// z_0      \in {1e-4, 0.5}
+// z_0      \in {1e-4, 0.5}*dz
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -25,9 +25,10 @@ int main(int argc, char** argv) {
     real ylen  = 6;
     real zlen  = 2;
     real npnts = 128;        // USER PARAMETER 1
+    real dx    = zlen/npnts;
+    real acoust = 4;
 
     real u0    = 0.1;        // USER PARAMETER 2
-    real dx    = zlen/npnts;
     real z0    = dx/2;       // USER PARAMETER 3
 
     real        sim_time     = xlen/u0*80+0.01;
@@ -38,7 +39,8 @@ int main(int argc, char** argv) {
     std::string init_data    = "channel";
     real        out_freq     = xlen/u0*0.5;
     real        inform_freq  = xlen/u0*0.05;
-    std::string out_prefix   = std::string("channel_u0-")+std::to_string(u0)+std::string("_z0-")+std::to_string(z0);
+    // std::string out_prefix   = std::string("channel_u0-")+std::to_string(u0)+std::string("_z0-")+std::to_string(z0)+std::string("_acosut-")+std::to_string(acoust);
+    std::string out_prefix   = std::string("channel_u0-")+std::string("_acosut-")+std::to_string(acoust);
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
@@ -57,11 +59,12 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "constant_vvel"                      , 0            );
     coupler.set_option<real       >( "constant_temp"                      , 300          );
     coupler.set_option<real       >( "constant_press"                     , 1.e5         );
+    coupler.set_option<real       >( "cfl"                                , 0.60         );
     coupler.set_option<real       >( "dycore_max_wind"                    , u0*1.4       );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , true         );
-    coupler.set_option<real       >( "dycore_cs"                          , u0*1.4*2     );
+    coupler.set_option<real       >( "dycore_cs"                          , u0*1.4*acoust);
     coupler.set_option<bool       >( "dycore_use_weno"                    , false        );
-    coupler.set_option<bool       >( "dycore_immersed_hyeprvis"           , true         );
+    coupler.set_option<bool       >( "dycore_immersed_hyeprvis"           , false        );
     coupler.set_option<real       >( "les_closure_delta_multiplier"       , 0.3          );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false        );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false        );

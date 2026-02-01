@@ -73,7 +73,7 @@ namespace modules {
       auto dz = coupler.get_dz();
       auto cs = coupler.get_option<real>( "dycore_cs" , 350 ); // Speed of sound in m/s
       real maxwave = cs + coupler.get_option<real>( "dycore_max_wind" , 100 ); // Max wave speed in m/s (cs+wind)
-      real cfl = coupler.get_option<real>("cfl",0.70);         // CFL number
+      real cfl = coupler.get_option<real>("cfl",0.60);         // CFL number
       // Return the maximum stable time step based on the minimum cell size in the domain, max wave speed, and CFL number
       return cfl * std::min( std::min( dx , dy ) , minval(dz) ) / maxwave;
     }
