@@ -2,8 +2,8 @@ from netCDF4 import Dataset
 import numpy as np
 import matplotlib.pyplot as plt
 
-prefixes = ["channel_u0constuflux-_acosut-2.000000_","channel_u0constuflux-_acosut-4.000000_","channel_u0constuflux-_acosut-8.000000_"]
-times = range(1,32)
+prefixes = ["channel_u0-0.100000_z0-0.015625_"]
+times = range(1,70)
 
 fig,ax = plt.subplots(3,2,figsize=(10,10))
 
