@@ -796,6 +796,7 @@ namespace modules {
       auto wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
       typedef limiter::WenoLimiter<FLOC,ord> Limiter; // Declare the WENO limiter
       auto use_weno = coupler.get_option<bool>("dycore_use_weno",true); // Whether to use WENO limiter
+      auto imm_weno = coupler.get_option<bool>("dycore_use_weno_immersed",false); // Whether to use WENO limiter
 
       /////////////////////////////////////////////////////////////////////////////////////////
       // COMPUTE UPWIND CELL_EDGE PRESSURE AND MOMENTUM (ACOUSTIC UPWINDING)
@@ -813,7 +814,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy;  // To hold left pressure and dummy right pressure
-        if (use_weno) {
+        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
           Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
         } else {
           p_L = 0;
@@ -838,7 +839,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno) {
+        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
           Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
         } else {
           p_R = 0;
@@ -872,7 +873,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        if (use_weno) {
+        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
           Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
         } else {
           p_L = 0;
@@ -897,7 +898,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno) {
+        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
           Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
         } else {
           p_R = 0;
@@ -932,7 +933,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        if (use_weno) {
+        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
           Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
         } else {
           p_L = 0;
@@ -965,7 +966,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno) {
+        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
           Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
         } else {
           p_R = 0;
@@ -1024,7 +1025,7 @@ namespace modules {
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
           FLOC val; // Reconstructed advected quantity at the edge
-          if (use_weno) {
+          if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
             FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = ru > 0 ? val_R : val_L;  // Choose value based on flow direction
@@ -1054,7 +1055,7 @@ namespace modules {
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
           FLOC val; // Reconstructed advected quantity at the edge
-          if (use_weno) {
+          if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
             FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = rv > 0 ? val_R : val_L; // Choose value based on flow direction
@@ -1087,7 +1088,7 @@ namespace modules {
           for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+ind+kk)))/
                                                       dz(std::max(0,std::min(nz-1,k-1 +ind   ))); }
           FLOC val; // Reconstructed advected quantity at the edge
-          if (use_weno) {
+          if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
             FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = rw > 0 ? val_R : val_L; // Choose value based on flow direction

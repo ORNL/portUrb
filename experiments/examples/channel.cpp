@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     real zlen  = 2;
     real npnts = 128;        // USER PARAMETER 1
     real dx    = zlen/npnts;
-    real acoust = 4;
+    real acoust = 2;
 
     real u0    = 0.1;        // USER PARAMETER 2
     real z0    = dx/2;       // USER PARAMETER 3
@@ -48,29 +48,31 @@ int main(int argc, char** argv) {
     int         dyn_cycle    = 3;
 
     // Things the coupler might need to know about
-    coupler.set_option<std::string>( "out_prefix"                         , out_prefix   );
-    coupler.set_option<std::string>( "init_data"                          , init_data    );
-    coupler.set_option<real       >( "out_freq"                           , out_freq     );
-    coupler.set_option<bool       >( "is_restart"                         , is_restart   );
-    coupler.set_option<std::string>( "restart_file"                       , restart_file );
-    coupler.set_option<real       >( "latitude"                           , latitude     );
-    coupler.set_option<real       >( "roughness"                          , roughness    );
-    coupler.set_option<real       >( "constant_uvel"                      , u0           );
-    coupler.set_option<real       >( "constant_vvel"                      , 0            );
-    coupler.set_option<real       >( "constant_temp"                      , 300          );
-    coupler.set_option<real       >( "constant_press"                     , 1.e5         );
-    coupler.set_option<real       >( "cfl"                                , 0.60         );
-    coupler.set_option<real       >( "dycore_max_wind"                    , u0*1.4       );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta"              , true         );
-    coupler.set_option<real       >( "dycore_cs"                          , u0*1.4*acoust);
-    coupler.set_option<bool       >( "dycore_use_weno"                    , false        );
-    coupler.set_option<bool       >( "dycore_immersed_hyeprvis"           , false        );
-    coupler.set_option<real       >( "les_closure_delta_multiplier"       , 0.3          );
-    coupler.set_option<bool       >( "surface_flux_force_theta"           , false        );
-    coupler.set_option<bool       >( "surface_flux_stability_corrections" , false        );
-    coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5       );
-    coupler.set_option<bool       >( "surface_flux_predict_z0h"           , false        );
-    coupler.set_option<bool       >( "output_correlations"                , false        );
+    coupler.set_option<std::string>( "out_prefix"                           , out_prefix    );
+    coupler.set_option<std::string>( "init_data"                            , init_data     );
+    coupler.set_option<real       >( "out_freq"                             , out_freq      );
+    coupler.set_option<bool       >( "is_restart"                           , is_restart    );
+    coupler.set_option<std::string>( "restart_file"                         , restart_file  );
+    coupler.set_option<real       >( "latitude"                             , latitude      );
+    coupler.set_option<real       >( "roughness"                            , roughness     );
+    coupler.set_option<real       >( "constant_uvel"                        , u0            );
+    coupler.set_option<real       >( "constant_vvel"                        , 0             );
+    coupler.set_option<real       >( "constant_temp"                        , 300           );
+    coupler.set_option<real       >( "constant_press"                       , 1.e5          );
+    coupler.set_option<real       >( "cfl"                                  , 0.60          );
+    coupler.set_option<real       >( "dycore_max_wind"                      , u0*1.4        );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"                , true          );
+    coupler.set_option<real       >( "dycore_cs"                            , u0*1.4*acoust );
+    coupler.set_option<bool       >( "dycore_use_weno"                      , false         );
+    coupler.set_option<bool       >( "dycore_use_weno_immersed"             , true          );
+    coupler.set_option<bool       >( "dycore_immersed_hyeprvis"             , false         );
+    coupler.set_option<real       >( "les_closure_delta_multiplier"         , 0.3           );
+    coupler.set_option<bool       >( "surface_flux_force_theta"             , false         );
+    coupler.set_option<bool       >( "surface_flux_stability_corrections"   , false         );
+    coupler.set_option<real       >( "surface_flux_kinematic_viscosity"     , 1.5e-5        );
+    coupler.set_option<bool       >( "surface_flux_predict_z0h"             , false         );
+    coupler.set_option<bool       >( "surface_flux_const_ustar_lower_upper" , false         );
+    coupler.set_option<bool       >( "output_correlations"                  , false         );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,

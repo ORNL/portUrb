@@ -130,14 +130,47 @@ namespace modules {
       real4d tracers("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
 
+      real vk   = 0.40;   // von karman constant
+      real Czil = 0.1;
+
+      bool const_ustar_UL = coupler.get_option<bool>("surface_flux_const_ustar_lower_upper",false);
+
+      real ustar_L, ustar_U;
+      if (const_ustar_UL) {
+        real r_nx_ny = 1./(coupler.get_nx_glob()*coupler.get_ny_glob());
+        real2d ustar_L2d("ustar_L2d",ny,nx);
+        real2d ustar_U2d("ustar_U2d",ny,nx);
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
+          int k = 0;
+          real u = state(idU,k,j,i);  // u-velocity at this grid point
+          real v = state(idV,k,j,i);  // v-velocity at this grid point
+          // Bottom neighbor
+          int indk = hs+k-1;  int indj = hs+j;  int indi = hs+i;
+          if (imm_prop(indk,indj,indi) > 0) {
+            real z0        = imm_rough(indk,indj,indi);
+            real mag       = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
+            ustar_L2d(j,i) = vk*mag/std::log((dz(k)/2+z0)/z0) * r_nx_ny;
+          }
+          // Top neighbor
+          k = nz-1;
+          u = state(idU,k,j,i);  // u-velocity at this grid point
+          v = state(idV,k,j,i);  // v-velocity at this grid point
+          indk = hs+k+1;  indj = hs+j;  indi = hs+i;
+          if (imm_prop(indk,indj,indi) > 0) {
+            real z0        = imm_rough(indk,indj,indi);
+            real mag       = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
+            ustar_U2d(j,i) = vk*mag/std::log((dz(k)/2+z0)/z0) * r_nx_ny;
+          }
+        });
+        ustar_L = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(ustar_L2d) , MPI_SUM );
+        ustar_U = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(ustar_U2d) , MPI_SUM );
+      }
+
       // Allocate arrays to hold surface flux tendencies
       real3d tend_u ("tend_u" ,nz,ny,nx);
       real3d tend_v ("tend_v" ,nz,ny,nx);
       real3d tend_w ("tend_w" ,nz,ny,nx);
       real3d tend_th("tend_th",nz,ny,nx);
-
-      real vk   = 0.40;   // von karman constant
-      real Czil = 0.1;
 
       // Compute surface flux tendencies using Monin-Obukhov similarity theory
       // This applies surface friction to neighboring cells if they are the surface or if they are
@@ -233,7 +266,7 @@ namespace modules {
           //   and adjacent transverse velocity magnitude
           real z0     = imm_rough(indk,indj,indi);
           real mag    = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
-          real ustar  = vk*mag/std::log((dz(k)/2+z0)/z0);
+          real ustar  = const_ustar_UL ? ustar_L : vk*mag/std::log((dz(k)/2+z0)/z0);
           real th0    = imm_theta(indk,indj,indi);
           real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
           real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
@@ -255,7 +288,7 @@ namespace modules {
           //   and adjacent transverse velocity magnitude
           real z0     = imm_rough(indk,indj,indi);
           real mag    = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
-          real ustar  = vk*mag/std::log((dz(k)/2+z0)/z0);
+          real ustar  = const_ustar_UL ? ustar_U : vk*mag/std::log((dz(k)/2+z0)/z0);
           real th0    = imm_theta(indk,indj,indi);
           real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
           real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
