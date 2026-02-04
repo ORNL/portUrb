@@ -814,7 +814,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy;  // To hold left pressure and dummy right pressure
-        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
           Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
         } else {
           p_L = 0;
@@ -839,7 +839,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
           Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
         } else {
           p_R = 0;
@@ -873,7 +873,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
           Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
         } else {
           p_L = 0;
@@ -898,7 +898,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
           Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
         } else {
           p_R = 0;
@@ -933,7 +933,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
           Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
         } else {
           p_L = 0;
@@ -966,7 +966,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
           Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
         } else {
           p_R = 0;
@@ -1025,7 +1025,7 @@ namespace modules {
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
           FLOC val; // Reconstructed advected quantity at the edge
-          if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
+          if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
             FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = ru > 0 ? val_R : val_L;  // Choose value based on flow direction
@@ -1055,7 +1055,7 @@ namespace modules {
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
           FLOC val; // Reconstructed advected quantity at the edge
-          if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
+          if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
             FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = rv > 0 ? val_R : val_L; // Choose value based on flow direction
@@ -1088,7 +1088,7 @@ namespace modules {
           for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+ind+kk)))/
                                                       dz(std::max(0,std::min(nz-1,k-1 +ind   ))); }
           FLOC val; // Reconstructed advected quantity at the edge
-          if (use_weno || (imm_weno && any_immersed4(k,j,i))) {
+          if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
             FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
             val = rw > 0 ? val_R : val_L; // Choose value based on flow direction
@@ -1146,7 +1146,7 @@ namespace modules {
       // ADD HYPERVISCOSITY NEAR IMMERSED BOUNDARIES TO TENDENCIES
       //////////////////////////////////////////////////////////////////////////////////////////////
 
-      if (coupler.get_option<bool>("dycore_immersed_hyeprvis",true)) {
+      if (coupler.get_option<bool>("dycore_immersed_hypervis",true)) {
         // Same as advected fields, the viscous fields do not include pressure
         core::MultiField<FLOC,3> fields_visc;
         for (int l=0; l < num_state  ; l++) { fields_visc.add_field(fields_loc.slice<3>(            l,0,0,0)); }

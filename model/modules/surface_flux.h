@@ -22,11 +22,15 @@ namespace modules {
     void init( core::Coupler & coupler ) {
       using yakl::c::parallel_for;
       using yakl::c::SimpleBounds;
-      auto nx          = coupler.get_nx();  // Get local number of grid points in x-direction
-      auto ny          = coupler.get_ny();  // Get local number of grid points in y-direction
-      auto nz          = coupler.get_nz();  // Get number of grid points in z-direction
-      auto num_tracers = coupler.get_num_tracers();
-      auto &dm         = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
+      auto nx           = coupler.get_nx();  // Get local number of grid points in x-direction
+      auto ny           = coupler.get_ny();  // Get local number of grid points in y-direction
+      auto nz           = coupler.get_nz();  // Get number of grid points in z-direction
+      auto num_tracers  = coupler.get_num_tracers();
+      auto tracer_names = coupler.get_tracer_names();
+      auto &dm          = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
+      int  idTKE = -1;
+      for (int tr=0; tr < tracer_names.size(); tr++) { if (tracer_names.at(tr) == "TKE") { idTKE = tr; break; } }
+      coupler.set_option<int>("surface_flux_idTKE",idTKE);
       real4d state  ("state"  ,num_state  ,nz,ny,nx);
       real4d tracers("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
@@ -113,6 +117,7 @@ namespace modules {
       auto R_d         = coupler.get_option<real>("R_d");      // Gas constant for dry air in J/(kg·K)
       auto cp_d        = coupler.get_option<real>("cp_d");     // Specific heat at constant pressure for dry air in J/(kg·K)
       auto grav        = coupler.get_option<real>("grav");
+      auto idTKE       = coupler.get_option<int >("surface_flux_idTKE");
       auto &dm         = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
       auto imm_prop    = dm.get<real const,3>("immersed_proportion_halos"); // Get immersed boundary proportion array
       auto imm_rough   = dm.get<real const,3>("immersed_roughness_halos" ); // Get immersed boundary roughness array
@@ -132,6 +137,7 @@ namespace modules {
 
       real vk   = 0.40;   // von karman constant
       real Czil = 0.1;
+      real Ctke = 0.5;
 
       bool const_ustar_UL = coupler.get_option<bool>("surface_flux_const_ustar_lower_upper",false);
 
@@ -167,10 +173,11 @@ namespace modules {
       }
 
       // Allocate arrays to hold surface flux tendencies
-      real3d tend_u ("tend_u" ,nz,ny,nx);
-      real3d tend_v ("tend_v" ,nz,ny,nx);
-      real3d tend_w ("tend_w" ,nz,ny,nx);
-      real3d tend_th("tend_th",nz,ny,nx);
+      real3d tend_u  ("tend_u"  ,nz,ny,nx);
+      real3d tend_v  ("tend_v"  ,nz,ny,nx);
+      real3d tend_w  ("tend_w"  ,nz,ny,nx);
+      real3d tend_th ("tend_th" ,nz,ny,nx);
+      real3d tend_tke("tend_tke",nz,ny,nx);
 
       // Compute surface flux tendencies using Monin-Obukhov similarity theory
       // This applies surface friction to neighboring cells if they are the surface or if they are
@@ -180,11 +187,14 @@ namespace modules {
         real v  = state(idV,k,j,i);  // v-velocity at this grid point
         real w  = state(idW,k,j,i);  // w-velocity at this grid point
         real th = state(idT,k,j,i);  // Potential temperature at this grid point
+        real tke;
+        if (idTKE >= 0) tke = tracers(idTKE,k,j,i)/state(idR,k,j,i);
         // Initialize tendencies to zero prior to accumulation
-        tend_u (k,j,i) = 0;
-        tend_v (k,j,i) = 0;
-        tend_w (k,j,i) = 0;
-        tend_th(k,j,i) = 0;
+        tend_u  (k,j,i) = 0;
+        tend_v  (k,j,i) = 0;
+        tend_w  (k,j,i) = 0;
+        tend_th (k,j,i) = 0;
+        tend_tke(k,j,i) = 0;
         int indk, indj, indi;  // These indices will index into neighboring cells
 
         // West neighbor
@@ -197,6 +207,7 @@ namespace modules {
           real ustar     = vk*mag/std::log((dx/2+z0)/z0);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dx;
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dx;
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dx;
           if (force_theta) {
             real th0        = imm_theta(indk,indj,indi);
             real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
@@ -215,6 +226,7 @@ namespace modules {
           real ustar     = vk*mag/std::log((dx/2+z0)/z0);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dx;
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dx;
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dx;
           if (force_theta) {
             real th0        = imm_theta(indk,indj,indi);
             real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
@@ -233,6 +245,7 @@ namespace modules {
           real ustar     = vk*mag/std::log((dy/2+z0)/z0);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dy;
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dy;
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dy;
           if (force_theta) {
             real th0        = imm_theta(indk,indj,indi);
             real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
@@ -251,6 +264,7 @@ namespace modules {
           real ustar     = vk*mag/std::log((dy/2+z0)/z0);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dy;
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dy;
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dy;
           if (force_theta) {
             real th0        = imm_theta(indk,indj,indi);
             real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
@@ -273,6 +287,7 @@ namespace modules {
           if (stab_corr) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),use_z0h,presc_wpthp,sfc_wpthp,ustar,thstar);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dz(k);
           if (force_theta || presc_wpthp) tend_th(k,j,i) += -ustar*thstar/dz(k);
           if (k == 0) {
             sfc_ustar (j,i) = ustar;
@@ -294,6 +309,7 @@ namespace modules {
           real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dz(k);
           if (force_theta) tend_th(k,j,i) += -ustar*thstar/dz(k);
         }
       });
@@ -304,6 +320,7 @@ namespace modules {
         state(idV,k,j,i) += dt*tend_v (k,j,i);
         state(idW,k,j,i) += dt*tend_w (k,j,i);
         state(idT,k,j,i) += dt*tend_th(k,j,i);
+        if (idTKE >= 0) tracers(idTKE,k,j,i) += dt*state(idR,k,j,i)*tend_tke(k,j,i);
       });
 
       convert_dynamics_to_coupler( coupler , state , tracers );

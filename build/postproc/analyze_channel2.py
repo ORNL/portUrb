@@ -2,8 +2,18 @@ from netCDF4 import Dataset
 import numpy as np
 import matplotlib.pyplot as plt
 
-prefixes = ["channel_u0-0.100000_z0-0.015625_"]
-times = range(1,70)
+def spectra(T,dx = 1) :
+  spd  = np.abs( np.fft.rfft(T[0,0,:]) )**2
+  freq = np.fft.rfftfreq(len(T[0,0,:]))
+  spd[:] = 0
+  for k in range(T.shape[0]) :
+    for j in range(T.shape[1]) :
+      spd[:] += np.abs( np.fft.rfft(T[k,j,:]) )**2
+  spd[:] /= T.shape[0]*T.shape[1]
+  return freq*2*2*np.pi/(2*dx) , spd
+
+prefixes = ["delta_0.3_","delta_0.5_","delta_1.0_"]
+times = range(20,41)
 
 fig,ax = plt.subplots(3,2,figsize=(10,10))
 

@@ -26,8 +26,8 @@ int main(int argc, char** argv) {
     real acoust = 4;
 
     int  n_z0 = 8;
-    real z0_2 = 256.;
-    real z0_1 = 2.;
+    real z0_2 = 512.;
+    real z0_1 = 4.;
     real z0_f = std::pow(z0_2/z0_1,1./(n_z0-1.));
 
     int  n_u0 = 8;
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
         coupler.set_option<real       >( "dycore_cs"                            , u0*1.4*acoust );
         coupler.set_option<bool       >( "dycore_use_weno"                      , false         );
         coupler.set_option<bool       >( "dycore_use_weno_immersed"             , true          );
-        coupler.set_option<bool       >( "dycore_immersed_hyeprvis"             , false         );
+        coupler.set_option<bool       >( "dycore_immersed_hypervis"             , false         );
         coupler.set_option<real       >( "les_closure_delta_multiplier"         , 0.3           );
         coupler.set_option<bool       >( "surface_flux_force_theta"             , false         );
         coupler.set_option<bool       >( "surface_flux_stability_corrections"   , false         );
@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
             coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing" );
             coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"         );
             coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
-            // coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );
+            coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );
             coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager"  );
           }
 

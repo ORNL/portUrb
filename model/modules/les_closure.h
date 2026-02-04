@@ -214,170 +214,155 @@ namespace modules {
       // Compute SGS fluxes in all three directions, looping over cell faces
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny+1,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         if (j < ny && k < nz) {  // Constrain loops to (nz,ny,nx+1) for x-fluxes
-          // If either neighboring cell is fully immersed, set SGS fluxes to zero
-          if (immersed(hs+k,hs+j,hs+i-1) == 1 || immersed(hs+k,hs+j,hs+i) == 1) {
-            flux_ru_x (k,j,i) = 0;
-            flux_rv_x (k,j,i) = 0;
-            flux_rw_x (k,j,i) = 0;
-            flux_rt_x (k,j,i) = 0;
-            flux_tke_x(k,j,i) = 0;
-            for (int tr=0; tr < num_tracers; tr++) { flux_tracers_x(tr,k,j,i) = 0; }
-          // Otherwise, compute SGS fluxes
-          } else {
-            // Derivatives valid at interface i-1/2
-            real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
-            real du_dz = 0.5 * ( (state(idU,hs+k+1,hs+j,hs+i-1)-state(idU,hs+k-1,hs+j,hs+i-1))/(dz2 ) +
-                                 (state(idU,hs+k+1,hs+j,hs+i  )-state(idU,hs+k-1,hs+j,hs+i  ))/(dz2 ) );
-            real dw_dz = 0.5 * ( (state(idW,hs+k+1,hs+j,hs+i-1)-state(idW,hs+k-1,hs+j,hs+i-1))/(dz2 ) +
-                                 (state(idW,hs+k+1,hs+j,hs+i  )-state(idW,hs+k-1,hs+j,hs+i  ))/(dz2 ) );
-            real dt_dz = 0.5 * ( (state(idT,hs+k+1,hs+j,hs+i-1)-state(idT,hs+k-1,hs+j,hs+i-1))/(dz2 ) +
-                                 (state(idT,hs+k+1,hs+j,hs+i  )-state(idT,hs+k-1,hs+j,hs+i  ))/(dz2 ) );
-            real du_dy = 0.5 * ( (state(idU,hs+k,hs+j+1,hs+i-1)-state(idU,hs+k,hs+j-1,hs+i-1))/(2*dy) +
-                                 (state(idU,hs+k,hs+j+1,hs+i  )-state(idU,hs+k,hs+j-1,hs+i  ))/(2*dy) );
-            real dv_dy = 0.5 * ( (state(idV,hs+k,hs+j+1,hs+i-1)-state(idV,hs+k,hs+j-1,hs+i-1))/(2*dy) +
-                                 (state(idV,hs+k,hs+j+1,hs+i  )-state(idV,hs+k,hs+j-1,hs+i  ))/(2*dy) );
-            real du_dx = (state(idU,hs+k,hs+j,hs+i) - state(idU,hs+k,hs+j,hs+i-1))/dx;
-            real dv_dx = (state(idV,hs+k,hs+j,hs+i) - state(idV,hs+k,hs+j,hs+i-1))/dx;
-            real dw_dx = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k,hs+j,hs+i-1))/dx;
-            real dt_dx = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k,hs+j,hs+i-1))/dx;
-            real dK_dx = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k,hs+j,hs+i-1))/dx;
-            real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(dz2);
-            // Quantities at interface i-1/2
-            // Compute density, TKE, reference temperature, Brunt-Vaisala frequency, grid spacing, mixing length,
-            //   eddy viscosity, turbulent Prandtl number, total viscosity, and total thermal viscosity
-            real rho         = 0.5 * ( state(idR,hs+k,hs+j,hs+i-1) + state(idR,hs+k,hs+j,hs+i) );
-            real K           = dns ? 0 : 0.5 * ( tke      (hs+k,hs+j,hs+i-1) + tke      (hs+k,hs+j,hs+i) );
-            real tref        = hy_t(hs+k);
-            real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
-            real delta       = std::pow( dx*dy*dz(k) , 1./3. ) * delta_mult;
-            real ell         = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
-            real km          = 0.1 * ell * std::sqrt(K);
-            real Pr_t        = 0.85;
-            real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_x );
-            real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_x );
-            // Limit the viscosity and set the max_triggered flag if the limit is reached
-            if (visc_tot == visc_max_x || visc_tot_th == visc_max_x) max_triggered = true;
-            // Compute the SGS fluxes in the x-direction
-            flux_ru_x (k,j,i) = -rho*visc_tot   *(du_dx + du_dx - 2./3.*(du_dx+dv_dy+dw_dz))-2./3.*rho*K;
-            flux_rv_x (k,j,i) = -rho*visc_tot   *(dv_dx + du_dy                            );
-            flux_rw_x (k,j,i) = -rho*visc_tot   *(dw_dx + du_dz                            );
-            flux_rt_x (k,j,i) = -rho*visc_tot_th*(dt_dx                                    );
-            flux_tke_x(k,j,i) = -rho*visc_tot   *(dK_dx                                    );
-            for (int tr=0; tr < num_tracers; tr++) {
-              dt_dx = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k,hs+j,hs+i-1))/dx; // Tracer gradient
-              flux_tracers_x(tr,k,j,i) = -rho*visc_tot_th*dt_dx;
-            }
+          int im1 = immersed(hs+k,hs+j,hs+i-1) ? i : i-1;
+          int jm1 = immersed(hs+k,hs+j-1,hs+i) ? j : j-1;
+          int km1 = immersed(hs+k-1,hs+j,hs+i) ? k : k-1;
+          int ip1 = immersed(hs+k,hs+j,hs+i+1) ? i : i+1;
+          int jp1 = immersed(hs+k,hs+j+1,hs+i) ? j : j+1;
+          int kp1 = immersed(hs+k+1,hs+j,hs+i) ? k : k+1;
+          // Derivatives valid at interface i-1/2
+          real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
+          real du_dz = 0.5 * ( (state(idU,hs+kp1,hs+j,hs+i-1)-state(idU,hs+km1,hs+j,hs+i-1))/(dz2 ) +
+                               (state(idU,hs+kp1,hs+j,hs+i  )-state(idU,hs+km1,hs+j,hs+i  ))/(dz2 ) );
+          real dw_dz = 0.5 * ( (state(idW,hs+kp1,hs+j,hs+im1)-state(idW,hs+km1,hs+j,hs+im1))/(dz2 ) +
+                               (state(idW,hs+kp1,hs+j,hs+i  )-state(idW,hs+km1,hs+j,hs+i  ))/(dz2 ) );
+          real dt_dz = 0.5 * ( (state(idT,hs+kp1,hs+j,hs+im1)-state(idT,hs+km1,hs+j,hs+im1))/(dz2 ) +
+                               (state(idT,hs+kp1,hs+j,hs+i  )-state(idT,hs+km1,hs+j,hs+i  ))/(dz2 ) );
+          real du_dy = 0.5 * ( (state(idU,hs+k,hs+jp1,hs+i-1)-state(idU,hs+k,hs+jp1,hs+i-1))/(2*dy) +
+                               (state(idU,hs+k,hs+jp1,hs+i  )-state(idU,hs+k,hs+jp1,hs+i  ))/(2*dy) );
+          real dv_dy = 0.5 * ( (state(idV,hs+k,hs+jp1,hs+im1)-state(idV,hs+k,hs+jp1,hs+im1))/(2*dy) +
+                               (state(idV,hs+k,hs+jp1,hs+i  )-state(idV,hs+k,hs+jp1,hs+i  ))/(2*dy) );
+          real du_dx = (state(idU,hs+k,hs+j,hs+i) - state(idU,hs+k,hs+j,hs+i-1))/dx;
+          real dv_dx = (state(idV,hs+k,hs+j,hs+i) - state(idV,hs+k,hs+j,hs+im1))/dx;
+          real dw_dx = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k,hs+j,hs+im1))/dx;
+          real dt_dx = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k,hs+j,hs+im1))/dx;
+          real dK_dx = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k,hs+j,hs+im1))/dx;
+          real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(dz2);
+          // Quantities at interface i-1/2
+          // Compute density, TKE, reference temperature, Brunt-Vaisala frequency, grid spacing, mixing length,
+          //   eddy viscosity, turbulent Prandtl number, total viscosity, and total thermal viscosity
+          real rho         = 0.5 * ( state(idR,hs+k,hs+j,hs+im1) + state(idR,hs+k,hs+j,hs+i) );
+          real K           = dns ? 0 : 0.5 * ( tke      (hs+k,hs+j,hs+im1) + tke      (hs+k,hs+j,hs+i) );
+          real tref        = hy_t(hs+k);
+          real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
+          real delta       = std::pow( dx*dy*dz(k) , 1./3. ) * delta_mult;
+          real ell         = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
+          real km          = 0.1 * ell * std::sqrt(K);
+          real Pr_t        = 0.85;
+          real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_x );
+          real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_x );
+          // Limit the viscosity and set the max_triggered flag if the limit is reached
+          if (visc_tot == visc_max_x || visc_tot_th == visc_max_x) max_triggered = true;
+          // Compute the SGS fluxes in the x-direction
+          flux_ru_x (k,j,i) = -rho*visc_tot   *(du_dx + du_dx - 2./3.*(du_dx+dv_dy+dw_dz))-2./3.*rho*K;
+          flux_rv_x (k,j,i) = -rho*visc_tot   *(dv_dx + du_dy                            );
+          flux_rw_x (k,j,i) = -rho*visc_tot   *(dw_dx + du_dz                            );
+          flux_rt_x (k,j,i) = -rho*visc_tot_th*(dt_dx                                    );
+          flux_tke_x(k,j,i) = -rho*visc_tot   *(dK_dx                                    );
+          for (int tr=0; tr < num_tracers; tr++) {
+            dt_dx = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k,hs+j,hs+im1))/dx; // Tracer gradient
+            flux_tracers_x(tr,k,j,i) = -rho*visc_tot_th*dt_dx;
           }
         }
         if (i < nx && k < nz) {  // Constrain loops to (nz,ny+1,nx) for y-fluxes
-          // If either neighboring cell is fully immersed, set SGS fluxes to zero
-          if (immersed(hs+k,hs+j-1,hs+i) == 1 || immersed(hs+k,hs+j,hs+i) == 1) {
-            flux_ru_y (k,j,i) = 0;
-            flux_rv_y (k,j,i) = 0;
-            flux_rw_y (k,j,i) = 0;
-            flux_rt_y (k,j,i) = 0;
-            flux_tke_y(k,j,i) = 0;
-            for (int tr=0; tr < num_tracers; tr++) { flux_tracers_y(tr,k,j,i) = 0; }
-          // Otherwise, compute SGS fluxes
-          } else {
-            // Derivatives valid at interface j-1/2
-            real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
-            real dv_dz = 0.5 * ( (state(idV,hs+k+1,hs+j-1,hs+i)-state(idV,hs+k-1,hs+j-1,hs+i))/(dz2 ) +
-                                 (state(idV,hs+k+1,hs+j  ,hs+i)-state(idV,hs+k-1,hs+j  ,hs+i))/(dz2 ) );
-            real dw_dz = 0.5 * ( (state(idW,hs+k+1,hs+j-1,hs+i)-state(idW,hs+k-1,hs+j-1,hs+i))/(dz2 ) +
-                                 (state(idW,hs+k+1,hs+j  ,hs+i)-state(idW,hs+k-1,hs+j  ,hs+i))/(dz2 ) );
-            real dt_dz = 0.5 * ( (state(idT,hs+k+1,hs+j-1,hs+i)-state(idT,hs+k-1,hs+j-1,hs+i))/(dz2 ) +
-                                 (state(idT,hs+k+1,hs+j  ,hs+i)-state(idT,hs+k-1,hs+j  ,hs+i))/(dz2 ) );
-            real du_dx = 0.5 * ( (state(idU,hs+k,hs+j-1,hs+i+1)-state(idU,hs+k,hs+j-1,hs+i-1))/(2*dx) +
-                                 (state(idU,hs+k,hs+j  ,hs+i+1)-state(idU,hs+k,hs+j  ,hs+i-1))/(2*dx) );
-            real dv_dx = 0.5 * ( (state(idV,hs+k,hs+j-1,hs+i+1)-state(idV,hs+k,hs+j-1,hs+i-1))/(2*dx) +
-                                 (state(idV,hs+k,hs+j  ,hs+i+1)-state(idV,hs+k,hs+j  ,hs+i-1))/(2*dx) );
-            real du_dy = (state(idU,hs+k,hs+j,hs+i) - state(idU,hs+k,hs+j-1,hs+i))/dy;
-            real dv_dy = (state(idV,hs+k,hs+j,hs+i) - state(idV,hs+k,hs+j-1,hs+i))/dy;
-            real dw_dy = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k,hs+j-1,hs+i))/dy;
-            real dt_dy = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k,hs+j-1,hs+i))/dy;
-            real dK_dy = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k,hs+j-1,hs+i))/dy;
-            real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(dz2);
-            // Quantities at interface j-1/2
-            // Compute density, TKE, reference temperature, Brunt-Vaisala frequency, grid spacing, mixing length,
-            //   eddy viscosity, turbulent Prandtl number, total viscosity, and total thermal viscosity
-            real rho         = 0.5 * ( state(idR,hs+k,hs+j-1,hs+i) + state(idR,hs+k,hs+j,hs+i) );
-            real K           = dns ? 0 : 0.5 * ( tke      (hs+k,hs+j-1,hs+i) + tke      (hs+k,hs+j,hs+i) );
-            real tref        = hy_t(hs+k);
-            real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
-            real delta       = std::pow( dx*dy*dz(k) , 1./3. ) * delta_mult;
-            real ell         = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
-            real km          = 0.1 * ell * std::sqrt(K);
-            real Pr_t        = 0.85;
-            real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_y );
-            real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_y );
-            // Limit the viscosity and set the max_triggered flag if the limit is reached
-            if (visc_tot == visc_max_y || visc_tot_th == visc_max_y) max_triggered = true;
-            // Compute the SGS fluxes in the y-direction
-            flux_ru_y (k,j,i) = -rho*visc_tot   *(du_dy + dv_dx                            );
-            flux_rv_y (k,j,i) = -rho*visc_tot   *(dv_dy + dv_dy - 2./3.*(du_dx+dv_dy+dw_dz))-2./3.*rho*K;
-            flux_rw_y (k,j,i) = -rho*visc_tot   *(dw_dy + dv_dz                            );
-            flux_rt_y (k,j,i) = -rho*visc_tot_th*(dt_dy                                    );
-            flux_tke_y(k,j,i) = -rho*visc_tot   *(dK_dy                                    );
-            for (int tr=0; tr < num_tracers; tr++) {
-              dt_dy = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k,hs+j-1,hs+i))/dy; // Tracer gradient
-              flux_tracers_y(tr,k,j,i) = -rho*visc_tot_th*dt_dy;
-            }
+          int im1 = immersed(hs+k,hs+j,hs+i-1) ? i : i-1;
+          int jm1 = immersed(hs+k,hs+j-1,hs+i) ? j : j-1;
+          int km1 = immersed(hs+k-1,hs+j,hs+i) ? k : k-1;
+          int ip1 = immersed(hs+k,hs+j,hs+i+1) ? i : i+1;
+          int jp1 = immersed(hs+k,hs+j+1,hs+i) ? j : j+1;
+          int kp1 = immersed(hs+k+1,hs+j,hs+i) ? k : k+1;
+          // Derivatives valid at interface j-1/2
+          real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
+          real dv_dz = 0.5 * ( (state(idV,hs+kp1,hs+j-1,hs+i)-state(idV,hs+km1,hs+j-1,hs+i))/(dz2 ) +
+                               (state(idV,hs+kp1,hs+j  ,hs+i)-state(idV,hs+km1,hs+j  ,hs+i))/(dz2 ) );
+          real dw_dz = 0.5 * ( (state(idW,hs+kp1,hs+jm1,hs+i)-state(idW,hs+km1,hs+jm1,hs+i))/(dz2 ) +
+                               (state(idW,hs+kp1,hs+j  ,hs+i)-state(idW,hs+km1,hs+j  ,hs+i))/(dz2 ) );
+          real dt_dz = 0.5 * ( (state(idT,hs+kp1,hs+jm1,hs+i)-state(idT,hs+km1,hs+jm1,hs+i))/(dz2 ) +
+                               (state(idT,hs+kp1,hs+j  ,hs+i)-state(idT,hs+km1,hs+j  ,hs+i))/(dz2 ) );
+          real du_dx = 0.5 * ( (state(idU,hs+k,hs+jm1,hs+ip1)-state(idU,hs+k,hs+jm1,hs+im1))/(2*dx) +
+                               (state(idU,hs+k,hs+j  ,hs+ip1)-state(idU,hs+k,hs+j  ,hs+im1))/(2*dx) );
+          real dv_dx = 0.5 * ( (state(idV,hs+k,hs+j-1,hs+ip1)-state(idV,hs+k,hs+j-1,hs+im1))/(2*dx) +
+                               (state(idV,hs+k,hs+j  ,hs+ip1)-state(idV,hs+k,hs+j  ,hs+im1))/(2*dx) );
+          real du_dy = (state(idU,hs+k,hs+j,hs+i) - state(idU,hs+k,hs+jm1,hs+i))/dy;
+          real dv_dy = (state(idV,hs+k,hs+j,hs+i) - state(idV,hs+k,hs+j-1,hs+i))/dy;
+          real dw_dy = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k,hs+jm1,hs+i))/dy;
+          real dt_dy = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k,hs+jm1,hs+i))/dy;
+          real dK_dy = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k,hs+jm1,hs+i))/dy;
+          real dth_dz = (hy_t(hs+k+1)-hy_t(hs+k-1))/(dz2);
+          // Quantities at interface j-1/2
+          // Compute density, TKE, reference temperature, Brunt-Vaisala frequency, grid spacing, mixing length,
+          //   eddy viscosity, turbulent Prandtl number, total viscosity, and total thermal viscosity
+          real rho         = 0.5 * ( state(idR,hs+k,hs+jm1,hs+i) + state(idR,hs+k,hs+j,hs+i) );
+          real K           = dns ? 0 : 0.5 * ( tke      (hs+k,hs+jm1,hs+i) + tke      (hs+k,hs+j,hs+i) );
+          real tref        = hy_t(hs+k);
+          real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
+          real delta       = std::pow( dx*dy*dz(k) , 1./3. ) * delta_mult;
+          real ell         = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
+          real km          = 0.1 * ell * std::sqrt(K);
+          real Pr_t        = 0.85;
+          real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_y );
+          real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_y );
+          // Limit the viscosity and set the max_triggered flag if the limit is reached
+          if (visc_tot == visc_max_y || visc_tot_th == visc_max_y) max_triggered = true;
+          // Compute the SGS fluxes in the y-direction
+          flux_ru_y (k,j,i) = -rho*visc_tot   *(du_dy + dv_dx                            );
+          flux_rv_y (k,j,i) = -rho*visc_tot   *(dv_dy + dv_dy - 2./3.*(du_dx+dv_dy+dw_dz))-2./3.*rho*K;
+          flux_rw_y (k,j,i) = -rho*visc_tot   *(dw_dy + dv_dz                            );
+          flux_rt_y (k,j,i) = -rho*visc_tot_th*(dt_dy                                    );
+          flux_tke_y(k,j,i) = -rho*visc_tot   *(dK_dy                                    );
+          for (int tr=0; tr < num_tracers; tr++) {
+            dt_dy = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k,hs+jm1,hs+i))/dy; // Tracer gradient
+            flux_tracers_y(tr,k,j,i) = -rho*visc_tot_th*dt_dy;
           }
         }
         if (i < nx && j < ny) {  // Constrain loops to (nz+1,ny,nx) for z-fluxes
-          // If either neighboring cell is fully immersed, set SGS fluxes to zero
-          if (immersed(hs+k-1,hs+j,hs+i) == 1 || immersed(hs+k,hs+j,hs+i) == 1) {
-            flux_ru_z (k,j,i) = 0;
-            flux_rv_z (k,j,i) = 0;
-            flux_rw_z (k,j,i) = 0;
-            flux_rt_z (k,j,i) = 0;
-            flux_tke_z(k,j,i) = 0;
-            for (int tr=0; tr < num_tracers; tr++) { flux_tracers_z(tr,k,j,i) = 0; }
-          // Otherwise, compute SGS fluxes
-          } else {
-            // Derivatives valid at interface k-1/2
-            real dzloc = dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k))/2;
-            real du_dx = 0.5 * ( (state(idU,hs+k-1,hs+j,hs+i+1) - state(idU,hs+k-1,hs+j,hs+i-1))/(2*dx) +
-                                 (state(idU,hs+k  ,hs+j,hs+i+1) - state(idU,hs+k  ,hs+j,hs+i-1))/(2*dx) );
-            real dw_dx = 0.5 * ( (state(idW,hs+k-1,hs+j,hs+i+1) - state(idW,hs+k-1,hs+j,hs+i-1))/(2*dx) +
-                                 (state(idW,hs+k  ,hs+j,hs+i+1) - state(idW,hs+k  ,hs+j,hs+i-1))/(2*dx) );
-            real dv_dy = 0.5 * ( (state(idV,hs+k-1,hs+j+1,hs+i) - state(idV,hs+k-1,hs+j-1,hs+i))/(2*dy) +
-                                 (state(idV,hs+k  ,hs+j+1,hs+i) - state(idV,hs+k  ,hs+j-1,hs+i))/(2*dy) );
-            real dw_dy = 0.5 * ( (state(idW,hs+k-1,hs+j+1,hs+i) - state(idW,hs+k-1,hs+j-1,hs+i))/(2*dy) +
-                                 (state(idW,hs+k  ,hs+j+1,hs+i) - state(idW,hs+k  ,hs+j-1,hs+i))/(2*dy) );
-            real du_dz = (state(idU,hs+k,hs+j,hs+i) - state(idU,hs+k-1,hs+j,hs+i))/dzloc;
-            real dv_dz = (state(idV,hs+k,hs+j,hs+i) - state(idV,hs+k-1,hs+j,hs+i))/dzloc;
-            real dw_dz = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k-1,hs+j,hs+i))/dzloc;
-            real dt_dz = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+k-1,hs+j,hs+i))/dzloc;
-            real dK_dz = (tke      (hs+k,hs+j,hs+i) - tke      (hs+k-1,hs+j,hs+i))/dzloc;
-            real dth_dz = (hy_t(hs+k)-hy_t(hs+k-1))/dzloc;
-            // Quantities at interface k-1/2
-            // Compute density, TKE, reference temperature, Brunt-Vaisala frequency, grid spacing, mixing length,
-            //   eddy viscosity, turbulent Prandtl number, total viscosity, and total thermal viscosity
-            real rho         = 0.5 * ( state(idR,hs+k-1,hs+j,hs+i) + state(idR,hs+k,hs+j,hs+i) );
-            real K           = dns ? 0 : 0.5 * ( tke      (hs+k-1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
-            real tref        = 0.5 * ( hy_t(hs+k-1) + hy_t(hs+k) );
-            real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
-            real delta       = std::pow( dx*dy*dzloc , 1./3. ) * delta_mult;
-            real ell         = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
-            real km          = 0.1 * ell * std::sqrt(K);
-            real Pr_t        = 0.85;
-            real visc_max_z  = 0.1*dzloc*dzloc/dtphys;
-            real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_z );
-            real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_z );
-            // Limit the viscosity and set the max_triggered flag if the limit is reached
-            if (visc_tot == visc_max_z || visc_tot_th == visc_max_z) max_triggered = true;
-            // Compute the SGS fluxes in the z-direction
-            flux_ru_z (k,j,i) = -rho*visc_tot   *(du_dz + dw_dx                            );
-            flux_rv_z (k,j,i) = -rho*visc_tot   *(dv_dz + dw_dy                            );
-            flux_rw_z (k,j,i) = -rho*visc_tot   *(dw_dz + dw_dz - 2./3.*(du_dx+dv_dy+dw_dz))-2./3.*rho*K;
-            flux_rt_z (k,j,i) = -rho*visc_tot_th*(dt_dz                                    );
-            flux_tke_z(k,j,i) = -rho*visc_tot   *(dK_dz                                    );
-            for (int tr=0; tr < num_tracers; tr++) {
-              dt_dz = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+k-1,hs+j,hs+i))/dzloc; // Tracer gradient
-              flux_tracers_z(tr,k,j,i) = -rho*visc_tot_th*dt_dz;
-            }
+          int im1 = immersed(hs+k,hs+j,hs+i-1) ? i : i-1;
+          int jm1 = immersed(hs+k,hs+j-1,hs+i) ? j : j-1;
+          int km1 = immersed(hs+k-1,hs+j,hs+i) ? k : k-1;
+          int ip1 = immersed(hs+k,hs+j,hs+i+1) ? i : i+1;
+          int jp1 = immersed(hs+k,hs+j+1,hs+i) ? j : j+1;
+          int kp1 = immersed(hs+k+1,hs+j,hs+i) ? k : k+1;
+          // Derivatives valid at interface k-1/2
+          real dzloc = dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k))/2;
+          real du_dx = 0.5 * ( (state(idU,hs+km1,hs+j,hs+ip1) - state(idU,hs+km1,hs+j,hs+im1))/(2*dx) +
+                               (state(idU,hs+k  ,hs+j,hs+ip1) - state(idU,hs+k  ,hs+j,hs+im1))/(2*dx) );
+          real dw_dx = 0.5 * ( (state(idW,hs+k-1,hs+j,hs+ip1) - state(idW,hs+k-1,hs+j,hs+im1))/(2*dx) +
+                               (state(idW,hs+k  ,hs+j,hs+ip1) - state(idW,hs+k  ,hs+j,hs+im1))/(2*dx) );
+          real dv_dy = 0.5 * ( (state(idV,hs+km1,hs+jp1,hs+i) - state(idV,hs+km1,hs+jm1,hs+i))/(2*dy) +
+                               (state(idV,hs+k  ,hs+jp1,hs+i) - state(idV,hs+k  ,hs+jm1,hs+i))/(2*dy) );
+          real dw_dy = 0.5 * ( (state(idW,hs+k-1,hs+jp1,hs+i) - state(idW,hs+k-1,hs+jm1,hs+i))/(2*dy) +
+                               (state(idW,hs+k  ,hs+jp1,hs+i) - state(idW,hs+k  ,hs+jm1,hs+i))/(2*dy) );
+          real du_dz = (state(idU,hs+k,hs+j,hs+i) - state(idU,hs+km1,hs+j,hs+i))/dzloc;
+          real dv_dz = (state(idV,hs+k,hs+j,hs+i) - state(idV,hs+km1,hs+j,hs+i))/dzloc;
+          real dw_dz = (state(idW,hs+k,hs+j,hs+i) - state(idW,hs+k-1,hs+j,hs+i))/dzloc;
+          real dt_dz = (state(idT,hs+k,hs+j,hs+i) - state(idT,hs+km1,hs+j,hs+i))/dzloc;
+          real dK_dz = (tke      (hs+k,hs+j,hs+i) - tke      (hs+km1,hs+j,hs+i))/dzloc;
+          real dth_dz = (hy_t(hs+k)-hy_t(hs+k-1))/dzloc;
+          // Quantities at interface k-1/2
+          // Compute density, TKE, reference temperature, Brunt-Vaisala frequency, grid spacing, mixing length,
+          //   eddy viscosity, turbulent Prandtl number, total viscosity, and total thermal viscosity
+          real rho         = 0.5 * ( state(idR,hs+km1,hs+j,hs+i) + state(idR,hs+k,hs+j,hs+i) );
+          real K           = dns ? 0 : 0.5 * ( tke      (hs+km1,hs+j,hs+i) + tke      (hs+k,hs+j,hs+i) );
+          real tref        = 0.5 * ( hy_t(hs+km1) + hy_t(hs+k) );
+          real N           = dt_dz+dth_dz >= 0 ? std::sqrt(grav/tref*(dt_dz+dth_dz)) : 0;
+          real delta       = std::pow( dx*dy*dzloc , 1./3. ) * delta_mult;
+          real ell         = std::min( 0.76*std::sqrt(K)/std::max(N,1.e-10) , delta );
+          real km          = 0.1 * ell * std::sqrt(K);
+          real Pr_t        = 0.85;
+          real visc_max_z  = 0.1*dzloc*dzloc/dtphys;
+          real visc_tot    = dns ? nu : std::min( km+nu         , visc_max_z );
+          real visc_tot_th = dns ? nu : std::min( km/Pr_t+nu/Pr , visc_max_z );
+          // Limit the viscosity and set the max_triggered flag if the limit is reached
+          if (visc_tot == visc_max_z || visc_tot_th == visc_max_z) max_triggered = true;
+          // Compute the SGS fluxes in the z-direction
+          flux_ru_z (k,j,i) = -rho*visc_tot   *(du_dz + dw_dx                            );
+          flux_rv_z (k,j,i) = -rho*visc_tot   *(dv_dz + dw_dy                            );
+          flux_rw_z (k,j,i) = -rho*visc_tot   *(dw_dz + dw_dz - 2./3.*(du_dx+dv_dy+dw_dz))-2./3.*rho*K;
+          flux_rt_z (k,j,i) = -rho*visc_tot_th*(dt_dz                                    );
+          flux_tke_z(k,j,i) = -rho*visc_tot   *(dK_dz                                    );
+          for (int tr=0; tr < num_tracers; tr++) {
+            dt_dz = (tracers(tr,hs+k,hs+j,hs+i) - tracers(tr,hs+km1,hs+j,hs+i))/dzloc; // Tracer gradient
+            flux_tracers_z(tr,k,j,i) = -rho*visc_tot_th*dt_dz;
           }
         }
       });
