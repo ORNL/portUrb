@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     std::string init_data    = "cubes_periodic";
     real        out_freq     = 1;
     real        inform_freq  = 1.e-2;
-    std::string out_prefix   = "cubes_periodic_nosgs_new";
+    std::string out_prefix   = "cubes_periodic";
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "dycore_cs"                          , 40           );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false        );
     coupler.set_option<bool       >( "dycore_immersed_hyeprvis"           , true         );
-    coupler.set_option<real       >( "les_closure_delta_multiplier"       , 1.0          );
+    coupler.set_option<real       >( "les_closure_delta_multiplier"       , 0.3          );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false        );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false        );
     coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5       );
@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
           coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );
           // coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,2.500,0.);    } , "pg_forcing"     );
           coupler.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);             } , "dycore"         );
-          // coupler.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);             } , "les_closure"    );
+          coupler.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);             } , "les_closure"    );
           // coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                   (c,dt);             } , "surface_fluxes" );
           coupler.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);             } , "time_averager"  );
           // coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w          (c,dt,dt*1e3,0.05); } , "sponge"         );

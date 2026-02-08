@@ -386,6 +386,7 @@ namespace custom_modules {
             }
           }
         }
+        // dm_immersed_prop(k,j,i) = dm_immersed_prop(k,j,i) > 0.5 ? 1 : 0;
         dm_rho_d(k,j,i) = r;
         dm_uvel (k,j,i) = (1-dm_immersed_prop(k,j,i))*u;
         dm_vvel (k,j,i) = (1-dm_immersed_prop(k,j,i))*v;

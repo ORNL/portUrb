@@ -148,6 +148,7 @@ namespace modules {
       auto &dm            = coupler.get_data_manager_readwrite();               // DataManager for reading/writing variables
       auto immersed       = dm.get<real const,3>("immersed_proportion_halos");  // Immersed boundary proportion array with halos
       real constexpr Pr = 0.7;  // Prandtl number for SGS diffusivity
+      real constexpr imm_th = 0.6;
 
       // Allocate and convert coupler data to LES closure format. The resulting state, tracers, and TKE
       //   all have density divided out except for the density field itself
@@ -214,12 +215,12 @@ namespace modules {
       // Compute SGS fluxes in all three directions, looping over cell faces
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny+1,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         if (j < ny && k < nz) {  // Constrain loops to (nz,ny,nx+1) for x-fluxes
-          int im1 = immersed(hs+k,hs+j,hs+i-1) ? i : i-1;
-          int jm1 = immersed(hs+k,hs+j-1,hs+i) ? j : j-1;
-          int km1 = immersed(hs+k-1,hs+j,hs+i) ? k : k-1;
-          int ip1 = immersed(hs+k,hs+j,hs+i+1) ? i : i+1;
-          int jp1 = immersed(hs+k,hs+j+1,hs+i) ? j : j+1;
-          int kp1 = immersed(hs+k+1,hs+j,hs+i) ? k : k+1;
+          int im1 = immersed(hs+k,hs+j,hs+i-1) > imm_th ? i : i-1;
+          int jm1 = immersed(hs+k,hs+j-1,hs+i) > imm_th ? j : j-1;
+          int km1 = immersed(hs+k-1,hs+j,hs+i) > imm_th ? k : k-1;
+          int ip1 = immersed(hs+k,hs+j,hs+i+1) > imm_th ? i : i+1;
+          int jp1 = immersed(hs+k,hs+j+1,hs+i) > imm_th ? j : j+1;
+          int kp1 = immersed(hs+k+1,hs+j,hs+i) > imm_th ? k : k+1;
           // Derivatives valid at interface i-1/2
           real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
           real du_dz = 0.5 * ( (state(idU,hs+kp1,hs+j,hs+i-1)-state(idU,hs+km1,hs+j,hs+i-1))/(dz2 ) +
@@ -265,12 +266,12 @@ namespace modules {
           }
         }
         if (i < nx && k < nz) {  // Constrain loops to (nz,ny+1,nx) for y-fluxes
-          int im1 = immersed(hs+k,hs+j,hs+i-1) ? i : i-1;
-          int jm1 = immersed(hs+k,hs+j-1,hs+i) ? j : j-1;
-          int km1 = immersed(hs+k-1,hs+j,hs+i) ? k : k-1;
-          int ip1 = immersed(hs+k,hs+j,hs+i+1) ? i : i+1;
-          int jp1 = immersed(hs+k,hs+j+1,hs+i) ? j : j+1;
-          int kp1 = immersed(hs+k+1,hs+j,hs+i) ? k : k+1;
+          int im1 = immersed(hs+k,hs+j,hs+i-1) > imm_th ? i : i-1;
+          int jm1 = immersed(hs+k,hs+j-1,hs+i) > imm_th ? j : j-1;
+          int km1 = immersed(hs+k-1,hs+j,hs+i) > imm_th ? k : k-1;
+          int ip1 = immersed(hs+k,hs+j,hs+i+1) > imm_th ? i : i+1;
+          int jp1 = immersed(hs+k,hs+j+1,hs+i) > imm_th ? j : j+1;
+          int kp1 = immersed(hs+k+1,hs+j,hs+i) > imm_th ? k : k+1;
           // Derivatives valid at interface j-1/2
           real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
           real dv_dz = 0.5 * ( (state(idV,hs+kp1,hs+j-1,hs+i)-state(idV,hs+km1,hs+j-1,hs+i))/(dz2 ) +
@@ -316,12 +317,12 @@ namespace modules {
           }
         }
         if (i < nx && j < ny) {  // Constrain loops to (nz+1,ny,nx) for z-fluxes
-          int im1 = immersed(hs+k,hs+j,hs+i-1) ? i : i-1;
-          int jm1 = immersed(hs+k,hs+j-1,hs+i) ? j : j-1;
-          int km1 = immersed(hs+k-1,hs+j,hs+i) ? k : k-1;
-          int ip1 = immersed(hs+k,hs+j,hs+i+1) ? i : i+1;
-          int jp1 = immersed(hs+k,hs+j+1,hs+i) ? j : j+1;
-          int kp1 = immersed(hs+k+1,hs+j,hs+i) ? k : k+1;
+          int im1 = immersed(hs+k,hs+j,hs+i-1) > imm_th ? i : i-1;
+          int jm1 = immersed(hs+k,hs+j-1,hs+i) > imm_th ? j : j-1;
+          int km1 = immersed(hs+k-1,hs+j,hs+i) > imm_th ? k : k-1;
+          int ip1 = immersed(hs+k,hs+j,hs+i+1) > imm_th ? i : i+1;
+          int jp1 = immersed(hs+k,hs+j+1,hs+i) > imm_th ? j : j+1;
+          int kp1 = immersed(hs+k+1,hs+j,hs+i) > imm_th ? k : k+1;
           // Derivatives valid at interface k-1/2
           real dzloc = dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k))/2;
           real du_dx = 0.5 * ( (state(idU,hs+km1,hs+j,hs+ip1) - state(idU,hs+km1,hs+j,hs+im1))/(2*dx) +
@@ -388,7 +389,7 @@ namespace modules {
         real Pr_t   = 0.85;
         // Compute tke cell-averaged source
         tke_source(k,j,i) = 0; // Initialize to zero for accumulation
-        if (immersed(hs+k,hs+j,hs+i) < 1) {
+        if (immersed(hs+k,hs+j,hs+i) <= imm_th) {
           // Buoyancy source
           if (enable_gravity) {
             tke_source(k,j,i) += -(grav*rho*km)/(t*Pr_t)*(dt_dz+dth_dz);
@@ -398,12 +399,12 @@ namespace modules {
           tke_source(k,j,i) -= c_eps*rho*std::pow(K,1.5)/std::max(ell,1.e-10);
           // Shear production
           // Compute indices that do not reach into immersed boundaries
-          int im1 = immersed(hs+k,hs+j,hs+i-1) > 0 ? i : i-1;
-          int ip1 = immersed(hs+k,hs+j,hs+i+1) > 0 ? i : i+1;
-          int jm1 = immersed(hs+k,hs+j-1,hs+i) > 0 ? j : j-1;
-          int jp1 = immersed(hs+k,hs+j+1,hs+i) > 0 ? j : j+1;
-          int km1 = immersed(hs+k-1,hs+j,hs+i) > 0 ? k : k-1;
-          int kp1 = immersed(hs+k+1,hs+j,hs+i) > 0 ? k : k+1;
+          int im1 = immersed(hs+k,hs+j,hs+i-1) > imm_th ? i : i-1;
+          int ip1 = immersed(hs+k,hs+j,hs+i+1) > imm_th ? i : i+1;
+          int jm1 = immersed(hs+k,hs+j-1,hs+i) > imm_th ? j : j-1;
+          int jp1 = immersed(hs+k,hs+j+1,hs+i) > imm_th ? j : j+1;
+          int km1 = immersed(hs+k-1,hs+j,hs+i) > imm_th ? k : k-1;
+          int kp1 = immersed(hs+k+1,hs+j,hs+i) > imm_th ? k : k+1;
           // Compute derivatives
           real du_dx = ( state(idU,hs+k,hs+j,hs+i+1) - state(idU,hs+k,hs+j,hs+i-1) ) / (2*dx);
           real dv_dx = ( state(idV,hs+k,hs+j,hs+ip1) - state(idV,hs+k,hs+j,hs+im1) ) / (2*dx);

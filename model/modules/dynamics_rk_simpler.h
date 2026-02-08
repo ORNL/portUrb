@@ -685,6 +685,8 @@ namespace modules {
       real r_dy = 1./dy; // reciprocal of grid spacing
       real fcor = 2*7.2921e-5*std::sin(latitude/180*M_PI);  // For coriolis: 2*Omega*sin(latitude)
 
+      real constexpr imm_th = 0.6;
+
       FLOC cs = coupler.get_option<real>("dycore_cs",350);  // Speed of sound
 
       int constexpr hsm1 = hs-1; // Halo size minus one
@@ -808,7 +810,7 @@ namespace modules {
         SArray<FLOC,1,ord> s;        // Stencil values
         
         // Load the stencils for cell immersion and pressure with the cell to the left of the edge as the center cell
-        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > 0; }
+        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > imm_th; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii); }
         bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
@@ -826,14 +828,14 @@ namespace modules {
                                                     fields_loc(idU,hs+k,hs+j,i+ii); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC ru_L = 0;
-        // if (use_weno) {
-        //   Limiter::compute_limited_edges( s , dummy , ru_L , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
-        // } else {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+          Limiter::compute_limited_edges( s , dummy , ru_L , { do_map , false , false } );
+        } else {
           for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
-        // }
+        }
 
         // Load the stencils for cell immersion and pressure with the cell to the right of the edge as the center cell
-        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > 0; }
+        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > imm_th; }
         for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii+1); }
         do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
@@ -851,14 +853,24 @@ namespace modules {
                                                     fields_loc(idU,hs+k,hs+j,i+ii+1); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC ru_R = 0;
-        // if (use_weno) {
-        //   Limiter::compute_limited_edges( s , ru_R , dummy , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
-        // } else {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+          Limiter::compute_limited_edges( s , ru_R , dummy , { do_map , false , false } );
+        } else {
           for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
-        // }
+        }
         // Compute the upwind state of pressure and momentum at this edge
         p_x (k,j,i) = 0.5f*(p_L  + p_R  - cs*(ru_R-ru_L)   );
         ru_x(k,j,i) = 0.5f*(ru_L + ru_R -    (p_R -p_L )/cs);
+        // if        (immersed_prop(hs+k,hs+j,hs+i-1)>imm_th && immersed_prop(hs+k,hs+j,hs+i)>imm_th) {
+        //   p_x (k,j,i) = 0;
+        //   ru_x(k,j,i) = 0;
+        // } else if (immersed_prop(hs+k,hs+j,hs+i-1)>imm_th) {
+        //   p_x (k,j,i) = p_R;
+        //   ru_x(k,j,i) = 0;
+        // } else if (immersed_prop(hs+k,hs+j,hs+i  )>imm_th) {
+        //   p_x (k,j,i) = p_L;
+        //   ru_x(k,j,i) = 0;
+        // }
       });
 
       // Reconstruct upwind cell-edge pressure and momentum in y-direction
@@ -867,7 +879,7 @@ namespace modules {
         SArray<FLOC,1,ord> s;         // Stencil values
 
         // Load the stencils for cell immersion and pressure with the cell left of the edge as the center cell
-        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > 0; }
+        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > imm_th; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj,hs+i); }
         bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
@@ -885,14 +897,14 @@ namespace modules {
                                                     fields_loc(idV,hs+k,j+jj,hs+i); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rv_L = 0;
-        // if (use_weno) {
-        //   Limiter::compute_limited_edges( s , dummy , rv_L , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
-        // } else {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+          Limiter::compute_limited_edges( s , dummy , rv_L , { do_map , false , false } );
+        } else {
           for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
-        // }
+        }
 
         // Load the stencils for cell immersion and pressure with the cell right of the edge as the center cell
-        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > 0; }
+        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > imm_th; }
         for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj+1,hs+i); }
         do_map = immersed(hsm1-1) || immersed(hsm1+1);
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
@@ -910,14 +922,24 @@ namespace modules {
                                                     fields_loc(idV,hs+k,j+jj+1,hs+i); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rv_R = 0;
-        // if (use_weno) {
-        //   Limiter::compute_limited_edges( s , rv_R , dummy , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
-        // } else {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+          Limiter::compute_limited_edges( s , rv_R , dummy , { do_map , false , false } );
+        } else {
           for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
-        // }
+        }
         // Compute the upwind state of pressure and momentum at this edge
         p_y (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rv_R-rv_L)   );
         rv_y(k,j,i) = 0.5f*(rv_L + rv_R -    (p_R -p_L )/cs);
+        // if        (immersed_prop(hs+k,hs+j-1,hs+i)>imm_th && immersed_prop(hs+k,hs+j,hs+i)>imm_th) {
+        //   p_y (k,j,i) = 0;             
+        //   rv_y(k,j,i) = 0;             
+        // } else if (immersed_prop(hs+k,hs+j-1,hs+i)>imm_th) {
+        //   p_y (k,j,i) = p_R;
+        //   rv_y(k,j,i) = 0;
+        // } else if (immersed_prop(hs+k,hs+j  ,hs+i)>imm_th) {
+        //   p_y (k,j,i) = p_L;
+        //   rv_y(k,j,i) = 0;
+        // }
       });
 
       // Reconstruct upwind cell-edge pressure and momentum in z-direction
@@ -926,7 +948,7 @@ namespace modules {
         SArray<FLOC,1,ord> s;         // Stencil values
 
         // Load the stencils for cell immersion and pressure with the cell left of the edge as the center cell
-        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > 0; }
+        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > imm_th; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk,hs+j,hs+i); }
         for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
         bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
@@ -948,17 +970,17 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rw_L = 0;
-        // if (use_weno) {
-        //   Limiter::compute_limited_edges( s , dummy , rw_L , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
-        // } else {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+          Limiter::compute_limited_edges( s , dummy , rw_L , { do_map , false , false } );
+        } else {
           for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
-        // }
+        }
         rw_L /= metjac_edges(1+k-1,1);  // Divide by metric jacobian at this edge to transform to physical space
         if (wall_z1 && k == 0 ) rw_L = 0; // Impose wall boundary condition
         if (wall_z2 && k == nz) rw_L = 0; // Impose wall boundary condition
 
         // Load the stencils for cell immersion and pressure with the cell right of the edge as the center cell
-        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk+1,hs+j,hs+i) > 0; }
+        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk+1,hs+j,hs+i) > imm_th; }
         for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk+1,hs+j,hs+i); }
         // Multiply by normalized grid spacing to transform into zeta space
         for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
@@ -981,11 +1003,11 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rw_R = 0;
-        // if (use_weno) {
-        //   Limiter::compute_limited_edges( s , rw_R , dummy , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
-        // } else {
+        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+          Limiter::compute_limited_edges( s , rw_R , dummy , { do_map , false , false } );
+        } else {
           for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
-        // }
+        }
         rw_R /= metjac_edges(1+k,0); // Divide by metric jacobian at this edge to transform to physical space
         if (wall_z1 && k == 0 ) rw_R = 0; // Impose wall boundary condition
         if (wall_z2 && k == nz) rw_R = 0; // Impose wall boundary condition
@@ -994,6 +1016,16 @@ namespace modules {
         rw_z(k,j,i) = 0.5f*(rw_L + rw_R -    (p_R -p_L )/cs);
         if (wall_z1 && k == 0 ) rw_z(k,j,i) = 0; // Impose wall boundary condition
         if (wall_z2 && k == nz) rw_z(k,j,i) = 0; // Impose wall boundary condition
+        // if        (immersed_prop(hs+k-1,hs+j,hs+i)>imm_th && immersed_prop(hs+k,hs+j,hs+i)>imm_th) {
+        //   p_z (k,j,i) = 0;             
+        //   rw_z(k,j,i) = 0;             
+        // } else if (immersed_prop(hs+k-1,hs+j,hs+i)>imm_th) {
+        //   p_z (k,j,i) = p_R;
+        //   rw_z(k,j,i) = 0;
+        // } else if (immersed_prop(hs+k  ,hs+j,hs+i)>imm_th) {
+        //   p_z (k,j,i) = p_L;
+        //   rw_z(k,j,i) = 0;
+        // }
       });
 
       //////////////////////////////////////////////////////////////////////////////////////////////
@@ -1016,7 +1048,7 @@ namespace modules {
         FLOC ru = ru_x(k,j,i);        // Acoustically upwinded momentum in x-direction
         int ind = ru > 0 ? 0 : 1;     // Determine index offset based on flow direction
         // Load the cell immersersion stencil based on upwind offset
-        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,i+ii+ind) > 0; }
+        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,i+ii+ind) > imm_th; }
         bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
           // Gather the stencil values based on upwind offset
@@ -1027,7 +1059,7 @@ namespace modules {
           FLOC val; // Reconstructed advected quantity at the edge
           if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
             FLOC val_L, val_R;
-            Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
+            Limiter::compute_limited_edges( s , val_L , val_R , { do_map , false , false } );
             val = ru > 0 ? val_R : val_L;  // Choose value based on flow direction
           } else {
             val = 0;
@@ -1046,7 +1078,7 @@ namespace modules {
         FLOC rv = rv_y(k,j,i);        // Acoustically upwinded momentum in y-direction
         int ind = rv > 0 ? 0 : 1;     // Determine index offset based on flow direction
         // Load the cell immersion stencil based on upwind offset
-        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,j+jj+ind,hs+i) > 0; }
+        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,j+jj+ind,hs+i) > imm_th; }
         bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
           // Gather the stencil values based on upwind offset
@@ -1057,7 +1089,7 @@ namespace modules {
           FLOC val; // Reconstructed advected quantity at the edge
           if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
             FLOC val_L, val_R;
-            Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
+            Limiter::compute_limited_edges( s , val_L , val_R , { do_map , false , false } );
             val = rv > 0 ? val_R : val_L; // Choose value based on flow direction
           } else {
             val = 0;
@@ -1076,7 +1108,7 @@ namespace modules {
         FLOC rw = rw_z(k,j,i);        // Acoustically upwinded momentum in z-direction
         int ind = rw > 0 ? 0 : 1;     // Determine index offset based on flow direction
         // Load the cell immersion stencil based on upwind offset
-        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(k+kk+ind,hs+j,hs+i) > 0; }
+        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(k+kk+ind,hs+j,hs+i) > imm_th; }
         bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
           // Gather the stencil values based on upwind offset
@@ -1090,7 +1122,7 @@ namespace modules {
           FLOC val; // Reconstructed advected quantity at the edge
           if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
             FLOC val_L, val_R;
-            Limiter::compute_limited_edges( s , val_L , val_R , { do_map , immersed(hsm1-1) , immersed(hsm1+1) } );
+            Limiter::compute_limited_edges( s , val_L , val_R , { do_map , false , false } );
             val = rw > 0 ? val_R : val_L; // Choose value based on flow direction
           } else {
             val = 0;
@@ -1880,7 +1912,7 @@ namespace modules {
         if (! dm.entry_exists("hy_dens_edges"    )) dm.register_and_allocate<real>("hy_dens_edges"    ,"",{nz+1});
         if (! dm.entry_exists("hy_theta_edges"   )) dm.register_and_allocate<real>("hy_theta_edges"   ,"",{nz+1});
         if (! dm.entry_exists("hy_pressure_edges")) dm.register_and_allocate<real>("hy_pressure_edges","",{nz+1});
-        // Obtain the cells (with halows) and edges hydrostatic values
+        // Obtain the cells (with halos) and edges hydrostatic values
         auto hy_dens_cells     = dm.get<real const,1>("hy_dens_cells"    );
         auto hy_theta_cells    = dm.get<real const,1>("hy_theta_cells"   );
         auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");

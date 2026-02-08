@@ -12,8 +12,8 @@ def spectra(T,dx = 1) :
   spd[:] /= T.shape[0]*T.shape[1]
   return freq*2*2*np.pi/(2*dx) , spd
 
-prefix = "delta_1.0_"
-times = range(25,26)
+prefix = "channel_u0-2.000000_z0-0.007812_"
+times = range(20,31)
 
 nc   = Dataset(f"{prefix}{times[-1]:08d}.nc","r")
 x    = np.array(nc["x"][:])

@@ -12,7 +12,7 @@ def spectra(T,dx = 1) :
   spd[:] /= T.shape[0]*T.shape[1]
   return freq*2*2*np.pi/(2*dx) , spd
 
-prefixes = ["delta_0.3_","delta_0.5_","delta_1.0_"]
+prefixes = ["channel_u0-2.000000_z0-0.007812_"]
 times = range(20,41)
 
 fig,ax = plt.subplots(3,2,figsize=(10,10))
@@ -74,6 +74,9 @@ for prefix in prefixes :
   ax[2,1].plot(times,arr_umag ,label=f"{prefix}")
   ax[2,1].set_xlabel("output file ID")
   ax[2,1].set_ylabel("bulk velocity")
+  print(np.corrcoef(v[0,:,:].flatten(),v[1,:,:].flatten())[0,1])
+  print(np.corrcoef(v[1,:,:].flatten(),v[2,:,:].flatten())[0,1])
+  print(np.corrcoef(v[2,:,:].flatten(),v[3,:,:].flatten())[0,1])
 
 for axloc in ax.flatten() :
   axloc.margins(x=0)

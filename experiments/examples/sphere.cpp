@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     core::Coupler coupler;
 
     real        sim_time     = 3600;
-    real        dx           = 50;
+    real        dx           = 10;
     real        xlen         = 2000;
     real        ylen         = 1000;
     real        zlen         = 1000;
@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
     std::string init_data    = "sphere";
     real        out_freq     = 900;
     real        inform_freq  = 100;
-    std::string out_prefix   = "sphere_lo_5";
+    std::string out_prefix   = "sphere_hi_noslip";
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
@@ -37,18 +37,25 @@ int main(int argc, char** argv) {
     int         dyn_cycle    = 1;
 
     // Things the coupler might need to know about
-    coupler.set_option<std::string>( "out_prefix"     , out_prefix   );
-    coupler.set_option<std::string>( "init_data"      , init_data    );
-    coupler.set_option<real       >( "out_freq"       , out_freq     );
-    coupler.set_option<bool       >( "is_restart"     , is_restart   );
-    coupler.set_option<std::string>( "restart_file"   , restart_file );
-    coupler.set_option<real       >( "latitude"       , latitude     );
-    coupler.set_option<real       >( "roughness"      , roughness    );
-    coupler.set_option<real       >( "constant_uvel"  , 10           );
-    coupler.set_option<real       >( "constant_vvel"  , 0            );
-    coupler.set_option<real       >( "constant_temp"  , 300          );
-    coupler.set_option<real       >( "constant_press" , 1.e5         );
-    coupler.set_option<real       >( "immersed_power" , 5            );
+    coupler.set_option<std::string>( "out_prefix"               , out_prefix   );
+    coupler.set_option<std::string>( "init_data"                , init_data    );
+    coupler.set_option<real       >( "out_freq"                 , out_freq     );
+    coupler.set_option<bool       >( "is_restart"               , is_restart   );
+    coupler.set_option<std::string>( "restart_file"             , restart_file );
+    coupler.set_option<real       >( "latitude"                 , latitude     );
+    coupler.set_option<real       >( "roughness"                , roughness    );
+    coupler.set_option<real       >( "constant_uvel"            , 10           );
+    coupler.set_option<real       >( "constant_vvel"            , 0            );
+    coupler.set_option<real       >( "constant_temp"            , 300          );
+    coupler.set_option<real       >( "constant_press"           , 1.e5         );
+    coupler.set_option<bool       >( "dycore_use_weno"          , true         );
+    coupler.set_option<bool       >( "dycore_use_weno_immersed" , false        );
+    coupler.set_option<real       >( "dycore_max_wind"          , 15           );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
+    coupler.set_option<real       >( "dycore_cs"                , 80           );
+    coupler.set_option<bool       >( "dycore_immersed_hypervis" , false        );
+    coupler.set_option<real       >( "cfl"                      , 0.60         );
+    coupler.set_option<real       >( "immersed_power"           , 5            );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
