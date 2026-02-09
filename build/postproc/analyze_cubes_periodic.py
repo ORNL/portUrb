@@ -39,7 +39,7 @@ def cospec_kx_from_plane(up, wp, dx, window="hann"):
 workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
 
 t1 = 6
-t2 = 7
+t2 = 9
 # prefixes = ["cubes_periodic_nosgs_20_","cubes_periodic_sgs0.3_20_","cubes_periodic_sgs1.0_20_","cubes_periodic_nosgs_40_","cubes_periodic_sgs1.0_40_"]
 prefixes = ["cubes_periodic_"]
 labels   = ["ILES old"]
