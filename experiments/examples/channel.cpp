@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
     real xlen   = 12;
     real ylen   = 6;
     real zlen   = 2;
-    real npnts  = 512;        // USER PARAMETER 1
+    real npnts  = 128;        // USER PARAMETER 1
     real dx     = zlen/npnts;
     real acoust = 4;
 
@@ -37,8 +37,10 @@ int main(int argc, char** argv) {
 
     // for (int iz0 = 0; iz0 < n_z0; iz0++) {
     //   for (int iu0 = 0; iu0 < n_u0; iu0++) {
-        real z0    = 4.2e-5; // dx/(z0_1*std::pow(z0_f,iz0));       // USER PARAMETER 3
-        real u0    = 1.102534117;    // u0_1*std::pow(u0_f,iu0);        // USER PARAMETER 2
+        real z0 = 4.2e-5; // dx/(z0_1*std::pow(z0_f,iz0));       // USER PARAMETER 3
+        real u0 = 1.102534117;    // u0_1*std::pow(u0_f,iu0);        // USER PARAMETER 2
+        // real z0 = dx/4;       // USER PARAMETER 3
+        // real u0 = 2;          // USER PARAMETER 2
 
         // This holds all of the model's variables, dimension sizes, and options
         core::Coupler coupler;
@@ -51,12 +53,14 @@ int main(int argc, char** argv) {
         std::string init_data    = "channel";
         real        out_freq     = xlen/u0*0.5;
         real        inform_freq  = xlen/u0*0.01;
-        std::string out_prefix   = std::string("channel_u0-")+std::to_string(u0)+std::string("_z0-")+std::to_string(z0);
+        // std::string out_prefix   = std::string("channel_u0-")+std::to_string(u0)+std::string("_z0-")+std::to_string(z0);
+        std::string out_prefix   = "acoust_8";
         bool        is_restart   = false;
         std::string restart_file = "";
         real        latitude     = 0;
         real        roughness    = z0;
         int         dyn_cycle    = 3;
+        real        R_d          = 287.;
 
         // Things the coupler might need to know about
         coupler.set_option<std::string>( "out_prefix"                           , out_prefix    );
@@ -69,20 +73,21 @@ int main(int argc, char** argv) {
         coupler.set_option<real       >( "constant_uvel"                        , u0            );
         coupler.set_option<real       >( "constant_vvel"                        , 0             );
         coupler.set_option<real       >( "constant_temp"                        , 300           );
-        coupler.set_option<real       >( "constant_press"                       , 1.e5          );
-        coupler.set_option<real       >( "cfl"                                  , 0.60          );
+        coupler.set_option<real       >( "constant_press"                       , R_d*300       );
+        coupler.set_option<real       >( "cfl"                                  , 0.30          );
         coupler.set_option<real       >( "dycore_max_wind"                      , u0*1.4        );
         coupler.set_option<bool       >( "dycore_buoyancy_theta"                , true          );
         coupler.set_option<real       >( "dycore_cs"                            , u0*1.4*acoust );
         coupler.set_option<bool       >( "dycore_use_weno"                      , false         );
         coupler.set_option<bool       >( "dycore_use_weno_immersed"             , true          );
         coupler.set_option<bool       >( "dycore_immersed_hypervis"             , false         );
-        coupler.set_option<real       >( "les_closure_delta_multiplier"         , 0.3           );
+        coupler.set_option<real       >( "les_closure_delta_multiplier"         , 0.6           );
         coupler.set_option<bool       >( "surface_flux_force_theta"             , false         );
         coupler.set_option<bool       >( "surface_flux_stability_corrections"   , false         );
         coupler.set_option<real       >( "surface_flux_kinematic_viscosity"     , 8e-6          );
         coupler.set_option<bool       >( "surface_flux_predict_z0h"             , false         );
-        coupler.set_option<bool       >( "surface_flux_const_ustar_lower_upper" , false         );
+        coupler.set_option<bool       >( "surface_flux_use_fixed_ustar"         , true          );
+        coupler.set_option<real       >( "surface_flux_fixed_ustar"             , 0.0414872     );
         coupler.set_option<bool       >( "output_correlations"                  , false         );
 
         coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,

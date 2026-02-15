@@ -12,8 +12,8 @@ def spectra(T,dx = 1) :
   spd[:] /= T.shape[0]*T.shape[1]
   return freq*2*2*np.pi/(2*dx) , spd
 
-prefixes = ["channel_u0-2.000000_z0-0.007812_"]
-times = range(20,41)
+prefixes = ["acoust_4_","acoust_8_"]
+times = range(80,160)
 
 fig,ax = plt.subplots(3,2,figsize=(10,10))
 
@@ -57,23 +57,26 @@ for prefix in prefixes :
   mn_tke  /= len(times)
   mn_upwp /= len(times)
   ax[0,0].plot(mn_u   ,z,label=f"{prefix}")
-  ax[0,0].set_ylabel("z (m)")
   ax[0,0].set_xlabel("avg u-velocity")
+  ax[0,0].set_ylabel("z (m)")
   ax[0,1].plot(mn_tke ,z,label=f"{prefix}")
-  ax[0,1].set_ylabel("z (m)")
   ax[0,1].set_xlabel("Res TKE")
+  ax[0,1].set_ylabel("z (m)")
   ax[1,0].plot(mn_upwp,z,label=f"{prefix}")
-  ax[1,0].set_ylabel("z (m)")
   ax[1,0].set_xlabel("u'w'")
+  ax[1,0].set_ylabel("z (m)")
   ax[1,1].plot(times,arr_ustar,label=f"{prefix}")
   ax[1,1].set_xlabel("output file ID")
   ax[1,1].set_ylabel("mean sfc friction velocity")
+  # ax[1,1].set_ylim(bottom=0)
   ax[2,0].plot(times,arr_tke  ,label=f"{prefix}")
   ax[2,0].set_xlabel("output file ID")
   ax[2,0].set_ylabel("domain mean TKE")
+  # ax[2,0].set_ylim(bottom=0)
   ax[2,1].plot(times,arr_umag ,label=f"{prefix}")
   ax[2,1].set_xlabel("output file ID")
   ax[2,1].set_ylabel("bulk velocity")
+  # ax[2,1].set_ylim(bottom=0)
   print(np.corrcoef(v[0,:,:].flatten(),v[1,:,:].flatten())[0,1])
   print(np.corrcoef(v[1,:,:].flatten(),v[2,:,:].flatten())[0,1])
   print(np.corrcoef(v[2,:,:].flatten(),v[3,:,:].flatten())[0,1])
