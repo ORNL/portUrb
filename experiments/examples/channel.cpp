@@ -23,19 +23,22 @@ int main(int argc, char** argv) {
     real zlen   = 2;
     real npnts  = 128;        // USER PARAMETER 1
     real dx     = zlen/npnts;
-    real acoust = 4;
+    real acoust = 5;
 
-    // int  n_u0 = 8;
-    // real u0_1 = 0.1;
-    // real u0_2 = 2;
-    // real u0_f = std::pow(u0_2/u0_1,1./(n_u0-1.));
+    int  n_us = 6;
+    real us_1 = 0.02;
+    real us_2 = 0.1;
+    real us_f = std::pow(us_2/us_1,1./(n_us-1.));
 
-    // for (int iz0 = 0; iz0 < n_z0; iz0++) {
-    //   for (int iu0 = 0; iu0 < n_u0; iu0++) {
-        real ustar = 0.0414872;
-        real u0    = 1.102534117;    // u0_1*std::pow(u0_f,iu0);        // USER PARAMETER 2
-        // real z0 = dx/4;       // USER PARAMETER 3
-        // real u0 = 2;          // USER PARAMETER 2
+    int  n_u0 = 6;
+    real u0_1 = 0.1;
+    real u0_2 = 2;
+    real u0_f = std::pow(u0_2/u0_1,1./(n_u0-1.));
+
+    for (int ius = 0; ius < n_us; ius++) {
+      for (int iu0 = 0; iu0 < n_u0; iu0++) {
+        real u0    = u0_1*std::pow(u0_f,iu0);        // USER PARAMETER 2
+        real ustar = us_1*std::pow(us_f,ius)*u0;     // USER PARAMETER 3
 
         // This holds all of the model's variables, dimension sizes, and options
         core::Coupler coupler;
@@ -48,12 +51,11 @@ int main(int argc, char** argv) {
         std::string init_data    = "channel";
         real        out_freq     = xlen/u0*0.5;
         real        inform_freq  = xlen/u0*0.01;
-        // std::string out_prefix   = std::string("channel_u0-")+std::to_string(u0)+std::string("_z0-")+std::to_string(z0);
-        std::string out_prefix   = "acoust_8";
+        std::string out_prefix   = std::string("channel_u0-")+std::to_string(u0)+std::string("_ustar-")+std::to_string(ustar);
         bool        is_restart   = false;
         std::string restart_file = "";
         real        latitude     = 0;
-        int         dyn_cycle    = 3;
+        int         dyn_cycle    = 4;
         real        R_d          = 287.;
 
         // Things the coupler might need to know about
@@ -80,7 +82,7 @@ int main(int argc, char** argv) {
         coupler.set_option<real       >( "surface_flux_kinematic_viscosity"     , 8e-6          );
         coupler.set_option<bool       >( "surface_flux_predict_z0h"             , false         );
         coupler.set_option<bool       >( "surface_flux_use_fixed_ustar"         , true          );
-        coupler.set_option<real       >( "surface_flux_fixed_ustar"             , 0.0414872     );
+        coupler.set_option<real       >( "surface_flux_fixed_ustar"             , ustar         );
         coupler.set_option<bool       >( "output_correlations"                  , false         );
 
         coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
@@ -159,8 +161,8 @@ int main(int argc, char** argv) {
           }
         } // End main simulation loop
 
-    //   } // iu0
-    // } // iz0
+      } // iu0
+    } // ius
 
     yakl::timer_stop("main");
   }

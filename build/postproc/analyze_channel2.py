@@ -13,7 +13,7 @@ def spectra(T,dx = 1) :
   return freq*2*2*np.pi/(2*dx) , spd
 
 prefixes = ["acoust_8_"]
-times = range(5,33)
+times = range(5,130)
 
 fig,ax = plt.subplots(3,2,figsize=(10,10))
 
