@@ -229,9 +229,12 @@ namespace custom_modules {
       real T0 = coupler.get_option<real>( "constant_temp"  , 300. );
       real p0 = coupler.get_option<real>( "constant_press" , 1.e5 );
       real r0 = p0/(R_d*T0);
+      real ustar = coupler.get_option<real>( "surface_flux_fixed_ustar" );
+      real vk    = 0.40;
+      real z0    = 1./std::exp(vk*u0/ustar);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real z    = std::min( zmid(k) , zlen - zmid(k) );
-        real umag = u0*std::log((z+roughness)/roughness)/std::log((zlen/2+roughness)/roughness);
+        real umag = u0*std::log((z+z0)/z0)/std::log((zlen/2+z0)/z0);
         dm_rho_d(k,j,i) = r0;
         dm_uvel (k,j,i) = umag;
         dm_vvel (k,j,i) = v0;

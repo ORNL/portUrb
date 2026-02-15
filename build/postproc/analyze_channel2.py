@@ -12,8 +12,8 @@ def spectra(T,dx = 1) :
   spd[:] /= T.shape[0]*T.shape[1]
   return freq*2*2*np.pi/(2*dx) , spd
 
-prefixes = ["acoust_4_","acoust_8_"]
-times = range(80,160)
+prefixes = ["acoust_8_"]
+times = range(5,33)
 
 fig,ax = plt.subplots(3,2,figsize=(10,10))
 

@@ -25,11 +25,6 @@ int main(int argc, char** argv) {
     real dx     = zlen/npnts;
     real acoust = 4;
 
-    // int  n_z0 = 8;
-    // real z0_2 = 512.;
-    // real z0_1 = 4.;
-    // real z0_f = std::pow(z0_2/z0_1,1./(n_z0-1.));
-
     // int  n_u0 = 8;
     // real u0_1 = 0.1;
     // real u0_2 = 2;
@@ -37,8 +32,8 @@ int main(int argc, char** argv) {
 
     // for (int iz0 = 0; iz0 < n_z0; iz0++) {
     //   for (int iu0 = 0; iu0 < n_u0; iu0++) {
-        real z0 = 4.2e-5; // dx/(z0_1*std::pow(z0_f,iz0));       // USER PARAMETER 3
-        real u0 = 1.102534117;    // u0_1*std::pow(u0_f,iu0);        // USER PARAMETER 2
+        real ustar = 0.0414872;
+        real u0    = 1.102534117;    // u0_1*std::pow(u0_f,iu0);        // USER PARAMETER 2
         // real z0 = dx/4;       // USER PARAMETER 3
         // real u0 = 2;          // USER PARAMETER 2
 
@@ -58,7 +53,6 @@ int main(int argc, char** argv) {
         bool        is_restart   = false;
         std::string restart_file = "";
         real        latitude     = 0;
-        real        roughness    = z0;
         int         dyn_cycle    = 3;
         real        R_d          = 287.;
 
@@ -69,7 +63,6 @@ int main(int argc, char** argv) {
         coupler.set_option<bool       >( "is_restart"                           , is_restart    );
         coupler.set_option<std::string>( "restart_file"                         , restart_file  );
         coupler.set_option<real       >( "latitude"                             , latitude      );
-        coupler.set_option<real       >( "roughness"                            , roughness     );
         coupler.set_option<real       >( "constant_uvel"                        , u0            );
         coupler.set_option<real       >( "constant_vvel"                        , 0             );
         coupler.set_option<real       >( "constant_temp"                        , 300           );
