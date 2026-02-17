@@ -861,16 +861,6 @@ namespace modules {
         // Compute the upwind state of pressure and momentum at this edge
         p_x (k,j,i) = 0.5f*(p_L  + p_R  - cs*(ru_R-ru_L)   );
         ru_x(k,j,i) = 0.5f*(ru_L + ru_R -    (p_R -p_L )/cs);
-        // if        (immersed_prop(hs+k,hs+j,hs+i-1)>imm_th && immersed_prop(hs+k,hs+j,hs+i)>imm_th) {
-        //   p_x (k,j,i) = 0;
-        //   ru_x(k,j,i) = 0;
-        // } else if (immersed_prop(hs+k,hs+j,hs+i-1)>imm_th) {
-        //   p_x (k,j,i) = p_R;
-        //   ru_x(k,j,i) = 0;
-        // } else if (immersed_prop(hs+k,hs+j,hs+i  )>imm_th) {
-        //   p_x (k,j,i) = p_L;
-        //   ru_x(k,j,i) = 0;
-        // }
       });
 
       // Reconstruct upwind cell-edge pressure and momentum in y-direction
@@ -930,16 +920,6 @@ namespace modules {
         // Compute the upwind state of pressure and momentum at this edge
         p_y (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rv_R-rv_L)   );
         rv_y(k,j,i) = 0.5f*(rv_L + rv_R -    (p_R -p_L )/cs);
-        // if        (immersed_prop(hs+k,hs+j-1,hs+i)>imm_th && immersed_prop(hs+k,hs+j,hs+i)>imm_th) {
-        //   p_y (k,j,i) = 0;             
-        //   rv_y(k,j,i) = 0;             
-        // } else if (immersed_prop(hs+k,hs+j-1,hs+i)>imm_th) {
-        //   p_y (k,j,i) = p_R;
-        //   rv_y(k,j,i) = 0;
-        // } else if (immersed_prop(hs+k,hs+j  ,hs+i)>imm_th) {
-        //   p_y (k,j,i) = p_L;
-        //   rv_y(k,j,i) = 0;
-        // }
       });
 
       // Reconstruct upwind cell-edge pressure and momentum in z-direction
@@ -1016,16 +996,6 @@ namespace modules {
         rw_z(k,j,i) = 0.5f*(rw_L + rw_R -    (p_R -p_L )/cs);
         if (wall_z1 && k == 0 ) rw_z(k,j,i) = 0; // Impose wall boundary condition
         if (wall_z2 && k == nz) rw_z(k,j,i) = 0; // Impose wall boundary condition
-        // if        (immersed_prop(hs+k-1,hs+j,hs+i)>imm_th && immersed_prop(hs+k,hs+j,hs+i)>imm_th) {
-        //   p_z (k,j,i) = 0;             
-        //   rw_z(k,j,i) = 0;             
-        // } else if (immersed_prop(hs+k-1,hs+j,hs+i)>imm_th) {
-        //   p_z (k,j,i) = p_R;
-        //   rw_z(k,j,i) = 0;
-        // } else if (immersed_prop(hs+k  ,hs+j,hs+i)>imm_th) {
-        //   p_z (k,j,i) = p_L;
-        //   rw_z(k,j,i) = 0;
-        // }
       });
 
       //////////////////////////////////////////////////////////////////////////////////////////////

@@ -139,7 +139,7 @@ namespace modules {
 
       real vk   = 0.40;   // von karman constant
       real Czil = 0.1;
-      real Ctke = 0.5;
+      real Ctke = 0.25;
 
       // Allocate arrays to hold surface flux tendencies
       real3d tend_u  ("tend_u"  ,nz,ny,nx);
@@ -156,8 +156,6 @@ namespace modules {
         real v  = state(idV,k,j,i);  // v-velocity at this grid point
         real w  = state(idW,k,j,i);  // w-velocity at this grid point
         real th = state(idT,k,j,i);  // Potential temperature at this grid point
-        real tke;
-        if (idTKE >= 0) tke = tracers(idTKE,k,j,i)/state(idR,k,j,i);
         // Initialize tendencies to zero prior to accumulation
         tend_u  (k,j,i) = 0;
         tend_v  (k,j,i) = 0;
