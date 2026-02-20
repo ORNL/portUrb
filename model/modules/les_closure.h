@@ -215,12 +215,11 @@ namespace modules {
       // Compute SGS fluxes in all three directions, looping over cell faces
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny+1,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         if (j < ny && k < nz) {  // Constrain loops to (nz,ny,nx+1) for x-fluxes
-          int im1 = immersed(hs+k,hs+j,hs+i-1) > imm_th ? i : i-1;
-          int jm1 = immersed(hs+k,hs+j-1,hs+i) > imm_th ? j : j-1;
-          int km1 = immersed(hs+k-1,hs+j,hs+i) > imm_th ? k : k-1;
-          int ip1 = immersed(hs+k,hs+j,hs+i+1) > imm_th ? i : i+1;
-          int jp1 = immersed(hs+k,hs+j+1,hs+i) > imm_th ? j : j+1;
-          int kp1 = immersed(hs+k+1,hs+j,hs+i) > imm_th ? k : k+1;
+          int im1 = immersed(hs+k  ,hs+j  ,hs+i-1) > imm_th ? i : i-1;
+          int jm1 = immersed(hs+k  ,hs+j-1,hs+i  ) > imm_th ? j : j-1;
+          int km1 = immersed(hs+k-1,hs+j  ,hs+i  ) > imm_th ? k : k-1;
+          int jp1 = immersed(hs+k  ,hs+j+1,hs+i  ) > imm_th ? j : j+1;
+          int kp1 = immersed(hs+k+1,hs+j  ,hs+i  ) > imm_th ? k : k+1;
           // Derivatives valid at interface i-1/2
           real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
           real du_dz = 0.5 * ( (state(idU,hs+kp1,hs+j,hs+i-1)-state(idU,hs+km1,hs+j,hs+i-1))/(dz2 ) +
@@ -270,7 +269,6 @@ namespace modules {
           int jm1 = immersed(hs+k,hs+j-1,hs+i) > imm_th ? j : j-1;
           int km1 = immersed(hs+k-1,hs+j,hs+i) > imm_th ? k : k-1;
           int ip1 = immersed(hs+k,hs+j,hs+i+1) > imm_th ? i : i+1;
-          int jp1 = immersed(hs+k,hs+j+1,hs+i) > imm_th ? j : j+1;
           int kp1 = immersed(hs+k+1,hs+j,hs+i) > imm_th ? k : k+1;
           // Derivatives valid at interface j-1/2
           real dz2 = dz(k) + dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k+1))/2;
@@ -322,7 +320,6 @@ namespace modules {
           int km1 = immersed(hs+k-1,hs+j,hs+i) > imm_th ? k : k-1;
           int ip1 = immersed(hs+k,hs+j,hs+i+1) > imm_th ? i : i+1;
           int jp1 = immersed(hs+k,hs+j+1,hs+i) > imm_th ? j : j+1;
-          int kp1 = immersed(hs+k+1,hs+j,hs+i) > imm_th ? k : k+1;
           // Derivatives valid at interface k-1/2
           real dzloc = dz(std::max(0,k-1))/2 + dz(std::min(nz-1,k))/2;
           real du_dx = 0.5 * ( (state(idU,hs+km1,hs+j,hs+ip1) - state(idU,hs+km1,hs+j,hs+im1))/(2*dx) +
@@ -650,12 +647,26 @@ namespace modules {
           tke(hs+k,jj,hs+i) = tke(hs+k,hs+0,hs+i);
         });
       }
+      if (coupler.get_option<std::string>("bc_y1") == "wall_free_slip" && coupler.get_py() == 0                      ) {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,hs,nx) , KOKKOS_LAMBDA (int k, int jj, int i) {
+          for (int l=0; l < num_state  ; l++) state  (l,hs+k,jj,hs+i) = l==idV ? 0 : state  (l,hs+k,hs+0,hs+i);
+          for (int l=0; l < num_tracers; l++) tracers(l,hs+k,jj,hs+i) = tracers(l,hs+k,hs+0,hs+i);
+          tke(hs+k,jj,hs+i) = tke(hs+k,hs+0,hs+i);
+        });
+      }
 
       // If my MPI task is on the north y-direction boundary and the BC is open, copy values from the last interior cell
       //   for a zero-gradient BC
       if (coupler.get_option<std::string>("bc_y2") == "open" && coupler.get_py() == coupler.get_nproc_y()-1) {
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,hs,nx) , KOKKOS_LAMBDA (int k, int jj, int i) {
           for (int l=0; l < num_state  ; l++) state  (l,hs+k,hs+ny+jj,hs+i) = state  (l,hs+k,hs+ny-1,hs+i);
+          for (int l=0; l < num_tracers; l++) tracers(l,hs+k,hs+ny+jj,hs+i) = tracers(l,hs+k,hs+ny-1,hs+i);
+          tke(hs+k,hs+ny+jj,hs+i) = tke(hs+k,hs+ny-1,hs+i);
+        });
+      }
+      if (coupler.get_option<std::string>("bc_y2") == "wall_free_slip" && coupler.get_py() == coupler.get_nproc_y()-1) {
+        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,hs,nx) , KOKKOS_LAMBDA (int k, int jj, int i) {
+          for (int l=0; l < num_state  ; l++) state  (l,hs+k,hs+ny+jj,hs+i) = l==idV ? 0 : state  (l,hs+k,hs+ny-1,hs+i);
           for (int l=0; l < num_tracers; l++) tracers(l,hs+k,hs+ny+jj,hs+i) = tracers(l,hs+k,hs+ny-1,hs+i);
           tke(hs+k,hs+ny+jj,hs+i) = tke(hs+k,hs+ny-1,hs+i);
         });

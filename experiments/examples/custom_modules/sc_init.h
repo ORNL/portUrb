@@ -355,6 +355,53 @@ namespace custom_modules {
       std::chrono::duration<double> dur = std::chrono::high_resolution_clock::now() - t1;
       if (coupler.is_mainproc()) std::cout << "*** Finished setup in [" << dur.count() << "] seconds ***" << std::endl;
 
+    } else if (coupler.get_option<std::string>("init_data") == "tank_set") {
+
+      coupler.set_option<bool       >("enable_gravity",false);
+      coupler.set_option<std::string>("bc_x1","periodic"      ); // Boundary condition in west   x direction
+      coupler.set_option<std::string>("bc_x2","periodic"      ); // Boundary condition in east   x direction
+      coupler.set_option<std::string>("bc_y1","wall_free_slip"); // Boundary condition in south  y direction
+      coupler.set_option<std::string>("bc_y2","wall_free_slip"); // Boundary condition in north  y direction
+      coupler.set_option<std::string>("bc_z1","wall_free_slip"); // Boundary condition in bottom z direction
+      coupler.set_option<std::string>("bc_z2","wall_free_slip"); // Boundary condition in top    z direction
+      auto rho   = coupler.get_option<real>("init_density");
+      auto T     = coupler.get_option<real>("init_temperature");
+      auto u     = coupler.get_option<real>("init_uvel");
+      auto v     = coupler.get_option<real>("init_vvel");
+      auto faces = coupler.get_data_manager_readwrite().get<float,3>("mesh_faces");
+      auto t1    = std::chrono::high_resolution_clock::now();
+      if (coupler.is_mainproc()) std::cout << "*** Beginning setup ***" << std::endl;
+      float4d zmesh("zmesh",ny,nx,nqpoints,nqpoints);
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ny,nx,nqpoints,nqpoints) ,
+                                        KOKKOS_LAMBDA (int j, int i, int jj, int ii) {
+        real x           = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+        real y           = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+        zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
+        if (zmesh(j,i,jj,ii) < 1.e-10) zmesh(j,i,jj,ii) = -1;
+      });
+      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        dm_rho_d        (k,j,i) = rho;
+        dm_uvel         (k,j,i) = u;
+        dm_vvel         (k,j,i) = v;
+        dm_wvel         (k,j,i) = 0;
+        dm_temp         (k,j,i) = T;
+        dm_rho_v        (k,j,i) = 0;
+        dm_immersed_prop(k,j,i) = 0;
+        for (int kk=0; kk<nqpoints; kk++) {
+          for (int jj=0; jj<nqpoints; jj++) {
+            for (int ii=0; ii<nqpoints; ii++) {
+              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real z         = zmid(k)          + qpoints(kk)*dz(k);
+              real wt = qweights(kk)*qweights(jj)*qweights(ii);
+              dm_immersed_prop(k,j,i) += (z<=zmesh(j,i,jj,ii) ? 1 : 0) * wt;
+            }
+          }
+        }
+      });
+      std::chrono::duration<double> dur = std::chrono::high_resolution_clock::now() - t1;
+      if (coupler.is_mainproc()) std::cout << "*** Finished setup in [" << dur.count() << "] seconds ***" << std::endl;
+
     } else if (coupler.get_option<std::string>("init_data") == "sphere") {
 
       coupler.set_option<std::string>("bc_x1","periodic");
@@ -904,7 +951,8 @@ namespace custom_modules {
     auto imm_prop  = dm.get<real,3>("immersed_proportion_halos");
     auto imm_rough = dm.get<real,3>("immersed_roughness_halos" );
     auto sfc_rough = dm.get<real,2>("surface_roughness_halos"  );
-    auto top_fric  = coupler.get_option<std::string>("init_data") == "channel";
+    auto top_fric  = coupler.get_option<std::string>("init_data") == "channel" ||
+                     coupler.get_option<std::string>("init_data") == "tank_set";
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
       imm_prop (      kk,j,i) = 1;
       imm_rough(      kk,j,i) = sfc_rough(j,i);

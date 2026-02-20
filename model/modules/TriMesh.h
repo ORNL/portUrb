@@ -103,6 +103,20 @@ namespace modules {
     }
 
 
+    // Add an offset to all face vertices and the domain extents. This is typically used to set lower bounds
+    // to zero.
+    void apply_scaling(float sx, float sy, float sz) {
+      YAKL_SCOPE( faces , this->faces );
+      yakl::c::parallel_for( YAKL_AUTO_LABEL() , faces.extent(0) , KOKKOS_LAMBDA (int i) {
+        faces(i,0,0) *= sx;    faces(i,0,1) *= sy;    faces(i,0,2) *= sz;
+        faces(i,1,0) *= sx;    faces(i,1,1) *= sy;    faces(i,1,2) *= sz;
+        faces(i,2,0) *= sx;    faces(i,2,1) *= sy;    faces(i,2,2) *= sz;
+      });
+      domain_lo.x *= sx;    domain_lo.y *= sy;    domain_lo.z *= sz;
+      domain_hi.x *= sx;    domain_hi.y *= sy;    domain_hi.z *= sz;
+    }
+
+
     // Set domain_lo to zero
     void zero_domain_lo() { add_offset( -domain_lo.x , -domain_lo.y , -domain_lo.z ); }
 
@@ -118,7 +132,7 @@ namespace modules {
 
     // Interpolate the height of the given horizontal point location using surrounding face data
     KOKKOS_INLINE_FUNCTION static float interp( float3d const &faces_in, int k, float x, float y, float domain_lo_z ) {
-      double constexpr eps = 1.e-8;
+      double constexpr eps = 1.e-10;
       double v1_x = faces_in(k,0,0);    double v1_y = faces_in(k,0,1);    double v1_z = faces_in(k,0,2);
       double v2_x = faces_in(k,1,0);    double v2_y = faces_in(k,1,1);    double v2_z = faces_in(k,1,2);
       double v3_x = faces_in(k,2,0);    double v3_y = faces_in(k,2,1);    double v3_z = faces_in(k,2,2);

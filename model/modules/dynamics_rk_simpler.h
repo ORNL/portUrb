@@ -661,6 +661,10 @@ namespace modules {
       auto dx                = coupler.get_dx();           // Grid spacing in x-direction
       auto dy                = coupler.get_dy();           // Grid spacing in y-direction
       auto dz                = coupler.get_dz();           // Grid spacing in z-direction
+      auto px                = coupler.get_px();           // Grid spacing in x-direction
+      auto py                = coupler.get_py();           // Grid spacing in y-direction
+      auto nproc_x           = coupler.get_nproc_x();      // Grid spacing in x-direction
+      auto nproc_y           = coupler.get_nproc_y();      // Grid spacing in y-direction
       auto num_tracers       = coupler.get_num_tracers();  // Total number of tracers
       auto enable_gravity    = coupler.get_option<bool>("enable_gravity",true); // Whether to enable gravity
       auto C0                = coupler.get_option<real>("C0"     );    // pressure = C0*pow(rho*theta,gamma)
@@ -796,6 +800,8 @@ namespace modules {
       // Determine if the bottom and top boundaries are solid walls
       auto wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
       auto wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
+      auto wall_y1 = coupler.get_option<std::string>("bc_y1") == "wall_free_slip";
+      auto wall_y2 = coupler.get_option<std::string>("bc_y2") == "wall_free_slip";
       typedef limiter::WenoLimiter<FLOC,ord> Limiter; // Declare the WENO limiter
       auto use_weno = coupler.get_option<bool>("dycore_use_weno",true); // Whether to use WENO limiter
       auto imm_weno = coupler.get_option<bool>("dycore_use_weno_immersed",false); // Whether to use WENO limiter
@@ -816,7 +822,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy;  // To hold left pressure and dummy right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
           Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
         } else {
           p_L = 0;
@@ -828,7 +834,7 @@ namespace modules {
                                                     fields_loc(idU,hs+k,hs+j,i+ii); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC ru_L = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
           Limiter::compute_limited_edges( s , dummy , ru_L , { do_map , false , false } );
         } else {
           for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
@@ -841,7 +847,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
           Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
         } else {
           p_R = 0;
@@ -853,7 +859,7 @@ namespace modules {
                                                     fields_loc(idU,hs+k,hs+j,i+ii+1); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC ru_R = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
           Limiter::compute_limited_edges( s , ru_R , dummy , { do_map , false , false } );
         } else {
           for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
@@ -875,7 +881,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
           Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
         } else {
           p_L = 0;
@@ -887,11 +893,13 @@ namespace modules {
                                                     fields_loc(idV,hs+k,j+jj,hs+i); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rv_L = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
           Limiter::compute_limited_edges( s , dummy , rv_L , { do_map , false , false } );
         } else {
           for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
         }
+        if (wall_y1 && py == 0         && j == 0 ) rv_L = 0; // Impose wall boundary condition
+        if (wall_y2 && py == nproc_y-1 && j == ny) rv_L = 0; // Impose wall boundary condition
 
         // Load the stencils for cell immersion and pressure with the cell right of the edge as the center cell
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > imm_th; }
@@ -900,7 +908,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
           Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
         } else {
           p_R = 0;
@@ -912,14 +920,18 @@ namespace modules {
                                                     fields_loc(idV,hs+k,j+jj+1,hs+i); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rv_R = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
           Limiter::compute_limited_edges( s , rv_R , dummy , { do_map , false , false } );
         } else {
           for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
         }
+        if (wall_y1 && py == 0         && j == 0 ) rv_R = 0; // Impose wall boundary condition
+        if (wall_y2 && py == nproc_y-1 && j == ny) rv_R = 0; // Impose wall boundary condition
         // Compute the upwind state of pressure and momentum at this edge
         p_y (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rv_R-rv_L)   );
         rv_y(k,j,i) = 0.5f*(rv_L + rv_R -    (p_R -p_L )/cs);
+        if (wall_y1 && py == 0         && j == 0 ) rv_y(k,j,i) = 0; // Impose wall boundary condition
+        if (wall_y2 && py == nproc_y-1 && j == ny) rv_y(k,j,i) = 0; // Impose wall boundary condition
       });
 
       // Reconstruct upwind cell-edge pressure and momentum in z-direction
@@ -935,7 +947,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
           Limiter::compute_limited_edges( s , dummy , p_L , { do_map , false , false } );
         } else {
           p_L = 0;
@@ -950,7 +962,7 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rw_L = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
           Limiter::compute_limited_edges( s , dummy , rw_L , { do_map , false , false } );
         } else {
           for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
@@ -968,7 +980,7 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
           Limiter::compute_limited_edges( s , p_R , dummy , { do_map , false , false } );
         } else {
           p_R = 0;
@@ -983,7 +995,7 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rw_R = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
           Limiter::compute_limited_edges( s , rw_R , dummy , { do_map , false , false } );
         } else {
           for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
@@ -1027,7 +1039,7 @@ namespace modules {
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
           FLOC val; // Reconstructed advected quantity at the edge
-          if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+          if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
             FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { do_map , false , false } );
             val = ru > 0 ? val_R : val_L;  // Choose value based on flow direction
@@ -1057,7 +1069,7 @@ namespace modules {
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
           FLOC val; // Reconstructed advected quantity at the edge
-          if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+          if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
             FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { do_map , false , false } );
             val = rv > 0 ? val_R : val_L; // Choose value based on flow direction
@@ -1090,7 +1102,7 @@ namespace modules {
           for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+ind+kk)))/
                                                       dz(std::max(0,std::min(nz-1,k-1 +ind   ))); }
           FLOC val; // Reconstructed advected quantity at the edge
-          if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
+          if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
             FLOC val_L, val_R;
             Limiter::compute_limited_edges( s , val_L , val_R , { do_map , false , false } );
             val = rw > 0 ? val_R : val_L; // Choose value based on flow direction
@@ -1314,6 +1326,13 @@ namespace modules {
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i);
           });
+        } else if (bc_y1 == "wall_free_slip" ) {
+          // Simple zero-gradient extrapolation for open boundary
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+                                            KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            if (l == idV) { fields(l,hs+k,hs-1-jj,hs+i) = 0; }
+            else          { fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i); }
+          });
         } else if (bc_y1 == "precursor" ) {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
           // For outflow boundaries, use zero-gradient extrapolation
@@ -1328,7 +1347,7 @@ namespace modules {
             }
           });
         } else {
-          std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y1 can only be periodic or open";
+          std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y1 can only be periodic, wall_free_slip, or open";
           Kokkos::abort("");
         }
       }
@@ -1340,6 +1359,13 @@ namespace modules {
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
+          });
+        } else if (bc_y1 == "wall_free_slip" ) {
+          // Simple zero-gradient extrapolation for open boundary
+          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+                                            KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            if (l == idV) { fields(l,hs+k,hs+ny+jj,hs+i) = 0; }
+            else          { fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i); }
           });
         } else if (bc_y2 == "precursor" ) {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
@@ -1355,7 +1381,7 @@ namespace modules {
             }
           });
         } else {
-          std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y2 can only be periodic or open";
+          std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y2 can only be periodic, wall_free_slip, or open";
           Kokkos::abort("");
         }
       }
