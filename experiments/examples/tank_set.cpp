@@ -31,13 +31,17 @@ int main(int argc, char** argv) {
     real u0 = 0.51;
 
     modules::TriMesh mesh;
-    mesh.load_file("/ccs/home/imn/building_terrain_120deg.obj");
+    mesh.load_file("/ccs/home/imn/330deg.obj");
     mesh.zero_domain_lo();
+    mesh.add_offset(82.7 + 38.85,7.5045,0);
     mesh.apply_scaling(scale,scale,scale);
 
-    real        xlen        = std::ceil((mesh.domain_hi.x  )/dx)*dx;
-    real        ylen        = std::ceil((mesh.domain_hi.y  )/dx)*dx;
-    real        zlen        = std::ceil((mesh.domain_hi.z*5)/dx)*dx;
+    // real        xlen        = std::ceil((mesh.domain_hi.x + 0     *scale)/dx)*dx;
+    // real        ylen        = std::ceil((mesh.domain_hi.y + 0     *scale)/dx)*dx;
+    // real        zlen        = std::ceil((mesh.domain_hi.z*5             )/dx)*dx;
+    real        xlen        = std::ceil((mesh.domain_hi.x + 30    *scale)/dx)*dx;
+    real        ylen        = std::ceil((mesh.domain_hi.y + 7.5045*scale)/dx)*dx;
+    real        zlen        = std::ceil((mesh.domain_hi.z*5             )/dx)*dx;
     real        sim_time    = xlen/u0*10;
     int         nx_glob     = xlen/dx;
     int         ny_glob     = ylen/dx;

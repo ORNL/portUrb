@@ -15,7 +15,6 @@ set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
 add_subdirectory(${KOKKOS_HOME}                                    ${KOKKOS_BIN}                       )
 include_directories(${Kokkos_INCLUDE_DIRS_RET})
 add_subdirectory(${YAKL_HOME}                                      ${YAKL_BIN}                         )
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../pnetcdf            ${CMAKE_CURRENT_BINARY_DIR}/pnetcdf )
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../external/yaml-cpp  ${CMAKE_CURRENT_BINARY_DIR}/yaml-cpp)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../external/ponni     ponni                               )
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../external/eigen     eigen                               )
@@ -23,6 +22,6 @@ add_subdirectory(core                                              core         
 add_subdirectory(modules                                           modules                             )
 
 add_library(model INTERFACE)
-target_link_libraries(model INTERFACE core modules yakl yaml-cpp ponni eigen pnetcdf)
+target_link_libraries(model INTERFACE core modules yakl yaml-cpp ponni eigen)
 target_include_directories(model INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 

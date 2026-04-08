@@ -16,6 +16,3 @@
 [submodule "external/eigen"]
 	path = external/eigen
 	url = https://gitlab.com/libeigen/eigen.git
-[submodule "external/PnetCDF"]
-	path = external/PnetCDF
-	url = git@github.com:Parallel-NetCDF/PnetCDF.git
