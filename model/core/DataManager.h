@@ -355,7 +355,7 @@ namespace core {
     // Returns a yakl::Array of type T and rank N for the entry with the given name
     // If the entry does not exist, prints an error message and terminates the program
     // If the type or number of dimensions do not match, prints an error message and terminates the program
-    template <class T, int N , typename std::enable_if< std::is_const<T>::value , int >::type = 0 >
+    template <class T, int N> requires std::is_const_v<T>
     Array<T,N,memSpace,styleC> get( std::string name ) const {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
@@ -384,7 +384,7 @@ namespace core {
     // If the type or number of dimensions do not match, prints an error message and terminates the program
     // Additionally, sets the dirty flag to true for the entry because it isn't const
     // Use of this routine rather than the const-type routine indicates that the data may be modified
-    template <class T, int N , typename std::enable_if< ! std::is_const<T>::value , int >::type = 0 >
+    template <class T, int N>  requires (!std::is_const_v<T>)
     Array<T,N,memSpace,styleC> get( std::string name ) {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
@@ -415,7 +415,7 @@ namespace core {
     // The first dimension is treated as vertical levels, and all other dimensions are collapsed into a single horizontal dimension
     // Fastest varying dimensions in the aggregated horizontal dimensions are maintained
     // This method is useful for accessing data that is structured with vertical levels and horizontal columns
-    template <class T, typename std::enable_if< std::is_const<T>::value , int>::type = 0 >
+    template <class T> requires std::is_const_v<T>
     Array<T,2,memSpace,styleC> get_lev_col( std::string name ) const {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
@@ -451,7 +451,7 @@ namespace core {
     // Fastest varying dimensions in the aggregated horizontal dimensions are maintained
     // Additionally, sets the dirty flag to true for the entry because it isn't const
     // Use of this routine rather than the const-type routine indicates that the data may be modified
-    template <class T, typename std::enable_if< ! std::is_const<T>::value , int>::type = 0 >
+    template <class T> requires (!std::is_const_v<T>)
     Array<T,2,memSpace,styleC> get_lev_col( std::string name ) {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
@@ -480,7 +480,7 @@ namespace core {
     // If the entry does not exist, prints an error message and terminates the program
     // All dimensions are collapsed to a single dimension.
     // Fastest varying dimensions in the aggregated dimensions are maintained.
-    template <class T, typename std::enable_if< std::is_const<T>::value , int>::type = 0 >
+    template <class T> requires std::is_const_v<T>
     Array<T,1,memSpace,styleC> get_collapsed( std::string name ) const {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
@@ -505,7 +505,7 @@ namespace core {
     // If the entry does not exist, prints an error message and terminates the program
     // All dimensions are collapsed to a single dimension.
     // Fastest varying dimensions in the aggregated dimensions are maintained.
-    template <class T, typename std::enable_if< ! std::is_const<T>::value , int>::type = 0 >
+    template <class T> requires (!std::is_const_v<T>)
     Array<T,1,memSpace,styleC> get_collapsed( std::string name ) {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );

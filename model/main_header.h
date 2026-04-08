@@ -23,7 +23,7 @@ inline void check_for_nan_inf(Array<T,N,memDevice,styleC> arr , std::string file
   if ( nan_present.hostRead() ) std::cerr << file << ":" << line << ":" << arr.label() << ": has NaN or inf" << std::endl;
 }
 
-template <class T, typename std::enable_if<std::is_arithmetic<T>::value,bool>::type = false>
+template <class T> requires std::is_arithmetic_v<T>
 inline void check_for_nan_inf(T val , std::string file , int line) {
   if ( std::isnan(val) || !std::isfinite(val) ) std::cerr << file << ":" << line << " is NaN or inf" << std::endl;
 }

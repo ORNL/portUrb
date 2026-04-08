@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 project(portUrb)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 enable_language(Fortran)
 enable_language(CXX)
@@ -10,21 +10,12 @@ if ("${YAKL_ARCH}" STREQUAL "CUDA")
   enable_language(CUDA)
 endif()
 
-include_directories(${PORTURB_HOME}/model
-                    ${PORTURB_HOME}/model/core
-                    ${PORTURB_HOME}/model/modules
-                    ${PORTURB_HOME}/model/modules/helpers
-                    ${PORTURB_HOME}/external/yaml-cpp/include
-                    ${PORTURB_HOME}/external/ponni/src
-                    ${CMAKE_CURRENT_SOURCE_DIR}/custom_modules
-                    )
-
 add_subdirectory(${PORTURB_HOME}/model model)
 
 add_library(custom_modules INTERFACE)
 target_include_directories(custom_modules INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/custom_modules)
 
-set(mylibs modules custom_modules model core ponni yaml-cpp yakl eigen "${PORTURB_LINK_FLAGS}")
+set(mylibs modules custom_modules model "${PORTURB_LINK_FLAGS}")
 
 macro(process_target target_name)
   add_executable(${target_name} ${target_name}.cpp)

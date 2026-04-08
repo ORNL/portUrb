@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
       output_counter = core::Counter( out_freq    , etime-((int)(etime/out_freq   ))*out_freq    );
       inform_counter = core::Counter( inform_freq , etime-((int)(etime/inform_freq))*inform_freq );
     } else {
-      coupler.write_output_file( out_prefix );
+      if (out_freq > 0) coupler.write_output_file( out_prefix );
     }
 
     real dt = dtphys_in;

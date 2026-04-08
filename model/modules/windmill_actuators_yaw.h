@@ -344,7 +344,7 @@ namespace modules {
       dm.register_and_allocate<real>("windmill_samp_weight","",{nz,ny,nx});
       coupler.register_output_variable<real>( "windmill_samp_weight" , core::Coupler::DIMS_3D );
       // Create an output module in the coupler to dump the windmill portions and the power trace from task zero
-      coupler.register_write_output_module( [=] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
+      coupler.register_write_output_module( [&] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
         if (trace_size > 0) {
           nc.redef();
           nc.create_dim( "num_time_steps" , trace_size );

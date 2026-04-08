@@ -169,7 +169,7 @@ namespace core {
     // Allgather for YAKL CSArray objects
     // arr : YAKL CSArray to allgather from each rank
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, typename std::enable_if<std::is_arithmetic<T>::value,bool>::type = false>
+    template <class T> requires std::is_arithmetic_v<T>
     yakl::Array<T,1,yakl::memHost,yakl::styleC> all_gather( T val , std::string lab = "" ) const {
       if (lab != "") yakl::timer_start( lab.c_str() );
       yakl::Array<T,1,yakl::memHost,yakl::styleC> ret("all_gather_result",nranks); // Result array
@@ -233,7 +233,7 @@ namespace core {
     // val : Value to broadcast (will be modified on non-root ranks)
     // root : Rank ID of the root rank that holds the value to broadcast
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, typename std::enable_if<std::is_arithmetic<T>::value,bool>::type = false>
+    template <class T> requires std::is_arithmetic_v<T>
     void broadcast( T & val , int root = 0 , std::string lab = "" ) const {
       if (nranks == 1) return;
       if (lab != "") yakl::timer_start( lab.c_str() );
@@ -299,7 +299,7 @@ namespace core {
     // op : MPI_Op operation to use for the reduction (e.g., MPI_SUM, MPI_MAX, etc.)
     // root : Rank ID of the root rank that will hold the reduced result
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, typename std::enable_if<std::is_arithmetic<T>::value,bool>::type = false>
+    template <class T> requires std::is_arithmetic_v<T>
     T reduce( T loc , MPI_Op op , int root = 0 , std::string lab = "" ) const {
       if (nranks == 1) return loc;
       if (lab != "") yakl::timer_start( lab.c_str() );
@@ -364,7 +364,7 @@ namespace core {
     // val : Value to allreduce from each rank
     // op : MPI_Op operation to use for the allreduction (e.g., MPI_SUM, MPI_MAX, etc.)
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, typename std::enable_if<std::is_arithmetic<T>::value,bool>::type = false>
+    template <class T> requires std::is_arithmetic_v<T>
     T all_reduce( T loc , MPI_Op op , std::string lab = "" ) const {
       if (nranks == 1) return loc;
       if (lab != "") yakl::timer_start( lab.c_str() );
@@ -379,20 +379,20 @@ namespace core {
     // T : Template parameter for the type to get the MPI_Datatype of
     // Returns the MPI_Datatype corresponding to type T
     template <class T> static MPI_Datatype get_type() {
-      if      (std::is_same<T,         char         >::value) { return MPI_CHAR;                  }
-      else if (std::is_same<T,unsigned char         >::value) { return MPI_UNSIGNED_CHAR;         }
-      else if (std::is_same<T,         short        >::value) { return MPI_SHORT;                 }
-      else if (std::is_same<T,unsigned short        >::value) { return MPI_UNSIGNED_SHORT;        }
-      else if (std::is_same<T,         int          >::value) { return MPI_INT;                   }
-      else if (std::is_same<T,unsigned int          >::value) { return MPI_UNSIGNED;              }
-      else if (std::is_same<T,         long int     >::value) { return MPI_LONG;                  }
-      else if (std::is_same<T,unsigned long int     >::value) { return MPI_UNSIGNED_LONG;         }
-      else if (std::is_same<T,         long long int>::value) { return MPI_LONG_LONG;             }
-      else if (std::is_same<T,unsigned long long int>::value) { return MPI_UNSIGNED_LONG_LONG;    }
-      else if (std::is_same<T,                 float>::value) { return MPI_FLOAT;                 }
-      else if (std::is_same<T,                double>::value) { return MPI_DOUBLE;                }
-      else if (std::is_same<T,           long double>::value) { return MPI_LONG_DOUBLE;           }
-      else if (std::is_same<T,                  bool>::value) { return MPI_C_BOOL;                }
+      if      constexpr (std::is_same_v<T,         char         >) { return MPI_CHAR;                  }
+      else if constexpr (std::is_same_v<T,unsigned char         >) { return MPI_UNSIGNED_CHAR;         }
+      else if constexpr (std::is_same_v<T,         short        >) { return MPI_SHORT;                 }
+      else if constexpr (std::is_same_v<T,unsigned short        >) { return MPI_UNSIGNED_SHORT;        }
+      else if constexpr (std::is_same_v<T,         int          >) { return MPI_INT;                   }
+      else if constexpr (std::is_same_v<T,unsigned int          >) { return MPI_UNSIGNED;              }
+      else if constexpr (std::is_same_v<T,         long int     >) { return MPI_LONG;                  }
+      else if constexpr (std::is_same_v<T,unsigned long int     >) { return MPI_UNSIGNED_LONG;         }
+      else if constexpr (std::is_same_v<T,         long long int>) { return MPI_LONG_LONG;             }
+      else if constexpr (std::is_same_v<T,unsigned long long int>) { return MPI_UNSIGNED_LONG_LONG;    }
+      else if constexpr (std::is_same_v<T,                 float>) { return MPI_FLOAT;                 }
+      else if constexpr (std::is_same_v<T,                double>) { return MPI_DOUBLE;                }
+      else if constexpr (std::is_same_v<T,           long double>) { return MPI_LONG_DOUBLE;           }
+      else if constexpr (std::is_same_v<T,                  bool>) { return MPI_C_BOOL;                }
       else { Kokkos::abort("Invalid type for MPI operations"); }
     }
 

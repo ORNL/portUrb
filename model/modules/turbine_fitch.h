@@ -112,7 +112,7 @@ namespace modules {
       }
       trace_size = 0; // Initialize the trace size to zero
       // Register the output writing module to write out turbine traces at each output time
-      coupler.register_write_output_module( [=] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
+      coupler.register_write_output_module( [&] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
         if (trace_size > 0) {
           nc.redef(); // Enter define mode to define new variables and dimensions
           nc.create_dim( "num_time_steps" , trace_size );

@@ -7,7 +7,6 @@
 #include "les_closure.h"
 #include "turbine_actuator_disc.h"
 #include "surface_flux.h"
-#include "surface_heat_flux.h"
 #include "precursor_sponge.h"
 #include "sponge_layer.h"
 #include "uniform_pg_wind_forcing.h"
@@ -58,30 +57,35 @@ int main(int argc, char** argv) {
     real        hub_v             = 5.7;
 
     // Things the coupler_main might need to know about
-    coupler_main.set_option<std::string>( "out_prefix"                , out_prefix        );
-    coupler_main.set_option<std::string>( "init_data"                 , init_data         );
-    coupler_main.set_option<real       >( "out_freq"                  , out_freq          );
-    coupler_main.set_option<bool       >( "is_restart"                , is_restart        );
-    coupler_main.set_option<std::string>( "restart_file"              , restart_file      );
-    coupler_main.set_option<std::string>( "restart_file_precursor"    , restart_file_prec );
-    coupler_main.set_option<real       >( "latitude"                  , latitude          );
-    coupler_main.set_option<real       >( "roughness"                 , roughness         );
-    coupler_main.set_option<std::string>( "turbine_file"              , turbine_file      );
-    coupler_main.set_option<bool       >( "turbine_do_blades"         , false             );
-    coupler_main.set_option<real       >( "turbine_initial_yaw"       , 30./180.*M_PI     );
-    coupler_main.set_option<bool       >( "turbine_fixed_yaw"         , true              );
-    coupler_main.set_option<bool       >( "turbine_floating_motions"  , false             );
-    coupler_main.set_option<bool       >( "turbine_immerse_material"  , false             );
-    coupler_main.set_option<real       >( "hub_height_uvel"           , hub_u             );
-    coupler_main.set_option<real       >( "hub_height_vvel"           , hub_v             );
-    coupler_main.set_option<real       >( "sfc_heat_flux"             , 0.005             );
-    coupler_main.set_option<real       >( "kinematic_viscosity"       , 0                 );
-    coupler_main.set_option<real       >( "cfl"                       , 0.6               );
-    coupler_main.set_option<bool       >( "turbine_orig_C_T"          , true              );
-    coupler_main.set_option<real       >( "turbine_f_TKE"             , 0.25              );
-    coupler_main.set_option<real       >( "dycore_max_wind"           , 20                );
-    coupler_main.set_option<bool       >( "dycore_buoyancy_theta"     , true              );
-    coupler_main.set_option<real       >( "dycore_cs"                 , 40                );
+    coupler_main.set_option<std::string>( "out_prefix"                         , out_prefix        );
+    coupler_main.set_option<std::string>( "init_data"                          , init_data         );
+    coupler_main.set_option<real       >( "out_freq"                           , out_freq          );
+    coupler_main.set_option<bool       >( "is_restart"                         , is_restart        );
+    coupler_main.set_option<std::string>( "restart_file"                       , restart_file      );
+    coupler_main.set_option<std::string>( "restart_file_precursor"             , restart_file_prec );
+    coupler_main.set_option<real       >( "latitude"                           , latitude          );
+    coupler_main.set_option<real       >( "roughness"                          , roughness         );
+    coupler_main.set_option<std::string>( "turbine_file"                       , turbine_file      );
+    coupler_main.set_option<bool       >( "turbine_do_blades"                  , false             );
+    coupler_main.set_option<real       >( "turbine_initial_yaw"                , 30./180.*M_PI     );
+    coupler_main.set_option<bool       >( "turbine_fixed_yaw"                  , true              );
+    coupler_main.set_option<bool       >( "turbine_floating_motions"           , false             );
+    coupler_main.set_option<bool       >( "turbine_immerse_material"           , false             );
+    coupler_main.set_option<real       >( "hub_height_uvel"                    , hub_u             );
+    coupler_main.set_option<real       >( "hub_height_vvel"                    , hub_v             );
+    coupler_main.set_option<real       >( "kinematic_viscosity"                , 0                 );
+    coupler_main.set_option<real       >( "cfl"                                , 0.6               );
+    coupler_main.set_option<bool       >( "turbine_orig_C_T"                   , true              );
+    coupler_main.set_option<real       >( "turbine_f_TKE"                      , 0.25              );
+    coupler_main.set_option<real       >( "dycore_max_wind"                    , 20                );
+    coupler_main.set_option<bool       >( "dycore_buoyancy_theta"              , true              );
+    coupler_main.set_option<real       >( "dycore_cs"                          , 40                );
+    coupler_main.set_option<bool       >( "surface_flux_force_theta"           , false             );
+    coupler_main.set_option<bool       >( "surface_flux_stability_corrections" , true              );
+    coupler_main.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5            );
+    coupler_main.set_option<bool       >( "surface_flux_predict_z0h"           , false             );
+    coupler_main.set_option<bool       >( "surface_flux_prescribe_wpthetap"    , true              );
+    coupler_main.set_option<real       >( "surface_flux_sfc_wpthetap"          , 0.005             );
 
     coupler_main.set_parallel_comm( MPI_COMM_WORLD );
 
@@ -223,7 +227,6 @@ int main(int argc, char** argv) {
         coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
         coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_prec.run_module( [&] (Coupler &c) { sfc_flux.apply                   (c,dt);           } , "surface_fluxes" );
-        coupler_prec.run_module( [&] (Coupler &c) { modules::surface_heat_flux       (c,dt);           } , "heat_fluxes"    );
         coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
         coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);           } , "time_averager"  );
       }
@@ -238,7 +241,6 @@ int main(int argc, char** argv) {
         coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
         coupler_main.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_main.run_module( [&] (Coupler &c) { sfc_flux.apply                   (c,dt);           } , "surface_fluxes" );
-        coupler_main.run_module( [&] (Coupler &c) { modules::surface_heat_flux       (c,dt);           } , "heat_fluxes"    );
         coupler_main.run_module( [&] (Coupler &c) { turbines.apply                   (c,dt);           } , "turbines"       );
         coupler_main.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
         coupler_main.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);           } , "time_averager"  );
