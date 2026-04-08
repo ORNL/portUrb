@@ -148,4 +148,4 @@ add_library(pnetcdf
                     ${PNETCDF_HOME}/src/libs/strdup.c
                     ${PNETCDF_HOME}/src/libs/strcasecmp.c)
 target_include_directories(pnetcdf PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-target_compile_options(pnetcdf PRIVATE -w)
+target_compile_options(pnetcdf PRIVATE -w -O2)
