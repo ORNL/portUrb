@@ -33,15 +33,22 @@ int main(int argc, char** argv) {
     modules::TriMesh mesh;
     mesh.load_file("/ccs/home/imn/330deg.obj");
     mesh.zero_domain_lo();
-    mesh.add_offset(82.7 + 38.85,7.5045,0);
+    if (core::ParallelComm(MPI_COMM_WORLD).get_rank_id()==0) std::cout << mesh;
+    real disk_x    = mesh.domain_hi.x;
+    real disk_y    = mesh.domain_hi.y;
+    real offset_x1 = 10 + 1 + 38.85;
+    real offset_x2 = 30;
+    real offset_y1 = (200-disk_y)/2;
+    real offset_y2 = (200-disk_y)/2;
+    mesh.add_offset(offset_x1,offset_y1,0);
     mesh.apply_scaling(scale,scale,scale);
 
     // real        xlen        = std::ceil((mesh.domain_hi.x + 0     *scale)/dx)*dx;
     // real        ylen        = std::ceil((mesh.domain_hi.y + 0     *scale)/dx)*dx;
     // real        zlen        = std::ceil((mesh.domain_hi.z*5             )/dx)*dx;
-    real        xlen        = std::ceil((mesh.domain_hi.x + 30    *scale)/dx)*dx;
-    real        ylen        = std::ceil((mesh.domain_hi.y + 7.5045*scale)/dx)*dx;
-    real        zlen        = std::ceil((mesh.domain_hi.z*5             )/dx)*dx;
+    real        xlen        = mesh.domain_hi.x + offset_x2*scale;
+    real        ylen        = 200*scale;
+    real        zlen        = 50 *scale;
     real        sim_time    = xlen/u0*10;
     int         nx_glob     = xlen/dx;
     int         ny_glob     = ylen/dx;
@@ -78,14 +85,14 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false       );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
-                  coupler.generate_levels_const_low_high(zlen,dx,11.2*scale,16*scale,dx*4) ,
+                  // coupler.generate_levels_const_low_high(zlen,dx,11.2*scale,16*scale,dx*4) ,
+                  coupler.generate_levels_equal(nz,zlen) ,
                   ny_glob , nx_glob , ylen , xlen );
 
     int nfaces = mesh.faces.extent(0);
     coupler.get_data_manager_readwrite().register_and_allocate<float>("mesh_faces","",{nfaces,3,3});
     mesh.faces.deep_copy_to( coupler.get_data_manager_readwrite().get<float,3>("mesh_faces") );
     Kokkos::fence();
-    if (coupler.is_mainproc()) std::cout << mesh;
 
     modules::Dynamics_Euler_Stratified_WenoFV  dycore;
     modules::SurfaceFlux                       sfc_flux;
@@ -133,10 +140,10 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
         using custom_modules::tank_tracer_injection;
-        real x1   = 120*scale;
-        real x2   = 140*scale;
-        real y1   = 95 *scale;
-        real y2   = 105*scale;
+        real x1   = (offset_x1+disk_x/2-4)*scale;
+        real x2   = (offset_x1+disk_x/2+4)*scale;
+        real y1   = (offset_y1+disk_y/2-4)*scale;
+        real y2   = (offset_y1+disk_y/2+4)*scale;
         real z1   = 1  *scale;
         real z2   = 2  *scale;
         real conc = 0.1;
@@ -148,7 +155,7 @@ int main(int argc, char** argv) {
         real tr = xlen/u0;
         coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt);             } , "dycore"         );
-        // coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt);             } , "surface_fluxes" );
+        coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt);             } , "surface_fluxes" );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt);             } , "les_closure"    );
         coupler.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt);             } , "time_averager"  );
       }

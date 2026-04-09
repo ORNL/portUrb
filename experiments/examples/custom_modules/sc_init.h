@@ -357,6 +357,7 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "tank_set") {
 
+      real scale = 1./1250.;
       coupler.set_option<bool       >("enable_gravity",false);
       coupler.set_option<std::string>("bc_x1","periodic"      ); // Boundary condition in west   x direction
       coupler.set_option<std::string>("bc_x2","periodic"      ); // Boundary condition in east   x direction
@@ -395,6 +396,20 @@ namespace custom_modules {
               real z         = zmid(k)          + qpoints(kk)*dz(k);
               real wt = qweights(kk)*qweights(jj)*qweights(ii);
               dm_immersed_prop(k,j,i) += (z<=zmesh(j,i,jj,ii) ? 1 : 0) * wt;
+              bool grid = false;
+              if (x >= 10*scale && x <= 11*scale) {
+                real ywall = 4.025;
+                for (int jw=0; jw < 39; jw++) {
+                  if (y >= ywall*scale && y <= (ywall+1)*scale) grid = true;
+                  ywall += 5.025;
+                }
+                real zwall = 4.1;
+                for (int kw=0; kw < 9; kw++) {
+                  if (z >= zwall*scale && z <= (zwall+1)*scale) grid = true;
+                  zwall += 5.1;
+                }
+              }
+              if (grid) dm_immersed_prop(k,j,i) += 1*wt;
             }
           }
         }
