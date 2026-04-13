@@ -22,8 +22,8 @@ namespace modules {
                                 int                        cells_x2 = 0 ,
                                 int                        cells_y1 = 0 ,
                                 int                        cells_y2 = 0 ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     using yakl::componentwise::operator/;  // Allows componentwise '/' operator on yakl::Array
     using yakl::componentwise::operator-;  // Allows componentwise '-' operator on yakl::Array
     auto nx       = coupler_main.get_nx();      // Local number of cells in the x-direction

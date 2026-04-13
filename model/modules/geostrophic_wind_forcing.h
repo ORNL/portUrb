@@ -16,8 +16,8 @@ namespace modules {
   //   geostrophic_wind_forcing_specified routine.
   // This routine applyies geostrophic forcing to the overall model column rather than each individual cell.
   inline real2d geostrophic_wind_forcing( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     auto nz      = coupler.get_nz();       // number of vertical levels
     auto ny      = coupler.get_ny();       // number of local cells in the y-direction
     auto nx      = coupler.get_nx();       // number of local cells in the x-direction
@@ -65,8 +65,8 @@ namespace modules {
   // This routine applies geostrophic forcing to the overall model column rather than each individual cell.
   inline void geostrophic_wind_forcing_specified( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ,
                                                   real2d const &col ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     auto nz      = coupler.get_nz();       // number of vertical levels
     auto ny      = coupler.get_ny();       // number of local cells in the y-direction
     auto nx      = coupler.get_nx();       // number of local cells in the x-direction
@@ -94,8 +94,8 @@ namespace modules {
   // v_g     : Geostrophic meridional wind speed in m/s
   // This routine applies geostrophic forcing to each individual cell rather than the overall model column.
   inline void geostrophic_wind_forcing_indiv( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     auto nz      = coupler.get_nz();        // number of vertical levels
     auto ny      = coupler.get_ny();        // number of local cells in the y-direction
     auto nx      = coupler.get_nx();        // number of local cells in the x-direction

@@ -146,8 +146,8 @@ namespace modules {
 
     // Apply thrust and power estimations from all turbines to the flow field
     void apply( core::Coupler & coupler , real dt ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx    = coupler.get_nx   ();  // Local number of cells in the x-direction
       auto ny    = coupler.get_ny   ();  // Local number of cells in the y-direction
       auto nz    = coupler.get_nz   ();  // Number of cells in the z-direction
@@ -244,8 +244,8 @@ namespace modules {
                             RefTurbine    const & ref_turbine ,
                             real                & avg_u       ,
                             real                & avg_v       ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx      = coupler.get_nx();      // Local number of cells in the x-direction
       auto ny      = coupler.get_ny();      // Local number of cells in the y-direction
       auto nz      = coupler.get_nz();      // Number of cells in the z-direction

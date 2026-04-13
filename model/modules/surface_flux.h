@@ -20,8 +20,8 @@ namespace modules {
 
 
     void init( core::Coupler & coupler ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx           = coupler.get_nx();  // Get local number of grid points in x-direction
       auto ny           = coupler.get_ny();  // Get local number of grid points in y-direction
       auto nz           = coupler.get_nz();  // Get number of grid points in z-direction
@@ -56,8 +56,8 @@ namespace modules {
         imm_theta(hs+nz,j,i) = imm_theta(hs+nz-1,j,i);
       });
       coupler.register_write_output_module( [=] (core::Coupler &coupler , yakl::SimplePNetCDF &nc) {
-        using yakl::c::parallel_for;
-        using yakl::c::SimpleBounds;
+        using yakl::parallel_for;
+        using yakl::SimpleBounds;
         auto nz        = coupler.get_nz();
         auto ny        = coupler.get_ny();
         auto nx        = coupler.get_nx();
@@ -104,8 +104,8 @@ namespace modules {
     // dt      : Timestep size in seconds
     void apply( core::Coupler &coupler   ,
                 real dt                  ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx          = coupler.get_nx();  // Get local number of grid points in x-direction
       auto ny          = coupler.get_ny();  // Get local number of grid points in y-direction
       auto nz          = coupler.get_nz();  // Get number of grid points in z-direction
@@ -362,8 +362,8 @@ namespace modules {
 
 
     void change_surface_theta( core::Coupler & coupler , real dt , real rate ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int  nx           = coupler.get_nx();  // Get the number of grid points in the x-direction
       int  ny           = coupler.get_ny();  // Get the number of grid points in the y-direction
       auto &dm          = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
@@ -382,8 +382,8 @@ namespace modules {
     void convert_dynamics_to_coupler( core::Coupler &coupler ,
                                       realConst4d    state   ,
                                       realConst4d    tracers ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto  nx          = coupler.get_nx();                     // Number of cells in x-direction (not including halos)
       auto  ny          = coupler.get_ny();                     // Number of cells in y-direction (not including halos)
       auto  nz          = coupler.get_nz();                     // Number of cells in z-direction (not including halos)
@@ -437,8 +437,8 @@ namespace modules {
     void convert_coupler_to_dynamics( core::Coupler const &coupler ,
                                       real4d              &state   ,
                                       real4d              &tracers ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto  nx          = coupler.get_nx();                    // Number of cells in x-direction (not including halos)
       auto  ny          = coupler.get_ny();                    // Number of cells in y-direction (not including halos)
       auto  nz          = coupler.get_nz();                    // Number of cells in z-direction (not including halos)

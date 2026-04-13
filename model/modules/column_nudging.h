@@ -17,8 +17,8 @@ namespace modules {
     // names_in   : Vector of field names to compute column averages for (default: {"uvel"})
     // Allocates the column array and computes the column averages for the specified fields
     void set_column( core::Coupler &coupler , std::vector<std::string> names_in = {"uvel"} ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int nx   = coupler.get_nx();
       int ny   = coupler.get_ny();
       int nz   = coupler.get_nz();
@@ -39,8 +39,8 @@ namespace modules {
     // For each specified field, compute the difference between the current column average and the target column average
     //  and adjust the field values accordingly, scaled by dt and time_scale
     void nudge_to_column( core::Coupler &coupler , real dt , real time_scale = 900 ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int nx   = coupler.get_nx();
       int ny   = coupler.get_ny();
       int nz   = coupler.get_nz();
@@ -71,8 +71,8 @@ namespace modules {
     // This differs from nudge_to_column in that it nudges each cell toward the target column average
     //  rather than the current column average
     void nudge_to_column_strict( core::Coupler &coupler , real dt , real time_scale = 900 ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int nx   = coupler.get_nx();
       int ny   = coupler.get_ny();
       int nz   = coupler.get_nz();
@@ -96,10 +96,10 @@ namespace modules {
     // coupler : Coupler object to access data manager and grid information
     // state   : MultiField containing the fields to compute column averages for
     // Returns a real2d array of size (names.size() , nz) containing the column average
-    template <class T>
-    real2d get_column_average( core::Coupler const &coupler , core::MultiField<T,3> &state ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+    template <class MF>
+    real2d get_column_average( core::Coupler const &coupler , MF &state ) const requires (MF::view_type::rank()==3) {
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int nx_glob = coupler.get_nx_glob(); // Global number of cells in x-direction
       int ny_glob = coupler.get_ny_glob(); // Global number of cells in y-direction
       int nx      = coupler.get_nx(); // Local number of cells in x-direction for this MPI rank

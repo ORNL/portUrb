@@ -69,8 +69,8 @@ namespace modules {
 
     // Accumulate time-averaged fields since the last reset
     void accumulate( core::Coupler &coupler , real dt ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx_glob    = coupler.get_nx_glob();  // Get the global number of cells in the x-direction
       auto ny_glob    = coupler.get_ny_glob();  // Get the global number of cells in the y-direction
       auto nx         = coupler.get_nx();       // Local number of cells in the x-direction

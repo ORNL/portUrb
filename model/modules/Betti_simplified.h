@@ -8,7 +8,7 @@ namespace modules {
     int    static constexpr nfreq  = 400;      // Number of frequency intervals to sum over in PM spectrum
     real   static constexpr dt_max = 0.01;     // Maximum timestep for RK4 integration (s)
     size_t static constexpr rand_pool_size = 1024*100; // Size of random phase pool
-    SArray<real,1,6>        state;             // Current state vector
+    SArray<real,6>          state;             // Current state vector
                                                // state(0): surge (x) position
                                                // state(1): surge velocity
                                                // state(2): heave (y) position
@@ -124,8 +124,8 @@ namespace modules {
     // wind_19_5m   : Average wind speed at 19.5m (m/s)
     // Ct           : Thrust coefficient of the wind turbine
     // returns : Tuple of (state derivative vector, surge force, heave force)
-    std::tuple<SArray<real,1,6>,real,real>
-    structure( SArray<real,1,6> const & x_1 , real t , real turbine_wind , real wind_19_5m , real Ct ) {
+    std::tuple<SArray<real,6>,real,real>
+    structure( SArray<real,6> const & x_1 , real t , real turbine_wind , real wind_19_5m , real Ct ) {
       real constexpr g       = 9.80665 ;         // (m/s^2)  gravity acceleration
       real constexpr rho_w   = 1025    ;         // (kg/m^3) water density
       real constexpr M_N     = 240000  ;         // (kg)     Mass of nacelle
@@ -179,7 +179,7 @@ namespace modules {
       real J_TOT = J_S + J_N + J_P + M_N*d_N*d_N + M_P*d_P*d_P; // total moment of inertia about BS
       real sin_alpha = std::sin(alpha);                         // sine of pitch angle
       real cos_alpha = std::cos(alpha);                         // cosine of pitch angle
-      SArray<real,2,6,6> E;     // Mass/Inertia matrix
+      SArray<real,6,6> E;     // Mass/Inertia matrix
       E = 0;
       E(0,0) = 1            ;   // surge
       E(1,1) = M_X          ;   // surge inertia
@@ -309,7 +309,7 @@ namespace modules {
       real Q_zeta  = Qwe_zeta  + Qb_zeta  + Qt_zeta  + Qh_zeta  + Qwa_zeta  + Qwi_zeta  + Qh_zeta ; // net force in x
       real Q_eta   = Qwe_eta   + Qb_eta   + Qt_eta   + Qh_eta   + Qwa_eta   + Qwi_eta   + Qh_eta  ; // net force in y
       real Q_alpha = Qwe_alpha + Qb_alpha + Qt_alpha + Qh_alpha + Qwa_alpha + Qwi_alpha + Qh_alpha; // net torque in pitch
-      SArray<real,1,6> F; // Right-hand side vector of forces and moments
+      SArray<real,6> F; // Right-hand side vector of forces and moments
       F(0) = v_zeta;                             // surge velocity
       F(1) = Q_zeta + M_d*omega*omega*sin_alpha; // surge acceleration
       F(2) = v_eta;                              // heave velocity
@@ -318,7 +318,7 @@ namespace modules {
       F(5) = Q_alpha;                            // pitch angular acceleration
       real avegQ_t = std::sqrt(Qt_zeta*Qt_zeta+Qt_eta*Qt_eta)/8; // average tension in the tie rods
       // Solve for derivatives by inverting E and multiplying by F
-      auto deriv = yakl::intrinsics::matmul_rc( yakl::intrinsics::matinv_ge(E) , F );
+      auto deriv = yakl::intrinsics::matmul_rc( yakl::intrinsics::matinv(E) , F );
       // Return tuple of derivatives, effective wind speed at rotor, and average tie rod tension
       return std::make_tuple( deriv , v_in , avegQ_t );
     }
@@ -332,8 +332,8 @@ namespace modules {
     // Ct          : Thrust coefficient of the wind turbine
     // returns : state derivative vector after forward integration step
     // This is for all intents and purposes a wrapper around the structure function
-    SArray<real,1,6>
-    Betti_tend( SArray<real,1,6> const & x , real t , real turbine_wind , real wind_19_5m , real Ct ) {
+    SArray<real,6>
+    Betti_tend( SArray<real,6> const & x , real t , real turbine_wind , real wind_19_5m , real Ct ) {
       // Get the state derivatives from the structure function
       auto [dx1dt,v_in,Q_t] = structure( x , t , turbine_wind , wind_19_5m , Ct);
       return dx1dt;

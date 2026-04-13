@@ -11,30 +11,30 @@ namespace modules {
   struct Microphysics_Morrison {
     // Declare Fortran-style YAKL arrays for use in microphysics calculations, which are indexed with the first
     //   index varying the fastest and have lower bounds that default to 1 but can be changed.
-    typedef yakl::Array<double      ,1,yakl::memDevice,yakl::styleFortran> double1d_F;
-    typedef yakl::Array<double      ,2,yakl::memDevice,yakl::styleFortran> double2d_F;
-    typedef yakl::Array<double const,1,yakl::memDevice,yakl::styleFortran> doubleConst1d_F;
-    typedef yakl::Array<double const,2,yakl::memDevice,yakl::styleFortran> doubleConst2d_F;
-    typedef yakl::Array<double      ,1,yakl::memHost  ,yakl::styleFortran> doubleHost1d_F;
-    typedef yakl::Array<double      ,2,yakl::memHost  ,yakl::styleFortran> doubleHost2d_F;
-    typedef yakl::Array<double const,1,yakl::memHost  ,yakl::styleFortran> doubleHostConst1d_F;
-    typedef yakl::Array<double const,2,yakl::memHost  ,yakl::styleFortran> doubleHostConst2d_F;
-    typedef yakl::Array<int        ,1,yakl::memDevice,yakl::styleFortran> int1d_F;
-    typedef yakl::Array<int        ,2,yakl::memDevice,yakl::styleFortran> int2d_F;
-    typedef yakl::Array<int   const,1,yakl::memDevice,yakl::styleFortran> intConst1d_F;
-    typedef yakl::Array<int   const,2,yakl::memDevice,yakl::styleFortran> intConst2d_F;
-    typedef yakl::Array<int        ,1,yakl::memHost  ,yakl::styleFortran> intHost1d_F;
-    typedef yakl::Array<int        ,2,yakl::memHost  ,yakl::styleFortran> intHost2d_F;
-    typedef yakl::Array<int   const,1,yakl::memHost  ,yakl::styleFortran> intHostConst1d_F;
-    typedef yakl::Array<int   const,2,yakl::memHost  ,yakl::styleFortran> intHostConst2d_F;
-    typedef yakl::Array<bool       ,1,yakl::memDevice,yakl::styleFortran> bool1d_F;
-    typedef yakl::Array<bool       ,2,yakl::memDevice,yakl::styleFortran> bool2d_F;
-    typedef yakl::Array<bool  const,1,yakl::memDevice,yakl::styleFortran> boolConst1d_F;
-    typedef yakl::Array<bool  const,2,yakl::memDevice,yakl::styleFortran> boolConst2d_F;
-    typedef yakl::Array<bool       ,1,yakl::memHost  ,yakl::styleFortran> boolHost1d_F;
-    typedef yakl::Array<bool       ,2,yakl::memHost  ,yakl::styleFortran> boolHost2d_F;
-    typedef yakl::Array<bool  const,1,yakl::memHost  ,yakl::styleFortran> boolHostConst1d_F;
-    typedef yakl::Array<bool  const,2,yakl::memHost  ,yakl::styleFortran> boolHostConst2d_F;
+    typedef yakl::Array_F<double       * ,yakl::DeviceSpace> double1d_F;
+    typedef yakl::Array_F<double       **,yakl::DeviceSpace> double2d_F;
+    typedef yakl::Array_F<double const * ,yakl::DeviceSpace> doubleConst1d_F;
+    typedef yakl::Array_F<double const **,yakl::DeviceSpace> doubleConst2d_F;
+    typedef yakl::Array_F<double       * ,Kokkos::HostSpace> doubleHost1d_F;
+    typedef yakl::Array_F<double       **,Kokkos::HostSpace> doubleHost2d_F;
+    typedef yakl::Array_F<double const * ,Kokkos::HostSpace> doubleHostConst1d_F;
+    typedef yakl::Array_F<double const **,Kokkos::HostSpace> doubleHostConst2d_F;
+    typedef yakl::Array_F<int          * ,yakl::DeviceSpace> int1d_F;
+    typedef yakl::Array_F<int          **,yakl::DeviceSpace> int2d_F;
+    typedef yakl::Array_F<int    const * ,yakl::DeviceSpace> intConst1d_F;
+    typedef yakl::Array_F<int    const **,yakl::DeviceSpace> intConst2d_F;
+    typedef yakl::Array_F<int          * ,Kokkos::HostSpace> intHost1d_F;
+    typedef yakl::Array_F<int          **,Kokkos::HostSpace> intHost2d_F;
+    typedef yakl::Array_F<int    const * ,Kokkos::HostSpace> intHostConst1d_F;
+    typedef yakl::Array_F<int    const **,Kokkos::HostSpace> intHostConst2d_F;
+    typedef yakl::Array_F<bool         * ,yakl::DeviceSpace> bool1d_F;
+    typedef yakl::Array_F<bool         **,yakl::DeviceSpace> bool2d_F;
+    typedef yakl::Array_F<bool   const * ,yakl::DeviceSpace> boolConst1d_F;
+    typedef yakl::Array_F<bool   const **,yakl::DeviceSpace> boolConst2d_F;
+    typedef yakl::Array_F<bool         * ,Kokkos::HostSpace> boolHost1d_F;
+    typedef yakl::Array_F<bool         **,Kokkos::HostSpace> boolHost2d_F;
+    typedef yakl::Array_F<bool   const * ,Kokkos::HostSpace> boolHostConst1d_F;
+    typedef yakl::Array_F<bool   const **,Kokkos::HostSpace> boolHostConst2d_F;
     // Doesn't actually have to be static or constexpr. Could be assigned in the constructor
     int static constexpr num_tracers = 10;
 
@@ -50,8 +50,8 @@ namespace modules {
     // Initializes the microphysics module within the coupler by registering tracers and persistent variables,
     //   initializing tracers to zero, and setting microphysics-related options in the coupler
     void init(core::Coupler &coupler) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
 
       // hm added new option for hail
       // switch for hail/graupel
@@ -132,8 +132,8 @@ namespace modules {
     // coupler : Reference to the coupler object
     // dt      : Time step length in seconds
     void time_step( core::Coupler &coupler , real dt ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
 
       // Get the dimensions sizes
       int nz   = coupler.get_nz(); // Number of vertical levels

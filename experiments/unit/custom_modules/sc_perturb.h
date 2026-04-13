@@ -46,8 +46,8 @@ namespace custom_modules {
     auto dm_rho_v = dm.get<real,3>("water_vapor");
 
     const int nqpoints = 9;
-    SArray<real,1,nqpoints> qpoints;
-    SArray<real,1,nqpoints> qweights;
+    SArray<real,nqpoints> qpoints;
+    SArray<real,nqpoints> qweights;
     TransformMatrices::get_gll_points (qpoints );
     TransformMatrices::get_gll_weights(qweights);
 

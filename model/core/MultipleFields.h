@@ -5,7 +5,7 @@
 
 namespace core {
 
-  // This is a template class to hold multiple fields of the same type T
+  // This is a template class to hold multiple fields of the same type ViewType
   //  up to a maximum of MAX_FIELDS fields.
   // This is useful for holding multiple tracer fields or other similar variables
   // The class provides methods to add fields, get fields, and access field data
@@ -15,10 +15,11 @@ namespace core {
   // The overloaded operator() allows accessing elements of each field with the appropriate number of indices
   //  as if accessing a yakl::Array directly with an additional leading index for the field index as if this
   //  were a YAKL array of one dimension higher.
-  template <int MAX_FIELDS, class T>
+  template <int MAX_FIELDS, class ViewType> requires yakl::is_Array<ViewType>
   class MultipleFields {
   public:
-    yakl::SArray<T,1,MAX_FIELDS> fields;  // SArray to hold up to MAX_FIELDS fields of type T
+    using view_type = ViewType;
+    yakl::SArray<ViewType,MAX_FIELDS> fields;  // SArray to hold up to MAX_FIELDS fields of type ViewType
     int num_fields;                       // Number of fields currently stored
 
     // Default constructor to initialize num_fields to zero
@@ -58,10 +59,10 @@ namespace core {
       return *this;
     }
 
-    // Add a new field to the MultipleFields object. This must match the type T.
+    // Add a new field to the MultipleFields object. This must match the type ViewType.
     // field : The field to add
     // Increments num_fields by one
-    KOKKOS_INLINE_FUNCTION void add_field( T field ) {
+    KOKKOS_INLINE_FUNCTION void add_field( ViewType field ) {
       this->fields(num_fields) = field;
       num_fields++;
     }
@@ -69,7 +70,7 @@ namespace core {
     // Get a field by its index
     // tr : Index of the field to get (0-based)
     // Returns the field at the specified index
-    KOKKOS_INLINE_FUNCTION T &get_field( int tr ) const {
+    KOKKOS_INLINE_FUNCTION ViewType & get_field( int tr ) const {
       return this->fields(tr);
     }
 
@@ -82,48 +83,76 @@ namespace core {
     // tr : Index of the field to access (0-based)
     // i1,i2,... : Indices to access within the field
     // Returns a reference to the element at the specified indices within the specified field
-    // The number of indices must match the rank of the field T, which is assumed to be a yakl::Array
-    KOKKOS_INLINE_FUNCTION auto operator() (int tr, int i1) const ->
-                                decltype(fields(tr)(i1)) {
+    // The number of indices must match the rank of the field ViewType, which is assumed to be a yakl::Array
+    KOKKOS_INLINE_FUNCTION ViewType::value_type & operator() (std::integral auto tr,
+                                                              std::integral auto i1) const requires (ViewType::rank()==1) {
       return this->fields(tr)(i1);
     }
-    KOKKOS_INLINE_FUNCTION auto operator() (int tr, int i1, int i2) const ->
-                                decltype(fields(tr)(i1,i2)) {
+    KOKKOS_INLINE_FUNCTION ViewType::value_type & operator() (std::integral auto tr,
+                                                              std::integral auto i1,
+                                                              std::integral auto i2) const requires (ViewType::rank()==2) {
       return this->fields(tr)(i1,i2);
     }
-    KOKKOS_INLINE_FUNCTION auto operator() (int tr, int i1, int i2, int i3) const ->
-                                decltype(fields(tr)(i1,i2,i3)) {
+    KOKKOS_INLINE_FUNCTION ViewType::value_type & operator() (std::integral auto tr,
+                                                              std::integral auto i1,
+                                                              std::integral auto i2,
+                                                              std::integral auto i3) const requires (ViewType::rank()==3) {
       return this->fields(tr)(i1,i2,i3);
     }
-    KOKKOS_INLINE_FUNCTION auto operator() (int tr, int i1, int i2, int i3, int i4) const ->
-                                decltype(fields(tr)(i1,i2,i3,i4)) {
+    KOKKOS_INLINE_FUNCTION ViewType::value_type & operator() (std::integral auto tr,
+                                                              std::integral auto i1,
+                                                              std::integral auto i2,
+                                                              std::integral auto i3,
+                                                              std::integral auto i4) const requires (ViewType::rank()==4) {
       return this->fields(tr)(i1,i2,i3,i4);
     }
-    KOKKOS_INLINE_FUNCTION auto operator() (int tr, int i1, int i2, int i3, int i4, int i5) const ->
-                                decltype(fields(tr)(i1,i2,i3,i4,i5)) {
+    KOKKOS_INLINE_FUNCTION ViewType::value_type & operator() (std::integral auto tr,
+                                                              std::integral auto i1,
+                                                              std::integral auto i2,
+                                                              std::integral auto i3,
+                                                              std::integral auto i4,
+                                                              std::integral auto i5) const requires (ViewType::rank()==5) {
       return this->fields(tr)(i1,i2,i3,i4,i5);
     }
-    KOKKOS_INLINE_FUNCTION auto operator() (int tr, int i1, int i2, int i3, int i4, int i5, int i6) const ->
-                                decltype(fields(tr)(i1,i2,i3,i4,i5,i6)) {
+    KOKKOS_INLINE_FUNCTION ViewType::value_type & operator() (std::integral auto tr,
+                                                              std::integral auto i1,
+                                                              std::integral auto i2,
+                                                              std::integral auto i3,
+                                                              std::integral auto i4,
+                                                              std::integral auto i5,
+                                                              std::integral auto i6) const requires (ViewType::rank()==6) {
       return this->fields(tr)(i1,i2,i3,i4,i5,i6);
     }
-    KOKKOS_INLINE_FUNCTION auto operator() (int tr, int i1, int i2, int i3, int i4, int i5, int i6, int i7) const ->
-                                decltype(fields(tr)(i1,i2,i3,i4,i5,i6,i7)) {
+    KOKKOS_INLINE_FUNCTION ViewType::value_type & operator() (std::integral auto tr,
+                                                              std::integral auto i1,
+                                                              std::integral auto i2,
+                                                              std::integral auto i3,
+                                                              std::integral auto i4,
+                                                              std::integral auto i5,
+                                                              std::integral auto i6,
+                                                              std::integral auto i7) const requires (ViewType::rank()==7) {
       return this->fields(tr)(i1,i2,i3,i4,i5,i6,i7);
     }
-    KOKKOS_INLINE_FUNCTION auto operator() (int tr, int i1, int i2, int i3, int i4, int i5, int i6, int i7, int i8) const ->
-                                decltype(fields(tr)(i1,i2,i3,i4,i5,i6,i7,i8)) {
+    KOKKOS_INLINE_FUNCTION ViewType::value_type & operator() (std::integral auto tr,
+                                                              std::integral auto i1,
+                                                              std::integral auto i2,
+                                                              std::integral auto i3,
+                                                              std::integral auto i4,
+                                                              std::integral auto i5,
+                                                              std::integral auto i6,
+                                                              std::integral auto i7,
+                                                              std::integral auto i8) const requires (ViewType::rank()==8) {
       return this->fields(tr)(i1,i2,i3,i4,i5,i6,i7,i8);
     }
   };
 
 
   // Alias for MultipleFields with maximum number of fields set to max_fields from main_header.h
-  // T is the underlying type of each yakl::Array field
+  // ViewType is the underlying type of each yakl::Array field
   // N is the rank of each yakl::Array field
   // This is in device memory space with C-style indexing
   template <class T, int N>
-  using MultiField = MultipleFields< max_fields , Array<T,N,memDevice,styleC> >;
+  using MultiField = MultipleFields< max_fields , Array<typename yakl::ViewType<T,N>::type,yakl::DeviceSpace> >;
 }
 
 

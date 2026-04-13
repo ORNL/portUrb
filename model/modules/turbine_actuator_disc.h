@@ -76,8 +76,8 @@ namespace modules {
                         real                  base_loc_x  ,
                         real                  base_loc_y  ,
                         RefTurbine    const & ref_turbine ) {
-        using yakl::c::parallel_for;
-        using yakl::c::SimpleBounds;
+        using yakl::parallel_for;
+        using yakl::SimpleBounds;
         auto i_beg  = coupler.get_i_beg();  // Get the beginning x-direction index for this MPI task
         auto j_beg  = coupler.get_j_beg();  // Get the beginning y-direction index for this MPI task
         auto nx     = coupler.get_nx();     // Get the number of x-direction cells
@@ -120,8 +120,8 @@ namespace modules {
 
     // Initialize the turbine actuator disc module, adding all the specified turbines from the coupler options
     void init( core::Coupler &coupler ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx    = coupler.get_nx();    // Get the local number of x-direction cells
       auto ny    = coupler.get_ny();    // Get the local number of y-direction cells
       auto nz    = coupler.get_nz();    // Get the number of z-direction cells
@@ -187,8 +187,8 @@ namespace modules {
     //   thrust and torque forces. Keep traces of the power, yaw angle, and inflow wind speed normal to the turbine plane.
     // Injects a portion of the unused thrust energy back into the flow as SGS/unresolved TKE.
     void apply( core::Coupler & coupler , float dt ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx    = coupler.get_nx   ();  // Get the local number of x-direction cells
       auto ny    = coupler.get_ny   ();  // Get the local number of y-direction cells
       auto nz    = coupler.get_nz   ();  // Get the number of z-direction cells
@@ -265,7 +265,7 @@ namespace modules {
             }
           });
           // Aggregate the global upstream wind velocities at the turbine from all MPI tasks
-          yakl::SArray<float,1,2> weights_tot;
+          yakl::SArray<float,2> weights_tot;
           weights_tot(0) = yakl::intrinsics::sum(uvel_3d);
           weights_tot(1) = yakl::intrinsics::sum(vvel_3d);
           weights_tot = turbine.par_comm.all_reduce( weights_tot , MPI_SUM , "windmill_Allreduce1" );
@@ -350,7 +350,7 @@ namespace modules {
             });
           }
           // Reduce projection sums for normalization
-          yakl::SArray<float,1,2> weights_tot2;
+          yakl::SArray<float,2> weights_tot2;
           weights_tot2(0) = yakl::intrinsics::sum(disk_weight_proj);
           weights_tot2(1) = yakl::intrinsics::sum(disk_weight_samp);
           weights_tot2 = turbine.par_comm.all_reduce( weights_tot2 , MPI_SUM , "windmill_Allreduce1" );
@@ -377,7 +377,7 @@ namespace modules {
             }
           });
           // Reduce weighted sums of sampled upstream inflow u and v velocities
-          SArray<float,1,2> sums;
+          SArray<float,2> sums;
           sums(0) = yakl::intrinsics::sum( samp_u );
           sums(1) = yakl::intrinsics::sum( samp_v );
           sums = turbine.par_comm.all_reduce( sums , MPI_SUM , "windmill_Allreduce2" );
@@ -442,8 +442,8 @@ namespace modules {
                             RefTurbine    const & ref_turbine ,
                             real                & avg_u       ,
                             real                & avg_v       ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto  nx         = coupler.get_nx  ();     // Get the local number of x-direction cells
       auto  ny         = coupler.get_ny  ();     // Get the local number of y-direction cells
       auto  nz         = coupler.get_nz  ();     // Get the number of z-direction cells

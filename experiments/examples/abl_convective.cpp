@@ -14,7 +14,6 @@ int main(int argc, char** argv) {
   Kokkos::initialize();
   yakl::init();
   {
-    yakl::timer_start("main");
 
     real dx = 10;
 
@@ -133,7 +132,6 @@ int main(int argc, char** argv) {
       }
     } // End main simulation loop
 
-    yakl::timer_stop("main");
   }
   yakl::finalize();
   Kokkos::finalize();

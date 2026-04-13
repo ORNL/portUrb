@@ -146,8 +146,8 @@ namespace modules {
                         real                  base_loc_y  ,
                         RefTurbine    const & ref_turbine ,
                         bool                  apply_thrust = true ) {
-        using yakl::c::parallel_for;
-        using yakl::c::SimpleBounds;
+        using yakl::parallel_for;
+        using yakl::SimpleBounds;
         auto i_beg  = coupler.get_i_beg();
         auto j_beg  = coupler.get_j_beg();
         auto nx     = coupler.get_nx();
@@ -297,8 +297,8 @@ namespace modules {
 
 
     void init( core::Coupler &coupler ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx   = coupler.get_nx  ();
       auto ny   = coupler.get_ny  ();
       auto nz   = coupler.get_nz  ();
@@ -465,8 +465,8 @@ namespace modules {
 
 
     void apply( core::Coupler & coupler , F dt ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx              = coupler.get_nx   ();
       auto ny              = coupler.get_ny   ();
       auto nz              = coupler.get_nz   ();
@@ -488,10 +488,10 @@ namespace modules {
       auto thrust_shape    = DefaultThrustShape();
       auto proj_shape_1d   = DefaultProjectionShape1D();
 
-      yakl::Array<F,3,yakl::memDevice> tend_u  ("tend_u"  ,nz,ny,nx);
-      yakl::Array<F,3,yakl::memDevice> tend_v  ("tend_v"  ,nz,ny,nx);
-      yakl::Array<F,3,yakl::memDevice> tend_w  ("tend_w"  ,nz,ny,nx);
-      yakl::Array<F,3,yakl::memDevice> tend_tke("tend_tke",nz,ny,nx);
+      yakl::Array<F ***,yakl::DeviceSpace> tend_u  ("tend_u"  ,nz,ny,nx);
+      yakl::Array<F ***,yakl::DeviceSpace> tend_v  ("tend_v"  ,nz,ny,nx);
+      yakl::Array<F ***,yakl::DeviceSpace> tend_w  ("tend_w"  ,nz,ny,nx);
+      yakl::Array<F ***,yakl::DeviceSpace> tend_tke("tend_tke",nz,ny,nx);
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         tend_u         (k,j,i) = 0;
         tend_v         (k,j,i) = 0;
@@ -524,7 +524,7 @@ namespace modules {
           auto  ref_power       = turbine.ref_turbine.power_host      ; // For interpolation
           auto  ref_rotation    = turbine.ref_turbine.rotation_host   ; // For interpolation
           bool  do_blades       = coupler.get_option<bool>("turbine_do_blades",true) &&
-                                  ( ref_rotation.initialized() || coupler.option_exists("turbine_rot_fixed") ) &&
+                                  ( ref_rotation.is_allocated() || coupler.option_exists("turbine_rot_fixed") ) &&
                                   ( dx*(63/rad) < 16 );
           F overhang            = turbine.ref_turbine.overhang;
           F hub_radius          = turbine.ref_turbine.hub_radius;
@@ -573,12 +573,12 @@ namespace modules {
 
           // Zero out disk weights for projection and sampling
           // Compute average winds in a 3-D tet around the turbine hub to compute upstream direction
-          yakl::Array<F,3,yakl::memDevice> disk_weight_angle("disk_weight_angle",nz,ny,nx);
-          yakl::Array<F,3,yakl::memDevice> disk_weight_proj ("disk_weight_proj" ,nz,ny,nx);
-          yakl::Array<F,3,yakl::memDevice> disk_weight_samp ("disk_weight_samp" ,nz,ny,nx);
-          yakl::Array<F,3,yakl::memDevice> blade_weight_proj("blade_weight_proj",nz,ny,nx);
-          yakl::Array<F,3,yakl::memDevice> uvel_3d          ("uvel_3d"          ,nz,ny,nx);
-          yakl::Array<F,3,yakl::memDevice> vvel_3d          ("vvel_3d"          ,nz,ny,nx);
+          yakl::Array<F ***,yakl::DeviceSpace> disk_weight_angle("disk_weight_angle",nz,ny,nx);
+          yakl::Array<F ***,yakl::DeviceSpace> disk_weight_proj ("disk_weight_proj" ,nz,ny,nx);
+          yakl::Array<F ***,yakl::DeviceSpace> disk_weight_samp ("disk_weight_samp" ,nz,ny,nx);
+          yakl::Array<F ***,yakl::DeviceSpace> blade_weight_proj("blade_weight_proj",nz,ny,nx);
+          yakl::Array<F ***,yakl::DeviceSpace> uvel_3d          ("uvel_3d"          ,nz,ny,nx);
+          yakl::Array<F ***,yakl::DeviceSpace> vvel_3d          ("vvel_3d"          ,nz,ny,nx);
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             disk_weight_angle(k,j,i) = 0;
             disk_weight_proj (k,j,i) = 0;
@@ -597,7 +597,7 @@ namespace modules {
               vvel_3d(k,j,i) = 0;
             }
           });
-          yakl::SArray<F,1,2> weights_tot;
+          yakl::SArray<F,2> weights_tot;
           weights_tot(0) = yakl::intrinsics::sum(uvel_3d);
           weights_tot(1) = yakl::intrinsics::sum(vvel_3d);
           weights_tot = turbine.par_comm.all_reduce( weights_tot , MPI_SUM , "windmill_Allreduce1" );
@@ -614,7 +614,7 @@ namespace modules {
           F upstream_x_offset = -4*rad*std::cos(upstream_dir);
           F upstream_y_offset = -4*rad*std::sin(upstream_dir);
           // Compute and sum weights for disk projection and upstream sampling projection
-          yakl::Array<F,2,yakl::memDevice> umag_19_5m_2d("umag_19_5m_2d",ny,nx);
+          yakl::Array<F **,yakl::DeviceSpace> umag_19_5m_2d("umag_19_5m_2d",ny,nx);
           {
             // Project disks
             // Reference space is centered about the origin with the turbine disk facing toward the west
@@ -671,9 +671,9 @@ namespace modules {
             if (do_blades) {
               // Each blade's reference space is centered about the origin, pointed upward, facing westward.
               // Zero out shaping function for projection of each blade
-              yakl::Array<F,3,yakl::memDevice> blade_1("blade_1",nz,ny,nx);
-              yakl::Array<F,3,yakl::memDevice> blade_2("blade_2",nz,ny,nx);
-              yakl::Array<F,3,yakl::memDevice> blade_3("blade_3",nz,ny,nx);
+              yakl::Array<F ***,yakl::DeviceSpace> blade_1("blade_1",nz,ny,nx);
+              yakl::Array<F ***,yakl::DeviceSpace> blade_2("blade_2",nz,ny,nx);
+              yakl::Array<F ***,yakl::DeviceSpace> blade_3("blade_3",nz,ny,nx);
               parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
                 blade_1(k,j,i) = 0;
                 blade_2(k,j,i) = 0;
@@ -791,7 +791,7 @@ namespace modules {
                   }
                 }
               });
-              yakl::SArray<F,1,3> blade_sum;
+              yakl::SArray<F,3> blade_sum;
               blade_sum(0) = yakl::intrinsics::sum(blade_1);
               blade_sum(1) = yakl::intrinsics::sum(blade_2);
               blade_sum(2) = yakl::intrinsics::sum(blade_3);
@@ -832,7 +832,7 @@ namespace modules {
           }
           // Reduce projection and 19.5m wind sums for normalization
           using yakl::componentwise::operator>;
-          yakl::SArray<F,1,5> weights_tot2;
+          yakl::SArray<F,5> weights_tot2;
           weights_tot2(0) = yakl::intrinsics::sum(umag_19_5m_2d);
           weights_tot2(1) = (F) yakl::intrinsics::count(umag_19_5m_2d > 0.f);
           weights_tot2(2) = yakl::intrinsics::sum(disk_weight_proj);
@@ -869,8 +869,8 @@ namespace modules {
           // Normalize disk weights for projection and upstream sampling so they sum to one
           // Aggregate disk-averaged wind velocities in upstream sampling region
           // Normalize cell angle by projected weights if blades are not used
-          yakl::Array<F,3,yakl::memDevice> samp_u("samp_u",nz,ny,nx);
-          yakl::Array<F,3,yakl::memDevice> samp_v("samp_v",nz,ny,nx);
+          yakl::Array<F ***,yakl::DeviceSpace> samp_u("samp_u",nz,ny,nx);
+          yakl::Array<F ***,yakl::DeviceSpace> samp_v("samp_v",nz,ny,nx);
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             if (disk_weight_proj(k,j,i) > 0) {
               if (! do_blades && disk_weight_proj(k,j,i) > 1.e-10) disk_weight_angle(k,j,i) /= disk_weight_proj(k,j,i);
@@ -888,7 +888,7 @@ namespace modules {
             }
           });
           // Reduce weighted sums of sampled upstream inflow u and v velocities
-          SArray<F,1,2> sums;
+          SArray<F,2> sums;
           sums(0) = yakl::intrinsics::sum( samp_u );
           sums(1) = yakl::intrinsics::sum( samp_v );
           sums = turbine.par_comm.all_reduce( sums , MPI_SUM , "windmill_Allreduce2" );
@@ -910,7 +910,7 @@ namespace modules {
           F pwr = interp( ref_velmag , ref_power       , inertial_mag0 ); // Interpolate power generation
           C_T = std::min((F)1.,C_T);
           F rot_speed = 0;
-          if (ref_rotation.initialized()) rot_speed = interp( ref_velmag , ref_rotation , inertial_mag0 );
+          if (ref_rotation.is_allocated()) rot_speed = interp( ref_velmag , ref_rotation , inertial_mag0 );
           if (coupler.option_exists("turbine_rot_fixed")) rot_speed = coupler.get_option<real>("turbine_rot_fixed");
           if (inertial_mag0 > 1.e-10) {
             if ( ! coupler.get_option<bool>("turbine_orig_C_T",true) ) {

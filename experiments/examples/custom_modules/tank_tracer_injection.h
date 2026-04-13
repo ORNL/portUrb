@@ -16,8 +16,8 @@ namespace custom_modules {
                                      real            conc        ,
                                      real            wvel        ,
                                      std::string     tracer_name ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     using yakl::componentwise::operator/;  // Allows use of '/' on yakl::Array objects
     using yakl::componentwise::operator-;  // Allows use of '-' on yakl::Array objects
     auto nx      = coupler.get_nx();      // Get local number of cells in x-direction

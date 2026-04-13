@@ -22,9 +22,9 @@ namespace core {
     // Struct to hold information for a send/receive operation
     template <class T, int N>
     struct SendRecvPack {
-      yakl::Array<T,N,yakl::memDevice,yakl::styleC>  arr;  // YAKL array to send/receive
-      int                                            them; // Rank ID of the other rank to send to / receive from
-      int                                            tag;  // MPI tag for the send/receive operation
+      yakl::Array<typename yakl::ViewType<T,N>::type,yakl::DeviceSpace> arr;  // YAKL array to send/receive
+      int                                                               them; // Rank ID of the other rank to send to / receive from
+      int                                                               tag;  // MPI tag for the send/receive operation
     };
 
 
@@ -127,7 +127,6 @@ namespace core {
       std::vector<MPI_Status > sStat(n); // MPI statuses for sends
       std::vector<MPI_Status > rStat(n); // MPI statuses for receives
       #ifdef PORTURB_GPU_AWARE_MPI
-        if (lab != "") yakl::timer_start(lab.c_str()); // Start timer if label provided
         Kokkos::fence(); // Ensure all device operations are complete before MPI calls
         for (int i=0; i < n; i++) { // Post all receives
           auto arr = receives.at(i).arr; // Alias for receive array
@@ -139,11 +138,9 @@ namespace core {
         }
         check( MPI_Waitall(n, sReq.data(), sStat.data()) ); // Wait for all sends to complete
         check( MPI_Waitall(n, rReq.data(), rStat.data()) ); // Wait for all receives to complete
-        if (lab != "") yakl::timer_stop(lab.c_str()); // Stop timer if label provided
       #else
-        if (lab != "") yakl::timer_start(lab.c_str()); // Start timer if label provided
-        std::vector<yakl::Array<T,N,yakl::memHost,yakl::styleC>> receive_host_arrays(n); // Host arrays for receives
-        std::vector<yakl::Array<T,N,yakl::memHost,yakl::styleC>> send_host_arrays(n);    // Host arrays for sends
+        std::vector<yakl::Array<typename yakl::ViewType<T,N>::type,Kokkos::HostSpace>> receive_host_arrays(n); // Host arrays for receives
+        std::vector<yakl::Array<typename yakl::ViewType<T,N>::type,Kokkos::HostSpace>> send_host_arrays(n);    // Host arrays for sends
         for (int i=0; i < n; i++) { // Post all receives
           receive_host_arrays.at(i) = receives.at(i).arr.createHostObject(); // Create host copy for receive
           check( MPI_Irecv( receive_host_arrays.at(i).data() , receive_host_arrays.at(i).size() , get_type<T>() ,
@@ -158,7 +155,6 @@ namespace core {
         check( MPI_Waitall(n, rReq.data(), rStat.data()) ); // Wait for all receives to complete
         for (int i=0; i < n; i++) { receive_host_arrays.at(i).deep_copy_to(receives.at(i).arr);} // Copy received data to device arrays
         Kokkos::fence(); // Ensure all device operations are complete
-        if (lab != "") yakl::timer_stop(lab.c_str()); // Stop timer if label provided
       #endif
     }
 
@@ -166,15 +162,13 @@ namespace core {
     ////////////////////
     // Allgather
     ////////////////////
-    // Allgather for YAKL CSArray objects
-    // arr : YAKL CSArray to allgather from each rank
+    // Allgather for YAKL Array objects
+    // arr : YAKL Array to allgather from each rank
     // lab : Optional label for timing the operation using YAKL timers
     template <class T> requires std::is_arithmetic_v<T>
-    yakl::Array<T,1,yakl::memHost,yakl::styleC> all_gather( T val , std::string lab = "" ) const {
-      if (lab != "") yakl::timer_start( lab.c_str() );
-      yakl::Array<T,1,yakl::memHost,yakl::styleC> ret("all_gather_result",nranks); // Result array
+    yakl::Array<T *,Kokkos::HostSpace> all_gather( T val , std::string lab = "" ) const {
+      yakl::Array<T *,Kokkos::HostSpace> ret("all_gather_result",nranks); // Result array
       check( MPI_Allgather( &val , 1 , get_type<T>() , ret.data() , 1 , get_type<T>() , comm ) );
-      if (lab != "") yakl::timer_stop( lab.c_str() );
       return ret;
     }
 
@@ -193,37 +187,31 @@ namespace core {
     // arr : YAKL CSArray to broadcast (will be modified on non-root ranks)
     // root : Rank ID of the root rank that holds the array to broadcast
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, int N, size_t D0, size_t D1, size_t D2, size_t D3>
-    void broadcast( yakl::CSArray<T,N,D0,D1,D2,D3> const & arr , int root = 0 , std::string lab = "" ) const {
+    template <class ViewType> requires yakl::is_SArray<ViewType>
+    void broadcast( ViewType const & arr , int root = 0 , std::string lab = "" ) const {
+      using T = typename ViewType::non_const_value_type;
       if (nranks == 1) return;
-      if (lab != "") yakl::timer_start( lab.c_str() );
       check( MPI_Bcast( arr.data()  , arr.size() , get_type<T>() , root , comm ) );
-      if (lab != "") yakl::timer_stop( lab.c_str() );
     }
 
     // Broadcast for YAKL Array objects
     // arr : YAKL Array to broadcast (will be modified on non-root ranks)
     // root : Rank ID of the root rank that holds the array to broadcast
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, int N, int MEM, int STYLE>
-    void broadcast( yakl::Array<T,N,MEM,STYLE> const & arr , int root = 0 , std::string lab = "" ) const {
+    template <class ViewType> requires yakl::is_Array<ViewType>
+    void broadcast( ViewType const & arr , int root = 0 , std::string lab = "" ) const {
+      using T = typename ViewType::non_const_value_type;
       if (nranks == 1) return;
-      if constexpr (MEM == yakl::memHost) {
-        if (lab != "") yakl::timer_start( lab.c_str() );
+      if constexpr (! ViewType::on_device) {
         check( MPI_Bcast( arr.data() , arr.size() , get_type<T>() , root , comm ) );
-        if (lab != "") yakl::timer_stop( lab.c_str() );
       } else {
         #ifdef PORTURB_GPU_AWARE_MPI
-          if (lab != "") yakl::timer_start( lab.c_str() );
           Kokkos::fence();
           check( MPI_Bcast( arr.data() , arr.size() , get_type<T>() , root , comm ) );
-          if (lab != "") yakl::timer_stop( lab.c_str() );
         #else
-          if (lab != "") yakl::timer_start( lab.c_str() );
           auto arr_host  = arr.createHostCopy();
           check( MPI_Bcast( arr_host.data() , arr.size() , get_type<T>() , root , comm ) );
           arr_host.deep_copy_to(arr);
-          if (lab != "") yakl::timer_stop( lab.c_str() );
         #endif
       }
     }
@@ -236,9 +224,7 @@ namespace core {
     template <class T> requires std::is_arithmetic_v<T>
     void broadcast( T & val , int root = 0 , std::string lab = "" ) const {
       if (nranks == 1) return;
-      if (lab != "") yakl::timer_start( lab.c_str() );
       check( MPI_Bcast( &val , 1 , get_type<T>() , root , comm ) );
-      if (lab != "") yakl::timer_stop( lab.c_str() );
     }
 
 
@@ -250,13 +236,12 @@ namespace core {
     // op : MPI_Op operation to use for the reduction (e.g., MPI_SUM, MPI_MAX, etc.)
     // root : Rank ID of the root rank that will hold the reduced result
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, int N, size_t D0, size_t D1, size_t D2, size_t D3>
-    yakl::CSArray<T,N,D0,D1,D2,D3> reduce( yakl::CSArray<T,N,D0,D1,D2,D3> loc , MPI_Op op , int root = 0 , std::string lab = "" ) const {
+    template <class ViewType> requires yakl::is_SArray<ViewType>
+    ViewType reduce( ViewType const & loc , MPI_Op op , int root = 0 , std::string lab = "" ) const {
+      using T = typename ViewType::non_const_value_type;
       if (nranks == 1) return loc;
-      if (lab != "") yakl::timer_start( lab.c_str() );
-      yakl::CSArray<T,N,D0,D1,D2,D3> glob;
+      ViewType glob;
       check( MPI_Reduce( loc.data() , glob.data() , loc.size() , get_type<T>() , op , root , comm ) );
-      if (lab != "") yakl::timer_stop( lab.c_str() );
       return glob;
     }
 
@@ -265,29 +250,24 @@ namespace core {
     // op : MPI_Op operation to use for the reduction (e.g., MPI_SUM, MPI_MAX, etc.)
     // root : Rank ID of the root rank that will hold the reduced result
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, int N, int MEM, int STYLE>
-    yakl::Array<T,N,MEM,STYLE> reduce( yakl::Array<T,N,MEM,STYLE> loc , MPI_Op op , int root = 0 , std::string lab = "" ) const {
+    template <class ViewType> requires yakl::is_Array<ViewType>
+    ViewType reduce( ViewType const & loc , MPI_Op op , int root = 0 , std::string lab = "" ) const {
+      using T = typename ViewType::non_const_value_type;
       if (nranks == 1) return loc;
-      if constexpr (MEM == yakl::memHost) {
-        if (lab != "") yakl::timer_start( lab.c_str() );
+      if constexpr (! ViewType::on_device) {
         auto glob = loc.createHostObject();
         check( MPI_Reduce( loc.data() , glob.data() , loc.size() , get_type<T>() , op , root , comm ) );
-        if (lab != "") yakl::timer_stop( lab.c_str() );
         return glob;
       } else {
         #ifdef PORTURB_GPU_AWARE_MPI
-          if (lab != "") yakl::timer_start( lab.c_str() );
           auto glob = loc.createDeviceObject();
           Kokkos::fence();
           check( MPI_Reduce( loc.data() , glob.data() , loc.size() , get_type<T>() , op , root , comm ) );
-          if (lab != "") yakl::timer_stop( lab.c_str() );
           return glob;
         #else
-          if (lab != "") yakl::timer_start( lab.c_str() );
           auto loc_host  = loc.createHostCopy  ();
           auto glob_host = loc.createHostObject();
           check( MPI_Reduce( loc_host.data() , glob_host.data() , loc.size() , get_type<T>() , op , root , comm ) );
-          if (lab != "") yakl::timer_stop( lab.c_str() );
           return glob_host.createDeviceCopy();
         #endif
       }
@@ -302,10 +282,8 @@ namespace core {
     template <class T> requires std::is_arithmetic_v<T>
     T reduce( T loc , MPI_Op op , int root = 0 , std::string lab = "" ) const {
       if (nranks == 1) return loc;
-      if (lab != "") yakl::timer_start( lab.c_str() );
       T glob;
       check( MPI_Reduce( &loc , &glob , 1 , get_type<T>() , op , root , comm ) );
-      if (lab != "") yakl::timer_stop( lab.c_str() );
       return glob;
     }
 
@@ -317,13 +295,12 @@ namespace core {
     // arr : YAKL CSArray to allreduce from each rank
     // op : MPI_Op operation to use for the allreduction (e.g., MPI_SUM, MPI_MAX, etc.)
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, int N, size_t D0, size_t D1, size_t D2, size_t D3>
-    yakl::CSArray<T,N,D0,D1,D2,D3> all_reduce( yakl::CSArray<T,N,D0,D1,D2,D3> loc , MPI_Op op , std::string lab = "" ) const {
+    template <class ViewType> requires yakl::is_SArray<ViewType>
+    ViewType all_reduce( ViewType const & loc , MPI_Op op , std::string lab = "" ) const {
+      using T = typename ViewType::non_const_value_type;
       if (nranks == 1) return loc;
-      if (lab != "") yakl::timer_start( lab.c_str() );
-      yakl::CSArray<T,N,D0,D1,D2,D3> glob;
+      ViewType glob;
       check( MPI_Allreduce( loc.data() , glob.data() , loc.size() , get_type<T>() , op , comm ) );
-      if (lab != "") yakl::timer_stop( lab.c_str() );
       return glob;
     }
 
@@ -331,29 +308,24 @@ namespace core {
     // arr : YAKL Array to allreduce from each rank
     // op : MPI_Op operation to use for the allreduction (e.g., MPI_SUM, MPI_MAX, etc.)
     // lab : Optional label for timing the operation using YAKL timers
-    template <class T, int N, int MEM, int STYLE>
-    yakl::Array<T,N,MEM,STYLE> all_reduce( yakl::Array<T,N,MEM,STYLE> loc , MPI_Op op , std::string lab = "" ) const {
+    template <class ViewType> requires yakl::is_Array<ViewType>
+    ViewType all_reduce( ViewType const & loc , MPI_Op op , std::string lab = "" ) const {
+      using T = typename ViewType::non_const_value_type;
       if (nranks == 1) return loc;
-      if constexpr (MEM == yakl::memHost) {
-        if (lab != "") yakl::timer_start( lab.c_str() );
+      if constexpr (! ViewType::on_device) {
         auto glob = loc.createHostObject();
         check( MPI_Allreduce( loc.data() , glob.data() , loc.size() , get_type<T>() , op , comm ) );
-        if (lab != "") yakl::timer_stop( lab.c_str() );
         return glob;
       } else {
         #ifdef PORTURB_GPU_AWARE_MPI
-          if (lab != "") yakl::timer_start( lab.c_str() );
           auto glob = loc.createDeviceObject();
           Kokkos::fence();
           check( MPI_Allreduce( loc.data() , glob.data() , loc.size() , get_type<T>() , op , comm ) );
-          if (lab != "") yakl::timer_stop( lab.c_str() );
           return glob;
         #else
-          if (lab != "") yakl::timer_start( lab.c_str() );
           auto loc_host  = loc.createHostCopy  ();
           auto glob_host = loc.createHostObject();
           check( MPI_Allreduce( loc_host.data() , glob_host.data() , loc.size() , get_type<T>() , op , comm ) );
-          if (lab != "") yakl::timer_stop( lab.c_str() );
           return glob_host.createDeviceCopy();
         #endif
       }
@@ -367,10 +339,8 @@ namespace core {
     template <class T> requires std::is_arithmetic_v<T>
     T all_reduce( T loc , MPI_Op op , std::string lab = "" ) const {
       if (nranks == 1) return loc;
-      if (lab != "") yakl::timer_start( lab.c_str() );
       T glob;
       check( MPI_Allreduce( &loc , &glob , 1 , get_type<T>() , op , comm ) );
-      if (lab != "") yakl::timer_stop( lab.c_str() );
       return glob;
     }
 
