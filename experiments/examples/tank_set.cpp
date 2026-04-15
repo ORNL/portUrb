@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
 
     real scale = 1./1250.;
     real dx = 0.3*scale;
-    real u0 = 0.51;
+    real u0 = 0.62;
 
     modules::TriMesh mesh;
     mesh.load_file("/ccs/home/imn/330deg.obj");
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "is_restart"                         , is_restart  );
     coupler.set_option<std::string>( "restart_file"                       , ""          );
     coupler.set_option<real       >( "latitude"                           , 0.          );
-    coupler.set_option<real       >( "roughness"                          , dx/20.      );
+    coupler.set_option<real       >( "roughness"                          , dx/50.      );
     coupler.set_option<real       >( "init_density"                       , 1           );
     coupler.set_option<real       >( "init_temperature"                   , 300         );
     coupler.set_option<real       >( "init_uvel"                          , u0          );
@@ -140,14 +140,14 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_height;
         using custom_modules::tank_tracer_injection;
-        real x1   = (offset_x1+disk_x/2-4)*scale;
-        real x2   = (offset_x1+disk_x/2+4)*scale;
-        real y1   = (offset_y1+disk_y/2-4)*scale;
-        real y2   = (offset_y1+disk_y/2+4)*scale;
-        real z1   = 1  *scale;
-        real z2   = 2  *scale;
-        real conc = 0.1;
-        real wvel = 0.828932;
+        real x1   = (offset_x1+disk_x/2-2)*scale;
+        real x2   = (offset_x1+disk_x/2+2)*scale;
+        real y1   = (offset_y1+disk_y/2-2)*scale;
+        real y2   = (offset_y1+disk_y/2+2)*scale;
+        real z1   = 2   *scale;
+        real z2   = 4.25*scale;
+        real conc = 1;
+        real wvel = 0.77;
         coupler.run_module( [&] (Coupler &c) { tank_tracer_injection(c,dt,x1,x2,y1,y2,z1,z2,conc,wvel,"tank_tracer"); } , "tracer_inj" );
         real hr = 11.2*scale*2;
         real ur = u0;
