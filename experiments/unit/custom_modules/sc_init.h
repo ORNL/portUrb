@@ -87,8 +87,8 @@ namespace custom_modules {
     dm_rho_v          = 0;
     // Quadrature parameters
     const int nqpoints = 9;
-    SArray<real,1,nqpoints> qpoints;
-    SArray<real,1,nqpoints> qweights;
+    SArray<real,nqpoints> qpoints;
+    SArray<real,nqpoints> qweights;
     TransformMatrices::get_gll_points (qpoints );
     TransformMatrices::get_gll_weights(qweights);
 

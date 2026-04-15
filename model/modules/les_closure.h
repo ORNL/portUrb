@@ -24,8 +24,8 @@ namespace modules {
     // mult_r  : whether to multiply t field by r field
     // return   : tuple of (total mass of r field, total mass of t field)
     std::tuple<real,real> compute_mass( core::Coupler & coupler , real4d const & state , bool mult_r ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx = coupler.get_nx(); // Local number of cells in the x-direction
       auto ny = coupler.get_ny(); // Local number of cells in the y-direction
       auto nz = coupler.get_nz(); // Number of cells in the z-direction
@@ -53,8 +53,8 @@ namespace modules {
     // This also compute hydrostatic profiles based on initial coupler state so that operations are performed
     //   on perturbation potential temperature rather than full potential temperature
     void init( core::Coupler &coupler ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx      = coupler.get_nx  ();     // Local number of cells in the x-direction
       auto ny      = coupler.get_ny  ();     // Local number of cells in the y-direction
       auto nz      = coupler.get_nz  ();     // Number of cells in the z-direction
@@ -132,8 +132,8 @@ namespace modules {
     // Applies the LES closure to update the state and tracers in the coupler over the time step dtphys
     // This includes computing fluxes, updating TKE, and applying necessary boundary conditions
     void apply( core::Coupler &coupler , real dtphys ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx             = coupler.get_nx();  // Local number of cells in the x-direction
       auto ny             = coupler.get_ny();  // Local number of cells in the y-direction
       auto nz             = coupler.get_nz();  // Number of cells in the z-direction
@@ -491,8 +491,8 @@ namespace modules {
                                       real4d              &state   ,
                                       real4d              &tracers ,
                                       real3d              &tke     ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx           = coupler.get_nx();  // Number of local cells in x-direction (without halos)
       auto ny           = coupler.get_ny();  // Number of local cells in y-direction (without halos)
       auto nz           = coupler.get_nz();  // Number of cells in z-direction (without halos)
@@ -547,8 +547,8 @@ namespace modules {
                                       realConst4d    state   ,
                                       realConst4d    tracers ,
                                       realConst3d    tke     ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx           = coupler.get_nx();  // Number of local cells in x-direction (without halos)
       auto ny           = coupler.get_ny();  // Number of local cells in y-direction (without halos)
       auto nz           = coupler.get_nz();  // Number of cells in z-direction (without halos)
@@ -599,8 +599,8 @@ namespace modules {
                    real4d        const & state   ,
                    real4d        const & tracers ,
                    real3d        const & tke     ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx             = coupler.get_nx();      // Number of local cells in x-direction (without halos)
       auto ny             = coupler.get_ny();      // Number of local cells in y-direction (without halos)
       auto nz             = coupler.get_nz();      // Number of cells in z-direction (without halos)

@@ -21,9 +21,9 @@ namespace modules {
   struct Dynamics_Euler_Stratified_WenoFV {
     // Order of accuracy (numerical convergence rate for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
-      size_t static constexpr ord = 9;
+      int static constexpr ord = 9;
     #else
-      size_t static constexpr ord = PORTURB_ORD;
+      int static constexpr ord = PORTURB_ORD;
     #endif
     int static constexpr hs  = (ord+1)/2; // Number of halo cells ("hs" == "halo size")
     int static constexpr num_state = 5;   // Number of state variables
@@ -44,8 +44,8 @@ namespace modules {
     // state   : State array from the dynamical core
     // Returns a tuple of summed dry air mass and virtual potential temperature mass
     std::tuple<real,real> compute_mass( core::Coupler & coupler , real4d const & state ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx = coupler.get_nx();
       auto ny = coupler.get_ny();
       auto nz = coupler.get_nz();
@@ -78,8 +78,8 @@ namespace modules {
       return cfl * std::min( std::min( dx , dy ) , minval(dz) ) / maxwave;
     }
     // real compute_time_step( core::Coupler const &coupler ) const {
-    //   using yakl::c::parallel_for;
-    //   using yakl::c::SimpleBounds;
+    //   using yakl::parallel_for;
+    //   using yakl::SimpleBounds;
     //   auto nx = coupler.get_nx();
     //   auto ny = coupler.get_ny();
     //   auto nz = coupler.get_nz();
@@ -127,8 +127,8 @@ namespace modules {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("time_step");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto num_tracers = coupler.get_num_tracers(); // Total number of tracers
       auto nx          = coupler.get_nx(); // Number of cells in x-direction (excluding halos)
       auto ny          = coupler.get_ny(); // Number of cells in y-direction (excluding halos)
@@ -248,8 +248,8 @@ namespace modules {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("time_step_rk_3_3");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto num_tracers = coupler.get_num_tracers(); // Total number of tracers
       auto nx          = coupler.get_nx();          // Number of cells in x-direction (excluding halos)
       auto ny          = coupler.get_ny();          // Number of cells in y-direction (excluding halos)
@@ -338,8 +338,8 @@ namespace modules {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("time_step_rk_3_3");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto num_tracers = coupler.get_num_tracers();           // Total number of tracers
       auto nx          = coupler.get_nx();                    // Number of cells in x-direction (excluding halos)
       auto ny          = coupler.get_ny();                    // Number of cells in y-direction (excluding halos)
@@ -442,8 +442,8 @@ namespace modules {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("time_step_rk_3_3");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto num_tracers = coupler.get_num_tracers();            // Total number of tracers
       auto nx          = coupler.get_nx();                     // Number of cells in x-direction (excluding halos)
       auto ny          = coupler.get_ny();                     // Number of cells in y-direction (excluding halos)
@@ -532,8 +532,8 @@ namespace modules {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("enforce_immersed_boundaries");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto num_tracers     = coupler.get_num_tracers();                    // Total number of tracers
       auto nx              = coupler.get_nx();                             // Number of cells in x-direction (excluding halos)
       auto ny              = coupler.get_ny();                             // Number of cells in y-direction (excluding halos)
@@ -596,9 +596,9 @@ namespace modules {
     // Once you encounter an immersed boundary, set zero derivative boundary conditions from there out in that direction
     // stencil  : Stencil array to modify
     // immersed : Boolean array indicating which points are immersed
-    template <class FP, size_t ORD>
-    KOKKOS_INLINE_FUNCTION static void modify_stencil_immersed_der0( SArray<FP  ,1,ORD>       & stencil  ,
-                                                                     SArray<bool,1,ORD> const & immersed ) {
+    template <class FP, int ORD>
+    KOKKOS_INLINE_FUNCTION static void modify_stencil_immersed_der0( SArray<FP  ,ORD>       & stencil  ,
+                                                                     SArray<bool,ORD> const & immersed ) {
       int constexpr hs = (ORD-1)/2; // Halo size
       // Don't modify the stencils of immersed cells
       if (! immersed(hs)) {
@@ -617,7 +617,7 @@ namespace modules {
     // Compute hyperviscosity derivatives from a stencil of values
     // s   : Stencil of values to compute hyperviscosity from
     // ord : Order of hyperviscosity (must be odd: 3,5,...)
-    real static KOKKOS_INLINE_FUNCTION hypervis( SArray<FLOC,1,ord> const &s) {
+    real static KOKKOS_INLINE_FUNCTION hypervis( SArray<FLOC,ord> const &s) {
       if      constexpr (ord == 3 ) { return  ( 1.00000000f*s(0)-2.00000000f*s(1)+1.00000000f*s(2) )/4; }
       else if constexpr (ord == 5 ) { return -( 1.00000000f*s(0)-4.00000000f*s(1)+6.00000000f*s(2)-4.00000000f*s(3)+1.00000000f*s(4) )/16; }
       else if constexpr (ord == 7 ) { return  ( 1.00000000f*s(0)-6.00000000f*s(1)+15.0000000f*s(2)-20.0000000f*s(3)+15.0000000f*s(4)-6.00000000f*s(5)+1.00000000f*s(6) )/64; }
@@ -653,8 +653,8 @@ namespace modules {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("compute_tendencies");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx                = coupler.get_nx();           // Number of cells in x-direction (excluding halos)
       auto ny                = coupler.get_ny();           // Number of cells in y-direction (excluding halos)
       auto nz                = coupler.get_nz();           // Number of cells in z-direction (excluding halos)
@@ -696,7 +696,7 @@ namespace modules {
       int constexpr hsm1 = hs-1; // Halo size minus one
 
       // High-order edge interpolation weights for cell edges when not using WENO
-      SArray<FLOC,1,ord> wt;
+      SArray<FLOC,ord> wt;
       if      constexpr (ord == 3 ) {
         wt(0) =  0.333333333f;
         wt(1) = +0.833333333f;
@@ -740,7 +740,7 @@ namespace modules {
       }
 
       // The main working array that holds all prognostic variables plus pressure
-      yakl::Array<FLOC,4> fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
+      yakl::Array<FLOC ****> fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
       bool rsst = coupler.get_option<real>("dycore_cs",350) != 350; // Whether reduced speed of sound technique is being used
 
       // Load state and tracers into working array, dividing by density to get specific quantities, computing pressure,
@@ -783,19 +783,19 @@ namespace modules {
       halo_boundary_conditions( coupler , fields_loc , istage , icycle );
 
       // Storage for cell-edge fluxes in each direction
-      yakl::Array<FLOC,4> flux_x("flux_x",num_state+num_tracers,nz,ny,nx+1);
-      yakl::Array<FLOC,4> flux_y("flux_y",num_state+num_tracers,nz,ny+1,nx);
-      yakl::Array<FLOC,4> flux_z("flux_z",num_state+num_tracers,nz+1,ny,nx);
+      yakl::Array<FLOC ****> flux_x("flux_x",num_state+num_tracers,nz,ny,nx+1);
+      yakl::Array<FLOC ****> flux_y("flux_y",num_state+num_tracers,nz,ny+1,nx);
+      yakl::Array<FLOC ****> flux_z("flux_z",num_state+num_tracers,nz+1,ny,nx);
 
       // Storage for cell-edge pressure in each direction
-      yakl::Array<FLOC,3> p_x("p_x",nz,ny,nx+1);
-      yakl::Array<FLOC,3> p_y("p_y",nz,ny+1,nx);
-      yakl::Array<FLOC,3> p_z("p_z",nz+1,ny,nx);
+      yakl::Array<FLOC ***> p_x("p_x",nz,ny,nx+1);
+      yakl::Array<FLOC ***> p_y("p_y",nz,ny+1,nx);
+      yakl::Array<FLOC ***> p_z("p_z",nz+1,ny,nx);
 
       // Storage for cell-edge momentum in each direction
-      yakl::Array<FLOC,3> ru_x("ru_x",nz,ny,nx+1);
-      yakl::Array<FLOC,3> rv_y("rv_y",nz,ny+1,nx);
-      yakl::Array<FLOC,3> rw_z("rw_z",nz+1,ny,nx);
+      yakl::Array<FLOC ***> ru_x("ru_x",nz,ny,nx+1);
+      yakl::Array<FLOC ***> rv_y("rv_y",nz,ny+1,nx);
+      yakl::Array<FLOC ***> rw_z("rw_z",nz+1,ny,nx);
 
       // Determine if the bottom and top boundaries are solid walls
       auto wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
@@ -812,8 +812,8 @@ namespace modules {
 
       // Reconstruct upwind cell-edge pressure and momentum in x-direction
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
-        SArray<bool,1,ord> immersed; // Whether a stencil cell is immersed
-        SArray<FLOC,1,ord> s;        // Stencil values
+        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
+        SArray<FLOC,ord> s;        // Stencil values
         
         // Load the stencils for cell immersion and pressure with the cell to the left of the edge as the center cell
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > imm_th; }
@@ -871,8 +871,8 @@ namespace modules {
 
       // Reconstruct upwind cell-edge pressure and momentum in y-direction
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        SArray<bool ,1,ord> immersed; // Whether a stencil cell is immersed
-        SArray<FLOC,1,ord> s;         // Stencil values
+        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
+        SArray<FLOC,ord> s;         // Stencil values
 
         // Load the stencils for cell immersion and pressure with the cell left of the edge as the center cell
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > imm_th; }
@@ -936,8 +936,8 @@ namespace modules {
 
       // Reconstruct upwind cell-edge pressure and momentum in z-direction
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        SArray<bool ,1,ord> immersed; // Whether a stencil cell is immersed
-        SArray<FLOC,1,ord> s;         // Stencil values
+        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
+        SArray<FLOC,ord> s;         // Stencil values
 
         // Load the stencils for cell immersion and pressure with the cell left of the edge as the center cell
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > imm_th; }
@@ -1026,7 +1026,7 @@ namespace modules {
 
       // Reconstruct cell-edge advectively upwind advected quantities and compute total fluxes in x-direction
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
-        SArray<bool ,1,ord> immersed; // Whether a stencil cell is immersed
+        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         FLOC ru = ru_x(k,j,i);        // Acoustically upwinded momentum in x-direction
         int ind = ru > 0 ? 0 : 1;     // Determine index offset based on flow direction
         // Load the cell immersersion stencil based on upwind offset
@@ -1034,7 +1034,7 @@ namespace modules {
         bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
           // Gather the stencil values based on upwind offset
-          SArray<FLOC,1,ord> s;
+          SArray<FLOC,ord> s;
           for (int ii = 0; ii < ord; ii++) { s(ii) = advect_fields(l,hs+k,hs+j,i+ii+ind); }
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
@@ -1056,7 +1056,7 @@ namespace modules {
 
       // Reconstruct cell-edge advectively upwind advected quantities and compute total fluxes in y-direction
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        SArray<bool ,1,ord> immersed; // Whether a stencil cell is immersed
+        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         FLOC rv = rv_y(k,j,i);        // Acoustically upwinded momentum in y-direction
         int ind = rv > 0 ? 0 : 1;     // Determine index offset based on flow direction
         // Load the cell immersion stencil based on upwind offset
@@ -1064,7 +1064,7 @@ namespace modules {
         bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
           // Gather the stencil values based on upwind offset
-          SArray<FLOC,1,ord> s;
+          SArray<FLOC,ord> s;
           for (int jj = 0; jj < ord; jj++) { s(jj) = advect_fields(l,hs+k,j+jj+ind,hs+i); }
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
@@ -1086,7 +1086,7 @@ namespace modules {
 
       // Reconstruct cell-edge advectively upwind advected quantities and compute total fluxes in z-direction
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        SArray<bool ,1,ord> immersed; // Whether a stencil cell is immersed
+        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         FLOC rw = rw_z(k,j,i);        // Acoustically upwinded momentum in z-direction
         int ind = rw > 0 ? 0 : 1;     // Determine index offset based on flow direction
         // Load the cell immersion stencil based on upwind offset
@@ -1094,7 +1094,7 @@ namespace modules {
         bool do_map = immersed(hsm1-1) || immersed(hsm1+1);
         for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
           // Gather the stencil values based on upwind offset
-          SArray<FLOC,1,ord> s;
+          SArray<FLOC,ord> s;
           for (int kk = 0; kk < ord; kk++) { s(kk) = advect_fields(l,k+kk+ind,hs+j,hs+i); }
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idU || l == idV) modify_stencil_immersed_der0( s , immersed );
@@ -1177,11 +1177,11 @@ namespace modules {
           else if (any_immersed8 (k,j,i)) { hv_beta = 0.1f/16.f; }
           else if (any_immersed10(k,j,i)) { hv_beta = 0.1f/32.f; }
           if (hv_beta > 0) {  // Only apply hyperviscosity if near an immersed boundary
-            SArray<bool ,1,ord> immersed; // Whether a stencil cell is immersed
+            SArray<bool,ord> immersed; // Whether a stencil cell is immersed
             // Gather cell immersion stencil in x-direction
             for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,1+i+ii) > 0; }
             for (int l=idU; l <= idW; l++) { // Loop over all advected fields
-              SArray<FLOC,1,ord> s; // Stencil values
+              SArray<FLOC,ord> s; // Stencil values
               // Gather stencil values in x-direction
               for (int ii = 0; ii < ord; ii++) { s(ii) = fields_visc(l,hs+k,hs+j,1+i+ii); }
               // For transverse velocities, modify stencil for immersed boundary zero-derivative condition
@@ -1194,7 +1194,7 @@ namespace modules {
             // Gather cell immersion stencil in y-direction
             for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,1+j+jj,hs+i) > 0; }
             for (int l=idU; l <= idW; l++) { // Loop over all advected fields
-              SArray<FLOC,1,ord> s; // Stencil values
+              SArray<FLOC,ord> s; // Stencil values
               // Gather stencil values in y-direction
               for (int jj = 0; jj < ord; jj++) { s(jj) = fields_visc(l,hs+k,1+j+jj,hs+i); }
               // For transverse velocities, modify stencil for immersed boundary zero-derivative condition
@@ -1207,7 +1207,7 @@ namespace modules {
             // Gather cell immersion stencil in z-direction
             for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(1+k+kk,hs+j,hs+i) > 0; }
             for (int l=idU; l <= idW; l++) { // Loop over all advected fields
-              SArray<FLOC,1,ord> s; // Stencil values
+              SArray<FLOC,ord> s; // Stencil values
               // Gather stencil values in z-direction
               for (int kk = 0; kk < ord; kk++) { s(kk) = fields_visc(l,1+k+kk,hs+j,hs+i); }
               // For transverse velocities, modify stencil for immersed boundary zero-derivative condition
@@ -1235,15 +1235,15 @@ namespace modules {
     // fields  : array of fields with halos
     // istage  : current RK stage
     // icycle  : current cycle number (for precursor data lookup)
-    void halo_boundary_conditions( core::Coupler & coupler            ,
-                                   yakl::Array<FLOC,4> const & fields ,
-                                   int istage                         ,
-                                   int icycle                         ) const {
+    void halo_boundary_conditions( core::Coupler & coupler               ,
+                                   yakl::Array<FLOC ****> const & fields ,
+                                   int istage                            ,
+                                   int icycle                            ) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("halo_boundary_conditions");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx           = coupler.get_nx(); // Local number of cells in x-direction (not including halos)
       auto ny           = coupler.get_ny(); // Local number of cells in y-direction (not including halos)
       auto nz           = coupler.get_nz(); // Local number of cells in z-direction (not including halos)
@@ -1472,8 +1472,8 @@ namespace modules {
     // coupler : reference to the coupler object
     // returns : average column of fields_loc from compute_tendencies
     real2d compute_average_ghost_column( core::Coupler & coupler ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx_glob           = coupler.get_nx_glob();  // Global number of cells in x-direction
       auto ny_glob           = coupler.get_ny_glob();  // Global number of cells in y-direction
       auto nx                = coupler.get_nx();       // Local number of cells in x-direction (not including halos)
@@ -1607,8 +1607,8 @@ namespace modules {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("init");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx             = coupler.get_nx();       // Local number of cells in x-direction (not including halos)
       auto ny             = coupler.get_ny();       // Local number of cells in y-direction (not including halos)
       auto nz             = coupler.get_nz();       // Local number of cells in z-direction (not including halos)
@@ -1655,7 +1655,7 @@ namespace modules {
       auto metjac_edges = dm.get<real,2>("dycore_metjac_edges");
       parallel_for( YAKL_AUTO_LABEL() , nz+2 , KOKKOS_LAMBDA (int k_in) {
         int k = k_in-1;
-        SArray<real,1,6> s;
+        SArray<real,6> s;
         s(0) = -dz(std::max(0,k-1))-dz(std::max(0,k-2));
         for (int kk=1; kk < 6; kk++) { s(kk) = s(kk-1) + dz(std::max(0,std::min(nz-1,k-3+kk))); }
         for (int kk=0; kk < 6; kk++) { s(kk) /= dz(std::max(0,std::min(nz-1,k))); }
@@ -1753,8 +1753,8 @@ namespace modules {
       // This is a lambda function to create immersed proportion halos and any_immersed arrays for use
       //  by the dynamics module
       auto create_immersed_proportion_halos = [] (core::Coupler &coupler) {
-        using yakl::c::parallel_for;
-        using yakl::c::SimpleBounds;;
+        using yakl::parallel_for;
+        using yakl::SimpleBounds;;
         auto nz     = coupler.get_nz  (); // Number of cells in z-direction (not including halos)
         auto ny     = coupler.get_ny  (); // Number of cells in y-direction (not including halos)
         auto nx     = coupler.get_nx  (); // Number of cells in x-direction (not including halos)
@@ -1764,7 +1764,7 @@ namespace modules {
         if (!dm.entry_exists("dycore_immersed_proportion_halos")) {
           // Get the immersed_proportion field from the coupler data manager that is initialized before
           //  calling this module's init function
-          auto immersed_prop = dm.get<real const,3>("immersed_proportion").createDeviceCopy<real>();
+          auto immersed_prop = dm.get<real const,3>("immersed_proportion").createDeviceCopy();
           // Create MultiField of just one field to hold the immersed proportion for halo creation and exchange
           core::MultiField<real,3> fields;
           fields.add_field( immersed_prop  );
@@ -1898,8 +1898,8 @@ namespace modules {
       // This lambda function is to interpolate hydrostatic profiles from cell centers to edges
       //  (linear for theta, and log-linear for rho and pressure)
       auto compute_hydrostasis_edges = [] (core::Coupler &coupler) {
-        using yakl::c::parallel_for;
-        using yakl::c::SimpleBounds;;
+        using yakl::parallel_for;
+        using yakl::SimpleBounds;;
         auto nz   = coupler.get_nz  (); // Number of cells in z-direction (not including halos)
         auto ny   = coupler.get_ny  (); // Number of cells in y-direction (not including halos)
         auto nx   = coupler.get_nx  (); // Number of cells in x-direction (not including halos)
@@ -1986,19 +1986,19 @@ namespace modules {
         // real3d data("data",nz,ny,nx); // Holds local 3-D perturbation data before writing
         // auto hy_dens_cells = dm.get<real const,1>("hy_dens_cells");
         // // Compute and write perturbation density
-        // yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        // yakl::parallel_for( yakl::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         //   data(k,j,i) = state(idR,k,j,i) - hy_dens_cells(hs+k);
         // });
         // nc.write_all(data,"density_pert",start_3d);
         // // Compute and write perturbation potential temperature
         // auto hy_theta_cells = dm.get<real const,1>("hy_theta_cells");
-        // yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        // yakl::parallel_for( yakl::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         //   data(k,j,i) = state(idT,k,j,i) / state(idR,k,j,i) - hy_theta_cells(hs+k);
         // });
         // nc.write_all(data,"theta_pert",start_3d);
         // // Compute and write perturbation pressure
         // auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");
-        // yakl::c::parallel_for( yakl::c::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        // yakl::parallel_for( yakl::Bounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         //   data(k,j,i) = C0 * std::pow( state(idT,k,j,i) , gamma ) - hy_pressure_cells(hs+k);
         // });
         // nc.write_all(data,"pressure_pert",start_3d);
@@ -2032,8 +2032,8 @@ namespace modules {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("convert_dynamics_to_coupler");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto  nx          = coupler.get_nx();  // Number of cells in x-direction (not including halos)
       auto  ny          = coupler.get_ny();  // Number of cells in y-direction (not including halos)
       auto  nz          = coupler.get_nz();  // Number of cells in z-direction (not including halos)
@@ -2094,8 +2094,8 @@ namespace modules {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("convert_coupler_to_dynamics");
       #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto  nx          = coupler.get_nx(); // Number of cells in x-direction (not including halos)
       auto  ny          = coupler.get_ny(); // Number of cells in y-direction (not including halos)
       auto  nz          = coupler.get_nz(); // Number of cells in z-direction (not including halos)

@@ -93,7 +93,7 @@ namespace modules {
     // to zero.
     void add_offset(float x = 0, float y = 0, float z = 0) {
       YAKL_SCOPE( faces , this->faces );
-      yakl::c::parallel_for( YAKL_AUTO_LABEL() , faces.extent(0) , KOKKOS_LAMBDA (int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , faces.extent(0) , KOKKOS_LAMBDA (int i) {
         faces(i,0,0) += x;    faces(i,0,1) += y;    faces(i,0,2) += z;
         faces(i,1,0) += x;    faces(i,1,1) += y;    faces(i,1,2) += z;
         faces(i,2,0) += x;    faces(i,2,1) += y;    faces(i,2,2) += z;
@@ -107,7 +107,7 @@ namespace modules {
     // to zero.
     void apply_scaling(float sx, float sy, float sz) {
       YAKL_SCOPE( faces , this->faces );
-      yakl::c::parallel_for( YAKL_AUTO_LABEL() , faces.extent(0) , KOKKOS_LAMBDA (int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , faces.extent(0) , KOKKOS_LAMBDA (int i) {
         faces(i,0,0) *= sx;    faces(i,0,1) *= sy;    faces(i,0,2) *= sz;
         faces(i,1,0) *= sx;    faces(i,1,1) *= sy;    faces(i,1,2) *= sz;
         faces(i,2,0) *= sx;    faces(i,2,1) *= sy;    faces(i,2,2) *= sz;

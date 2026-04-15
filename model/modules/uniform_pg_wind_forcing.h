@@ -17,8 +17,8 @@ namespace modules {
                                                                real            u0       ,
                                                                real            v0       ,
                                                                real            tau = 10 ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     auto dz      = coupler.get_dz  ().createHostCopy(); // dz on host to find vertical index
     auto zint    = coupler.get_zint().createHostCopy(); // zint on host to find vertical index
     auto nz      = coupler.get_nz();        // number of vertical levels
@@ -47,7 +47,7 @@ namespace modules {
     int k1 = std::max(0   ,k1_search  );
     int k2 = std::min(nz-1,k1_search+1);
     // Get local MPI task's horizontal sums of u and v above and below the target height
-    SArray<real,2,2,2> u_v;
+    SArray<real,2,2> u_v;
     u_v(0,0) = yakl::intrinsics::sum(uvel.slice<2>(k1,0,0));
     u_v(0,1) = yakl::intrinsics::sum(vvel.slice<2>(k1,0,0));
     u_v(1,0) = yakl::intrinsics::sum(uvel.slice<2>(k2,0,0));
@@ -100,8 +100,8 @@ namespace modules {
                                                               real            u0       ,
                                                               real            v0       ,
                                                               real            tau = 10 ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     auto nz   = coupler.get_nz();  // number of vertical levels
     auto ny   = coupler.get_ny();  // local number of cells in y-direction
     auto nx   = coupler.get_nx();  // local number of cells in x-direction
@@ -128,8 +128,8 @@ namespace modules {
                                                  real            dt      ,
                                                  real            utend   ,
                                                  real            vtend   ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     auto nz      = coupler.get_nz();  // number of vertical levels
     auto ny      = coupler.get_ny();  // local number of cells in y-direction
     auto nx      = coupler.get_nx();  // local number of cells in x-direction

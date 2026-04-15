@@ -12,8 +12,8 @@ namespace modules {
   // time_scale  : Time scale for sponge layer damping in seconds
   // top_prop    : Proportion of the domain height to apply the sponge layer over
   inline void sponge_layer( core::Coupler &coupler , real dt , real time_scale , real top_prop ) {
-    using yakl::c::parallel_for;
-    using yakl::c::Bounds;
+    using yakl::parallel_for;
+    using yakl::Bounds;
 
     auto ny_glob = coupler.get_ny_glob(); // global number of cells in y direction
     auto nx_glob = coupler.get_nx_glob(); // global number of cells in x direction
@@ -88,8 +88,8 @@ namespace modules {
   // time_scale  : Time scale for sponge layer damping in seconds
   // top_prop    : Proportion of the domain height to apply the sponge layer over
   inline void sponge_layer_w( core::Coupler &coupler , real dt , real time_scale , real top_prop ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     auto nz   = coupler.get_nz  ();    // number of cells in z direction
     auto ny   = coupler.get_ny  ();    // local number of cells in y direction
     auto nx   = coupler.get_nx  ();    // local number of cells in x direction

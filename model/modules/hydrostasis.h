@@ -23,7 +23,7 @@ namespace modules {
   // The approach is to use two levels of quadrature: One level over each cell, and another in between
   //   each interval within a cell. The finer level integrates the exponential term, while the coarser level
   //   steps aggregates the pressure from one quadrature point to the next.
-  template <size_t nq = 9>
+  template <int nq = 9>
   inline realHost2d integrate_hydrostatic_pressure_gll_temp_qv( FUNC_Z         func_T      ,
                                                                 FUNC_Z         func_qv     ,
                                                                 real1d const & zint_d      ,
@@ -32,8 +32,8 @@ namespace modules {
                                                                 real           grav = 9.81 ,
                                                                 real           R_d  = 287  ,
                                                                 real           R_v  = 461  ) {
-    SArray<real,1,nq> qpoints;  // Gausse-Legendre-Lobatto quadrature points
-    SArray<real,1,nq> qweights; // Gausse-Legendre-Lobatto quadrature weights
+    SArray<real,nq> qpoints;  // Gausse-Legendre-Lobatto quadrature points
+    SArray<real,nq> qweights; // Gausse-Legendre-Lobatto quadrature weights
     TransformMatrices::get_gll_points (qpoints ); // Get GLL points
     TransformMatrices::get_gll_weights(qweights); // Get GLL weights
     auto zint = zint_d.createHostCopy();  // Copy interface heights to host
@@ -74,7 +74,7 @@ namespace modules {
   // The approach is to use two levels of quadrature: One level over each cell, and another in between
   //   each interval within a cell. The finer level integrates the 1/theta term, while the coarser level
   //   steps aggregates the pressure from one quadrature point to the next.
-  template <size_t nq = 9>
+  template <int nq = 9>
   inline realHost2d integrate_hydrostatic_pressure_gll_theta( FUNC_Z         func_th     ,
                                                               real1d const & zint_d      ,
                                                               real1d const & dz_d        ,
@@ -82,8 +82,8 @@ namespace modules {
                                                               real           grav = 9.81 ,
                                                               real           R_d  = 287  ,
                                                               real           c_p  = 1003 ) {
-    SArray<real,1,nq> qpoints;  // Gausse-Legendre-Lobatto quadrature points
-    SArray<real,1,nq> qweights; // Gausse-Legendre-Lobatto quadrature weights
+    SArray<real,nq> qpoints;  // Gausse-Legendre-Lobatto quadrature points
+    SArray<real,nq> qweights; // Gausse-Legendre-Lobatto quadrature weights
     TransformMatrices::get_gll_points (qpoints ); // Get GLL points
     TransformMatrices::get_gll_weights(qweights); // Get GLL weights
     auto zint  = zint_d.createHostCopy(); // Copy interface heights to host

@@ -32,7 +32,7 @@ namespace core {
   // The DataManagerTemplate class is typically not used directly; instead, typedefs for
   //  DataManagerDevice and DataManagerHost are used for device and host memory spaces respectively
   //  (see the typedefs at the end of this file).
-  template <int memSpace = yakl::memDevice>
+  template <class memSpace = yakl::DeviceSpace>
   class DataManagerTemplate {
   public:
 
@@ -76,10 +76,10 @@ namespace core {
       entries    = std::vector<Entry>();
       dimensions = std::vector<Dimension>();
       num_assigned_dims = 0;
-      if (memSpace == memDevice) {
+      if        (std::is_same_v<memSpace,yakl::DeviceSpace>) {
         allocate   = [] (size_t bytes,char const *label) -> void * { return yakl::alloc_device(bytes,label); };
         deallocate = [] (void *ptr   ,char const *label)           {        yakl::free_device (ptr  ,label); };
-      } else if (memSpace == memHost) {
+      } else if (std::is_same_v<memSpace,Kokkos::HostSpace>) {
         allocate   = [] (size_t bytes,char const *label) -> void * { return ::malloc(bytes); };
         deallocate = [] (void *ptr   ,char const *label)           {        ::free  (ptr); };
       } else {
@@ -135,12 +135,9 @@ namespace core {
         // Allocate new memory for the entry in the target DataManagerTemplate
         loc.ptr       = allocate( entry.bytes , entry.name.c_str() );
         // Copy the data from this DataManagerTemplate into the target instance
-        if (memSpace == yakl::memHost) {
-          yakl::memcpy_host_to_host_void    ( loc.ptr , entry.ptr , entry.bytes );
-        } else {
-          yakl::memcpy_device_to_device_void( loc.ptr , entry.ptr , entry.bytes );
-          Kokkos::fence();
-        }
+        Array<char *,memSpace> src( static_cast<char *>(entry.ptr) , entry.bytes );
+        Array<char *,memSpace> dst( static_cast<char *>(loc  .ptr) , entry.bytes );
+        src.deep_copy_to(dst);
         // Copy bytes, dims, dim_names, positive, and dirty flag
         loc.bytes     = entry.bytes;
         loc.dims      = entry.dims;
@@ -356,7 +353,7 @@ namespace core {
     // If the entry does not exist, prints an error message and terminates the program
     // If the type or number of dimensions do not match, prints an error message and terminates the program
     template <class T, int N> requires std::is_const_v<T>
-    Array<T,N,memSpace,styleC> get( std::string name ) const {
+    Array<typename yakl::ViewType<T,N>::type,memSpace> get( std::string name ) const {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
       // Make sure it's the right type and dimensionality
@@ -367,9 +364,9 @@ namespace core {
         std::cerr << "ERROR: Calling get() with name [" << name << "] with the wrong number of dimensions"; endrun("");
       }
       // Create an unmanaged yakl::Array that wraps the entry's data pointer and dimensions
-      Array<T,N,memSpace,styleC> ret( name.c_str() , (T *) entries.at(id).ptr , entries.at(id).dims );
-      // Return the yakl::Array
-      return ret;
+      return [&] <std::size_t... Is> (std::index_sequence<Is...>) {
+        return Array<typename yakl::ViewType<T,N>::type,memSpace>( static_cast<T *>(entries.at(id).ptr) , entries.at(id).dims[Is]... );
+      } (std::make_index_sequence<N>{});
     }
 
 
@@ -385,7 +382,7 @@ namespace core {
     // Additionally, sets the dirty flag to true for the entry because it isn't const
     // Use of this routine rather than the const-type routine indicates that the data may be modified
     template <class T, int N>  requires (!std::is_const_v<T>)
-    Array<T,N,memSpace,styleC> get( std::string name ) {
+    Array<typename yakl::ViewType<T,N>::type,memSpace> get( std::string name ) {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
       entries.at(id).dirty = true;
@@ -397,9 +394,9 @@ namespace core {
         std::cerr << "ERROR: Calling get() with name [" << name << "] with the wrong number of dimensions"; endrun("");
       }
       // Create an unmanaged yakl::Array that wraps the entry's data pointer and dimensions
-      Array<T,N,memSpace,styleC> ret( name.c_str() , (T *) entries.at(id).ptr , entries.at(id).dims );
-      // Return the yakl::Array
-      return ret;
+      return [&] <std::size_t... Is> (std::index_sequence<Is...>) {
+        return Array<typename yakl::ViewType<T,N>::type,memSpace>( static_cast<T *>(entries.at(id).ptr) , entries.at(id).dims[Is]... );
+      } (std::make_index_sequence<N>{});
     }
 
 
@@ -416,7 +413,7 @@ namespace core {
     // Fastest varying dimensions in the aggregated horizontal dimensions are maintained
     // This method is useful for accessing data that is structured with vertical levels and horizontal columns
     template <class T> requires std::is_const_v<T>
-    Array<T,2,memSpace,styleC> get_lev_col( std::string name ) const {
+    Array<T **,memSpace> get_lev_col( std::string name ) const {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
       // Make sure it's the right type
@@ -434,7 +431,7 @@ namespace core {
         ncol *= entries.at(id).dims.at(i);
       }
       // Create an unmanaged yakl::Array that wraps the entry's data pointer and dimensions
-      Array<T,2,memSpace,styleC> ret( name.c_str() , (T *) entries.at(id).ptr , nlev , ncol );
+      Array<T **,memSpace> ret( static_cast<T *>(entries.at(id).ptr) , nlev , ncol );
       // Return the yakl::Array
       return ret;
     }
@@ -452,7 +449,7 @@ namespace core {
     // Additionally, sets the dirty flag to true for the entry because it isn't const
     // Use of this routine rather than the const-type routine indicates that the data may be modified
     template <class T> requires (!std::is_const_v<T>)
-    Array<T,2,memSpace,styleC> get_lev_col( std::string name ) {
+    Array<T **,memSpace> get_lev_col( std::string name ) {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
       entries.at(id).dirty = true;
@@ -465,7 +462,7 @@ namespace core {
         ncol *= entries.at(id).dims.at(i);
       }
       // Create an unmanaged yakl::Array that wraps the entry's data pointer and dimensions
-      Array<T,2,memSpace,styleC> ret( name.c_str() , (T *) entries.at(id).ptr , nlev , ncol );
+      Array<T **,memSpace> ret( static_cast<T *>(entries.at(id).ptr) , nlev , ncol );
       // Return the yakl::Array
       return ret;
     }
@@ -481,7 +478,7 @@ namespace core {
     // All dimensions are collapsed to a single dimension.
     // Fastest varying dimensions in the aggregated dimensions are maintained.
     template <class T> requires std::is_const_v<T>
-    Array<T,1,memSpace,styleC> get_collapsed( std::string name ) const {
+    Array<T *,memSpace> get_collapsed( std::string name ) const {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
       // Make sure it's the right type
@@ -491,7 +488,7 @@ namespace core {
         ncells *= entries.at(id).dims.at(i);
       }
       // Create an unmanaged yakl::Array that wraps the entry's data pointer and dimensions
-      Array<T,1,memSpace,styleC> ret( name.c_str() , (T *) entries.at(id).ptr , ncells );
+      Array<T *,memSpace> ret( static_cast<T *>(entries.at(id).ptr) , ncells );
       // Return the yakl::Array
       return ret;
     }
@@ -506,7 +503,7 @@ namespace core {
     // All dimensions are collapsed to a single dimension.
     // Fastest varying dimensions in the aggregated dimensions are maintained.
     template <class T> requires (!std::is_const_v<T>)
-    Array<T,1,memSpace,styleC> get_collapsed( std::string name ) {
+    Array<T *,memSpace> get_collapsed( std::string name ) {
       // Make sure we have this name as an entry
       int id = find_entry_or_error( name );
       entries.at(id).dirty = true;
@@ -517,7 +514,7 @@ namespace core {
         ncells *= entries.at(id).dims.at(i);
       }
       // Create an unmanaged yakl::Array that wraps the entry's data pointer and dimensions
-      Array<T,1,memSpace,styleC> ret( name.c_str() , (T *) entries.at(id).ptr , ncells );
+      Array<T *,memSpace> ret( static_cast<T *>(entries.at(id).ptr) , ncells );
       // Return the yakl::Array
       return ret;
     }
@@ -809,10 +806,10 @@ namespace core {
 
   
   // Device specialization of the DataManagerTemplate to manage data in device memory
-  typedef DataManagerTemplate<yakl::memDevice> DataManager;
+  typedef DataManagerTemplate<yakl::DeviceSpace> DataManager;
 
   // Host specialization of the DataManagerTemplate to manage data in host memory
-  typedef DataManagerTemplate<yakl::memHost> DataManagerHost;
+  typedef DataManagerTemplate<Kokkos::HostSpace> DataManagerHost;
 
 }
 

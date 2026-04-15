@@ -5,68 +5,68 @@ using yakl::SArray;
 
 namespace TransformMatrices {
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,2> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,2> &rslt) {
     rslt(0) = static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,2,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,2> &rslt) {
     rslt(0,0) = static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(0,1) = -static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(1,0) = static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,2,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,2> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1,1) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,2,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,2> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(1,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(1,1) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,2> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,2> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,2,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,2,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1,1) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,3> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = static_cast<FP>(0.00000000000000000000000000000000000000);
     rslt(2) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,3> &rslt) {
     rslt(0) = static_cast<FP>(0.16666666666666666666666666666666666667);
     rslt(1) = static_cast<FP>(0.66666666666666666666666666666666666667);
     rslt(2) = static_cast<FP>(0.16666666666666666666666666666666666667);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,3,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,3,3> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00000000000000000000000000000000000000);
     rslt(0,1) = -static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(2.0000000000000000000000000000000000000);
@@ -78,7 +78,7 @@ namespace TransformMatrices {
     rslt(2,2) = static_cast<FP>(2.0000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,3,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,3,3> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -90,7 +90,7 @@ namespace TransformMatrices {
     rslt(2,2) = static_cast<FP>(0.25000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,3,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,3,3> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -102,19 +102,19 @@ namespace TransformMatrices {
     rslt(2,2) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,3> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,3> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,3,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,3,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,3,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,3,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -123,7 +123,7 @@ namespace TransformMatrices {
     rslt(2,1) = static_cast<FP>(0.25000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,3,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,3,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -135,7 +135,7 @@ namespace TransformMatrices {
     rslt(2,2) = static_cast<FP>(0.25000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,2,3,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,3,3> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.041666666666666666666666666666666666667);
     rslt(0,1) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -147,7 +147,7 @@ namespace TransformMatrices {
     rslt(2,2) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,2,3,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,3,3> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -159,13 +159,13 @@ namespace TransformMatrices {
     rslt(2,2) = static_cast<FP>(1.0833333333333333333333333333333333333);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,3,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,3,1> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.041666666666666666666666666666666666667);
     rslt(1,0) = static_cast<FP>(1.0833333333333333333333333333333333333);
     rslt(2,0) = -static_cast<FP>(0.041666666666666666666666666666666666667);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,3,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,3,2> &rslt) {
     rslt(0,0) = static_cast<FP>(0.33333333333333333333333333333333333333);
     rslt(0,1) = -static_cast<FP>(0.16666666666666666666666666666666666667);
     rslt(1,0) = static_cast<FP>(0.83333333333333333333333333333333333333);
@@ -174,7 +174,7 @@ namespace TransformMatrices {
     rslt(2,1) = static_cast<FP>(0.33333333333333333333333333333333333333);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,3,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,3,3> &rslt) {
     rslt(0,0) = static_cast<FP>(0.33333333333333333333333333333333333333);
     rslt(0,1) = -static_cast<FP>(0.041666666666666666666666666666666666667);
     rslt(0,2) = -static_cast<FP>(0.16666666666666666666666666666666666667);
@@ -186,7 +186,7 @@ namespace TransformMatrices {
     rslt(2,2) = static_cast<FP>(0.33333333333333333333333333333333333333);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,3,2,2,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,2,2,2> &rslt) {
     rslt(0,0,0) = 0;
     rslt(0,0,1) = -static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -197,21 +197,21 @@ namespace TransformMatrices {
     rslt(1,1,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,4> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.22360679774997896964091736687312762354);
     rslt(2) = static_cast<FP>(0.22360679774997896964091736687312762354);
     rslt(3) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,4> &rslt) {
     rslt(0) = static_cast<FP>(0.083333333333333333333333333333333333333);
     rslt(1) = static_cast<FP>(0.41666666666666666666666666666666666667);
     rslt(2) = static_cast<FP>(0.41666666666666666666666666666666666667);
     rslt(3) = static_cast<FP>(0.083333333333333333333333333333333333333);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,4,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,4,4> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.12500000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(0.25000000000000000000000000000000000002);
     rslt(0,2) = static_cast<FP>(2.5000000000000000000000000000000000000);
@@ -230,7 +230,7 @@ namespace TransformMatrices {
     rslt(3,3) = static_cast<FP>(5.0000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,4,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,4,4> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -249,7 +249,7 @@ namespace TransformMatrices {
     rslt(3,3) = static_cast<FP>(0.12500000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,4,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,4,4> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -268,20 +268,20 @@ namespace TransformMatrices {
     rslt(3,3) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,4> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,4> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(39.000000000000000000000000000000000000)*(a(3)*a(3));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,4,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,4,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
     rslt(3,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,4,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,4,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -292,7 +292,7 @@ namespace TransformMatrices {
     rslt(3,1) = static_cast<FP>(0.12500000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,4,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,4,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -307,7 +307,7 @@ namespace TransformMatrices {
     rslt(3,2) = static_cast<FP>(0.12500000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,4,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,4,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -326,7 +326,7 @@ namespace TransformMatrices {
     rslt(3,3) = static_cast<FP>(0.12500000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,5> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.32732683535398857189914622812342917778);
     rslt(2) = static_cast<FP>(0.00000000000000000000000000000000000000);
@@ -334,7 +334,7 @@ namespace TransformMatrices {
     rslt(4) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,5> &rslt) {
     rslt(0) = static_cast<FP>(0.050000000000000000000000000000000000000);
     rslt(1) = static_cast<FP>(0.27222222222222222222222222222222222222);
     rslt(2) = static_cast<FP>(0.35555555555555555555555555555555555556);
@@ -342,7 +342,7 @@ namespace TransformMatrices {
     rslt(4) = static_cast<FP>(0.050000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,5,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,5,5> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(0.74999999999999999999999999999999999998);
     rslt(0,2) = -static_cast<FP>(1.5000000000000000000000000000000000001);
@@ -370,7 +370,7 @@ namespace TransformMatrices {
     rslt(4,4) = static_cast<FP>(14.000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,5,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,5,5> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -398,7 +398,7 @@ namespace TransformMatrices {
     rslt(4,4) = static_cast<FP>(0.062500000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,5,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,5,5> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -426,13 +426,13 @@ namespace TransformMatrices {
     rslt(4,4) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,5> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,5> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.80000000000000000000000000000000000)*(a(4)*a(4));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,5,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,5,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -440,7 +440,7 @@ namespace TransformMatrices {
     rslt(4,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,5,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,5,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -453,7 +453,7 @@ namespace TransformMatrices {
     rslt(4,1) = static_cast<FP>(0.062500000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,5,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,5,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -471,7 +471,7 @@ namespace TransformMatrices {
     rslt(4,2) = static_cast<FP>(0.062500000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,5,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,5,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -494,7 +494,7 @@ namespace TransformMatrices {
     rslt(4,3) = static_cast<FP>(0.062500000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,5,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,5,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -522,7 +522,7 @@ namespace TransformMatrices {
     rslt(4,4) = static_cast<FP>(0.062500000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,2,5,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,5,5> &rslt) {
     rslt(0,0) = static_cast<FP>(0.0046875000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(0.10416666666666666666666666666666666667);
     rslt(0,2) = -static_cast<FP>(0.062500000000000000000000000000000000000);
@@ -550,7 +550,7 @@ namespace TransformMatrices {
     rslt(4,4) = static_cast<FP>(0.041666666666666666666666666666666666667);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,2,5,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,5,5> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -578,7 +578,7 @@ namespace TransformMatrices {
     rslt(4,4) = static_cast<FP>(18.012500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,5,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,5,1> &rslt) {
     rslt(0,0) = static_cast<FP>(0.0046875000000000000000000000000000000000);
     rslt(1,0) = -static_cast<FP>(0.060416666666666666666666666666666666667);
     rslt(2,0) = static_cast<FP>(1.1114583333333333333333333333333333333);
@@ -586,7 +586,7 @@ namespace TransformMatrices {
     rslt(4,0) = static_cast<FP>(0.0046875000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,5,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,5,2> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.050000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(0.033333333333333333333333333333333333333);
     rslt(1,0) = static_cast<FP>(0.45000000000000000000000000000000000000);
@@ -599,7 +599,7 @@ namespace TransformMatrices {
     rslt(4,1) = -static_cast<FP>(0.050000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,5,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,5,3> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.050000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(0.0046875000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(0.033333333333333333333333333333333333333);
@@ -617,7 +617,7 @@ namespace TransformMatrices {
     rslt(4,2) = -static_cast<FP>(0.050000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,5,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,5,4> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.050000000000000000000000000000000000000);
     rslt(0,1) = -static_cast<FP>(0.020694013108331230297425070020646095688);
     rslt(0,2) = static_cast<FP>(0.024027346441664563630758403353979429021);
@@ -640,7 +640,7 @@ namespace TransformMatrices {
     rslt(4,3) = -static_cast<FP>(0.050000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,5,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,5,5> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.050000000000000000000000000000000000000);
     rslt(0,1) = -static_cast<FP>(0.032704596564325442221687395875700738020);
     rslt(0,2) = static_cast<FP>(0.0046875000000000000000000000000000000000);
@@ -668,7 +668,7 @@ namespace TransformMatrices {
     rslt(4,4) = -static_cast<FP>(0.050000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,3,3,3,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,3,3,3> &rslt) {
     rslt(0,0,0) = -static_cast<FP>(0.041666666666666666666666666666666666667);
     rslt(0,0,1) = static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(0,0,2) = static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -698,7 +698,7 @@ namespace TransformMatrices {
     rslt(2,2,2) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,6> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.38252766196473234642550148697966907518);
     rslt(2) = -static_cast<FP>(0.14261575824032254815707549702043953596);
@@ -707,7 +707,7 @@ namespace TransformMatrices {
     rslt(5) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,6> &rslt) {
     rslt(0) = static_cast<FP>(0.033333333333333333333333333333333333333);
     rslt(1) = static_cast<FP>(0.18923747814892349015830640410601232624);
     rslt(2) = static_cast<FP>(0.27742918851774317650836026256065434043);
@@ -716,7 +716,7 @@ namespace TransformMatrices {
     rslt(5) = static_cast<FP>(0.033333333333333333333333333333333333333);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,6,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,6,6> &rslt) {
     rslt(0,0) = static_cast<FP>(0.062500000000000000000000000000000000024);
     rslt(0,1) = -static_cast<FP>(0.12499999999999999999999999999999999994);
     rslt(0,2) = -static_cast<FP>(3.5000000000000000000000000000000000002);
@@ -755,7 +755,7 @@ namespace TransformMatrices {
     rslt(5,5) = static_cast<FP>(42.000000000000000000000000000000000002);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,6,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,6,6> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -794,7 +794,7 @@ namespace TransformMatrices {
     rslt(5,5) = static_cast<FP>(0.031250000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,6,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,6,6> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -833,13 +833,13 @@ namespace TransformMatrices {
     rslt(5,5) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,6> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,6> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.80000000000000000000000000000000000)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(63.000000000000000000000000000000000000)*a(3)*a(5)+static_cast<FP>(15645.000000000000000000000000000000000)*(a(5)*a(5));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,6,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,6,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -848,7 +848,7 @@ namespace TransformMatrices {
     rslt(5,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,6,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,6,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -863,7 +863,7 @@ namespace TransformMatrices {
     rslt(5,1) = static_cast<FP>(0.031250000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,6,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,6,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -884,7 +884,7 @@ namespace TransformMatrices {
     rslt(5,2) = static_cast<FP>(0.031250000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,6,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,6,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -911,7 +911,7 @@ namespace TransformMatrices {
     rslt(5,3) = static_cast<FP>(0.031250000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,6,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,6,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -944,7 +944,7 @@ namespace TransformMatrices {
     rslt(5,4) = static_cast<FP>(0.031250000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,6,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,6,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -983,7 +983,7 @@ namespace TransformMatrices {
     rslt(5,5) = static_cast<FP>(0.031250000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,7> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.41511194813928346493601610698373256979);
     rslt(2) = -static_cast<FP>(0.23442439673535710690188594095438316470);
@@ -993,7 +993,7 @@ namespace TransformMatrices {
     rslt(6) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,7> &rslt) {
     rslt(0) = static_cast<FP>(0.023809523809523809523809523809523809524);
     rslt(1) = static_cast<FP>(0.13841302368078297400535020314503314675);
     rslt(2) = static_cast<FP>(0.21587269060493131170893551114068113897);
@@ -1003,7 +1003,7 @@ namespace TransformMatrices {
     rslt(6) = static_cast<FP>(0.023809523809523809523809523809523809524);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,7,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,7,7> &rslt) {
     rslt(0,0) = static_cast<FP>(6.0611427464274199629637977700522042756e-39);
     rslt(0,1) = -static_cast<FP>(0.62499999999999999999999999999999999999);
     rslt(0,2) = static_cast<FP>(1.2499999999999999999999999999999999997);
@@ -1055,7 +1055,7 @@ namespace TransformMatrices {
     rslt(6,6) = static_cast<FP>(132.00000000000000000000000000000000002);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,7,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,7,7> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -1107,7 +1107,7 @@ namespace TransformMatrices {
     rslt(6,6) = static_cast<FP>(0.015625000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,7,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,7,7> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -1159,13 +1159,13 @@ namespace TransformMatrices {
     rslt(6,6) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,7> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,7> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.83571428571428571428571428571428571)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(63.066964285714285714285714285714285714)*a(3)*a(5)+static_cast<FP>(15645.892857142857142857142857142857143)*(a(5)*a(5))+static_cast<FP>(1.5535714285714285714285714285714285714)*a(2)*a(6)+static_cast<FP>(1513.6071428571428571428571428571428571)*a(4)*a(6)+static_cast<FP>(563252.14285714285714285714285714285714)*(a(6)*a(6));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,7,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,7,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -1175,7 +1175,7 @@ namespace TransformMatrices {
     rslt(6,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,7,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,7,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -1192,7 +1192,7 @@ namespace TransformMatrices {
     rslt(6,1) = static_cast<FP>(0.015625000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,7,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,7,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -1216,7 +1216,7 @@ namespace TransformMatrices {
     rslt(6,2) = static_cast<FP>(0.015625000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,7,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,7,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -1247,7 +1247,7 @@ namespace TransformMatrices {
     rslt(6,3) = static_cast<FP>(0.015625000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,7,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,7,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -1285,7 +1285,7 @@ namespace TransformMatrices {
     rslt(6,4) = static_cast<FP>(0.015625000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,7,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,7,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -1330,7 +1330,7 @@ namespace TransformMatrices {
     rslt(6,5) = static_cast<FP>(0.015625000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,7,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,7,7> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -1382,7 +1382,7 @@ namespace TransformMatrices {
     rslt(6,6) = static_cast<FP>(0.015625000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,2,7,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,7,7> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.00069754464285714285714285714285714285714);
     rslt(0,1) = -static_cast<FP>(0.022482638888888888888888888888888888889);
     rslt(0,2) = static_cast<FP>(0.0096354166666666666666666666666666666667);
@@ -1434,7 +1434,7 @@ namespace TransformMatrices {
     rslt(6,6) = static_cast<FP>(0.0013888888888888888888888888888888888889);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,2,7,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,7,7> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -1486,7 +1486,7 @@ namespace TransformMatrices {
     rslt(6,6) = static_cast<FP>(831.93973214285714285714285714285714286);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,7,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,7,1> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.00069754464285714285714285714285714285714);
     rslt(1,0) = static_cast<FP>(0.0088727678571428571428571428571428571429);
     rslt(2,0) = -static_cast<FP>(0.070879836309523809523809523809523809524);
@@ -1496,7 +1496,7 @@ namespace TransformMatrices {
     rslt(6,0) = -static_cast<FP>(0.00069754464285714285714285714285714285714);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,7,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,7,2> &rslt) {
     rslt(0,0) = static_cast<FP>(0.0095238095238095238095238095238095238095);
     rslt(0,1) = -static_cast<FP>(0.0071428571428571428571428571428571428572);
     rslt(1,0) = -static_cast<FP>(0.090476190476190476190476190476190476190);
@@ -1513,7 +1513,7 @@ namespace TransformMatrices {
     rslt(6,1) = static_cast<FP>(0.0095238095238095238095238095238095238095);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,7,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,7,3> &rslt) {
     rslt(0,0) = static_cast<FP>(0.0095238095238095238095238095238095238095);
     rslt(0,1) = -static_cast<FP>(0.00069754464285714285714285714285714285714);
     rslt(0,2) = -static_cast<FP>(0.0071428571428571428571428571428571428572);
@@ -1537,7 +1537,7 @@ namespace TransformMatrices {
     rslt(6,2) = static_cast<FP>(0.0095238095238095238095238095238095238095);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,7,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,7,4> &rslt) {
     rslt(0,0) = static_cast<FP>(0.0095238095238095238095238095238095238095);
     rslt(0,1) = static_cast<FP>(0.0045205541648229652191055512744988504661);
     rslt(0,2) = -static_cast<FP>(0.0049951573394261398222801544491020250692);
@@ -1568,7 +1568,7 @@ namespace TransformMatrices {
     rslt(6,3) = static_cast<FP>(0.0095238095238095238095238095238095238095);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,7,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,7,5> &rslt) {
     rslt(0,0) = static_cast<FP>(0.0095238095238095238095238095238095238095);
     rslt(0,1) = static_cast<FP>(0.0067592944475906129021529745246007247484);
     rslt(0,2) = -static_cast<FP>(0.00069754464285714285714285714285714285714);
@@ -1606,7 +1606,7 @@ namespace TransformMatrices {
     rslt(6,4) = static_cast<FP>(0.0095238095238095238095238095238095238095);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,7,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,7,6> &rslt) {
     rslt(0,0) = static_cast<FP>(0.0095238095238095238095238095238095238095);
     rslt(0,1) = static_cast<FP>(0.0078047395779391306220065922058313560372);
     rslt(0,2) = static_cast<FP>(0.0026309745533436474346395019640175078498);
@@ -1651,7 +1651,7 @@ namespace TransformMatrices {
     rslt(6,5) = static_cast<FP>(0.0095238095238095238095238095238095238095);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,7,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,7,7> &rslt) {
     rslt(0,0) = static_cast<FP>(0.0095238095238095238095238095238095238095);
     rslt(0,1) = static_cast<FP>(0.0083577256691733430138833990091901121371);
     rslt(0,2) = static_cast<FP>(0.0047662893482324828565307753961952534868);
@@ -1703,7 +1703,7 @@ namespace TransformMatrices {
     rslt(6,6) = static_cast<FP>(0.0095238095238095238095238095238095238095);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,3,4,4,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,4,4,4> &rslt) {
     rslt(0,0,0) = static_cast<FP>(0.041666666666666666666666666666666666667);
     rslt(0,0,1) = -static_cast<FP>(0.29166666666666666666666666666666666667);
     rslt(0,0,2) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -1770,7 +1770,7 @@ namespace TransformMatrices {
     rslt(3,3,3) = static_cast<FP>(0.16666666666666666666666666666666666667);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,8> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.43587007425480330766872288061033171905);
     rslt(2) = -static_cast<FP>(0.29585009071657115107225536569897659497);
@@ -1781,7 +1781,7 @@ namespace TransformMatrices {
     rslt(7) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,8> &rslt) {
     rslt(0) = static_cast<FP>(0.017857142857142857142857142857142857143);
     rslt(1) = static_cast<FP>(0.10535211357175301969149603288787816223);
     rslt(2) = static_cast<FP>(0.17056134624175218238212033855387408589);
@@ -1792,7 +1792,7 @@ namespace TransformMatrices {
     rslt(7) = static_cast<FP>(0.017857142857142857142857142857142857143);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,8,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,8,8> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.039062500000000000000000000000000000062);
     rslt(0,1) = static_cast<FP>(0.078125000000000000000000000000000000274);
     rslt(0,2) = static_cast<FP>(4.2187500000000000000000000000000000019);
@@ -1859,7 +1859,7 @@ namespace TransformMatrices {
     rslt(7,7) = static_cast<FP>(428.99999999999999999999999999999999992);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,8,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,8,8> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -1926,7 +1926,7 @@ namespace TransformMatrices {
     rslt(7,7) = static_cast<FP>(0.0078125000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,8,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,8,8> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -1993,13 +1993,13 @@ namespace TransformMatrices {
     rslt(7,7) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,8> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,8> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.83571428571428571428571428571428571)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(63.066964285714285714285714285714285714)*a(3)*a(5)+static_cast<FP>(15645.892857142857142857142857142857143)*(a(5)*a(5))+static_cast<FP>(1.5535714285714285714285714285714285714)*a(2)*a(6)+static_cast<FP>(1513.6071428571428571428571428571428571)*a(4)*a(6)+static_cast<FP>(563252.14285714285714285714285714285714)*(a(6)*a(6))+static_cast<FP>(0.031250000000000000000000000000000000000)*a(1)*a(7)+static_cast<FP>(32.625000000000000000000000000000000000)*a(3)*a(7)+static_cast<FP>(52976.250000000000000000000000000000000)*a(5)*a(7)+static_cast<FP>(2.7599355000000000000000000000000000000e7)*(a(7)*a(7));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,8,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,8,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -2010,7 +2010,7 @@ namespace TransformMatrices {
     rslt(7,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,8,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,8,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -2029,7 +2029,7 @@ namespace TransformMatrices {
     rslt(7,1) = static_cast<FP>(0.0078125000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,8,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,8,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2056,7 +2056,7 @@ namespace TransformMatrices {
     rslt(7,2) = static_cast<FP>(0.0078125000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,8,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,8,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2091,7 +2091,7 @@ namespace TransformMatrices {
     rslt(7,3) = static_cast<FP>(0.0078125000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,8,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,8,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2134,7 +2134,7 @@ namespace TransformMatrices {
     rslt(7,4) = static_cast<FP>(0.0078125000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,8,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,8,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2185,7 +2185,7 @@ namespace TransformMatrices {
     rslt(7,5) = static_cast<FP>(0.0078125000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,8,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,8,7> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2244,7 +2244,7 @@ namespace TransformMatrices {
     rslt(7,6) = static_cast<FP>(0.0078125000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,8,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,8,8> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2311,7 +2311,7 @@ namespace TransformMatrices {
     rslt(7,7) = static_cast<FP>(0.0078125000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,9> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.44987899770573007865617262220916897903);
     rslt(2) = -static_cast<FP>(0.33859313975536887672294271354567122536);
@@ -2323,7 +2323,7 @@ namespace TransformMatrices {
     rslt(8) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,9> &rslt) {
     rslt(0) = static_cast<FP>(0.013888888888888888888888888888888888889);
     rslt(1) = static_cast<FP>(0.082747680780402762523169860014604152919);
     rslt(2) = static_cast<FP>(0.13726935625008086764035280928968636297);
@@ -2335,7 +2335,7 @@ namespace TransformMatrices {
     rslt(8) = static_cast<FP>(0.013888888888888888888888888888888888889);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,9,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,9,9> &rslt) {
     rslt(0,0) = -static_cast<FP>(3.2831189876481858132720571254449439768e-38);
     rslt(0,1) = static_cast<FP>(0.54687499999999999999999999999999999946);
     rslt(0,2) = -static_cast<FP>(1.0937500000000000000000000000000000079);
@@ -2419,7 +2419,7 @@ namespace TransformMatrices {
     rslt(8,8) = static_cast<FP>(1429.9999999999999999999999999999999954);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,9,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,9,9> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -2503,7 +2503,7 @@ namespace TransformMatrices {
     rslt(8,8) = static_cast<FP>(0.0039062500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,9,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,9,9> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -2587,13 +2587,13 @@ namespace TransformMatrices {
     rslt(8,8) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,9> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,9> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.83571428571428571428571428571428571)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(63.066964285714285714285714285714285714)*a(3)*a(5)+static_cast<FP>(15645.903707837301587301587301587301587)*(a(5)*a(5))+static_cast<FP>(1.5535714285714285714285714285714285714)*a(2)*a(6)+static_cast<FP>(1513.6279761904761904761904761904761905)*a(4)*a(6)+static_cast<FP>(563252.53348214285714285714285714285714)*(a(6)*a(6))+static_cast<FP>(0.031250000000000000000000000000000000000)*a(1)*a(7)+static_cast<FP>(32.643229166666666666666666666666666667)*a(3)*a(7)+static_cast<FP>(52976.979166666666666666666666666666667)*a(5)*a(7)+static_cast<FP>(2.7599374140625000000000000000000000000e7)*(a(7)*a(7))+static_cast<FP>(0.51388888888888888888888888888888888889)*a(2)*a(8)+static_cast<FP>(1044.5833333333333333333333333333333333)*a(4)*a(8)+static_cast<FP>(2.5428950000000000000000000000000000000e6)*a(6)*a(8)+static_cast<FP>(1.7663599450000000000000000000000000000e9)*(a(8)*a(8));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,9,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,9,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -2605,7 +2605,7 @@ namespace TransformMatrices {
     rslt(8,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,9,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,9,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -2626,7 +2626,7 @@ namespace TransformMatrices {
     rslt(8,1) = static_cast<FP>(0.0039062500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,9,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,9,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2656,7 +2656,7 @@ namespace TransformMatrices {
     rslt(8,2) = static_cast<FP>(0.0039062500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,9,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,9,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2695,7 +2695,7 @@ namespace TransformMatrices {
     rslt(8,3) = static_cast<FP>(0.0039062500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,9,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,9,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2743,7 +2743,7 @@ namespace TransformMatrices {
     rslt(8,4) = static_cast<FP>(0.0039062500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,9,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,9,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2800,7 +2800,7 @@ namespace TransformMatrices {
     rslt(8,5) = static_cast<FP>(0.0039062500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,9,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,9,7> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2866,7 +2866,7 @@ namespace TransformMatrices {
     rslt(8,6) = static_cast<FP>(0.0039062500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,9,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,9,8> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -2941,7 +2941,7 @@ namespace TransformMatrices {
     rslt(8,7) = static_cast<FP>(0.0039062500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,9,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,9,9> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -3025,7 +3025,7 @@ namespace TransformMatrices {
     rslt(8,8) = static_cast<FP>(0.0039062500000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,2,9,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,9,9> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00011867947048611111111111111111111111111);
     rslt(0,1) = static_cast<FP>(0.0050052703373015873015873015873015873016);
     rslt(0,2) = -static_cast<FP>(0.0016684234457671957671957671957671957672);
@@ -3109,7 +3109,7 @@ namespace TransformMatrices {
     rslt(8,8) = static_cast<FP>(0.000024801587301587301587301587301587301587);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,2,9,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,9,9> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -3193,7 +3193,7 @@ namespace TransformMatrices {
     rslt(8,8) = static_cast<FP>(75318.333767361111111111111111111111111);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,9,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,9,1> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00011867947048611111111111111111111111111);
     rslt(1,0) = -static_cast<FP>(0.0016469804067460317460317460317460317460);
     rslt(2,0) = static_cast<FP>(0.012195793030753968253968253968253968254);
@@ -3205,7 +3205,7 @@ namespace TransformMatrices {
     rslt(8,0) = static_cast<FP>(0.00011867947048611111111111111111111111111);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,9,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,9,2> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
     rslt(0,1) = static_cast<FP>(0.0015873015873015873015873015873015873016);
     rslt(1,0) = static_cast<FP>(0.021825396825396825396825396825396825397);
@@ -3226,7 +3226,7 @@ namespace TransformMatrices {
     rslt(8,1) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,9,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,9,3> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
     rslt(0,1) = static_cast<FP>(0.00011867947048611111111111111111111111111);
     rslt(0,2) = static_cast<FP>(0.0015873015873015873015873015873015873016);
@@ -3256,7 +3256,7 @@ namespace TransformMatrices {
     rslt(8,2) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,9,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,9,4> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
     rslt(0,1) = -static_cast<FP>(0.0010122041403172291328773092455741965321);
     rslt(0,2) = static_cast<FP>(0.0010911194842325730482212245894895404475);
@@ -3295,7 +3295,7 @@ namespace TransformMatrices {
     rslt(8,3) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,9,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,9,5> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
     rslt(0,1) = -static_cast<FP>(0.0014706255204890072278804035154270403243);
     rslt(0,2) = static_cast<FP>(0.00011867947048611111111111111111111111111);
@@ -3343,7 +3343,7 @@ namespace TransformMatrices {
     rslt(8,4) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,9,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,9,6> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
     rslt(0,1) = -static_cast<FP>(0.0016750980566781685147488298270986728696);
     rslt(0,2) = -static_cast<FP>(0.00061072600284503391378356375902828660999);
@@ -3400,7 +3400,7 @@ namespace TransformMatrices {
     rslt(8,5) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,9,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,9,7> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
     rslt(0,1) = -static_cast<FP>(0.0017794336252631124758850627644794487846);
     rslt(0,2) = -static_cast<FP>(0.0010635616349088241108116002817167465317);
@@ -3466,7 +3466,7 @@ namespace TransformMatrices {
     rslt(8,6) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,9,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,9,8> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
     rslt(0,1) = -static_cast<FP>(0.0018388468575092664613390146477983461264);
     rslt(0,2) = -static_cast<FP>(0.0013404596869395151556790436399737034961);
@@ -3541,7 +3541,7 @@ namespace TransformMatrices {
     rslt(8,7) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,9,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,9,9> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
     rslt(0,1) = -static_cast<FP>(0.0018756515517187235930421352592919290194);
     rslt(0,2) = -static_cast<FP>(0.0015149547284211572743987999348898638976);
@@ -3625,7 +3625,7 @@ namespace TransformMatrices {
     rslt(8,8) = -static_cast<FP>(0.0019841269841269841269841269841269841270);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,3,5,5,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,5,5,5> &rslt) {
     rslt(0,0,0) = -static_cast<FP>(0.036979166666666666666666666666666666667);
     rslt(0,0,1) = static_cast<FP>(0.18750000000000000000000000000000000000);
     rslt(0,0,2) = static_cast<FP>(0.43750000000000000000000000000000000000);
@@ -3753,7 +3753,7 @@ namespace TransformMatrices {
     rslt(4,4,4) = static_cast<FP>(0.041666666666666666666666666666666666667);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,10> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.45976695408322940691446633041116906708);
     rslt(2) = -static_cast<FP>(0.36938693255275253750155308742991536251);
@@ -3766,7 +3766,7 @@ namespace TransformMatrices {
     rslt(9) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,10> &rslt) {
     rslt(0) = static_cast<FP>(0.011111111111111111111111111111111111111);
     rslt(1) = static_cast<FP>(0.066652995425535055563113585377696449054);
     rslt(2) = static_cast<FP>(0.11244467103156322605972891086552392138);
@@ -3779,7 +3779,7 @@ namespace TransformMatrices {
     rslt(9) = static_cast<FP>(0.011111111111111111111111111111111111111);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,10,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,10,10> &rslt) {
     rslt(0,0) = static_cast<FP>(0.027343749999999999999999999999999999827);
     rslt(0,1) = -static_cast<FP>(0.054687499999999999999999999999999994559);
     rslt(0,2) = -static_cast<FP>(4.8125000000000000000000000000000000319);
@@ -3882,7 +3882,7 @@ namespace TransformMatrices {
     rslt(9,9) = static_cast<FP>(4861.9999999999999999999999999999999901);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,10,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,10,10> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -3985,7 +3985,7 @@ namespace TransformMatrices {
     rslt(9,9) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,10,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,10,10> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -4088,13 +4088,13 @@ namespace TransformMatrices {
     rslt(9,9) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,10> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,10> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.83571428571428571428571428571428571)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(63.066964285714285714285714285714285714)*a(3)*a(5)+static_cast<FP>(15645.903707837301587301587301587301587)*(a(5)*a(5))+static_cast<FP>(1.5535714285714285714285714285714285714)*a(2)*a(6)+static_cast<FP>(1513.6279761904761904761904761904761905)*a(4)*a(6)+static_cast<FP>(563252.53348214285714285714285714285714)*(a(6)*a(6))+static_cast<FP>(0.031250000000000000000000000000000000000)*a(1)*a(7)+static_cast<FP>(32.643229166666666666666666666666666667)*a(3)*a(7)+static_cast<FP>(52976.979166666666666666666666666666667)*a(5)*a(7)+static_cast<FP>(2.7599374140625000000000000000000000000e7)*(a(7)*a(7))+static_cast<FP>(0.51388888888888888888888888888888888889)*a(2)*a(8)+static_cast<FP>(1044.5833333333333333333333333333333333)*a(4)*a(8)+static_cast<FP>(2.5428950000000000000000000000000000000e6)*a(6)*a(8)+static_cast<FP>(1.7663599450000000000000000000000000000e9)*(a(8)*a(8))+static_cast<FP>(0.0078125000000000000000000000000000000000)*a(1)*a(9)+static_cast<FP>(13.875000000000000000000000000000000000)*a(3)*a(9)+static_cast<FP>(47006.250000000000000000000000000000000)*a(5)*a(9)+static_cast<FP>(1.6020238500000000000000000000000000000e8)*a(7)*a(9)+static_cast<FP>(1.4307515554500000000000000000000000000e11)*(a(9)*a(9));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -4107,7 +4107,7 @@ namespace TransformMatrices {
     rslt(9,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -4130,7 +4130,7 @@ namespace TransformMatrices {
     rslt(9,1) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -4163,7 +4163,7 @@ namespace TransformMatrices {
     rslt(9,2) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -4206,7 +4206,7 @@ namespace TransformMatrices {
     rslt(9,3) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -4259,7 +4259,7 @@ namespace TransformMatrices {
     rslt(9,4) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -4322,7 +4322,7 @@ namespace TransformMatrices {
     rslt(9,5) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,7> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -4395,7 +4395,7 @@ namespace TransformMatrices {
     rslt(9,6) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,8> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -4478,7 +4478,7 @@ namespace TransformMatrices {
     rslt(9,7) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,9> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -4571,7 +4571,7 @@ namespace TransformMatrices {
     rslt(9,8) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,10,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,10,10> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -4674,7 +4674,7 @@ namespace TransformMatrices {
     rslt(9,9) = static_cast<FP>(0.0019531250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,11> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.46700071520402956716613706804969181727);
     rslt(2) = -static_cast<FP>(0.39224173683157220931120890805422905175);
@@ -4688,7 +4688,7 @@ namespace TransformMatrices {
     rslt(10) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,11> &rslt) {
     rslt(0) = static_cast<FP>(0.0090909090909090909090909090909090909091);
     rslt(1) = static_cast<FP>(0.054806136633497432230701724790175355024);
     rslt(2) = static_cast<FP>(0.093584940890152602054070760949717459784);
@@ -4702,7 +4702,7 @@ namespace TransformMatrices {
     rslt(10) = static_cast<FP>(0.0090909090909090909090909090909090909091);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,11,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,11,11> &rslt) {
     rslt(0,0) = static_cast<FP>(1.2424768658325223479003535068969703809e-37);
     rslt(0,1) = -static_cast<FP>(0.49218749999999999999999999999999995149);
     rslt(0,2) = static_cast<FP>(0.98437500000000000000000000000000016587);
@@ -4826,7 +4826,7 @@ namespace TransformMatrices {
     rslt(10,10) = static_cast<FP>(16796.000000000000000000000000000000159);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,11,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,11,11> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -4950,7 +4950,7 @@ namespace TransformMatrices {
     rslt(10,10) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,11,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,11,11> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -5074,13 +5074,13 @@ namespace TransformMatrices {
     rslt(10,10) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,11> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,11> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(1.4307515635684090909090909090909090909e13)*(a(10)*a(10))+static_cast<FP>(0.15980113636363636363636363636363636364)*a(10)*a(2)+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(555.19176136363636363636363636363636364)*a(10)*a(4)+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.83571428571428571428571428571428571)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(63.066964285714285714285714285714285714)*a(3)*a(5)+static_cast<FP>(15645.903707837301587301587301587301587)*(a(5)*a(5))+static_cast<FP>(2.8203903409090909090909090909090909091e6)*a(10)*a(6)+static_cast<FP>(1.5535714285714285714285714285714285714)*a(2)*a(6)+static_cast<FP>(1513.6279761904761904761904761904761905)*a(4)*a(6)+static_cast<FP>(563252.53667816558441558441558441558442)*(a(6)*a(6))+static_cast<FP>(0.031250000000000000000000000000000000000)*a(1)*a(7)+static_cast<FP>(32.643229166666666666666666666666666667)*a(3)*a(7)+static_cast<FP>(52976.985381155303030303030303030303030)*a(5)*a(7)+static_cast<FP>(2.7599374297230113636363636363636363636e7)*(a(7)*a(7))+static_cast<FP>(1.2816192303409090909090909090909090909e10)*a(10)*a(8)+static_cast<FP>(0.51388888888888888888888888888888888889)*a(2)*a(8)+static_cast<FP>(1044.5890151515151515151515151515151515)*a(4)*a(8)+static_cast<FP>(2.5428952982954545454545454545454545455e6)*a(6)*a(8)+static_cast<FP>(1.7663599550227272727272727272727272727e9)*(a(8)*a(8))+static_cast<FP>(0.0078125000000000000000000000000000000000)*a(1)*a(9)+static_cast<FP>(13.879794034090909090909090909090909091)*a(3)*a(9)+static_cast<FP>(47006.505681818181818181818181818181818)*a(5)*a(9)+static_cast<FP>(1.6020240379261363636363636363636363636e8)*a(7)*a(9)+static_cast<FP>(1.4307515635684090909090909090909090909e11)*(a(9)*a(9));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -5094,7 +5094,7 @@ namespace TransformMatrices {
     rslt(10,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -5119,7 +5119,7 @@ namespace TransformMatrices {
     rslt(10,1) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -5155,7 +5155,7 @@ namespace TransformMatrices {
     rslt(10,2) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -5202,7 +5202,7 @@ namespace TransformMatrices {
     rslt(10,3) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -5260,7 +5260,7 @@ namespace TransformMatrices {
     rslt(10,4) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -5329,7 +5329,7 @@ namespace TransformMatrices {
     rslt(10,5) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,7> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -5409,7 +5409,7 @@ namespace TransformMatrices {
     rslt(10,6) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,8> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -5500,7 +5500,7 @@ namespace TransformMatrices {
     rslt(10,7) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,9> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -5602,7 +5602,7 @@ namespace TransformMatrices {
     rslt(10,8) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,10> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -5715,7 +5715,7 @@ namespace TransformMatrices {
     rslt(10,9) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,11,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,11,11> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -5839,7 +5839,7 @@ namespace TransformMatrices {
     rslt(10,10) = static_cast<FP>(0.00097656250000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,2,11,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,11,11> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000021847811612215909090909090909090909091);
     rslt(0,1) = -static_cast<FP>(0.0011380537729414682539682539682539682540);
     rslt(0,2) = static_cast<FP>(0.00031037830171130952380952380952380952381);
@@ -5963,7 +5963,7 @@ namespace TransformMatrices {
     rslt(10,10) = static_cast<FP>(2.7557319223985890652557319223985890653e-7);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,2,11,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,11,11> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -6087,7 +6087,7 @@ namespace TransformMatrices {
     rslt(10,10) = static_cast<FP>(1.1271777832120028409090909090909090909e7);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,1> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000021847811612215909090909090909090909091);
     rslt(1,0) = static_cast<FP>(0.00033715758660827020202020202020202020202);
     rslt(2,0) = -static_cast<FP>(0.0026301319292957476551226551226551226551);
@@ -6101,7 +6101,7 @@ namespace TransformMatrices {
     rslt(10,0) = -static_cast<FP>(0.000021847811612215909090909090909090909091);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,2> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = -static_cast<FP>(0.00036075036075036075036075036075036075036);
     rslt(1,0) = -static_cast<FP>(0.0055194805194805194805194805194805194805);
@@ -6126,7 +6126,7 @@ namespace TransformMatrices {
     rslt(10,1) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,3> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = -static_cast<FP>(0.000021847811612215909090909090909090909091);
     rslt(0,2) = -static_cast<FP>(0.00036075036075036075036075036075036075036);
@@ -6162,7 +6162,7 @@ namespace TransformMatrices {
     rslt(10,2) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,4> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = static_cast<FP>(0.00023092797872072080329035173530288010667);
     rslt(0,2) = -static_cast<FP>(0.00024525295066235941159562670724451871497);
@@ -6209,7 +6209,7 @@ namespace TransformMatrices {
     rslt(10,3) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,5> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = static_cast<FP>(0.00032965142284058219522645657057883083579);
     rslt(0,2) = -static_cast<FP>(0.000021847811612215909090909090909090909091);
@@ -6267,7 +6267,7 @@ namespace TransformMatrices {
     rslt(10,4) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,6> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = static_cast<FP>(0.00037232211726973511240241265507504400071);
     rslt(0,2) = static_cast<FP>(0.00014234028301937007355718490005222549158);
@@ -6336,7 +6336,7 @@ namespace TransformMatrices {
     rslt(10,5) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,7> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = static_cast<FP>(0.00039353985830864334487981464367436945678);
     rslt(0,2) = static_cast<FP>(0.00024213845154847099765226027827795462063);
@@ -6416,7 +6416,7 @@ namespace TransformMatrices {
     rslt(10,6) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,8> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = static_cast<FP>(0.00040536962314583751263426616976446567937);
     rslt(0,2) = static_cast<FP>(0.00030196751769787573632424257508118098188);
@@ -6507,7 +6507,7 @@ namespace TransformMatrices {
     rslt(10,7) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,9> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = static_cast<FP>(0.00041257272932634884885117924377175026369);
     rslt(0,2) = static_cast<FP>(0.00033899769193323400291893478865323353924);
@@ -6609,7 +6609,7 @@ namespace TransformMatrices {
     rslt(10,8) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,10> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = static_cast<FP>(0.00041726662439488890527601903102209940696);
     rslt(0,2) = static_cast<FP>(0.00036289866440535657107004580251914778040);
@@ -6722,7 +6722,7 @@ namespace TransformMatrices {
     rslt(10,9) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,11,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,11,11> &rslt) {
     rslt(0,0) = static_cast<FP>(0.00043290043290043290043290043290043290043);
     rslt(0,1) = static_cast<FP>(0.00042049186223633778635037177022870826925);
     rslt(0,2) = static_cast<FP>(0.00037897438827787537242220970037031101033);
@@ -6846,7 +6846,7 @@ namespace TransformMatrices {
     rslt(10,10) = static_cast<FP>(0.00043290043290043290043290043290043290043);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,3,6,6,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,6,6,6> &rslt) {
     rslt(0,0,0) = static_cast<FP>(0.032291666666666666666666666666666666667);
     rslt(0,0,1) = -static_cast<FP>(0.12829861111111111111111111111111111111);
     rslt(0,0,2) = -static_cast<FP>(0.37500000000000000000000000000000000000);
@@ -7065,7 +7065,7 @@ namespace TransformMatrices {
     rslt(5,5,5) = static_cast<FP>(0.0083333333333333333333333333333333333333);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,12> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.47244963611144111170379006915160935681);
     rslt(2) = -static_cast<FP>(0.40963966082200333917432079085845133035);
@@ -7080,7 +7080,7 @@ namespace TransformMatrices {
     rslt(11) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,12> &rslt) {
     rslt(0) = static_cast<FP>(0.0075757575757575757575757575757575757576);
     rslt(1) = static_cast<FP>(0.045842258706598065334171297067039643155);
     rslt(2) = static_cast<FP>(0.078987352782185057582335531350170134125);
@@ -7095,7 +7095,7 @@ namespace TransformMatrices {
     rslt(11) = static_cast<FP>(0.0075757575757575757575757575757575757576);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,12,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,12,12> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.020507812500000000000000000000000007028);
     rslt(0,1) = static_cast<FP>(0.041015624999999999999999999999999994668);
     rslt(0,2) = static_cast<FP>(5.3320312500000000000000000000000003611);
@@ -7242,7 +7242,7 @@ namespace TransformMatrices {
     rslt(11,11) = static_cast<FP>(58785.999999999999999999999999999993951);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,12,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,12,12> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -7389,7 +7389,7 @@ namespace TransformMatrices {
     rslt(11,11) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,12,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,12,12> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -7536,13 +7536,13 @@ namespace TransformMatrices {
     rslt(11,11) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,12> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,12> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(1.4307515635684090909090909090909090909e13)*(a(10)*a(10))+static_cast<FP>(0.0019531250000000000000000000000000000000)*a(1)*a(11)+static_cast<FP>(1.7312093919177750000000000000000000000e15)*(a(11)*a(11))+static_cast<FP>(0.15980113636363636363636363636363636364)*a(10)*a(2)+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(5.2734375000000000000000000000000000000)*a(11)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(555.19176136363636363636363636363636364)*a(10)*a(4)+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.83571428571428571428571428571428571)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(30535.546875000000000000000000000000000)*a(11)*a(5)+static_cast<FP>(63.066964285714285714285714285714285714)*a(3)*a(5)+static_cast<FP>(15645.903707837301587301587301587301587)*(a(5)*a(5))+static_cast<FP>(2.8203903409090909090909090909090909091e6)*a(10)*a(6)+static_cast<FP>(1.5535714285714285714285714285714285714)*a(2)*a(6)+static_cast<FP>(1513.6279761904761904761904761904761905)*a(4)*a(6)+static_cast<FP>(563252.53667816558441558441558441558442)*(a(6)*a(6))+static_cast<FP>(0.031250000000000000000000000000000000000)*a(1)*a(7)+static_cast<FP>(2.1717005625000000000000000000000000000e8)*a(11)*a(7)+static_cast<FP>(32.643229166666666666666666666666666667)*a(3)*a(7)+static_cast<FP>(52976.985381155303030303030303030303030)*a(5)*a(7)+static_cast<FP>(2.7599374297230113636363636363636363636e7)*(a(7)*a(7))+static_cast<FP>(1.2816192303409090909090909090909090909e10)*a(10)*a(8)+static_cast<FP>(0.51388888888888888888888888888888888889)*a(2)*a(8)+static_cast<FP>(1044.5890151515151515151515151515151515)*a(4)*a(8)+static_cast<FP>(2.5428952982954545454545454545454545455e6)*a(6)*a(8)+static_cast<FP>(1.7663599550227272727272727272727272727e9)*(a(8)*a(8))+static_cast<FP>(0.0078125000000000000000000000000000000000)*a(1)*a(9)+static_cast<FP>(1.2688030380375000000000000000000000000e12)*a(11)*a(9)+static_cast<FP>(13.879794034090909090909090909090909091)*a(3)*a(9)+static_cast<FP>(47006.505681818181818181818181818181818)*a(5)*a(9)+static_cast<FP>(1.6020240379261363636363636363636363636e8)*a(7)*a(9)+static_cast<FP>(1.4307515635684090909090909090909090909e11)*(a(9)*a(9));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -7557,7 +7557,7 @@ namespace TransformMatrices {
     rslt(11,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -7584,7 +7584,7 @@ namespace TransformMatrices {
     rslt(11,1) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -7623,7 +7623,7 @@ namespace TransformMatrices {
     rslt(11,2) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -7674,7 +7674,7 @@ namespace TransformMatrices {
     rslt(11,3) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -7737,7 +7737,7 @@ namespace TransformMatrices {
     rslt(11,4) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -7812,7 +7812,7 @@ namespace TransformMatrices {
     rslt(11,5) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,7> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -7899,7 +7899,7 @@ namespace TransformMatrices {
     rslt(11,6) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,8> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -7998,7 +7998,7 @@ namespace TransformMatrices {
     rslt(11,7) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,9> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -8109,7 +8109,7 @@ namespace TransformMatrices {
     rslt(11,8) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,10> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -8232,7 +8232,7 @@ namespace TransformMatrices {
     rslt(11,9) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,11> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -8367,7 +8367,7 @@ namespace TransformMatrices {
     rslt(11,10) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,12,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,12,12> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -8514,7 +8514,7 @@ namespace TransformMatrices {
     rslt(11,11) = static_cast<FP>(0.00048828125000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,13> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.47665492332108195594845273237772457581);
     rslt(2) = -static_cast<FP>(0.42317378232593615843296280354937667979);
@@ -8530,7 +8530,7 @@ namespace TransformMatrices {
     rslt(12) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,13> &rslt) {
     rslt(0) = static_cast<FP>(0.0064102564102564102564102564102564102564);
     rslt(1) = static_cast<FP>(0.038900843373409463896794494166566792532);
     rslt(2) = static_cast<FP>(0.067490963344804174559957381294685444628);
@@ -8546,7 +8546,7 @@ namespace TransformMatrices {
     rslt(12) = static_cast<FP>(0.0064102564102564102564102564102564102564);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,13,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,13,13> &rslt) {
     rslt(0,0) = static_cast<FP>(7.7216146127415491847304756828242185528e-37);
     rslt(0,1) = static_cast<FP>(0.45117187500000000000000000000000027833);
     rslt(0,2) = -static_cast<FP>(0.90234374999999999999999999999999775678);
@@ -8718,7 +8718,7 @@ namespace TransformMatrices {
     rslt(12,12) = static_cast<FP>(208012.00000000000000000000000000002362);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,13,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,13,13> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -8890,7 +8890,7 @@ namespace TransformMatrices {
     rslt(12,12) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,13,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,13,13> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -9062,13 +9062,13 @@ namespace TransformMatrices {
     rslt(12,12) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,13> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,13> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(1.4307515636161134178321678321678321678e13)*(a(10)*a(10))+static_cast<FP>(0.0019531250000000000000000000000000000000)*a(1)*a(11)+static_cast<FP>(1.7312093919754972355769230769230769231e15)*(a(11)*a(11))+static_cast<FP>(1.5225636467244807692307692307692307692e14)*a(10)*a(12)+static_cast<FP>(2.4929415244447160192307692307692307692e17)*(a(12)*a(12))+static_cast<FP>(0.15980113636363636363636363636363636364)*a(10)*a(2)+static_cast<FP>(0.047776442307692307692307692307692307692)*a(12)*a(2)+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(5.2746769831730769230769230769230769231)*a(11)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(555.19326376748251748251748251748251748)*a(10)*a(4)+static_cast<FP>(253.18449519230769230769230769230769231)*a(12)*a(4)+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.83571428571428571428571428571428571)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(30535.629507211538461538461538461538462)*a(11)*a(5)+static_cast<FP>(63.066964285714285714285714285714285714)*a(3)*a(5)+static_cast<FP>(15645.903707837301587301587301587301587)*(a(5)*a(5))+static_cast<FP>(2.8203904423213505244755244755244755245e6)*a(10)*a(6)+static_cast<FP>(2.1985653245192307692307692307692307692e6)*a(12)*a(6)+static_cast<FP>(1.5535714285714285714285714285714285714)*a(2)*a(6)+static_cast<FP>(1513.6279761904761904761904761904761905)*a(4)*a(6)+static_cast<FP>(563252.53667816558441558441558441558442)*(a(6)*a(6))+static_cast<FP>(0.031250000000000000000000000000000000000)*a(1)*a(7)+static_cast<FP>(2.1717006405874399038461538461538461538e8)*a(11)*a(7)+static_cast<FP>(32.643229166666666666666666666666666667)*a(3)*a(7)+static_cast<FP>(52976.985381155303030303030303030303030)*a(5)*a(7)+static_cast<FP>(2.7599374298150335992132867132867132867e7)*(a(7)*a(7))+static_cast<FP>(1.2816192312495629370629370629370629371e10)*a(10)*a(8)+static_cast<FP>(2.0848326149639423076923076923076923077e10)*a(12)*a(8)+static_cast<FP>(0.51388888888888888888888888888888888889)*a(2)*a(8)+static_cast<FP>(1044.5890151515151515151515151515151515)*a(4)*a(8)+static_cast<FP>(2.5428953000983391608391608391608391608e6)*a(6)*a(8)+static_cast<FP>(1.7663599550816215034965034965034965035e9)*(a(8)*a(8))+static_cast<FP>(0.0078125000000000000000000000000000000000)*a(1)*a(9)+static_cast<FP>(1.2688030389370673076923076923076923077e12)*a(11)*a(9)+static_cast<FP>(13.879794034090909090909090909090909091)*a(3)*a(9)+static_cast<FP>(47006.507372022508741258741258741258741)*a(5)*a(9)+static_cast<FP>(1.6020240390619536713286713286713286713e8)*a(7)*a(9)+static_cast<FP>(1.4307515636161134178321678321678321678e11)*(a(9)*a(9));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -9084,7 +9084,7 @@ namespace TransformMatrices {
     rslt(12,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -9113,7 +9113,7 @@ namespace TransformMatrices {
     rslt(12,1) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -9155,7 +9155,7 @@ namespace TransformMatrices {
     rslt(12,2) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -9210,7 +9210,7 @@ namespace TransformMatrices {
     rslt(12,3) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -9278,7 +9278,7 @@ namespace TransformMatrices {
     rslt(12,4) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -9359,7 +9359,7 @@ namespace TransformMatrices {
     rslt(12,5) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,7> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -9453,7 +9453,7 @@ namespace TransformMatrices {
     rslt(12,6) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,8> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -9560,7 +9560,7 @@ namespace TransformMatrices {
     rslt(12,7) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,9> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -9680,7 +9680,7 @@ namespace TransformMatrices {
     rslt(12,8) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,10> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -9813,7 +9813,7 @@ namespace TransformMatrices {
     rslt(12,9) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,11> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -9959,7 +9959,7 @@ namespace TransformMatrices {
     rslt(12,10) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,12> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -10118,7 +10118,7 @@ namespace TransformMatrices {
     rslt(12,11) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,13,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,13,13> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -10290,7 +10290,7 @@ namespace TransformMatrices {
     rslt(12,12) = static_cast<FP>(0.00024414062500000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,2,13,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,13,13> &rslt) {
     rslt(0,0) = static_cast<FP>(4.2365147517277644230769230769230769231e-6);
     rslt(0,1) = static_cast<FP>(0.00026262464060010446729196729196729196729);
     rslt(0,2) = -static_cast<FP>(0.000060605686292331800144300144300144300144);
@@ -10462,7 +10462,7 @@ namespace TransformMatrices {
     rslt(12,12) = static_cast<FP>(2.0876756987868098979210090321201432313e-9);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,2,13,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,13,13> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -10634,7 +10634,7 @@ namespace TransformMatrices {
     rslt(12,12) = static_cast<FP>(2.5198354346484562800480769230769230769e9);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,1> &rslt) {
     rslt(0,0) = static_cast<FP>(4.2365147517277644230769230769230769231e-6);
     rslt(1,0) = -static_cast<FP>(0.000072685988632949082167832167832167832168);
     rslt(2,0) = static_cast<FP>(0.00061676756022230265394327894327894327894);
@@ -10650,7 +10650,7 @@ namespace TransformMatrices {
     rslt(12,0) = static_cast<FP>(4.2365147517277644230769230769230769231e-6);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,2> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = static_cast<FP>(0.000083250083250083250083250083250083250083);
     rslt(1,0) = static_cast<FP>(0.0014180264180264180264180264180264180264);
@@ -10679,7 +10679,7 @@ namespace TransformMatrices {
     rslt(12,1) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,3> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = static_cast<FP>(4.2365147517277644230769230769230769231e-6);
     rslt(0,2) = static_cast<FP>(0.000083250083250083250083250083250083250083);
@@ -10721,7 +10721,7 @@ namespace TransformMatrices {
     rslt(12,2) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,4> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000053410261471592559656397186783681921822);
     rslt(0,2) = static_cast<FP>(0.000056161836501500922898093761813590285063);
@@ -10776,7 +10776,7 @@ namespace TransformMatrices {
     rslt(12,3) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,5> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000075339220911789808598969455814010819865);
     rslt(0,2) = static_cast<FP>(4.2365147517277644230769230769230769231e-6);
@@ -10844,7 +10844,7 @@ namespace TransformMatrices {
     rslt(12,4) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,6> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000084601702743022300778127273787401726588);
     rslt(0,2) = -static_cast<FP>(0.000033390086708639776571914104687016726876);
@@ -10925,7 +10925,7 @@ namespace TransformMatrices {
     rslt(12,5) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,7> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000089117857398469724349069843297470469677);
     rslt(0,2) = -static_cast<FP>(0.000055924460350977246155344645517068991069);
@@ -11019,7 +11019,7 @@ namespace TransformMatrices {
     rslt(12,6) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,8> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000091594319625451691455521615601710082146);
     rslt(0,2) = -static_cast<FP>(0.000069245382671677077914853202924234171470);
@@ -11126,7 +11126,7 @@ namespace TransformMatrices {
     rslt(12,7) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,9> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000093081329232613340952400667126863757742);
     rslt(0,2) = -static_cast<FP>(0.000077383458600817192440300039545883871713);
@@ -11246,7 +11246,7 @@ namespace TransformMatrices {
     rslt(12,8) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,10> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000094039085343906598018836500249487429608);
     rslt(0,2) = -static_cast<FP>(0.000082573468564782118400264595306910140746);
@@ -11379,7 +11379,7 @@ namespace TransformMatrices {
     rslt(12,9) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,11> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000094690779168080470205122071213885805727);
     rslt(0,2) = -static_cast<FP>(0.000086025948136910594122962314983595674202);
@@ -11525,7 +11525,7 @@ namespace TransformMatrices {
     rslt(12,10) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,12> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000095154020352830276832535819383591335592);
     rslt(0,2) = -static_cast<FP>(0.000088412091128130739724930128883301471846);
@@ -11684,7 +11684,7 @@ namespace TransformMatrices {
     rslt(12,11) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,13,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,13,13> &rslt) {
     rslt(0,0) = -static_cast<FP>(0.000097125097125097125097125097125097125097);
     rslt(0,1) = -static_cast<FP>(0.000095495146369623504472823661615484300902);
     rslt(0,2) = -static_cast<FP>(0.000090117716048893095181807914434454331678);
@@ -11856,7 +11856,7 @@ namespace TransformMatrices {
     rslt(12,12) = -static_cast<FP>(0.000097125097125097125097125097125097125098);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,3,7,7,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,7,7,7> &rslt) {
     rslt(0,0,0) = -static_cast<FP>(0.028301711309523809523809523809523809524);
     rslt(0,0,1) = static_cast<FP>(0.091579861111111111111111111111111111111);
     rslt(0,0,2) = static_cast<FP>(0.32213541666666666666666666666666666667);
@@ -12202,7 +12202,7 @@ namespace TransformMatrices {
     rslt(6,6,6) = static_cast<FP>(0.0013888888888888888888888888888888888889);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,14> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,14> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.47996752263363045067755008100771219453);
     rslt(2) = -static_cast<FP>(0.43390052691517362550011010145413210663);
@@ -12219,7 +12219,7 @@ namespace TransformMatrices {
     rslt(13) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,14> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,14> &rslt) {
     rslt(0) = static_cast<FP>(0.0054945054945054945054945054945054945055);
     rslt(1) = static_cast<FP>(0.033418642248840642317035330373026412529);
     rslt(2) = static_cast<FP>(0.058293327949355825770498335327325115002);
@@ -12236,7 +12236,7 @@ namespace TransformMatrices {
     rslt(13) = static_cast<FP>(0.0054945054945054945054945054945054945055);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,14,14> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,14,14> &rslt) {
     rslt(0,0) = static_cast<FP>(0.016113281249999999999999999999999991180);
     rslt(0,1) = -static_cast<FP>(0.032226562500000000000000000000000227729);
     rslt(0,2) = -static_cast<FP>(5.8007812500000000000000000000000002730);
@@ -12435,7 +12435,7 @@ namespace TransformMatrices {
     rslt(13,13) = static_cast<FP>(742899.99999999999999999999999999992545);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,14,14> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,14,14> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -12634,7 +12634,7 @@ namespace TransformMatrices {
     rslt(13,13) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,14,14> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,14,14> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -12833,13 +12833,13 @@ namespace TransformMatrices {
     rslt(13,13) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,14> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,14> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(1.4307515636161134178321678321678321678e13)*(a(10)*a(10))+static_cast<FP>(0.0019531250000000000000000000000000000000)*a(1)*a(11)+static_cast<FP>(1.7312093919754972355769230769230769231e15)*(a(11)*a(11))+static_cast<FP>(1.5225636467244807692307692307692307692e14)*a(10)*a(12)+static_cast<FP>(2.4929415244447160192307692307692307692e17)*(a(12)*a(12))+static_cast<FP>(0.00048828125000000000000000000000000000000)*a(1)*a(13)+static_cast<FP>(2.1772660148160075000000000000000000000e16)*a(11)*a(13)+static_cast<FP>(4.2130711763115700725000000000000000000e19)*(a(13)*a(13))+static_cast<FP>(0.15980113636363636363636363636363636364)*a(10)*a(2)+static_cast<FP>(0.047776442307692307692307692307692307692)*a(12)*a(2)+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(5.2746769831730769230769230769230769231)*a(11)*a(3)+static_cast<FP>(1.8632812500000000000000000000000000000)*a(13)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(555.19326376748251748251748251748251748)*a(10)*a(4)+static_cast<FP>(253.18449519230769230769230769230769231)*a(12)*a(4)+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.83571428571428571428571428571428571)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(30535.629507211538461538461538461538462)*a(11)*a(5)+static_cast<FP>(16456.992187500000000000000000000000000)*a(13)*a(5)+static_cast<FP>(63.066964285714285714285714285714285714)*a(3)*a(5)+static_cast<FP>(15645.903707837301587301587301587301587)*(a(5)*a(5))+static_cast<FP>(2.8203904423213505244755244755244755245e6)*a(10)*a(6)+static_cast<FP>(2.1985653245192307692307692307692307692e6)*a(12)*a(6)+static_cast<FP>(1.5535714285714285714285714285714285714)*a(2)*a(6)+static_cast<FP>(1513.6279761904761904761904761904761905)*a(4)*a(6)+static_cast<FP>(563252.53667816558441558441558441558442)*(a(6)*a(6))+static_cast<FP>(0.031250000000000000000000000000000000000)*a(1)*a(7)+static_cast<FP>(2.1717006405874399038461538461538461538e8)*a(11)*a(7)+static_cast<FP>(2.0006944453125000000000000000000000000e8)*a(13)*a(7)+static_cast<FP>(32.643229166666666666666666666666666667)*a(3)*a(7)+static_cast<FP>(52976.985381155303030303030303030303030)*a(5)*a(7)+static_cast<FP>(2.7599374298150335992132867132867132867e7)*(a(7)*a(7))+static_cast<FP>(1.2816192312495629370629370629370629371e10)*a(10)*a(8)+static_cast<FP>(2.0848326149639423076923076923076923077e10)*a(12)*a(8)+static_cast<FP>(0.51388888888888888888888888888888888889)*a(2)*a(8)+static_cast<FP>(1044.5890151515151515151515151515151515)*a(4)*a(8)+static_cast<FP>(2.5428953000983391608391608391608391608e6)*a(6)*a(8)+static_cast<FP>(1.7663599550816215034965034965034965035e9)*(a(8)*a(8))+static_cast<FP>(0.0078125000000000000000000000000000000000)*a(1)*a(9)+static_cast<FP>(1.2688030389370673076923076923076923077e12)*a(11)*a(9)+static_cast<FP>(2.4392541595078125000000000000000000000e12)*a(13)*a(9)+static_cast<FP>(13.879794034090909090909090909090909091)*a(3)*a(9)+static_cast<FP>(47006.507372022508741258741258741258741)*a(5)*a(9)+static_cast<FP>(1.6020240390619536713286713286713286713e8)*a(7)*a(9)+static_cast<FP>(1.4307515636161134178321678321678321678e11)*(a(9)*a(9));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -12856,7 +12856,7 @@ namespace TransformMatrices {
     rslt(13,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -12887,7 +12887,7 @@ namespace TransformMatrices {
     rslt(13,1) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -12932,7 +12932,7 @@ namespace TransformMatrices {
     rslt(13,2) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -12991,7 +12991,7 @@ namespace TransformMatrices {
     rslt(13,3) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -13064,7 +13064,7 @@ namespace TransformMatrices {
     rslt(13,4) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -13151,7 +13151,7 @@ namespace TransformMatrices {
     rslt(13,5) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,7> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -13252,7 +13252,7 @@ namespace TransformMatrices {
     rslt(13,6) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,8> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -13367,7 +13367,7 @@ namespace TransformMatrices {
     rslt(13,7) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,9> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -13496,7 +13496,7 @@ namespace TransformMatrices {
     rslt(13,8) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,10> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -13639,7 +13639,7 @@ namespace TransformMatrices {
     rslt(13,9) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,11> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -13796,7 +13796,7 @@ namespace TransformMatrices {
     rslt(13,10) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,12> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -13967,7 +13967,7 @@ namespace TransformMatrices {
     rslt(13,11) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,13> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -14152,7 +14152,7 @@ namespace TransformMatrices {
     rslt(13,12) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,14,14> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,14,14> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -14351,7 +14351,7 @@ namespace TransformMatrices {
     rslt(13,13) = static_cast<FP>(0.00012207031250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,15> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,15> &rslt) {
     rslt(0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
     rslt(1) = -static_cast<FP>(0.48262296325191928639792569603480058885);
     rslt(2) = -static_cast<FP>(0.44254102211148814941270081574111482599);
@@ -14369,7 +14369,7 @@ namespace TransformMatrices {
     rslt(14) = static_cast<FP>(0.50000000000000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,15> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,15> &rslt) {
     rslt(0) = static_cast<FP>(0.0047619047619047619047619047619047619048);
     rslt(1) = static_cast<FP>(0.029014946514300624548440292012640997718);
     rslt(2) = static_cast<FP>(0.050830035162859033801833085394400357740);
@@ -14387,7 +14387,7 @@ namespace TransformMatrices {
     rslt(14) = static_cast<FP>(0.0047619047619047619047619047619047619048);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,15,15> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,15,15> &rslt) {
     rslt(0,0) = static_cast<FP>(1.3858119863203620685680745673256043688e-36);
     rslt(0,1) = -static_cast<FP>(0.41894531250000000000000000000000318385);
     rslt(0,2) = static_cast<FP>(0.83789062499999999999999999999998354632);
@@ -14615,7 +14615,7 @@ namespace TransformMatrices {
     rslt(14,14) = static_cast<FP>(2.6744400000000000000000000000000150727e6);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,15,15> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,15,15> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -14843,7 +14843,7 @@ namespace TransformMatrices {
     rslt(14,14) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,15,15> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,15,15> &rslt) {
     rslt(0,0) = 0;
     rslt(0,1) = 0;
     rslt(0,2) = 0;
@@ -15071,13 +15071,13 @@ namespace TransformMatrices {
     rslt(14,14) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,1,15> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION float coefs_to_tv(SArray<FP,15> &a) {
     FP rslt;
     rslt = static_cast<FP>(1.0000000000000000000000000000000000000)*(a(1)*a(1))+static_cast<FP>(1.4307515636163243553321678321678321678e13)*(a(10)*a(10))+static_cast<FP>(0.0019531250000000000000000000000000000000)*a(1)*a(11)+static_cast<FP>(1.7312093919757524699519230769230769231e15)*(a(11)*a(11))+static_cast<FP>(1.5225636467293534254807692307692307692e14)*a(10)*a(12)+static_cast<FP>(2.4929415244450835567307692307692307692e17)*(a(12)*a(12))+static_cast<FP>(0.00048828125000000000000000000000000000000)*a(1)*a(13)+static_cast<FP>(2.1772660148229753984375000000000000000e16)*a(11)*a(13)+static_cast<FP>(4.2130711763121912108750000000000000000e19)*(a(13)*a(13))+static_cast<FP>(3.4149558239021531250000000000000000000e14)*a(10)*a(14)+static_cast<FP>(3.6578069049025986693750000000000000000e18)*a(12)*a(14)+static_cast<FP>(8.2576195055718947733150000000000000000e21)*(a(14)*a(14))+static_cast<FP>(0.15980113636363636363636363636363636364)*a(10)*a(2)+static_cast<FP>(0.047776442307692307692307692307692307692)*a(12)*a(2)+static_cast<FP>(0.013899739583333333333333333333333333333)*a(14)*a(2)+static_cast<FP>(4.3333333333333333333333333333333333333)*(a(2)*a(2))+static_cast<FP>(0.50000000000000000000000000000000000000)*a(1)*a(3)+static_cast<FP>(5.2746769831730769230769230769230769231)*a(11)*a(3)+static_cast<FP>(1.8635986328125000000000000000000000000)*a(13)*a(3)+static_cast<FP>(39.112500000000000000000000000000000000)*(a(3)*a(3))+static_cast<FP>(555.19326376748251748251748251748251748)*a(10)*a(4)+static_cast<FP>(253.18488581730769230769230769230769231)*a(12)*a(4)+static_cast<FP>(104.36152343750000000000000000000000000)*a(14)*a(4)+static_cast<FP>(4.2000000000000000000000000000000000000)*a(2)*a(4)+static_cast<FP>(625.83571428571428571428571428571428571)*(a(4)*a(4))+static_cast<FP>(0.12500000000000000000000000000000000000)*a(1)*a(5)+static_cast<FP>(30535.629954802684294871794871794871795)*a(11)*a(5)+static_cast<FP>(16457.017578125000000000000000000000000)*a(13)*a(5)+static_cast<FP>(63.066964285714285714285714285714285714)*a(3)*a(5)+static_cast<FP>(15645.903707837301587301587301587301587)*(a(5)*a(5))+static_cast<FP>(2.8203904428096317744755244755244755245e6)*a(10)*a(6)+static_cast<FP>(2.1985653567457932692307692307692307692e6)*a(12)*a(6)+static_cast<FP>(1.3823894765625000000000000000000000000e6)*a(14)*a(6)+static_cast<FP>(1.5535714285714285714285714285714285714)*a(2)*a(6)+static_cast<FP>(1513.6279761904761904761904761904761905)*a(4)*a(6)+static_cast<FP>(563252.53667816558441558441558441558442)*(a(6)*a(6))+static_cast<FP>(0.031250000000000000000000000000000000000)*a(1)*a(7)+static_cast<FP>(2.1717006409634164663461538461538461538e8)*a(11)*a(7)+static_cast<FP>(2.0006944746386718750000000000000000000e8)*a(13)*a(7)+static_cast<FP>(32.643229166666666666666666666666666667)*a(3)*a(7)+static_cast<FP>(52976.985381155303030303030303030303030)*a(5)*a(7)+static_cast<FP>(2.7599374298150335992132867132867132867e7)*(a(7)*a(7))+static_cast<FP>(1.2816192312536644995629370629370629371e10)*a(10)*a(8)+static_cast<FP>(2.0848326153248798076923076923076923077e10)*a(12)*a(8)+static_cast<FP>(2.2407778115953125000000000000000000000e10)*a(14)*a(8)+static_cast<FP>(0.51388888888888888888888888888888888889)*a(2)*a(8)+static_cast<FP>(1044.5890151515151515151515151515151515)*a(4)*a(8)+static_cast<FP>(2.5428953000983391608391608391608391608e6)*a(6)*a(8)+static_cast<FP>(1.7663599550818819201631701631701631702e9)*(a(8)*a(8))+static_cast<FP>(0.0078125000000000000000000000000000000000)*a(1)*a(9)+static_cast<FP>(1.2688030389411278545673076923076923077e12)*a(11)*a(9)+static_cast<FP>(2.4392541599301093750000000000000000000e12)*a(13)*a(9)+static_cast<FP>(13.879794034090909090909090909090909091)*a(3)*a(9)+static_cast<FP>(47006.507372022508741258741258741258741)*a(5)*a(9)+static_cast<FP>(1.6020240390670806244536713286713286713e8)*a(7)*a(9)+static_cast<FP>(1.4307515636163243553321678321678321678e11)*(a(9)*a(9));
     return rslt;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,1> &rslt) {
     rslt(0,0) = 1;
     rslt(1,0) = 0;
     rslt(2,0) = 0;
@@ -15095,7 +15095,7 @@ namespace TransformMatrices {
     rslt(14,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,2> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(1,0) = -static_cast<FP>(0.50000000000000000000000000000000000000);
@@ -15128,7 +15128,7 @@ namespace TransformMatrices {
     rslt(14,1) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,3> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -15176,7 +15176,7 @@ namespace TransformMatrices {
     rslt(14,2) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,4> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -15239,7 +15239,7 @@ namespace TransformMatrices {
     rslt(14,3) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,5> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -15317,7 +15317,7 @@ namespace TransformMatrices {
     rslt(14,4) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,6> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -15410,7 +15410,7 @@ namespace TransformMatrices {
     rslt(14,5) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,7> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -15518,7 +15518,7 @@ namespace TransformMatrices {
     rslt(14,6) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,8> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -15641,7 +15641,7 @@ namespace TransformMatrices {
     rslt(14,7) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,9> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -15779,7 +15779,7 @@ namespace TransformMatrices {
     rslt(14,8) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,10> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -15932,7 +15932,7 @@ namespace TransformMatrices {
     rslt(14,9) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,11> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -16100,7 +16100,7 @@ namespace TransformMatrices {
     rslt(14,10) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,12> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -16283,7 +16283,7 @@ namespace TransformMatrices {
     rslt(14,11) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,13> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -16481,7 +16481,7 @@ namespace TransformMatrices {
     rslt(14,12) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,14> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,14> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -16694,7 +16694,7 @@ namespace TransformMatrices {
     rslt(14,13) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,15,15> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,15,15> &rslt) {
     rslt(0,0) = 1;
     rslt(0,1) = 1;
     rslt(0,2) = 1;
@@ -16922,7 +16922,7 @@ namespace TransformMatrices {
     rslt(14,14) = static_cast<FP>(0.000061035156250000000000000000000000000000);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,2,15,15> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,15,15> &rslt) {
     rslt(0,0) = -static_cast<FP>(8.5234642028808593750000000000000000000e-7);
     rslt(0,1) = -static_cast<FP>(0.000061269042621576234508712187283615855044);
     rslt(0,2) = static_cast<FP>(0.000012253808524315246901742437456723171009);
@@ -17150,7 +17150,7 @@ namespace TransformMatrices {
     rslt(14,14) = static_cast<FP>(1.1470745597729724713851697978682105666e-11);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,2,15,15> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,15,15> &rslt) {
     rslt(0,0) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,1) = static_cast<FP>(1.0000000000000000000000000000000000000);
     rslt(0,2) = static_cast<FP>(1.0000000000000000000000000000000000000);
@@ -17378,7 +17378,7 @@ namespace TransformMatrices {
     rslt(14,14) = static_cast<FP>(7.8675943474684370524088541666666666667e11);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,1> &rslt) {
     rslt(0,0) = -static_cast<FP>(8.5234642028808593750000000000000000000e-7);
     rslt(1,0) = static_cast<FP>(0.000016169364635760967548076923076923076923);
     rslt(2,0) = -static_cast<FP>(0.00015024951287916490248033216783216783217);
@@ -17396,7 +17396,7 @@ namespace TransformMatrices {
     rslt(14,0) = -static_cast<FP>(8.5234642028808593750000000000000000000e-7);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,2> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,2> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = -static_cast<FP>(0.000019425019425019425019425019425019425020);
     rslt(1,0) = -static_cast<FP>(0.00036630036630036630036630036630036630037);
@@ -17429,7 +17429,7 @@ namespace TransformMatrices {
     rslt(14,1) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,3> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,3> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = -static_cast<FP>(8.5234642028808593750000000000000000000e-7);
     rslt(0,2) = -static_cast<FP>(0.000019425019425019425019425019425019425020);
@@ -17477,7 +17477,7 @@ namespace TransformMatrices {
     rslt(14,2) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,4> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,4> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000012480299850748051069931799942436212018);
     rslt(0,2) = -static_cast<FP>(0.000013030130180667005327510396145371039292);
@@ -17540,7 +17540,7 @@ namespace TransformMatrices {
     rslt(14,3) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,5> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,5> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000017453363016245074884529609520844520836);
     rslt(0,2) = -static_cast<FP>(8.5234642028808593750000000000000000000e-7);
@@ -17618,7 +17618,7 @@ namespace TransformMatrices {
     rslt(14,4) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,6> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,6> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000019517207776531408108418338550331564663);
     rslt(0,2) = static_cast<FP>(7.8811170533519052969311125473854589398e-6);
@@ -17711,7 +17711,7 @@ namespace TransformMatrices {
     rslt(14,5) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,7> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,7> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000020508030152221764911402571137728171664);
     rslt(0,2) = static_cast<FP>(0.000013054599042214620432834616766548689953);
@@ -17819,7 +17819,7 @@ namespace TransformMatrices {
     rslt(14,6) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,8> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000021044085371314711914209505347472737113);
     rslt(0,2) = static_cast<FP>(0.000016080878179137764163902993383931659282);
@@ -17942,7 +17942,7 @@ namespace TransformMatrices {
     rslt(14,7) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,9> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,9> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000021362249059152440585281355204478625366);
     rslt(0,2) = static_cast<FP>(0.000017911532198252511300865231016118385559);
@@ -18080,7 +18080,7 @@ namespace TransformMatrices {
     rslt(14,8) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,10> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,10> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000021565147707866498609848350967364920547);
     rslt(0,2) = static_cast<FP>(0.000019068274596862067462131329510149158788);
@@ -18233,7 +18233,7 @@ namespace TransformMatrices {
     rslt(14,9) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,11> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,11> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000021702044778881041485080058141148972984);
     rslt(0,2) = static_cast<FP>(0.000019831141322555770929931846707622415240);
@@ -18401,7 +18401,7 @@ namespace TransformMatrices {
     rslt(14,10) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,12> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,12> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000021798657220578211646202457692496666441);
     rslt(0,2) = static_cast<FP>(0.000020354163961687318851102577074405650402);
@@ -18584,7 +18584,7 @@ namespace TransformMatrices {
     rslt(14,11) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,13> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,13> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000021869367302466064997007130178199477682);
     rslt(0,2) = static_cast<FP>(0.000020725241153755493563798709358682744604);
@@ -18782,7 +18782,7 @@ namespace TransformMatrices {
     rslt(14,12) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,14> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,14> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000021922690901529227069809079534556069914);
     rslt(0,2) = static_cast<FP>(0.000020996506856738454988673947067387160059);
@@ -18995,7 +18995,7 @@ namespace TransformMatrices {
     rslt(14,13) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,15,15> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,15,15> &rslt) {
     rslt(0,0) = static_cast<FP>(0.000022200022200022200022200022200022200022);
     rslt(0,1) = static_cast<FP>(0.000021963917317351414294441306586159390715);
     rslt(0,2) = static_cast<FP>(0.000021200042018380463667839552425731526452);
@@ -19223,7 +19223,7 @@ namespace TransformMatrices {
     rslt(14,14) = static_cast<FP>(0.000022200022200022200022200022200022200022);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,3,8,8,8> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void weno_lower_sten_to_coefs(SArray<FP,8,8,8> &rslt) {
     rslt(0,0,0) = static_cast<FP>(0.025009300595238095238095238095238095238);
     rslt(0,0,1) = -static_cast<FP>(0.067333209325396825396825396825396825397);
     rslt(0,0,2) = -static_cast<FP>(0.27890625000000000000000000000000000000);
@@ -19738,107 +19738,107 @@ namespace TransformMatrices {
     rslt(7,7,7) = static_cast<FP>(0.00019841269841269841269841269841269841270);
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_points(SArray<FP,1> &rslt) {
     rslt(0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void get_gll_weights(SArray<FP,1> &rslt) {
     rslt(0) = 1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,2,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void gll_to_coefs(SArray<FP,1,1> &rslt) {
     rslt(0,0) = 1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,2,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll(SArray<FP,1,1> &rslt) {
     rslt(0,0) = 1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,2,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_deriv(SArray<FP,1,1> &rslt) {
     rslt(0,0) = 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION FP coefs_to_tv(SArray<FP,1,1> &a) {
+  template <class FP> KOKKOS_INLINE_FUNCTION FP coefs_to_tv(SArray<FP,1> &a) {
     return 0;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,2,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_coefs(SArray<FP,1,1> &rslt) {
     rslt(0,0) = 1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,2,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_sten(SArray<FP,1,1> &rslt) {
     rslt(0,0) = 1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,2,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void sten_to_gll_lower(SArray<FP,1,1> &rslt) {
     rslt(0,0) = 1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,2,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs_to_gll_lower(SArray<FP,1,1> &rslt) {
     rslt(0,0) = 1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void weno_sten_to_coefs(SArray<FP,3,1,1,1> &rslt) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void weno_sten_to_coefs(SArray<FP,1,1,1> &rslt) {
     rslt(0,0,0) = 1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs2_shift1(SArray<FP,1,2> &coefs , FP s0 , FP s1) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs2_shift1(SArray<FP,2> &coefs , FP s0 , FP s1) {
     coefs(0) = static_cast<FP>(1.0000000000000000000000000000000000000)*s1;
     coefs(1) = -static_cast<FP>(1.0000000000000000000000000000000000000)*s0+static_cast<FP>(1.0000000000000000000000000000000000000)*s1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs2_shift2(SArray<FP,1,2> &coefs , FP s0 , FP s1) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs2_shift2(SArray<FP,2> &coefs , FP s0 , FP s1) {
     coefs(0) = static_cast<FP>(1.0000000000000000000000000000000000000)*s0;
     coefs(1) = -static_cast<FP>(1.0000000000000000000000000000000000000)*s0+static_cast<FP>(1.0000000000000000000000000000000000000)*s1;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs3_shift1(SArray<FP,1,3> &coefs , FP s0 , FP s1, FP s2) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs3_shift1(SArray<FP,3> &coefs , FP s0 , FP s1, FP s2) {
     coefs(0) = -static_cast<FP>(0.041666666666666666666666666666666666667)*s0+static_cast<FP>(0.083333333333333333333333333333333333333)*s1+static_cast<FP>(0.95833333333333333333333333333333333333)*s2;
     coefs(1) = static_cast<FP>(0.50000000000000000000000000000000000000)*s0-static_cast<FP>(2.0000000000000000000000000000000000000)*s1+static_cast<FP>(1.5000000000000000000000000000000000000)*s2;
     coefs(2) = static_cast<FP>(0.50000000000000000000000000000000000000)*s0-static_cast<FP>(1.0000000000000000000000000000000000000)*s1+static_cast<FP>(0.50000000000000000000000000000000000000)*s2;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs3_shift2(SArray<FP,1,3> &coefs , FP s0 , FP s1, FP s2) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs3_shift2(SArray<FP,3> &coefs , FP s0 , FP s1, FP s2) {
     coefs(0) = -static_cast<FP>(0.041666666666666666666666666666666666667)*s0+static_cast<FP>(1.0833333333333333333333333333333333333)*s1-static_cast<FP>(0.041666666666666666666666666666666666667)*s2;
     coefs(1) = -static_cast<FP>(0.50000000000000000000000000000000000000)*s0+static_cast<FP>(0.50000000000000000000000000000000000000)*s2;
     coefs(2) = static_cast<FP>(0.50000000000000000000000000000000000000)*s0-static_cast<FP>(1.0000000000000000000000000000000000000)*s1+static_cast<FP>(0.50000000000000000000000000000000000000)*s2;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs3_shift3(SArray<FP,1,3> &coefs , FP s0 , FP s1, FP s2) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs3_shift3(SArray<FP,3> &coefs , FP s0 , FP s1, FP s2) {
     coefs(0) = static_cast<FP>(0.95833333333333333333333333333333333333)*s0+static_cast<FP>(0.083333333333333333333333333333333333333)*s1-static_cast<FP>(0.041666666666666666666666666666666666667)*s2;
     coefs(1) = -static_cast<FP>(1.5000000000000000000000000000000000000)*s0+static_cast<FP>(2.0000000000000000000000000000000000000)*s1-static_cast<FP>(0.50000000000000000000000000000000000000)*s2;
     coefs(2) = static_cast<FP>(0.50000000000000000000000000000000000000)*s0-static_cast<FP>(1.0000000000000000000000000000000000000)*s1+static_cast<FP>(0.50000000000000000000000000000000000000)*s2;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs4_shift1(SArray<FP,1,4> &coefs , FP s0 , FP s1, FP s2, FP s3) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs4_shift1(SArray<FP,4> &coefs , FP s0 , FP s1, FP s2, FP s3) {
     coefs(0) = static_cast<FP>(0.041666666666666666666666666666666666667)*s0-static_cast<FP>(0.16666666666666666666666666666666666667)*s1+static_cast<FP>(0.20833333333333333333333333333333333333)*s2+static_cast<FP>(0.91666666666666666666666666666666666667)*s3;
     coefs(1) = -static_cast<FP>(0.29166666666666666666666666666666666667)*s0+static_cast<FP>(1.3750000000000000000000000000000000000)*s1-static_cast<FP>(2.8750000000000000000000000000000000000)*s2+static_cast<FP>(1.7916666666666666666666666666666666667)*s3;
     coefs(2) = -static_cast<FP>(0.50000000000000000000000000000000000000)*s0+static_cast<FP>(2.0000000000000000000000000000000000000)*s1-static_cast<FP>(2.5000000000000000000000000000000000000)*s2+static_cast<FP>(1.0000000000000000000000000000000000000)*s3;
     coefs(3) = -static_cast<FP>(0.16666666666666666666666666666666666667)*s0+static_cast<FP>(0.50000000000000000000000000000000000000)*s1-static_cast<FP>(0.50000000000000000000000000000000000000)*s2+static_cast<FP>(0.16666666666666666666666666666666666667)*s3;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs4_shift2(SArray<FP,1,4> &coefs , FP s0 , FP s1, FP s2, FP s3) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs4_shift2(SArray<FP,4> &coefs , FP s0 , FP s1, FP s2, FP s3) {
     coefs(0) = -static_cast<FP>(0.041666666666666666666666666666666666667)*s1+static_cast<FP>(1.0833333333333333333333333333333333333)*s2-static_cast<FP>(0.041666666666666666666666666666666666667)*s3;
     coefs(1) = static_cast<FP>(0.20833333333333333333333333333333333333)*s0-static_cast<FP>(1.1250000000000000000000000000000000000)*s1+static_cast<FP>(0.62500000000000000000000000000000000000)*s2+static_cast<FP>(0.29166666666666666666666666666666666667)*s3;
     coefs(2) = static_cast<FP>(0.50000000000000000000000000000000000000)*s1-static_cast<FP>(1.0000000000000000000000000000000000000)*s2+static_cast<FP>(0.50000000000000000000000000000000000000)*s3;
     coefs(3) = -static_cast<FP>(0.16666666666666666666666666666666666667)*s0+static_cast<FP>(0.50000000000000000000000000000000000000)*s1-static_cast<FP>(0.50000000000000000000000000000000000000)*s2+static_cast<FP>(0.16666666666666666666666666666666666667)*s3;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs4_shift3(SArray<FP,1,4> &coefs , FP s0 , FP s1, FP s2, FP s3) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs4_shift3(SArray<FP,4> &coefs , FP s0 , FP s1, FP s2, FP s3) {
     coefs(0) = -static_cast<FP>(0.041666666666666666666666666666666666667)*s0+static_cast<FP>(1.0833333333333333333333333333333333333)*s1-static_cast<FP>(0.041666666666666666666666666666666666667)*s2;
     coefs(1) = -static_cast<FP>(0.29166666666666666666666666666666666667)*s0-static_cast<FP>(0.62500000000000000000000000000000000000)*s1+static_cast<FP>(1.1250000000000000000000000000000000000)*s2-static_cast<FP>(0.20833333333333333333333333333333333333)*s3;
     coefs(2) = static_cast<FP>(0.50000000000000000000000000000000000000)*s0-static_cast<FP>(1.0000000000000000000000000000000000000)*s1+static_cast<FP>(0.50000000000000000000000000000000000000)*s2;
     coefs(3) = -static_cast<FP>(0.16666666666666666666666666666666666667)*s0+static_cast<FP>(0.50000000000000000000000000000000000000)*s1-static_cast<FP>(0.50000000000000000000000000000000000000)*s2+static_cast<FP>(0.16666666666666666666666666666666666667)*s3;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs4_shift4(SArray<FP,1,4> &coefs , FP s0 , FP s1, FP s2, FP s3) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs4_shift4(SArray<FP,4> &coefs , FP s0 , FP s1, FP s2, FP s3) {
     coefs(0) = static_cast<FP>(0.91666666666666666666666666666666666667)*s0+static_cast<FP>(0.20833333333333333333333333333333333333)*s1-static_cast<FP>(0.16666666666666666666666666666666666667)*s2+static_cast<FP>(0.041666666666666666666666666666666666667)*s3;
     coefs(1) = -static_cast<FP>(1.7916666666666666666666666666666666667)*s0+static_cast<FP>(2.8750000000000000000000000000000000000)*s1-static_cast<FP>(1.3750000000000000000000000000000000000)*s2+static_cast<FP>(0.29166666666666666666666666666666666667)*s3;
     coefs(2) = static_cast<FP>(1.0000000000000000000000000000000000000)*s0-static_cast<FP>(2.5000000000000000000000000000000000000)*s1+static_cast<FP>(2.0000000000000000000000000000000000000)*s2-static_cast<FP>(0.50000000000000000000000000000000000000)*s3;
     coefs(3) = -static_cast<FP>(0.16666666666666666666666666666666666667)*s0+static_cast<FP>(0.50000000000000000000000000000000000000)*s1-static_cast<FP>(0.50000000000000000000000000000000000000)*s2+static_cast<FP>(0.16666666666666666666666666666666666667)*s3;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift1(SArray<FP,1,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift1(SArray<FP,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
     coefs(0) = -static_cast<FP>(0.036979166666666666666666666666666666667)*s0+static_cast<FP>(0.18958333333333333333333333333333333333)*s1-static_cast<FP>(0.38854166666666666666666666666666666667)*s2+static_cast<FP>(0.35625000000000000000000000000000000000)*s3+static_cast<FP>(0.87968750000000000000000000000000000000)*s4;
     coefs(1) = static_cast<FP>(0.18750000000000000000000000000000000000)*s0-static_cast<FP>(1.0416666666666666666666666666666666667)*s1+static_cast<FP>(2.5000000000000000000000000000000000000)*s2-static_cast<FP>(3.6250000000000000000000000000000000000)*s3+static_cast<FP>(1.9791666666666666666666666666666666667)*s4;
     coefs(2) = static_cast<FP>(0.43750000000000000000000000000000000000)*s0-static_cast<FP>(2.2500000000000000000000000000000000000)*s1+static_cast<FP>(4.6250000000000000000000000000000000000)*s2-static_cast<FP>(4.2500000000000000000000000000000000000)*s3+static_cast<FP>(1.4375000000000000000000000000000000000)*s4;
@@ -19846,7 +19846,7 @@ namespace TransformMatrices {
     coefs(4) = static_cast<FP>(0.041666666666666666666666666666666666667)*s0-static_cast<FP>(0.16666666666666666666666666666666666667)*s1+static_cast<FP>(0.25000000000000000000000000000000000000)*s2-static_cast<FP>(0.16666666666666666666666666666666666667)*s3+static_cast<FP>(0.041666666666666666666666666666666666667)*s4;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift2(SArray<FP,1,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift2(SArray<FP,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
     coefs(0) = static_cast<FP>(0.0046875000000000000000000000000000000000)*s0-static_cast<FP>(0.018750000000000000000000000000000000000)*s1-static_cast<FP>(0.013541666666666666666666666666666666667)*s2+static_cast<FP>(1.0645833333333333333333333333333333333)*s3-static_cast<FP>(0.036979166666666666666666666666666666667)*s4;
     coefs(1) = -static_cast<FP>(0.10416666666666666666666666666666666667)*s0+static_cast<FP>(0.62500000000000000000000000000000000000)*s1-static_cast<FP>(1.7500000000000000000000000000000000000)*s2+static_cast<FP>(1.0416666666666666666666666666666666667)*s3+static_cast<FP>(0.18750000000000000000000000000000000000)*s4;
     coefs(2) = -static_cast<FP>(0.062500000000000000000000000000000000000)*s0+static_cast<FP>(0.25000000000000000000000000000000000000)*s1+static_cast<FP>(0.12500000000000000000000000000000000000)*s2-static_cast<FP>(0.75000000000000000000000000000000000000)*s3+static_cast<FP>(0.43750000000000000000000000000000000000)*s4;
@@ -19854,7 +19854,7 @@ namespace TransformMatrices {
     coefs(4) = static_cast<FP>(0.041666666666666666666666666666666666667)*s0-static_cast<FP>(0.16666666666666666666666666666666666667)*s1+static_cast<FP>(0.25000000000000000000000000000000000000)*s2-static_cast<FP>(0.16666666666666666666666666666666666667)*s3+static_cast<FP>(0.041666666666666666666666666666666666667)*s4;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift3(SArray<FP,1,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift3(SArray<FP,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
     coefs(0) = static_cast<FP>(0.0046875000000000000000000000000000000000)*s0-static_cast<FP>(0.060416666666666666666666666666666666667)*s1+static_cast<FP>(1.1114583333333333333333333333333333333)*s2-static_cast<FP>(0.060416666666666666666666666666666666667)*s3+static_cast<FP>(0.0046875000000000000000000000000000000000)*s4;
     coefs(1) = static_cast<FP>(0.10416666666666666666666666666666666667)*s0-static_cast<FP>(0.70833333333333333333333333333333333333)*s1+static_cast<FP>(0.70833333333333333333333333333333333333)*s3-static_cast<FP>(0.10416666666666666666666666666666666667)*s4;
     coefs(2) = -static_cast<FP>(0.062500000000000000000000000000000000000)*s0+static_cast<FP>(0.75000000000000000000000000000000000000)*s1-static_cast<FP>(1.3750000000000000000000000000000000000)*s2+static_cast<FP>(0.75000000000000000000000000000000000000)*s3-static_cast<FP>(0.062500000000000000000000000000000000000)*s4;
@@ -19862,7 +19862,7 @@ namespace TransformMatrices {
     coefs(4) = static_cast<FP>(0.041666666666666666666666666666666666667)*s0-static_cast<FP>(0.16666666666666666666666666666666666667)*s1+static_cast<FP>(0.25000000000000000000000000000000000000)*s2-static_cast<FP>(0.16666666666666666666666666666666666667)*s3+static_cast<FP>(0.041666666666666666666666666666666666667)*s4;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift4(SArray<FP,1,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift4(SArray<FP,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
     coefs(0) = -static_cast<FP>(0.036979166666666666666666666666666666667)*s0+static_cast<FP>(1.0645833333333333333333333333333333333)*s1-static_cast<FP>(0.013541666666666666666666666666666666667)*s2-static_cast<FP>(0.018750000000000000000000000000000000000)*s3+static_cast<FP>(0.0046875000000000000000000000000000000000)*s4;
     coefs(1) = -static_cast<FP>(0.18750000000000000000000000000000000000)*s0-static_cast<FP>(1.0416666666666666666666666666666666667)*s1+static_cast<FP>(1.7500000000000000000000000000000000000)*s2-static_cast<FP>(0.62500000000000000000000000000000000000)*s3+static_cast<FP>(0.10416666666666666666666666666666666667)*s4;
     coefs(2) = static_cast<FP>(0.43750000000000000000000000000000000000)*s0-static_cast<FP>(0.75000000000000000000000000000000000000)*s1+static_cast<FP>(0.12500000000000000000000000000000000000)*s2+static_cast<FP>(0.25000000000000000000000000000000000000)*s3-static_cast<FP>(0.062500000000000000000000000000000000000)*s4;
@@ -19870,7 +19870,7 @@ namespace TransformMatrices {
     coefs(4) = static_cast<FP>(0.041666666666666666666666666666666666667)*s0-static_cast<FP>(0.16666666666666666666666666666666666667)*s1+static_cast<FP>(0.25000000000000000000000000000000000000)*s2-static_cast<FP>(0.16666666666666666666666666666666666667)*s3+static_cast<FP>(0.041666666666666666666666666666666666667)*s4;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift5(SArray<FP,1,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs5_shift5(SArray<FP,5> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4) {
     coefs(0) = static_cast<FP>(0.87968750000000000000000000000000000000)*s0+static_cast<FP>(0.35625000000000000000000000000000000000)*s1-static_cast<FP>(0.38854166666666666666666666666666666667)*s2+static_cast<FP>(0.18958333333333333333333333333333333333)*s3-static_cast<FP>(0.036979166666666666666666666666666666667)*s4;
     coefs(1) = -static_cast<FP>(1.9791666666666666666666666666666666667)*s0+static_cast<FP>(3.6250000000000000000000000000000000000)*s1-static_cast<FP>(2.5000000000000000000000000000000000000)*s2+static_cast<FP>(1.0416666666666666666666666666666666667)*s3-static_cast<FP>(0.18750000000000000000000000000000000000)*s4;
     coefs(2) = static_cast<FP>(1.4375000000000000000000000000000000000)*s0-static_cast<FP>(4.2500000000000000000000000000000000000)*s1+static_cast<FP>(4.6250000000000000000000000000000000000)*s2-static_cast<FP>(2.2500000000000000000000000000000000000)*s3+static_cast<FP>(0.43750000000000000000000000000000000000)*s4;
@@ -19878,7 +19878,7 @@ namespace TransformMatrices {
     coefs(4) = static_cast<FP>(0.041666666666666666666666666666666666667)*s0-static_cast<FP>(0.16666666666666666666666666666666666667)*s1+static_cast<FP>(0.25000000000000000000000000000000000000)*s2-static_cast<FP>(0.16666666666666666666666666666666666667)*s3+static_cast<FP>(0.041666666666666666666666666666666666667)*s4;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift1(SArray<FP,1,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift1(SArray<FP,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
     coefs(0) = static_cast<FP>(0.032291666666666666666666666666666666667)*s0-static_cast<FP>(0.19843750000000000000000000000000000000)*s1+static_cast<FP>(0.51250000000000000000000000000000000000)*s2-static_cast<FP>(0.71145833333333333333333333333333333333)*s3+static_cast<FP>(0.51770833333333333333333333333333333333)*s4+static_cast<FP>(0.84739583333333333333333333333333333333)*s5;
     coefs(1) = -static_cast<FP>(0.12829861111111111111111111111111111111)*s0+static_cast<FP>(0.82899305555555555555555555555555555555)*s1-static_cast<FP>(2.3246527777777777777777777777777777778)*s2+static_cast<FP>(3.7829861111111111111111111111111111111)*s3-static_cast<FP>(4.2664930555555555555555555555555555556)*s4+static_cast<FP>(2.1074652777777777777777777777777777778)*s5;
     coefs(2) = -static_cast<FP>(0.37500000000000000000000000000000000000)*s0+static_cast<FP>(2.3125000000000000000000000000000000000)*s1-static_cast<FP>(6.0000000000000000000000000000000000000)*s2+static_cast<FP>(8.3750000000000000000000000000000000000)*s3-static_cast<FP>(6.1250000000000000000000000000000000000)*s4+static_cast<FP>(1.8125000000000000000000000000000000000)*s5;
@@ -19887,7 +19887,7 @@ namespace TransformMatrices {
     coefs(5) = -static_cast<FP>(0.0083333333333333333333333333333333333333)*s0+static_cast<FP>(0.041666666666666666666666666666666666667)*s1-static_cast<FP>(0.083333333333333333333333333333333333333)*s2+static_cast<FP>(0.083333333333333333333333333333333333333)*s3-static_cast<FP>(0.041666666666666666666666666666666666667)*s4+static_cast<FP>(0.0083333333333333333333333333333333333333)*s5;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift2(SArray<FP,1,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift2(SArray<FP,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
     coefs(0) = -static_cast<FP>(0.0046875000000000000000000000000000000000)*s0+static_cast<FP>(0.028125000000000000000000000000000000000)*s1-static_cast<FP>(0.065625000000000000000000000000000000000)*s2+static_cast<FP>(0.033333333333333333333333333333333333333)*s3+static_cast<FP>(1.0411458333333333333333333333333333333)*s4-static_cast<FP>(0.032291666666666666666666666666666666667)*s5;
     coefs(1) = static_cast<FP>(0.059201388888888888888888888888888888889)*s0-static_cast<FP>(0.40017361111111111111111111111111111111)*s1+static_cast<FP>(1.2170138888888888888888888888888888889)*s2-static_cast<FP>(2.3420138888888888888888888888888888889)*s3+static_cast<FP>(1.3376736111111111111111111111111111111)*s4+static_cast<FP>(0.12829861111111111111111111111111111111)*s5;
     coefs(2) = static_cast<FP>(0.062500000000000000000000000000000000000)*s0-static_cast<FP>(0.37500000000000000000000000000000000000)*s1+static_cast<FP>(0.87500000000000000000000000000000000000)*s2-static_cast<FP>(0.50000000000000000000000000000000000000)*s3-static_cast<FP>(0.43750000000000000000000000000000000000)*s4+static_cast<FP>(0.37500000000000000000000000000000000000)*s5;
@@ -19896,7 +19896,7 @@ namespace TransformMatrices {
     coefs(5) = -static_cast<FP>(0.0083333333333333333333333333333333333333)*s0+static_cast<FP>(0.041666666666666666666666666666666666667)*s1-static_cast<FP>(0.083333333333333333333333333333333333333)*s2+static_cast<FP>(0.083333333333333333333333333333333333333)*s3-static_cast<FP>(0.041666666666666666666666666666666666667)*s4+static_cast<FP>(0.0083333333333333333333333333333333333333)*s5;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift3(SArray<FP,1,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift3(SArray<FP,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
     coefs(0) = static_cast<FP>(0.0046875000000000000000000000000000000000)*s1-static_cast<FP>(0.060416666666666666666666666666666666667)*s2+static_cast<FP>(1.1114583333333333333333333333333333333)*s3-static_cast<FP>(0.060416666666666666666666666666666666667)*s4+static_cast<FP>(0.0046875000000000000000000000000000000000)*s5;
     coefs(1) = -static_cast<FP>(0.044965277777777777777777777777777777778)*s0+static_cast<FP>(0.32899305555555555555555555555555555556)*s1-static_cast<FP>(1.1579861111111111111111111111111111111)*s2+static_cast<FP>(0.44965277777777777777777777777777777778)*s3+static_cast<FP>(0.48350694444444444444444444444444444444)*s4-static_cast<FP>(0.059201388888888888888888888888888888889)*s5;
     coefs(2) = -static_cast<FP>(0.062500000000000000000000000000000000000)*s1+static_cast<FP>(0.75000000000000000000000000000000000000)*s2-static_cast<FP>(1.3750000000000000000000000000000000000)*s3+static_cast<FP>(0.75000000000000000000000000000000000000)*s4-static_cast<FP>(0.062500000000000000000000000000000000000)*s5;
@@ -19905,7 +19905,7 @@ namespace TransformMatrices {
     coefs(5) = -static_cast<FP>(0.0083333333333333333333333333333333333333)*s0+static_cast<FP>(0.041666666666666666666666666666666666667)*s1-static_cast<FP>(0.083333333333333333333333333333333333333)*s2+static_cast<FP>(0.083333333333333333333333333333333333333)*s3-static_cast<FP>(0.041666666666666666666666666666666666667)*s4+static_cast<FP>(0.0083333333333333333333333333333333333333)*s5;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift4(SArray<FP,1,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift4(SArray<FP,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
     coefs(0) = static_cast<FP>(0.0046875000000000000000000000000000000000)*s0-static_cast<FP>(0.060416666666666666666666666666666666667)*s1+static_cast<FP>(1.1114583333333333333333333333333333333)*s2-static_cast<FP>(0.060416666666666666666666666666666666667)*s3+static_cast<FP>(0.0046875000000000000000000000000000000000)*s4;
     coefs(1) = static_cast<FP>(0.059201388888888888888888888888888888889)*s0-static_cast<FP>(0.48350694444444444444444444444444444444)*s1-static_cast<FP>(0.44965277777777777777777777777777777778)*s2+static_cast<FP>(1.1579861111111111111111111111111111111)*s3-static_cast<FP>(0.32899305555555555555555555555555555556)*s4+static_cast<FP>(0.044965277777777777777777777777777777778)*s5;
     coefs(2) = -static_cast<FP>(0.062500000000000000000000000000000000000)*s0+static_cast<FP>(0.75000000000000000000000000000000000000)*s1-static_cast<FP>(1.3750000000000000000000000000000000000)*s2+static_cast<FP>(0.75000000000000000000000000000000000000)*s3-static_cast<FP>(0.062500000000000000000000000000000000000)*s4;
@@ -19914,7 +19914,7 @@ namespace TransformMatrices {
     coefs(5) = -static_cast<FP>(0.0083333333333333333333333333333333333333)*s0+static_cast<FP>(0.041666666666666666666666666666666666667)*s1-static_cast<FP>(0.083333333333333333333333333333333333333)*s2+static_cast<FP>(0.083333333333333333333333333333333333333)*s3-static_cast<FP>(0.041666666666666666666666666666666666667)*s4+static_cast<FP>(0.0083333333333333333333333333333333333333)*s5;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift5(SArray<FP,1,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift5(SArray<FP,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
     coefs(0) = -static_cast<FP>(0.032291666666666666666666666666666666667)*s0+static_cast<FP>(1.0411458333333333333333333333333333333)*s1+static_cast<FP>(0.033333333333333333333333333333333333333)*s2-static_cast<FP>(0.065625000000000000000000000000000000000)*s3+static_cast<FP>(0.028125000000000000000000000000000000000)*s4-static_cast<FP>(0.0046875000000000000000000000000000000000)*s5;
     coefs(1) = -static_cast<FP>(0.12829861111111111111111111111111111111)*s0-static_cast<FP>(1.3376736111111111111111111111111111111)*s1+static_cast<FP>(2.3420138888888888888888888888888888889)*s2-static_cast<FP>(1.2170138888888888888888888888888888889)*s3+static_cast<FP>(0.40017361111111111111111111111111111111)*s4-static_cast<FP>(0.059201388888888888888888888888888888889)*s5;
     coefs(2) = static_cast<FP>(0.37500000000000000000000000000000000000)*s0-static_cast<FP>(0.43750000000000000000000000000000000000)*s1-static_cast<FP>(0.50000000000000000000000000000000000000)*s2+static_cast<FP>(0.87500000000000000000000000000000000000)*s3-static_cast<FP>(0.37500000000000000000000000000000000000)*s4+static_cast<FP>(0.062500000000000000000000000000000000000)*s5;
@@ -19923,7 +19923,7 @@ namespace TransformMatrices {
     coefs(5) = -static_cast<FP>(0.0083333333333333333333333333333333333333)*s0+static_cast<FP>(0.041666666666666666666666666666666666667)*s1-static_cast<FP>(0.083333333333333333333333333333333333333)*s2+static_cast<FP>(0.083333333333333333333333333333333333333)*s3-static_cast<FP>(0.041666666666666666666666666666666666667)*s4+static_cast<FP>(0.0083333333333333333333333333333333333333)*s5;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift6(SArray<FP,1,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs6_shift6(SArray<FP,6> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5) {
     coefs(0) = static_cast<FP>(0.84739583333333333333333333333333333333)*s0+static_cast<FP>(0.51770833333333333333333333333333333333)*s1-static_cast<FP>(0.71145833333333333333333333333333333333)*s2+static_cast<FP>(0.51250000000000000000000000000000000000)*s3-static_cast<FP>(0.19843750000000000000000000000000000000)*s4+static_cast<FP>(0.032291666666666666666666666666666666667)*s5;
     coefs(1) = -static_cast<FP>(2.1074652777777777777777777777777777778)*s0+static_cast<FP>(4.2664930555555555555555555555555555556)*s1-static_cast<FP>(3.7829861111111111111111111111111111111)*s2+static_cast<FP>(2.3246527777777777777777777777777777778)*s3-static_cast<FP>(0.82899305555555555555555555555555555555)*s4+static_cast<FP>(0.12829861111111111111111111111111111111)*s5;
     coefs(2) = static_cast<FP>(1.8125000000000000000000000000000000000)*s0-static_cast<FP>(6.1250000000000000000000000000000000000)*s1+static_cast<FP>(8.3750000000000000000000000000000000000)*s2-static_cast<FP>(6.0000000000000000000000000000000000000)*s3+static_cast<FP>(2.3125000000000000000000000000000000000)*s4-static_cast<FP>(0.37500000000000000000000000000000000000)*s5;
@@ -19932,7 +19932,7 @@ namespace TransformMatrices {
     coefs(5) = -static_cast<FP>(0.0083333333333333333333333333333333333333)*s0+static_cast<FP>(0.041666666666666666666666666666666666667)*s1-static_cast<FP>(0.083333333333333333333333333333333333333)*s2+static_cast<FP>(0.083333333333333333333333333333333333333)*s3-static_cast<FP>(0.041666666666666666666666666666666666667)*s4+static_cast<FP>(0.0083333333333333333333333333333333333333)*s5;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift1(SArray<FP,1,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift1(SArray<FP,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
     coefs(0) = -static_cast<FP>(0.028301711309523809523809523809523809524)*s0+static_cast<FP>(0.20210193452380952380952380952380952381)*s1-static_cast<FP>(0.62296316964285714285714285714285714286)*s2+static_cast<FP>(1.0785342261904761904761904761904761905)*s3-static_cast<FP>(1.1359840029761904761904761904761904762)*s4+static_cast<FP>(0.68751860119047619047619047619047619048)*s5+static_cast<FP>(0.81909412202380952380952380952380952381)*s6;
     coefs(1) = static_cast<FP>(0.091579861111111111111111111111111111111)*s0-static_cast<FP>(0.67777777777777777777777777777777777778)*s1+static_cast<FP>(2.2026909722222222222222222222222222222)*s2-static_cast<FP>(4.1562500000000000000000000000000000000)*s3+static_cast<FP>(5.1566840277777777777777777777777777778)*s4-static_cast<FP>(4.8159722222222222222222222222222222222)*s5+static_cast<FP>(2.1990451388888888888888888888888888889)*s6;
     coefs(2) = static_cast<FP>(0.32213541666666666666666666666666666667)*s0-static_cast<FP>(2.3078125000000000000000000000000000000)*s1+static_cast<FP>(7.1445312500000000000000000000000000000)*s2-static_cast<FP>(12.442708333333333333333333333333333333)*s3+static_cast<FP>(13.207031250000000000000000000000000000)*s4-static_cast<FP>(8.0578125000000000000000000000000000000)*s5+static_cast<FP>(2.1346354166666666666666666666666666667)*s6;
@@ -19942,7 +19942,7 @@ namespace TransformMatrices {
     coefs(6) = static_cast<FP>(0.0013888888888888888888888888888888888889)*s0-static_cast<FP>(0.0083333333333333333333333333333333333333)*s1+static_cast<FP>(0.020833333333333333333333333333333333333)*s2-static_cast<FP>(0.027777777777777777777777777777777777778)*s3+static_cast<FP>(0.020833333333333333333333333333333333333)*s4-static_cast<FP>(0.0083333333333333333333333333333333333333)*s5+static_cast<FP>(0.0013888888888888888888888888888888888889)*s6;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift2(SArray<FP,1,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift2(SArray<FP,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
     coefs(0) = static_cast<FP>(0.0039899553571428571428571428571428571429)*s0-static_cast<FP>(0.028627232142857142857142857142857142857)*s1+static_cast<FP>(0.087974330357142857142857142857142857143)*s2-static_cast<FP>(0.14542410714285714285714285714285714286)*s3+static_cast<FP>(0.093182663690476190476190476190476190476)*s4+static_cast<FP>(1.0172061011904761904761904761904761905)*s5-static_cast<FP>(0.028301711309523809523809523809523809524)*s6;
     coefs(1) = -static_cast<FP>(0.036718750000000000000000000000000000000)*s0+static_cast<FP>(0.27951388888888888888888888888888888889)*s1-static_cast<FP>(0.95095486111111111111111111111111111111)*s2+static_cast<FP>(1.9513888888888888888888888888888888889)*s3-static_cast<FP>(2.8927951388888888888888888888888888889)*s4+static_cast<FP>(1.5579861111111111111111111111111111111)*s5+static_cast<FP>(0.091579861111111111111111111111111111111)*s6;
     coefs(2) = -static_cast<FP>(0.052864583333333333333333333333333333333)*s0+static_cast<FP>(0.37968750000000000000000000000000000000)*s1-static_cast<FP>(1.1679687500000000000000000000000000000)*s2+static_cast<FP>(1.9322916666666666666666666666666666667)*s3-static_cast<FP>(1.2929687500000000000000000000000000000)*s4-static_cast<FP>(0.12031250000000000000000000000000000000)*s5+static_cast<FP>(0.32213541666666666666666666666666666667)*s6;
@@ -19952,7 +19952,7 @@ namespace TransformMatrices {
     coefs(6) = static_cast<FP>(0.0013888888888888888888888888888888888889)*s0-static_cast<FP>(0.0083333333333333333333333333333333333333)*s1+static_cast<FP>(0.020833333333333333333333333333333333333)*s2-static_cast<FP>(0.027777777777777777777777777777777777778)*s3+static_cast<FP>(0.020833333333333333333333333333333333333)*s4-static_cast<FP>(0.0083333333333333333333333333333333333333)*s5+static_cast<FP>(0.0013888888888888888888888888888888888889)*s6;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift3(SArray<FP,1,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift3(SArray<FP,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
     coefs(0) = -static_cast<FP>(0.00069754464285714285714285714285714285714)*s0+static_cast<FP>(0.0041852678571428571428571428571428571429)*s1-static_cast<FP>(0.0057756696428571428571428571428571428571)*s2-static_cast<FP>(0.046465773809523809523809523809523809524)*s3+static_cast<FP>(1.1009951636904761904761904761904761905)*s4-static_cast<FP>(0.056231398809523809523809523809523809524)*s5+static_cast<FP>(0.0039899553571428571428571428571428571429)*s6;
     coefs(1) = static_cast<FP>(0.022482638888888888888888888888888888889)*s0-static_cast<FP>(0.17986111111111111111111111111111111111)*s1+static_cast<FP>(0.66623263888888888888888888888888888889)*s2-static_cast<FP>(1.6076388888888888888888888888888888889)*s3+static_cast<FP>(0.78689236111111111111111111111111111111)*s4+static_cast<FP>(0.34861111111111111111111111111111111111)*s5-static_cast<FP>(0.036718750000000000000000000000000000000)*s6;
     coefs(2) = static_cast<FP>(0.0096354166666666666666666666666666666667)*s0-static_cast<FP>(0.057812500000000000000000000000000000000)*s1+static_cast<FP>(0.082031250000000000000000000000000000000)*s2+static_cast<FP>(0.55729166666666666666666666666666666667)*s3-static_cast<FP>(1.2304687500000000000000000000000000000)*s4+static_cast<FP>(0.69218750000000000000000000000000000000)*s5-static_cast<FP>(0.052864583333333333333333333333333333333)*s6;
@@ -19962,7 +19962,7 @@ namespace TransformMatrices {
     coefs(6) = static_cast<FP>(0.0013888888888888888888888888888888888889)*s0-static_cast<FP>(0.0083333333333333333333333333333333333333)*s1+static_cast<FP>(0.020833333333333333333333333333333333333)*s2-static_cast<FP>(0.027777777777777777777777777777777777778)*s3+static_cast<FP>(0.020833333333333333333333333333333333333)*s4-static_cast<FP>(0.0083333333333333333333333333333333333333)*s5+static_cast<FP>(0.0013888888888888888888888888888888888889)*s6;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift4(SArray<FP,1,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift4(SArray<FP,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
     coefs(0) = -static_cast<FP>(0.00069754464285714285714285714285714285714)*s0+static_cast<FP>(0.0088727678571428571428571428571428571429)*s1-static_cast<FP>(0.070879836309523809523809523809523809524)*s2+static_cast<FP>(1.1254092261904761904761904761904761905)*s3-static_cast<FP>(0.070879836309523809523809523809523809524)*s4+static_cast<FP>(0.0088727678571428571428571428571428571429)*s5-static_cast<FP>(0.00069754464285714285714285714285714285714)*s6;
     coefs(1) = -static_cast<FP>(0.022482638888888888888888888888888888889)*s0+static_cast<FP>(0.19409722222222222222222222222222222222)*s1-static_cast<FP>(0.82074652777777777777777777777777777778)*s2+static_cast<FP>(0.82074652777777777777777777777777777778)*s4-static_cast<FP>(0.19409722222222222222222222222222222222)*s5+static_cast<FP>(0.022482638888888888888888888888888888889)*s6;
     coefs(2) = static_cast<FP>(0.0096354166666666666666666666666666666667)*s0-static_cast<FP>(0.12031250000000000000000000000000000000)*s1+static_cast<FP>(0.89453125000000000000000000000000000000)*s2-static_cast<FP>(1.5677083333333333333333333333333333333)*s3+static_cast<FP>(0.89453125000000000000000000000000000000)*s4-static_cast<FP>(0.12031250000000000000000000000000000000)*s5+static_cast<FP>(0.0096354166666666666666666666666666666667)*s6;
@@ -19972,7 +19972,7 @@ namespace TransformMatrices {
     coefs(6) = static_cast<FP>(0.0013888888888888888888888888888888888889)*s0-static_cast<FP>(0.0083333333333333333333333333333333333333)*s1+static_cast<FP>(0.020833333333333333333333333333333333333)*s2-static_cast<FP>(0.027777777777777777777777777777777777778)*s3+static_cast<FP>(0.020833333333333333333333333333333333333)*s4-static_cast<FP>(0.0083333333333333333333333333333333333333)*s5+static_cast<FP>(0.0013888888888888888888888888888888888889)*s6;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift5(SArray<FP,1,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift5(SArray<FP,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
     coefs(0) = static_cast<FP>(0.0039899553571428571428571428571428571429)*s0-static_cast<FP>(0.056231398809523809523809523809523809524)*s1+static_cast<FP>(1.1009951636904761904761904761904761905)*s2-static_cast<FP>(0.046465773809523809523809523809523809524)*s3-static_cast<FP>(0.0057756696428571428571428571428571428571)*s4+static_cast<FP>(0.0041852678571428571428571428571428571429)*s5-static_cast<FP>(0.00069754464285714285714285714285714285714)*s6;
     coefs(1) = static_cast<FP>(0.036718750000000000000000000000000000000)*s0-static_cast<FP>(0.34861111111111111111111111111111111111)*s1-static_cast<FP>(0.78689236111111111111111111111111111111)*s2+static_cast<FP>(1.6076388888888888888888888888888888889)*s3-static_cast<FP>(0.66623263888888888888888888888888888889)*s4+static_cast<FP>(0.17986111111111111111111111111111111111)*s5-static_cast<FP>(0.022482638888888888888888888888888888889)*s6;
     coefs(2) = -static_cast<FP>(0.052864583333333333333333333333333333333)*s0+static_cast<FP>(0.69218750000000000000000000000000000000)*s1-static_cast<FP>(1.2304687500000000000000000000000000000)*s2+static_cast<FP>(0.55729166666666666666666666666666666667)*s3+static_cast<FP>(0.082031250000000000000000000000000000000)*s4-static_cast<FP>(0.057812500000000000000000000000000000000)*s5+static_cast<FP>(0.0096354166666666666666666666666666666667)*s6;
@@ -19982,7 +19982,7 @@ namespace TransformMatrices {
     coefs(6) = static_cast<FP>(0.0013888888888888888888888888888888888889)*s0-static_cast<FP>(0.0083333333333333333333333333333333333333)*s1+static_cast<FP>(0.020833333333333333333333333333333333333)*s2-static_cast<FP>(0.027777777777777777777777777777777777778)*s3+static_cast<FP>(0.020833333333333333333333333333333333333)*s4-static_cast<FP>(0.0083333333333333333333333333333333333333)*s5+static_cast<FP>(0.0013888888888888888888888888888888888889)*s6;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift6(SArray<FP,1,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift6(SArray<FP,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
     coefs(0) = -static_cast<FP>(0.028301711309523809523809523809523809524)*s0+static_cast<FP>(1.0172061011904761904761904761904761905)*s1+static_cast<FP>(0.093182663690476190476190476190476190476)*s2-static_cast<FP>(0.14542410714285714285714285714285714286)*s3+static_cast<FP>(0.087974330357142857142857142857142857143)*s4-static_cast<FP>(0.028627232142857142857142857142857142857)*s5+static_cast<FP>(0.0039899553571428571428571428571428571429)*s6;
     coefs(1) = -static_cast<FP>(0.091579861111111111111111111111111111111)*s0-static_cast<FP>(1.5579861111111111111111111111111111111)*s1+static_cast<FP>(2.8927951388888888888888888888888888889)*s2-static_cast<FP>(1.9513888888888888888888888888888888889)*s3+static_cast<FP>(0.95095486111111111111111111111111111111)*s4-static_cast<FP>(0.27951388888888888888888888888888888889)*s5+static_cast<FP>(0.036718750000000000000000000000000000000)*s6;
     coefs(2) = static_cast<FP>(0.32213541666666666666666666666666666667)*s0-static_cast<FP>(0.12031250000000000000000000000000000000)*s1-static_cast<FP>(1.2929687500000000000000000000000000000)*s2+static_cast<FP>(1.9322916666666666666666666666666666667)*s3-static_cast<FP>(1.1679687500000000000000000000000000000)*s4+static_cast<FP>(0.37968750000000000000000000000000000000)*s5-static_cast<FP>(0.052864583333333333333333333333333333333)*s6;
@@ -19992,7 +19992,7 @@ namespace TransformMatrices {
     coefs(6) = static_cast<FP>(0.0013888888888888888888888888888888888889)*s0-static_cast<FP>(0.0083333333333333333333333333333333333333)*s1+static_cast<FP>(0.020833333333333333333333333333333333333)*s2-static_cast<FP>(0.027777777777777777777777777777777777778)*s3+static_cast<FP>(0.020833333333333333333333333333333333333)*s4-static_cast<FP>(0.0083333333333333333333333333333333333333)*s5+static_cast<FP>(0.0013888888888888888888888888888888888889)*s6;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift7(SArray<FP,1,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs7_shift7(SArray<FP,7> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6) {
     coefs(0) = static_cast<FP>(0.81909412202380952380952380952380952381)*s0+static_cast<FP>(0.68751860119047619047619047619047619048)*s1-static_cast<FP>(1.1359840029761904761904761904761904762)*s2+static_cast<FP>(1.0785342261904761904761904761904761905)*s3-static_cast<FP>(0.62296316964285714285714285714285714286)*s4+static_cast<FP>(0.20210193452380952380952380952380952381)*s5-static_cast<FP>(0.028301711309523809523809523809523809524)*s6;
     coefs(1) = -static_cast<FP>(2.1990451388888888888888888888888888889)*s0+static_cast<FP>(4.8159722222222222222222222222222222222)*s1-static_cast<FP>(5.1566840277777777777777777777777777778)*s2+static_cast<FP>(4.1562500000000000000000000000000000000)*s3-static_cast<FP>(2.2026909722222222222222222222222222222)*s4+static_cast<FP>(0.67777777777777777777777777777777777778)*s5-static_cast<FP>(0.091579861111111111111111111111111111111)*s6;
     coefs(2) = static_cast<FP>(2.1346354166666666666666666666666666667)*s0-static_cast<FP>(8.0578125000000000000000000000000000000)*s1+static_cast<FP>(13.207031250000000000000000000000000000)*s2-static_cast<FP>(12.442708333333333333333333333333333333)*s3+static_cast<FP>(7.1445312500000000000000000000000000000)*s4-static_cast<FP>(2.3078125000000000000000000000000000000)*s5+static_cast<FP>(0.32213541666666666666666666666666666667)*s6;
@@ -20002,7 +20002,7 @@ namespace TransformMatrices {
     coefs(6) = static_cast<FP>(0.0013888888888888888888888888888888888889)*s0-static_cast<FP>(0.0083333333333333333333333333333333333333)*s1+static_cast<FP>(0.020833333333333333333333333333333333333)*s2-static_cast<FP>(0.027777777777777777777777777777777777778)*s3+static_cast<FP>(0.020833333333333333333333333333333333333)*s4-static_cast<FP>(0.0083333333333333333333333333333333333333)*s5+static_cast<FP>(0.0013888888888888888888888888888888888889)*s6;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift1(SArray<FP,1,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift1(SArray<FP,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
     coefs(0) = static_cast<FP>(0.025009300595238095238095238095238095238)*s0-static_cast<FP>(0.20336681547619047619047619047619047619)*s1+static_cast<FP>(0.72729724702380952380952380952380952381)*s2-static_cast<FP>(1.4982886904761904761904761904761904762)*s3+static_cast<FP>(1.9538597470238095238095238095238095238)*s4-static_cast<FP>(1.6611793154761904761904761904761904762)*s5+static_cast<FP>(0.86258370535714285714285714285714285714)*s6+static_cast<FP>(0.79408482142857142857142857142857142857)*s7;
     coefs(1) = -static_cast<FP>(0.067333209325396825396825396825396825397)*s0+static_cast<FP>(0.56291232638888888888888888888888888889)*s1-static_cast<FP>(2.0917751736111111111111111111111111111)*s2+static_cast<FP>(4.5593532986111111111111111111111111111)*s3-static_cast<FP>(6.5129123263888888888888888888888888889)*s4+static_cast<FP>(6.5706814236111111111111111111111111111)*s5-static_cast<FP>(5.2873046875000000000000000000000000000)*s6+static_cast<FP>(2.2663783482142857142857142857142857143)*s7;
     coefs(2) = -static_cast<FP>(0.27890625000000000000000000000000000000)*s0+static_cast<FP>(2.2744791666666666666666666666666666667)*s1-static_cast<FP>(8.1648437500000000000000000000000000000)*s2+static_cast<FP>(16.906250000000000000000000000000000000)*s3-static_cast<FP>(22.204427083333333333333333333333333333)*s4+static_cast<FP>(19.064062500000000000000000000000000000)*s5-static_cast<FP>(10.010156250000000000000000000000000000)*s6+static_cast<FP>(2.4135416666666666666666666666666666667)*s7;
@@ -20013,7 +20013,7 @@ namespace TransformMatrices {
     coefs(7) = -static_cast<FP>(0.00019841269841269841269841269841269841270)*s0+static_cast<FP>(0.0013888888888888888888888888888888888889)*s1-static_cast<FP>(0.0041666666666666666666666666666666666667)*s2+static_cast<FP>(0.0069444444444444444444444444444444444444)*s3-static_cast<FP>(0.0069444444444444444444444444444444444444)*s4+static_cast<FP>(0.0041666666666666666666666666666666666667)*s5-static_cast<FP>(0.0013888888888888888888888888888888888889)*s6+static_cast<FP>(0.00019841269841269841269841269841269841270)*s7;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift2(SArray<FP,1,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift2(SArray<FP,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
     coefs(0) = -static_cast<FP>(0.0032924107142857142857142857142857142857)*s0+static_cast<FP>(0.027036830357142857142857142857142857143)*s1-static_cast<FP>(0.097767857142857142857142857142857142857)*s2+static_cast<FP>(0.20320870535714285714285714285714285714)*s3-static_cast<FP>(0.26065848214285714285714285714285714286)*s4+static_cast<FP>(0.16232328869047619047619047619047619048)*s5+static_cast<FP>(0.99415922619047619047619047619047619048)*s6-static_cast<FP>(0.025009300595238095238095238095238095238)*s7;
     coefs(1) = static_cast<FP>(0.024246651785714285714285714285714285714)*s0-static_cast<FP>(0.20644531250000000000000000000000000000)*s1+static_cast<FP>(0.78869357638888888888888888888888888889)*s2-static_cast<FP>(1.7995876736111111111111111111111111111)*s3+static_cast<FP>(2.8000217013888888888888888888888888889)*s4-static_cast<FP>(3.4019748263888888888888888888888888889)*s5+static_cast<FP>(1.7277126736111111111111111111111111111)*s6+static_cast<FP>(0.067333209325396825396825396825396825397)*s7;
     coefs(2) = static_cast<FP>(0.043229166666666666666666666666666666667)*s0-static_cast<FP>(0.35546875000000000000000000000000000000)*s1+static_cast<FP>(1.2875000000000000000000000000000000000)*s2-static_cast<FP>(2.6809895833333333333333333333333333333)*s3+static_cast<FP>(3.4453125000000000000000000000000000000)*s4-static_cast<FP>(2.2007812500000000000000000000000000000)*s5+static_cast<FP>(0.18229166666666666666666666666666666667)*s6+static_cast<FP>(0.27890625000000000000000000000000000000)*s7;
@@ -20024,7 +20024,7 @@ namespace TransformMatrices {
     coefs(7) = -static_cast<FP>(0.00019841269841269841269841269841269841270)*s0+static_cast<FP>(0.0013888888888888888888888888888888888889)*s1-static_cast<FP>(0.0041666666666666666666666666666666666667)*s2+static_cast<FP>(0.0069444444444444444444444444444444444444)*s3-static_cast<FP>(0.0069444444444444444444444444444444444444)*s4+static_cast<FP>(0.0041666666666666666666666666666666666667)*s5-static_cast<FP>(0.0013888888888888888888888888888888888889)*s6+static_cast<FP>(0.00019841269841269841269841269841269841270)*s7;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift3(SArray<FP,1,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift3(SArray<FP,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
     coefs(0) = static_cast<FP>(0.00069754464285714285714285714285714285714)*s0-static_cast<FP>(0.0055803571428571428571428571428571428571)*s1+static_cast<FP>(0.018833705357142857142857142857142857143)*s2-static_cast<FP>(0.030189732142857142857142857142857142857)*s3-static_cast<FP>(0.022051711309523809523809523809523809524)*s4+static_cast<FP>(1.0863467261904761904761904761904761905)*s5-static_cast<FP>(0.051348586309523809523809523809523809524)*s6+static_cast<FP>(0.0032924107142857142857142857142857142857)*s7;
     coefs(1) = -static_cast<FP>(0.012472098214285714285714285714285714286)*s0+static_cast<FP>(0.10978732638888888888888888888888888889)*s1-static_cast<FP>(0.44177517361111111111111111111111111111)*s2+static_cast<FP>(1.1027560763888888888888888888888888889)*s3-static_cast<FP>(2.0441623263888888888888888888888888889)*s4+static_cast<FP>(1.0488064236111111111111111111111111111)*s5+static_cast<FP>(0.26130642361111111111111111111111111111)*s6-static_cast<FP>(0.024246651785714285714285714285714285714)*s7;
     coefs(2) = -static_cast<FP>(0.0096354166666666666666666666666666666667)*s0+static_cast<FP>(0.077083333333333333333333333333333333333)*s1-static_cast<FP>(0.26015625000000000000000000000000000000)*s2+static_cast<FP>(0.41927083333333333333333333333333333333)*s3+static_cast<FP>(0.22005208333333333333333333333333333333)*s4-static_cast<FP>(1.0281250000000000000000000000000000000)*s5+static_cast<FP>(0.62473958333333333333333333333333333333)*s6-static_cast<FP>(0.043229166666666666666666666666666666667)*s7;
@@ -20035,7 +20035,7 @@ namespace TransformMatrices {
     coefs(7) = -static_cast<FP>(0.00019841269841269841269841269841269841270)*s0+static_cast<FP>(0.0013888888888888888888888888888888888889)*s1-static_cast<FP>(0.0041666666666666666666666666666666666667)*s2+static_cast<FP>(0.0069444444444444444444444444444444444444)*s3-static_cast<FP>(0.0069444444444444444444444444444444444444)*s4+static_cast<FP>(0.0041666666666666666666666666666666666667)*s5-static_cast<FP>(0.0013888888888888888888888888888888888889)*s6+static_cast<FP>(0.00019841269841269841269841269841269841270)*s7;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift4(SArray<FP,1,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift4(SArray<FP,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
     coefs(0) = -static_cast<FP>(0.00069754464285714285714285714285714285714)*s1+static_cast<FP>(0.0088727678571428571428571428571428571429)*s2-static_cast<FP>(0.070879836309523809523809523809523809524)*s3+static_cast<FP>(1.1254092261904761904761904761904761905)*s4-static_cast<FP>(0.070879836309523809523809523809523809524)*s5+static_cast<FP>(0.0088727678571428571428571428571428571429)*s6-static_cast<FP>(0.00069754464285714285714285714285714285714)*s7;
     coefs(1) = static_cast<FP>(0.010010540674603174603174603174603174603)*s0-static_cast<FP>(0.092556423611111111111111111111111111111)*s1+static_cast<FP>(0.40431857638888888888888888888888888889)*s2-static_cast<FP>(1.1711154513888888888888888888888888889)*s3+static_cast<FP>(0.35036892361111111111111111111111111111)*s4+static_cast<FP>(0.61052517361111111111111111111111111111)*s5-static_cast<FP>(0.12402343750000000000000000000000000000)*s6+static_cast<FP>(0.012472098214285714285714285714285714286)*s7;
     coefs(2) = static_cast<FP>(0.0096354166666666666666666666666666666667)*s1-static_cast<FP>(0.12031250000000000000000000000000000000)*s2+static_cast<FP>(0.89453125000000000000000000000000000000)*s3-static_cast<FP>(1.5677083333333333333333333333333333333)*s4+static_cast<FP>(0.89453125000000000000000000000000000000)*s5-static_cast<FP>(0.12031250000000000000000000000000000000)*s6+static_cast<FP>(0.0096354166666666666666666666666666666667)*s7;
@@ -20046,7 +20046,7 @@ namespace TransformMatrices {
     coefs(7) = -static_cast<FP>(0.00019841269841269841269841269841269841270)*s0+static_cast<FP>(0.0013888888888888888888888888888888888889)*s1-static_cast<FP>(0.0041666666666666666666666666666666666667)*s2+static_cast<FP>(0.0069444444444444444444444444444444444444)*s3-static_cast<FP>(0.0069444444444444444444444444444444444444)*s4+static_cast<FP>(0.0041666666666666666666666666666666666667)*s5-static_cast<FP>(0.0013888888888888888888888888888888888889)*s6+static_cast<FP>(0.00019841269841269841269841269841269841270)*s7;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift5(SArray<FP,1,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift5(SArray<FP,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
     coefs(0) = -static_cast<FP>(0.00069754464285714285714285714285714285714)*s0+static_cast<FP>(0.0088727678571428571428571428571428571429)*s1-static_cast<FP>(0.070879836309523809523809523809523809524)*s2+static_cast<FP>(1.1254092261904761904761904761904761905)*s3-static_cast<FP>(0.070879836309523809523809523809523809524)*s4+static_cast<FP>(0.0088727678571428571428571428571428571429)*s5-static_cast<FP>(0.00069754464285714285714285714285714285714)*s6;
     coefs(1) = -static_cast<FP>(0.012472098214285714285714285714285714286)*s0+static_cast<FP>(0.12402343750000000000000000000000000000)*s1-static_cast<FP>(0.61052517361111111111111111111111111111)*s2-static_cast<FP>(0.35036892361111111111111111111111111111)*s3+static_cast<FP>(1.1711154513888888888888888888888888889)*s4-static_cast<FP>(0.40431857638888888888888888888888888889)*s5+static_cast<FP>(0.092556423611111111111111111111111111111)*s6-static_cast<FP>(0.010010540674603174603174603174603174603)*s7;
     coefs(2) = static_cast<FP>(0.0096354166666666666666666666666666666667)*s0-static_cast<FP>(0.12031250000000000000000000000000000000)*s1+static_cast<FP>(0.89453125000000000000000000000000000000)*s2-static_cast<FP>(1.5677083333333333333333333333333333333)*s3+static_cast<FP>(0.89453125000000000000000000000000000000)*s4-static_cast<FP>(0.12031250000000000000000000000000000000)*s5+static_cast<FP>(0.0096354166666666666666666666666666666667)*s6;
@@ -20057,7 +20057,7 @@ namespace TransformMatrices {
     coefs(7) = -static_cast<FP>(0.00019841269841269841269841269841269841270)*s0+static_cast<FP>(0.0013888888888888888888888888888888888889)*s1-static_cast<FP>(0.0041666666666666666666666666666666666667)*s2+static_cast<FP>(0.0069444444444444444444444444444444444444)*s3-static_cast<FP>(0.0069444444444444444444444444444444444444)*s4+static_cast<FP>(0.0041666666666666666666666666666666666667)*s5-static_cast<FP>(0.0013888888888888888888888888888888888889)*s6+static_cast<FP>(0.00019841269841269841269841269841269841270)*s7;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift6(SArray<FP,1,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift6(SArray<FP,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
     coefs(0) = static_cast<FP>(0.0032924107142857142857142857142857142857)*s0-static_cast<FP>(0.051348586309523809523809523809523809524)*s1+static_cast<FP>(1.0863467261904761904761904761904761905)*s2-static_cast<FP>(0.022051711309523809523809523809523809524)*s3-static_cast<FP>(0.030189732142857142857142857142857142857)*s4+static_cast<FP>(0.018833705357142857142857142857142857143)*s5-static_cast<FP>(0.0055803571428571428571428571428571428571)*s6+static_cast<FP>(0.00069754464285714285714285714285714285714)*s7;
     coefs(1) = static_cast<FP>(0.024246651785714285714285714285714285714)*s0-static_cast<FP>(0.26130642361111111111111111111111111111)*s1-static_cast<FP>(1.0488064236111111111111111111111111111)*s2+static_cast<FP>(2.0441623263888888888888888888888888889)*s3-static_cast<FP>(1.1027560763888888888888888888888888889)*s4+static_cast<FP>(0.44177517361111111111111111111111111111)*s5-static_cast<FP>(0.10978732638888888888888888888888888889)*s6+static_cast<FP>(0.012472098214285714285714285714285714286)*s7;
     coefs(2) = -static_cast<FP>(0.043229166666666666666666666666666666667)*s0+static_cast<FP>(0.62473958333333333333333333333333333333)*s1-static_cast<FP>(1.0281250000000000000000000000000000000)*s2+static_cast<FP>(0.22005208333333333333333333333333333333)*s3+static_cast<FP>(0.41927083333333333333333333333333333333)*s4-static_cast<FP>(0.26015625000000000000000000000000000000)*s5+static_cast<FP>(0.077083333333333333333333333333333333333)*s6-static_cast<FP>(0.0096354166666666666666666666666666666667)*s7;
@@ -20068,7 +20068,7 @@ namespace TransformMatrices {
     coefs(7) = -static_cast<FP>(0.00019841269841269841269841269841269841270)*s0+static_cast<FP>(0.0013888888888888888888888888888888888889)*s1-static_cast<FP>(0.0041666666666666666666666666666666666667)*s2+static_cast<FP>(0.0069444444444444444444444444444444444444)*s3-static_cast<FP>(0.0069444444444444444444444444444444444444)*s4+static_cast<FP>(0.0041666666666666666666666666666666666667)*s5-static_cast<FP>(0.0013888888888888888888888888888888888889)*s6+static_cast<FP>(0.00019841269841269841269841269841269841270)*s7;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift7(SArray<FP,1,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift7(SArray<FP,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
     coefs(0) = -static_cast<FP>(0.025009300595238095238095238095238095238)*s0+static_cast<FP>(0.99415922619047619047619047619047619048)*s1+static_cast<FP>(0.16232328869047619047619047619047619048)*s2-static_cast<FP>(0.26065848214285714285714285714285714286)*s3+static_cast<FP>(0.20320870535714285714285714285714285714)*s4-static_cast<FP>(0.097767857142857142857142857142857142857)*s5+static_cast<FP>(0.027036830357142857142857142857142857143)*s6-static_cast<FP>(0.0032924107142857142857142857142857142857)*s7;
     coefs(1) = -static_cast<FP>(0.067333209325396825396825396825396825397)*s0-static_cast<FP>(1.7277126736111111111111111111111111111)*s1+static_cast<FP>(3.4019748263888888888888888888888888889)*s2-static_cast<FP>(2.8000217013888888888888888888888888889)*s3+static_cast<FP>(1.7995876736111111111111111111111111111)*s4-static_cast<FP>(0.78869357638888888888888888888888888889)*s5+static_cast<FP>(0.20644531250000000000000000000000000000)*s6-static_cast<FP>(0.024246651785714285714285714285714285714)*s7;
     coefs(2) = static_cast<FP>(0.27890625000000000000000000000000000000)*s0+static_cast<FP>(0.18229166666666666666666666666666666667)*s1-static_cast<FP>(2.2007812500000000000000000000000000000)*s2+static_cast<FP>(3.4453125000000000000000000000000000000)*s3-static_cast<FP>(2.6809895833333333333333333333333333333)*s4+static_cast<FP>(1.2875000000000000000000000000000000000)*s5-static_cast<FP>(0.35546875000000000000000000000000000000)*s6+static_cast<FP>(0.043229166666666666666666666666666666667)*s7;
@@ -20079,7 +20079,7 @@ namespace TransformMatrices {
     coefs(7) = -static_cast<FP>(0.00019841269841269841269841269841269841270)*s0+static_cast<FP>(0.0013888888888888888888888888888888888889)*s1-static_cast<FP>(0.0041666666666666666666666666666666666667)*s2+static_cast<FP>(0.0069444444444444444444444444444444444444)*s3-static_cast<FP>(0.0069444444444444444444444444444444444444)*s4+static_cast<FP>(0.0041666666666666666666666666666666666667)*s5-static_cast<FP>(0.0013888888888888888888888888888888888889)*s6+static_cast<FP>(0.00019841269841269841269841269841269841270)*s7;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift8(SArray<FP,1,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs8_shift8(SArray<FP,8> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7) {
     coefs(0) = static_cast<FP>(0.79408482142857142857142857142857142857)*s0+static_cast<FP>(0.86258370535714285714285714285714285714)*s1-static_cast<FP>(1.6611793154761904761904761904761904762)*s2+static_cast<FP>(1.9538597470238095238095238095238095238)*s3-static_cast<FP>(1.4982886904761904761904761904761904762)*s4+static_cast<FP>(0.72729724702380952380952380952380952381)*s5-static_cast<FP>(0.20336681547619047619047619047619047619)*s6+static_cast<FP>(0.025009300595238095238095238095238095238)*s7;
     coefs(1) = -static_cast<FP>(2.2663783482142857142857142857142857143)*s0+static_cast<FP>(5.2873046875000000000000000000000000000)*s1-static_cast<FP>(6.5706814236111111111111111111111111111)*s2+static_cast<FP>(6.5129123263888888888888888888888888889)*s3-static_cast<FP>(4.5593532986111111111111111111111111111)*s4+static_cast<FP>(2.0917751736111111111111111111111111111)*s5-static_cast<FP>(0.56291232638888888888888888888888888889)*s6+static_cast<FP>(0.067333209325396825396825396825396825397)*s7;
     coefs(2) = static_cast<FP>(2.4135416666666666666666666666666666667)*s0-static_cast<FP>(10.010156250000000000000000000000000000)*s1+static_cast<FP>(19.064062500000000000000000000000000000)*s2-static_cast<FP>(22.204427083333333333333333333333333333)*s3+static_cast<FP>(16.906250000000000000000000000000000000)*s4-static_cast<FP>(8.1648437500000000000000000000000000000)*s5+static_cast<FP>(2.2744791666666666666666666666666666667)*s6-static_cast<FP>(0.27890625000000000000000000000000000000)*s7;
@@ -20090,7 +20090,7 @@ namespace TransformMatrices {
     coefs(7) = -static_cast<FP>(0.00019841269841269841269841269841269841270)*s0+static_cast<FP>(0.0013888888888888888888888888888888888889)*s1-static_cast<FP>(0.0041666666666666666666666666666666666667)*s2+static_cast<FP>(0.0069444444444444444444444444444444444444)*s3-static_cast<FP>(0.0069444444444444444444444444444444444444)*s4+static_cast<FP>(0.0041666666666666666666666666666666666667)*s5-static_cast<FP>(0.0013888888888888888888888888888888888889)*s6+static_cast<FP>(0.00019841269841269841269841269841269841270)*s7;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs9(SArray<FP,1,9> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7, FP s8) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs9(SArray<FP,9> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7, FP s8) {
     coefs(0) = static_cast<FP>(0.00011867947048611111111111111111111111111)*s0-static_cast<FP>(0.0016469804067460317460317460317460317460)*s1+static_cast<FP>(0.012195793030753968253968253968253968254)*s2-static_cast<FP>(0.077525886656746031746031746031746031746)*s3+static_cast<FP>(1.1337167891245039682539682539682539683)*s4-static_cast<FP>(0.077525886656746031746031746031746031746)*s5+static_cast<FP>(0.012195793030753968253968253968253968254)*s6-static_cast<FP>(0.0016469804067460317460317460317460317460)*s7+static_cast<FP>(0.00011867947048611111111111111111111111111)*s8;
     coefs(1) = static_cast<FP>(0.0050052703373015873015873015873015873016)*s0-static_cast<FP>(0.052514260912698412698412698412698412698)*s1+static_cast<FP>(0.26417100694444444444444444444444444444)*s2-static_cast<FP>(0.89082031250000000000000000000000000000)*s3+static_cast<FP>(0.89082031250000000000000000000000000000)*s5-static_cast<FP>(0.26417100694444444444444444444444444444)*s6+static_cast<FP>(0.052514260912698412698412698412698412698)*s7-static_cast<FP>(0.0050052703373015873015873015873015873016)*s8;
     coefs(2) = -static_cast<FP>(0.0016684234457671957671957671957671957672)*s0+static_cast<FP>(0.022982804232804232804232804232804232804)*s1-static_cast<FP>(0.16702835648148148148148148148148148148)*s2+static_cast<FP>(0.98796296296296296296296296296296296296)*s3-static_cast<FP>(1.6844979745370370370370370370370370370)*s4+static_cast<FP>(0.98796296296296296296296296296296296296)*s5-static_cast<FP>(0.16702835648148148148148148148148148148)*s6+static_cast<FP>(0.022982804232804232804232804232804232804)*s7-static_cast<FP>(0.0016684234457671957671957671957671957672)*s8;
@@ -20102,7 +20102,7 @@ namespace TransformMatrices {
     coefs(8) = static_cast<FP>(0.000024801587301587301587301587301587301587)*s0-static_cast<FP>(0.00019841269841269841269841269841269841270)*s1+static_cast<FP>(0.00069444444444444444444444444444444444444)*s2-static_cast<FP>(0.0013888888888888888888888888888888888889)*s3+static_cast<FP>(0.0017361111111111111111111111111111111111)*s4-static_cast<FP>(0.0013888888888888888888888888888888888889)*s5+static_cast<FP>(0.00069444444444444444444444444444444444444)*s6-static_cast<FP>(0.00019841269841269841269841269841269841270)*s7+static_cast<FP>(0.000024801587301587301587301587301587301587)*s8;
   }
 
-  template <class FP> KOKKOS_INLINE_FUNCTION void coefs11(SArray<FP,1,11> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7, FP s8, FP s9, FP s10) {
+  template <class FP> KOKKOS_INLINE_FUNCTION void coefs11(SArray<FP,11> &coefs , FP s0 , FP s1, FP s2, FP s3, FP s4, FP s5, FP s6, FP s7, FP s8, FP s9, FP s10) {
     coefs(0) = -static_cast<FP>(0.000021847811612215909090909090909090909091)*s0+static_cast<FP>(0.00033715758660827020202020202020202020202)*s1-static_cast<FP>(0.000021847811612215909090909090909090909091)*s10-static_cast<FP>(0.0026301319292957476551226551226551226551)*s2+static_cast<FP>(0.014817530424219877344877344877344877345)*s3-static_cast<FP>(0.082113927095311372655122655122655122655)*s4+static_cast<FP>(1.1392224376507823773448773448773448773)*s5-static_cast<FP>(0.082113927095311372655122655122655122655)*s6+static_cast<FP>(0.014817530424219877344877344877344877345)*s7-static_cast<FP>(0.0026301319292957476551226551226551226551)*s8+static_cast<FP>(0.00033715758660827020202020202020202020202)*s9;
     coefs(1) = -static_cast<FP>(0.0011380537729414682539682539682539682540)*s0+static_cast<FP>(0.014109700520833333333333333333333333333)*s1+static_cast<FP>(0.0011380537729414682539682539682539682540)*s10-static_cast<FP>(0.083241712782118055555555555555555555555)*s2+static_cast<FP>(0.31879758804563492063492063492063492063)*s3-static_cast<FP>(0.93861857096354166666666666666666666667)*s4+static_cast<FP>(0.93861857096354166666666666666666666667)*s6-static_cast<FP>(0.31879758804563492063492063492063492063)*s7+static_cast<FP>(0.083241712782118055555555555555555555555)*s8-static_cast<FP>(0.014109700520833333333333333333333333333)*s9;
     coefs(2) = static_cast<FP>(0.00031037830171130952380952380952380952381)*s0-static_cast<FP>(0.0047722064628802910052910052910052910053)*s1+static_cast<FP>(0.00031037830171130952380952380952380952381)*s10+static_cast<FP>(0.036949827809813161375661375661375661376)*s2-static_cast<FP>(0.20427375268683862433862433862433862434)*s3+static_cast<FP>(1.0531424063223379629629629629629629630)*s4-static_cast<FP>(1.7627133065682870370370370370370370370)*s5+static_cast<FP>(1.0531424063223379629629629629629629630)*s6-static_cast<FP>(0.20427375268683862433862433862433862434)*s7+static_cast<FP>(0.036949827809813161375661375661375661376)*s8-static_cast<FP>(0.0047722064628802910052910052910052910053)*s9;

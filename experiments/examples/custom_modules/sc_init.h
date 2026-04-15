@@ -11,8 +11,8 @@
 namespace custom_modules {
 
   inline void sc_init( core::Coupler & coupler ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
     // Grid and variable parameters
     auto nx        = coupler.get_nx();
     auto ny        = coupler.get_ny();
@@ -87,8 +87,8 @@ namespace custom_modules {
     dm_rho_v          = 0;
     // Quadrature parameters
     const int nqpoints = 9;
-    SArray<real,1,nqpoints> qpoints;
-    SArray<real,1,nqpoints> qweights;
+    SArray<real,nqpoints> qpoints;
+    SArray<real,nqpoints> qweights;
     TransformMatrices::get_gll_points (qpoints );
     TransformMatrices::get_gll_weights(qweights);
 

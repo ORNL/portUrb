@@ -134,8 +134,8 @@ int main(int argc, char** argv) {
       auto ghost_col = dycore.compute_average_ghost_column( coupler );
 
       {
-        using yakl::c::parallel_for;
-        using yakl::c::SimpleBounds;
+        using yakl::parallel_for;
+        using yakl::SimpleBounds;
         yakl::SimpleNetCDF nc;
         nc.open("/lustre/storm/nwp501/scratch/imn/turbine_coarse_z0_0.000010.nc",yakl::NETCDF_MODE_READ);
         float1d winds;

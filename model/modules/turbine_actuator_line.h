@@ -40,8 +40,8 @@ namespace modules {
   //   * Grid spacing is the same in all three directions, x, y, and z
   struct TurbineActuatorLine {
     int static constexpr MAX_FIELDS = 100;
-    typedef yakl::SArray<realHost1d,1,MAX_FIELDS> MultiFieldHost;
-    typedef yakl::SArray<real1d    ,1,MAX_FIELDS> MultiFieldDev;
+    typedef yakl::SArray<realHost1d,MAX_FIELDS> MultiFieldHost;
+    typedef yakl::SArray<real1d    ,MAX_FIELDS> MultiFieldDev;
 
     // This class holds information about a reference wind turbine, including lookup tables for various properties
     //   and turbine geometric properties
@@ -59,7 +59,7 @@ namespace modules {
       realHost1d     host_foil_mid    ;
       realHost1d     host_foil_twist  ;
       realHost1d     host_foil_chord  ;
-      realHost1d     host_foil_id     ;
+      intHost1d      host_foil_id     ;
       MultiFieldHost host_foil_alpha  ;
       MultiFieldHost host_foil_clift  ;
       MultiFieldHost host_foil_cdrag  ;
@@ -72,7 +72,7 @@ namespace modules {
       real1d         dev_foil_mid     ;
       real1d         dev_foil_twist   ;
       real1d         dev_foil_chord   ;
-      real1d         dev_foil_id      ;
+      int1d          dev_foil_id      ;
       MultiFieldDev  dev_foil_alpha   ;
       MultiFieldDev  dev_foil_clift   ;
       MultiFieldDev  dev_foil_cdrag   ;
@@ -112,7 +112,7 @@ namespace modules {
         host_foil_mid   = realHost1d("foil_mid"  ,nseg);
         host_foil_twist = realHost1d("foil_twist",nseg);
         host_foil_chord = realHost1d("foil_chord",nseg);
-        host_foil_id    = realHost1d("foil_id"   ,nseg);
+        host_foil_id    = intHost1d ("foil_id"   ,nseg);
         for (int iseg=0; iseg < nseg ; iseg++) {
           host_foil_mid  (iseg) = std::get<0>(foil_summary.at(iseg));
           host_foil_twist(iseg) = std::get<1>(foil_summary.at(iseg))/180.*M_PI;
@@ -294,9 +294,9 @@ namespace modules {
 
 
 
-    template <class T, int MEM>
-    static KOKKOS_INLINE_FUNCTION T linear_interp( yakl::Array<T,1,MEM> const & aref                ,
-                                                   yakl::Array<T,1,MEM> const & vref                ,
+    template <class T, class MEM>
+    static KOKKOS_INLINE_FUNCTION T linear_interp( yakl::Array<T *,MEM> const & aref                ,
+                                                   yakl::Array<T *,MEM> const & vref                ,
                                                    T                            a                   ,
                                                    bool                         const_extrap = true ) {
       int n = aref.size();
@@ -311,12 +311,12 @@ namespace modules {
 
 
 
-    template <class T, int MEM>
-    static KOKKOS_INLINE_FUNCTION T linear_interp( yakl::Array<T,1,MEM> const & aref                ,
-                                                   yakl::Array<T,2,MEM> const & vref                ,
-                                                   T                            a                   ,
-                                                   int                          iblade              ,
-                                                   bool                         const_extrap = true ) {
+    template <class T, class MEM>
+    static KOKKOS_INLINE_FUNCTION T linear_interp( yakl::Array<T * ,MEM> const & aref                ,
+                                                   yakl::Array<T **,MEM> const & vref                ,
+                                                   T                             a                   ,
+                                                   int                           iblade              ,
+                                                   bool                          const_extrap = true ) {
       int n = aref.size();
       if ( n==0 || aref.size() != vref.extent(1) ) Kokkos::abort("Invalid input vectors");
       if ( a < aref(0) || aref.size() == 1 ) return const_extrap ? vref(iblade,0)   : 0.;
@@ -333,8 +333,8 @@ namespace modules {
 
     // Initialize the turbine actuator disc module, adding all the specified turbines from the coupler options
     void init( core::Coupler &coupler ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx    = coupler.get_nx();    // Get the local number of x-direction cells
       auto ny    = coupler.get_ny();    // Get the local number of y-direction cells
       auto nz    = coupler.get_nz();    // Get the number of z-direction cells
@@ -437,8 +437,8 @@ namespace modules {
     //   thrust and torque forces. Keep traces of the power, yaw angle, and inflow wind speed normal to the turbine plane.
     // Injects a portion of the unused thrust energy back into the flow as SGS/unresolved TKE.
     void apply( core::Coupler & coupler , real dt ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto nx                = coupler.get_nx   ();  // Get the local number of x-direction cells
       auto ny                = coupler.get_ny   ();  // Get the local number of y-direction cells
       auto nz                = coupler.get_nz   ();  // Get the number of z-direction cells

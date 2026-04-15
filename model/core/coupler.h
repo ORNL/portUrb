@@ -68,7 +68,7 @@ namespace core {
     size_t j_beg;            // Beginning of my y-direction global index
     size_t i_end;            // End of my x-direction global index
     size_t j_end;            // End of my y-direction global index
-    SArray<int,2,3,3> neigh; // List of neighboring rank IDs;  1st index: y;  2nd index: x
+    SArray<int,3,3> neigh;   // List of neighboring rank IDs;  1st index: y;  2nd index: x
                              // Y: 0 = south;  1 = middle;  2 = north
                              // X: 0 = west ;  1 = center;  3 = east 
 
@@ -205,8 +205,8 @@ namespace core {
                int    px_in      = -1 , int    py_in      = -1 ,
                int    i_beg_in   = -1 , int    i_end_in   = -1 ,
                int    j_beg_in   = -1 , int    j_end_in   = -1 ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       this->par_comm = par_comm;
       this->zint     = zint.createDeviceCopy();
       this->nx_glob  = nx_glob;
@@ -390,7 +390,7 @@ namespace core {
     bool                      is_mainproc               () const { return this->get_myrank() == 0     ; }
 
     // Get the neighbor rank ID matrix as a const reference
-    SArray<int,2,3,3> const & get_neighbor_rankid_matrix() const { return this->neigh                 ; }
+    SArray<int,3,3>   const & get_neighbor_rankid_matrix() const { return this->neigh                 ; }
 
     // Get the DataManager as a const reference for read-only access to allocated variables
     DataManager       const & get_data_manager_readonly () const { return this->dm                    ; }
@@ -498,19 +498,10 @@ namespace core {
       #ifdef PORTURB_FUNCTION_TRACE
         dm.clean_all_entries();
       #endif
-      #ifdef PORTURB_FUNCTION_TIMERS
-        yakl::timer_start( name.c_str() );
-      #endif
 
       // Run the module function with the current coupler as input
       func( *this );
 
-      #ifdef PORTURB_FUNCTION_TIMERS
-        #ifdef PORTURB_FUNCTION_TIMER_BARRIER
-          par_comm.barrier();
-        #endif
-        yakl::timer_stop ( name.c_str() );
-      #endif
       #ifdef PORTURB_FUNCTION_TRACE
         auto dirty_entry_names = dm.get_dirty_entries();
         std::cout << "PortUrb Module " << name << " wrote to the following coupler entries: ";
@@ -549,7 +540,7 @@ namespace core {
       bool1d field_has_nan("field_has_nan",fields.get_num_fields()); // Whether an individual field has NaNs or infs
       field_has_nan = false; // Initialize to no NaNs
       // Check all fields for NaNs or infinite values
-      yakl::c::parallel_for( YAKL_AUTO_LABEL() , yakl::c::SimpleBounds<4>(fields.get_num_fields(),get_nz(),get_ny(),get_nx()) ,
+      yakl::parallel_for( YAKL_AUTO_LABEL() , yakl::SimpleBounds<4>(fields.get_num_fields(),get_nz(),get_ny(),get_nx()) ,
                                                  KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (std::isnan(fields(l,k,j,i)) || !std::isfinite(fields(l,k,j,i))) {
           nan_present = true;
@@ -750,8 +741,8 @@ namespace core {
     // The function requires that the velocity fields "uvel", "vvel", and "wvel" are registered
     //  and allocated in the DataManager with dimensions (z,y,x)
     real track_max_wind() {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       auto u = get_data_manager_readonly().get_collapsed<real const>("uvel"); // Get u-velocity
       auto v = get_data_manager_readonly().get_collapsed<real const>("vvel"); // Get v-velocity
       auto w = get_data_manager_readonly().get_collapsed<real const>("wvel"); // Get w-velocity
@@ -780,8 +771,8 @@ namespace core {
     //  across all MPI processes
     // The output is printed only by the main MPI process of the coupler's communicator
     void inform_user( ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       Kokkos::fence(); // Ensure prior device operations are complete before timing
       auto t2 = std::chrono::high_resolution_clock::now(); // Get current time
       std::chrono::duration<double> dur_step = t2 - inform_timer; // Compute duration since last call
@@ -970,10 +961,9 @@ namespace core {
     // The function uses MPI_Info hints to optimize I/O performance for large files
     // The function increments the file counter after writing the file to ensure unique file names
     void write_output_file( std::string prefix , bool verbose = true ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       typedef unsigned char uchar; // Define uchar type for unsigned char for output variables of that type
-      yakl::timer_start("coupler_output"); // Start timer for output operation
       if (verbose && is_mainproc()) std::cout << "*** Beginning output/restart file ***" << std::endl;
       auto nx          = get_nx();                         // Local number of x grid points
       auto ny          = get_ny();                         // Local number of y grid points
@@ -1112,12 +1102,10 @@ namespace core {
       for (int i=0; i < out_write_funcs.size(); i++) { out_write_funcs.at(i)(*this,nc); }
       nc.close(); // Close the NetCDF file
       file_counter++; // Increment the file counter for the next output for a unique file name
-      yakl::timer_stop("coupler_output"); // Stop the output timer
       // Print status message if verbose and on main process
       if (verbose && is_mainproc()) {
         std::cout << "*** Output/restart file written ***  -->  Etime , Output time: "
-                  << std::scientific << std::setw(10) << etime            << " , " 
-                  << std::scientific << std::setw(10) << timer_last("coupler_output") << std::endl;
+                  << std::scientific << std::setw(10) << etime << std::endl;
       }
     }
 
@@ -1139,7 +1127,6 @@ namespace core {
     // The function prints a status message if the current process is the main process.
     void overwrite_with_restart() {
       typedef unsigned char uchar; // Useful for output variables of type unsigned char
-      yakl::timer_start("overwrite_with_restart"); // Start timer for restart operation
       // Print status message if on main process
       if (is_mainproc())  std::cout << "*** Restarting from file: "
                                     << get_option<std::string>("restart_file") << std::endl;
@@ -1196,7 +1183,6 @@ namespace core {
       for (int i=0; i < restart_read_funcs.size(); i++) { restart_read_funcs.at(i)(*this,nc); }
       nc.close(); // Close the NetCDF file
       file_counter++; // Increment the file counter for the next output for a unique file name
-      yakl::timer_stop("overwrite_with_restart"); // Stop the restart timer
     }
 
 
@@ -1213,12 +1199,12 @@ namespace core {
     // It is assumed that all fields have the same dimensions. If that is untrue, an error is raised, and execution aborts.
     // The vertical halos are left undefined as halo exchange is only performed in the horizontal directions.
     // Typically, the user will fill vertical halos with appropriate boundary conditions after calling this function.
-    template <class T>
-    MultiField<typename std::remove_cv<T>::type,3>
-    create_and_exchange_halos( MultiField<T,3> const &fields_in , int hs ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
-      typedef typename std::remove_cv<T>::type T_NOCV; // Remove const and volatile qualifiers from T
+    template <class MF>
+    MultiField<typename MF::view_type::non_const_value_type,3>
+    create_and_exchange_halos( MF const & fields_in , int hs ) requires (MF::view_type::rank()==3) {
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
+      using T_NOCV = typename MF::view_type::non_const_value_type;
       if (fields_in.get_num_fields() == 0) Kokkos::abort("ERROR: create_and_exchange_halos: create_halos input has zero fields");
       auto num_fields = fields_in.get_num_fields();       // Get number of fields in input MultiField
       auto nz         = fields_in.get_field(0).extent(0); // Get vertical extent of first field
@@ -1232,7 +1218,7 @@ namespace core {
           Kokkos::abort("ERROR: create_and_exchange_halos: sizes not equal among fields");
         }
         // Allocate output field with halos added
-        yakl::Array<T_NOCV,3,yakl::memDevice,yakl::styleC> ret(field.label(),nz+2*hs,ny+2*hs,nx+2*hs);
+        yakl::Array<T_NOCV ***,yakl::DeviceSpace> ret(field.label(),nz+2*hs,ny+2*hs,nx+2*hs);
         fields_out.add_field( ret ); // Add output field to output MultiField
       }
       // Copy interior values from input MultiField to output MultiField using parallel_for
@@ -1247,12 +1233,12 @@ namespace core {
 
 
     // Same as above but for 2D MultiFields
-    template <class T>
-    MultiField<typename std::remove_cv<T>::type,2>
-    create_and_exchange_halos( MultiField<T,2> const &fields_in , int hs ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
-      typedef typename std::remove_cv<T>::type T_NOCV;
+    template <class MF>
+    MultiField<typename MF::view_type::non_const_value_type,2>
+    create_and_exchange_halos( MF const &fields_in , int hs ) requires (MF::view_type::rank()==2) {
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
+      using T_NOCV = typename MF::view_type::non_const_value_type;
       if (fields_in.get_num_fields() == 0) Kokkos::abort("ERROR: create_and_exchange_halos: create_halos input has zero fields");
       auto num_fields = fields_in.get_num_fields();
       auto ny         = fields_in.get_field(0).extent(0);
@@ -1263,7 +1249,7 @@ namespace core {
         if ( field.extent(0) != ny || field.extent(1) != nx ) {
           Kokkos::abort("ERROR: create_and_exchange_halos: sizes not equal among fields");
         }
-        yakl::Array<T_NOCV,2,yakl::memDevice,yakl::styleC> ret(field.label(),ny+2*hs,nx+2*hs);
+        yakl::Array<T_NOCV **,yakl::DeviceSpace> ret(field.label(),ny+2*hs,nx+2*hs);
         fields_out.add_field( ret );
       }
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_fields,ny,nx) ,
@@ -1284,14 +1270,11 @@ namespace core {
     // This template specialization is for 3D MultiFields
     // The vertical halos are left undefined as halo exchange is only performed in the horizontal directions.
     // Typically, the user will fill vertical halos with appropriate boundary conditions after calling this function.
-    template <class T>
-    void halo_exchange( core::MultiField<T,3> & fields , int hs ) const {
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_start("halo_exchange");
-      #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+    template <class MF> requires (MF::view_type::rank()==3)
+    void halo_exchange( MF & fields , int hs ) const {
+      using T = typename MF::view_type::non_const_value_type;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       if (fields.get_num_fields() == 0) Kokkos::abort("ERROR: halo_exchange: create_halos input has zero fields");
       int  npack  = fields.get_num_fields();             // Number of fields to exchange
       auto nz     = fields.get_field(0).extent(0)-2*hs;  // Number of vertical cells without halos
@@ -1311,10 +1294,10 @@ namespace core {
       // x-direction exchanges
       {
         // Allocate send and receive buffers for west and east halos
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_W("halo_send_buf_W",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_E("halo_send_buf_E",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_W("halo_recv_buf_W",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_E("halo_recv_buf_E",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_W("halo_send_buf_W",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_E("halo_send_buf_E",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_W("halo_recv_buf_W",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_E("halo_recv_buf_E",npack,nz,ny,hs);
         // Pack halo values into send buffers using parallel_for
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(npack,nz,ny,hs) ,
                                           KOKKOS_LAMBDA (int v, int k, int j, int ii) {
@@ -1335,10 +1318,10 @@ namespace core {
       // y-direction exchanges
       {
         // Allocate send and receive buffers for south and north halos
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_S("halo_send_buf_S",npack,nz,hs,nx+2*hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_N("halo_send_buf_N",npack,nz,hs,nx+2*hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_S("halo_recv_buf_S",npack,nz,hs,nx+2*hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_N("halo_recv_buf_N",npack,nz,hs,nx+2*hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_S("halo_send_buf_S",npack,nz,hs,nx+2*hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_N("halo_send_buf_N",npack,nz,hs,nx+2*hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_S("halo_recv_buf_S",npack,nz,hs,nx+2*hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_N("halo_recv_buf_N",npack,nz,hs,nx+2*hs);
         // Pack halo values into send buffers using parallel_for
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(npack,nz,hs,nx+2*hs) ,
                                           KOKKOS_LAMBDA (int v, int k, int jj, int i) {
@@ -1356,23 +1339,16 @@ namespace core {
         });
       }
       // Stop profiling timer
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_stop("halo_exchange");
-      #endif
     }
 
 
     // Same as before except for a 4-D yakl::Array where the slowest varying index is the field index
     //  and the remaining three indices are the 3D spatial indices with halos
-    template <class T>
-    void halo_exchange( yakl::Array<T,4,yakl::memDevice,yakl::styleC> const & fields , int hs ) const {
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_start("halo_exchange");
-      #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+    template <class ViewType> requires yakl::is_Array<ViewType> && (ViewType::rank()==4) && ViewType::on_device
+    void halo_exchange( ViewType const & fields , int hs ) const {
+      using T = typename ViewType::non_const_value_type;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int  npack  = fields.extent(0);
       auto nz     = fields.extent(1)-2*hs;
       auto ny     = fields.extent(2)-2*hs;
@@ -1381,10 +1357,10 @@ namespace core {
 
       // x-direction exchanges
       {
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_W("halo_send_buf_W",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_E("halo_send_buf_E",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_W("halo_recv_buf_W",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_E("halo_recv_buf_E",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_W("halo_send_buf_W",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_E("halo_send_buf_E",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_W("halo_recv_buf_W",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_E("halo_recv_buf_E",npack,nz,ny,hs);
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(npack,nz,ny,hs) ,
                                           KOKKOS_LAMBDA (int v, int k, int j, int ii) {
           halo_send_buf_W(v,k,j,ii) = fields(v,hs+k,hs+j,hs+ii);
@@ -1401,10 +1377,10 @@ namespace core {
 
       // y-direction exchanges
       {
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_S("halo_send_buf_S",npack,nz,hs,nx+2*hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_N("halo_send_buf_N",npack,nz,hs,nx+2*hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_S("halo_recv_buf_S",npack,nz,hs,nx+2*hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_N("halo_recv_buf_N",npack,nz,hs,nx+2*hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_S("halo_send_buf_S",npack,nz,hs,nx+2*hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_N("halo_send_buf_N",npack,nz,hs,nx+2*hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_S("halo_recv_buf_S",npack,nz,hs,nx+2*hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_N("halo_recv_buf_N",npack,nz,hs,nx+2*hs);
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(npack,nz,hs,nx+2*hs) ,
                                           KOKKOS_LAMBDA (int v, int k, int jj, int i) {
           halo_send_buf_S(v,k,jj,i) = fields(v,hs+k,hs+jj,i);
@@ -1418,22 +1394,15 @@ namespace core {
           fields(v,hs+k,ny+hs+jj,i) = halo_recv_buf_N(v,k,jj,i);
         });
       }
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_stop("halo_exchange");
-      #endif
     }
 
 
     // Same as before except with a MultiField of 2-D fields rather than 3-D fields
-    template <class T>
-    void halo_exchange( core::MultiField<T,2> & fields , int hs ) const {
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_start("halo_exchange");
-      #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+    template <class MF> requires (MF::view_type::rank()==2)
+    void halo_exchange( MF & fields , int hs ) const {
+      using T = typename MF::view_type::non_const_value_type;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       if (fields.get_num_fields() == 0) Kokkos::abort("ERROR: halo_exchange: create_halos input has zero fields");
       int  npack  = fields.get_num_fields();
       auto ny     = fields.get_field(0).extent(0)-2*hs;
@@ -1449,10 +1418,10 @@ namespace core {
 
       // x-direction exchanges
       {
-        yakl::Array<T,3,yakl::memDevice,yakl::styleC> halo_send_buf_W("halo_send_buf_W",npack,ny,hs);
-        yakl::Array<T,3,yakl::memDevice,yakl::styleC> halo_send_buf_E("halo_send_buf_E",npack,ny,hs);
-        yakl::Array<T,3,yakl::memDevice,yakl::styleC> halo_recv_buf_W("halo_recv_buf_W",npack,ny,hs);
-        yakl::Array<T,3,yakl::memDevice,yakl::styleC> halo_recv_buf_E("halo_recv_buf_E",npack,ny,hs);
+        yakl::Array<T ***,yakl::DeviceSpace> halo_send_buf_W("halo_send_buf_W",npack,ny,hs);
+        yakl::Array<T ***,yakl::DeviceSpace> halo_send_buf_E("halo_send_buf_E",npack,ny,hs);
+        yakl::Array<T ***,yakl::DeviceSpace> halo_recv_buf_W("halo_recv_buf_W",npack,ny,hs);
+        yakl::Array<T ***,yakl::DeviceSpace> halo_recv_buf_E("halo_recv_buf_E",npack,ny,hs);
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,hs) ,
                                           KOKKOS_LAMBDA (int v, int j, int ii) {
           halo_send_buf_W(v,j,ii) = fields(v,hs+j,hs+ii);
@@ -1469,10 +1438,10 @@ namespace core {
 
       // y-direction exchanges
       {
-        yakl::Array<T,3,yakl::memDevice,yakl::styleC> halo_send_buf_S("halo_send_buf_S",npack,hs,nx+2*hs);
-        yakl::Array<T,3,yakl::memDevice,yakl::styleC> halo_send_buf_N("halo_send_buf_N",npack,hs,nx+2*hs);
-        yakl::Array<T,3,yakl::memDevice,yakl::styleC> halo_recv_buf_S("halo_recv_buf_S",npack,hs,nx+2*hs);
-        yakl::Array<T,3,yakl::memDevice,yakl::styleC> halo_recv_buf_N("halo_recv_buf_N",npack,hs,nx+2*hs);
+        yakl::Array<T ***,yakl::DeviceSpace> halo_send_buf_S("halo_send_buf_S",npack,hs,nx+2*hs);
+        yakl::Array<T ***,yakl::DeviceSpace> halo_send_buf_N("halo_send_buf_N",npack,hs,nx+2*hs);
+        yakl::Array<T ***,yakl::DeviceSpace> halo_recv_buf_S("halo_recv_buf_S",npack,hs,nx+2*hs);
+        yakl::Array<T ***,yakl::DeviceSpace> halo_recv_buf_N("halo_recv_buf_N",npack,hs,nx+2*hs);
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,hs,nx+2*hs) ,
                                           KOKKOS_LAMBDA (int v, int jj, int i) {
           halo_send_buf_S(v,jj,i) = fields(v,hs+jj,i);
@@ -1486,23 +1455,16 @@ namespace core {
           fields(v,ny+hs+jj,i) = halo_recv_buf_N(v,jj,i);
         });
       }
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_stop("halo_exchange");
-      #endif
     }
 
 
     // Same as halo_exchange( yakl::Array<T,4,yakl::memDevice,yakl::styleC> const & fields , int hs )
     //  except only in the x-direction
-    template <class T>
-    void halo_exchange_x( yakl::Array<T,4,yakl::memDevice,yakl::styleC> const & fields , int hs ) const {
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_start("halo_exchange");
-      #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+    template <class ViewType> requires yakl::is_Array<ViewType> && (ViewType::rank()==4) && ViewType::on_device
+    void halo_exchange_x( ViewType const & fields , int hs ) const {
+      using T = typename ViewType::non_const_value_type;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int  npack  = fields.extent(0);
       auto nz     = fields.extent(1)-2*hs;
       auto ny     = fields.extent(2)-2*hs;
@@ -1511,10 +1473,10 @@ namespace core {
 
       // x-direction exchanges
       {
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_W("halo_send_buf_W",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_E("halo_send_buf_E",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_W("halo_recv_buf_W",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_E("halo_recv_buf_E",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_W("halo_send_buf_W",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_E("halo_send_buf_E",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_W("halo_recv_buf_W",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_E("halo_recv_buf_E",npack,nz,ny,hs);
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(npack,nz,ny,hs) ,
                                           KOKKOS_LAMBDA (int v, int k, int j, int ii) {
           halo_send_buf_W(v,k,j,ii) = fields(v,hs+k,hs+j,hs+ii);
@@ -1528,22 +1490,15 @@ namespace core {
           fields(v,hs+k,hs+j,nx+hs+ii) = halo_recv_buf_E(v,k,j,ii);
         });
       }
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_stop("halo_exchange");
-      #endif
     }
 
 
     // Same as halo_exchange( core::MultiField<T,3> & fields , int hs ) except only in the x-direction
-    template <class T>
-    void halo_exchange_x( core::MultiField<T,3> & fields , int hs ) const {
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_start("halo_exchange");
-      #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+    template <class MF> requires (MF::view_type::rank()==3)
+    void halo_exchange_x( MF & fields , int hs ) const {
+      using T = typename MF::view_type::non_const_value_type;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       if (fields.get_num_fields() == 0) Kokkos::abort("ERROR: halo_exchange: create_halos input has zero fields");
       int  npack  = fields.get_num_fields();
       auto nz     = fields.get_field(0).extent(0)-2*hs;
@@ -1562,10 +1517,10 @@ namespace core {
 
       // x-direction exchanges
       {
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_W("halo_send_buf_W",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_E("halo_send_buf_E",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_W("halo_recv_buf_W",npack,nz,ny,hs);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_E("halo_recv_buf_E",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_W("halo_send_buf_W",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_E("halo_send_buf_E",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_W("halo_recv_buf_W",npack,nz,ny,hs);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_E("halo_recv_buf_E",npack,nz,ny,hs);
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(npack,nz,ny,hs) ,
                                           KOKKOS_LAMBDA (int v, int k, int j, int ii) {
           halo_send_buf_W(v,k,j,ii) = fields(v,hs+k,hs+j,hs+ii);
@@ -1579,22 +1534,15 @@ namespace core {
           fields(v,hs+k,hs+j,nx+hs+ii) = halo_recv_buf_E(v,k,j,ii);
         });
       }
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_stop("halo_exchange");
-      #endif
     }
 
 
     // Same as halo_exchange( core::MultiField<T,3> & fields , int hs ) except only in the y-direction
-    template <class T>
-    void halo_exchange_y( core::MultiField<T,3> & fields , int hs ) const {
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_start("halo_exchange");
-      #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+    template <class MF> requires (MF::view_type::rank()==3)
+    void halo_exchange_y( MF & fields , int hs ) const {
+      using T = typename MF::view_type::non_const_value_type;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       if (fields.get_num_fields() == 0) Kokkos::abort("ERROR: halo_exchange: create_halos input has zero fields");
       int  npack  = fields.get_num_fields();
       auto nz     = fields.get_field(0).extent(0)-2*hs;
@@ -1613,10 +1561,10 @@ namespace core {
       }
       // y-direction exchanges
       {
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_S("halo_send_buf_S",npack,nz,hs,nx);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_N("halo_send_buf_N",npack,nz,hs,nx);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_S("halo_recv_buf_S",npack,nz,hs,nx);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_N("halo_recv_buf_N",npack,nz,hs,nx);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_S("halo_send_buf_S",npack,nz,hs,nx);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_N("halo_send_buf_N",npack,nz,hs,nx);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_S("halo_recv_buf_S",npack,nz,hs,nx);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_N("halo_recv_buf_N",npack,nz,hs,nx);
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(npack,nz,hs,nx) ,
                                           KOKKOS_LAMBDA (int v, int k, int jj, int i) {
           halo_send_buf_S(v,k,jj,i) = fields(v,hs+k,hs+jj,hs+i);
@@ -1630,22 +1578,15 @@ namespace core {
           fields(v,hs+k,ny+hs+jj,hs+i) = halo_recv_buf_N(v,k,jj,i);
         });
       }
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_stop("halo_exchange");
-      #endif
     }
 
 
     // Same as halo_exchange( yakl::Array<T,4,yakl::memDevice,yakl::styleC> const & fields , int hs ) except only in the y-direction
-    template <class T>
-    void halo_exchange_y( yakl::Array<T,4,yakl::memDevice,yakl::styleC> const & fields , int hs ) const {
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_start("halo_exchange");
-      #endif
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+    template <class ViewType> requires yakl::is_Array<ViewType> && (ViewType::rank()==4) && ViewType::on_device
+    void halo_exchange_y( ViewType const & fields , int hs ) const {
+      using T = typename ViewType::non_const_value_type;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int  npack  = fields.extent(0);
       auto nz     = fields.extent(1)-2*hs;
       auto ny     = fields.extent(2)-2*hs;
@@ -1655,10 +1596,10 @@ namespace core {
 
       // y-direction exchanges
       {
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_S("halo_send_buf_S",npack,nz,hs,nx);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_send_buf_N("halo_send_buf_N",npack,nz,hs,nx);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_S("halo_recv_buf_S",npack,nz,hs,nx);
-        yakl::Array<T,4,yakl::memDevice,yakl::styleC> halo_recv_buf_N("halo_recv_buf_N",npack,nz,hs,nx);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_S("halo_send_buf_S",npack,nz,hs,nx);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_send_buf_N("halo_send_buf_N",npack,nz,hs,nx);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_S("halo_recv_buf_S",npack,nz,hs,nx);
+        yakl::Array<T ****,yakl::DeviceSpace> halo_recv_buf_N("halo_recv_buf_N",npack,nz,hs,nx);
         parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(npack,nz,hs,nx) ,
                                           KOKKOS_LAMBDA (int v, int k, int jj, int i) {
           halo_send_buf_S(v,k,jj,i) = fields(v,hs+k,hs+jj,hs+i);
@@ -1672,10 +1613,6 @@ namespace core {
           fields(v,hs+k,ny+hs+jj,hs+i) = halo_recv_buf_N(v,k,jj,i);
         });
       }
-      #ifdef YAKL_AUTO_PROFILE
-        par_comm.barrier();
-        yakl::timer_stop("halo_exchange");
-      #endif
     }
 
   };

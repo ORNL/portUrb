@@ -35,7 +35,7 @@ namespace YAML {
 
 struct turbine_BEM {
   int static constexpr MAX_FIELDS = 50;
-  typedef yakl::SArray<realHost1d,1,MAX_FIELDS> MultiField;
+  typedef yakl::SArray<realHost1d,MAX_FIELDS> MultiField;
 
   real       R         ;
   real       R_hub     ;

@@ -19,8 +19,8 @@ namespace modules {
     // The column averages are computed and stored in the column member variable
     void set_column( core::Coupler &coupler ,
                      std::vector<std::string> names_in = {"density_dry","uvel","vvel","wvel","temp"} ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int nx   = coupler.get_nx(); // Get number of cells in x-direction
       int ny   = coupler.get_ny(); // Get number of cells in y-direction
       int nz   = coupler.get_nz(); // Get number of cells in z-direction
@@ -46,8 +46,8 @@ namespace modules {
                                          real prop_x2 = 0.1 ,
                                          real prop_y1 = 0.1 ,
                                          real prop_y2 = 0.1 ) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int  nx_glob = coupler.get_nx_glob(); // Global number of cells in x-direction
       int  ny_glob = coupler.get_ny_glob(); // Global number of cells in y-direction
       int  i_beg   = coupler.get_i_beg();   // Beginning index in x-direction for this MPI rank
@@ -97,10 +97,10 @@ namespace modules {
     // coupler : Coupler object holding the data manager and domain information
     // state   : MultiField object holding the 3-D fields to average
     // Returns a 2-D array holding the column averages for each field in state
-    template <class T>
-    real2d get_column_average( core::Coupler const &coupler , core::MultiField<T,3> &state ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+    template <class MF>
+    real2d get_column_average( core::Coupler const & coupler , MF & state ) const requires (MF::view_type::rank()==3) {
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
       int nx_glob = coupler.get_nx_glob(); // Global number of cells in x-direction
       int ny_glob = coupler.get_ny_glob(); // Global number of cells in y-direction
       int nx      = coupler.get_nx();      // Local number of cells in x-direction

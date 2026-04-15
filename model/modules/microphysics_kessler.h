@@ -56,8 +56,8 @@ namespace modules {
     // Call this before the dynamics module's init so that tracers are registered properly
     // Also allocates non-tracer microphysics variable: precl
     void init(core::Coupler &coupler) {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
 
       int nx   = coupler.get_nx();  // Number of local grid cells in the x-direction
       int ny   = coupler.get_ny();  // Number of local grid cells in the y-direction
@@ -108,8 +108,8 @@ namespace modules {
     // coupler : Reference to the coupler object
     // dt : Time step size in seconds
     void time_step( core::Coupler &coupler , real dt ) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
 
       auto &dm = coupler.get_data_manager_readwrite(); // Get the coupler's data manager for read/write access
 
@@ -246,11 +246,11 @@ namespace modules {
                  real2d const &qr, realConst2d rho,
                  real1d const &precl, realConst2d z, realConst2d pk, real dt,
                  real Rd, real cp, real p0, bool no_rain) const {
-      using yakl::c::parallel_for;
-      using yakl::c::SimpleBounds;
+      using yakl::parallel_for;
+      using yakl::SimpleBounds;
 
-      int nz   = theta.dimension[0];
-      int ncol = theta.dimension[1];
+      int nz   = theta.extent(0);
+      int ncol = theta.extent(1);
 
       // Maximum time step size in accordance with CFL condition
       if (dt <= 0) { endrun("kessler.f90 called with nonpositive dt"); }

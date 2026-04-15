@@ -4,12 +4,12 @@
 namespace modules {
 
   struct Mp_morr_two_moment {
-    typedef yakl::Array<double      ,1,yakl::memDevice,yakl::styleFortran> double1d_F;
-    typedef yakl::Array<double      ,2,yakl::memDevice,yakl::styleFortran> double2d_F;
-    typedef yakl::Array<double const,2,yakl::memDevice,yakl::styleFortran> doubleConst2d_F;
-    typedef yakl::Array<int        ,1,yakl::memDevice,yakl::styleFortran> int1d_F;
-    typedef yakl::Array<bool       ,1,yakl::memDevice,yakl::styleFortran> bool1d_F;
-    typedef yakl::Array<bool       ,2,yakl::memDevice,yakl::styleFortran> bool2d_F;
+    typedef yakl::Array_F<double       * ,yakl::DeviceSpace> double1d_F;
+    typedef yakl::Array_F<double       **,yakl::DeviceSpace> double2d_F;
+    typedef yakl::Array_F<double const **,yakl::DeviceSpace> doubleConst2d_F;
+    typedef yakl::Array_F<int          * ,yakl::DeviceSpace> int1d_F;
+    typedef yakl::Array_F<bool         * ,yakl::DeviceSpace> bool1d_F;
+    typedef yakl::Array_F<bool         **,yakl::DeviceSpace> bool2d_F;
 
     int   static constexpr inum    = 1;
     // switches for microphysics scheme
@@ -235,8 +235,8 @@ namespace modules {
              doubleConst2d_F qrcuten, doubleConst2d_F qscuten, doubleConst2d_F qicuten, int ncol,
              int nz, double2d_F const &qlsink, double2d_F const &precr, double2d_F const &preci,
              double2d_F const &precs, double2d_F const &precg) {
-      using yakl::fortran::parallel_for;
-      using yakl::fortran::SimpleBounds;
+      using yakl::parallel_for_F;
+      using yakl::SimpleBounds_F;
       double2d_F c2prec("c2prec",ncol,nz);
       double dt    = dt_in;
       // inum = 0, predict droplet concentration
@@ -246,7 +246,7 @@ namespace modules {
       int  iinum = 1;
       run_two_mom(qc, qi, qs, qr ,ni, ns, nr, t, qv, p, dz, rainncv, sr, snowncv, graupelncv, dt, ncol, nz, qg,
                   ng, qrcuten, qscuten, qicuten, iinum, c2prec, preci, precs, precg, precr);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (qc(i,k) > 1.e-10) { qlsink(i,k) = c2prec(i,k)/qc(i,k); }
           else                  { qlsink(i,k) = 0.0;                 }
           if (k == 1) {
@@ -373,8 +373,8 @@ namespace modules {
                      int nz, double2d_F const &qg3d, double2d_F const &ng3d, doubleConst2d_F qrcu1d,
                      doubleConst2d_F qscu1d, doubleConst2d_F qicu1d, int iinum, double2d_F const &c2prec,
                      double2d_F const &ised, double2d_F const &ssed, double2d_F const &gsed, double2d_F const &rsed) {
-      using yakl::fortran::parallel_for;
-      using yakl::fortran::SimpleBounds;
+      using yakl::parallel_for_F;
+      using yakl::SimpleBounds_F;
       YAKL_SCOPE( ag      , this->ag      );
       YAKL_SCOPE( bg      , this->bg      );     
       YAKL_SCOPE( rhog    , this->rhog    );       
@@ -592,7 +592,7 @@ namespace modules {
       bool2d_F  no_cirg   ("no_cirg"   ,ncol,nz);  // There is no cloud, ice, rain, or graupel
       int1d_F   nstep     ("nstep     ",ncol);     // Number of fallout substeps due to large terminal velocity
       bool1d_F  hydro_pres("hydro_pres",ncol);     // Hydrometeors are present in this column: do fallout
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<1>(ncol) , KOKKOS_LAMBDA (int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<1>(ncol) , KOKKOS_LAMBDA (int i) {
         hydro_pres(i) = false;
         nstep     (i) = 1;
         precrt    (i) = 0.;
@@ -600,7 +600,7 @@ namespace modules {
         snowprt   (i) = 0.;
         grplprt   (i) = 0.;
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           double dum;
           skip_micro(i,k) = false;
           nc3d    (i,k) = 0.;
@@ -764,7 +764,7 @@ namespace modules {
             t_ge_273(i,k) = t3d(i,k) >= 273.15;  // This is a primary code split, so save to bool array for fissioning
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (! skip_micro(i,k)) {
             if (t_ge_273(i,k)) {
               if (iinum==1) {
@@ -792,7 +792,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (! skip_micro(i,k)) {
             if (t_ge_273(i,k)) {
               if ( ! no_cirg(i,k)) {  // If there's cloud or ice or rain or graupel
@@ -871,7 +871,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           double dum;
           if (! skip_micro(i,k)) {
             if (t_ge_273(i,k)) {
@@ -1000,7 +1000,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           double dum;
           if (! skip_micro(i,k)) {
             if (t_ge_273(i,k)) {
@@ -1119,7 +1119,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           double dum;
           if (! skip_micro(i,k)) {
             if (t_ge_273(i,k)) {
@@ -1175,7 +1175,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (! skip_micro(i,k)) {
             if (! t_ge_273(i,k)) {
               //hm add, allow for constant droplet number
@@ -1270,7 +1270,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (! skip_micro(i,k)) {
             if (! t_ge_273(i,k)) {
               mnuccc(i,k) = 0.;
@@ -1467,7 +1467,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (! skip_micro(i,k)) {
             if (! t_ge_273(i,k)) {
               // rime-splintering - snow
@@ -1560,7 +1560,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (! skip_micro(i,k)) {
             if (! t_ge_273(i,k)) {
               // conversion of rimed cloud water onto snow to graupel/hail
@@ -1698,7 +1698,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (! skip_micro(i,k)) {
             if (! t_ge_273(i,k)) {
               double epsi;
@@ -1896,7 +1896,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           double dum;
           if (! skip_micro(i,k)) {
             if (! t_ge_273(i,k)) {
@@ -1930,7 +1930,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (! skip_micro(i,k)) {
             if (! t_ge_273(i,k)) {
               if (igraup==0) {
@@ -1949,7 +1949,7 @@ namespace modules {
             }
           }
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (! skip_micro(i,k)) {
             if (! t_ge_273(i,k)) {
               nc3dten(i,k) = nc3dten(i,k)+(-nnuccc(i,k)-npsacws(i,k)-npra(i,k)-nprc(i,k)-npsacwi(i,k)-npsacwg(i,k));
@@ -2014,7 +2014,7 @@ namespace modules {
           } // if (! skip_micro(i,k))
       });
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (hydro_pres(i)) {
             // calculate sedimenation
             // the numerics here follow from reisner et al. (1998)
@@ -2160,7 +2160,7 @@ namespace modules {
           }
       });
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<1>(ncol) , KOKKOS_LAMBDA (int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<1>(ncol) , KOKKOS_LAMBDA (int i) {
         if (hydro_pres(i)) {
           nstep(i) = 1;
           for (int k = nz; k >= 1; k--) {
@@ -2191,7 +2191,7 @@ namespace modules {
       auto max_nstep = yakl::intrinsics::maxval( nstep );
 
       for (int n = 1; n <= max_nstep; n++) {
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+        parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (hydro_pres(i) && nstep(i) <= n) {
               faloutr (i,k) = fr (i,k)*dumr  (i,k);
               falouti (i,k) = fi (i,k)*dumi  (i,k);
@@ -2205,7 +2205,7 @@ namespace modules {
               faloutng(i,k) = fng(i,k)*dumfng(i,k);
           }
         });
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<1>(ncol) , KOKKOS_LAMBDA (int i) {
+        parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<1>(ncol) , KOKKOS_LAMBDA (int i) {
           if (hydro_pres(i) && nstep(i) <= n) {
             {
               // top of model
@@ -2244,7 +2244,7 @@ namespace modules {
             }
           }
         });
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz-1,ncol) , KOKKOS_LAMBDA (int k, int i) {
+        parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz-1,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (hydro_pres(i) && nstep(i) <= n) {
               double faltndr  = (faloutr (i,k+1)-faloutr (i,k))/dzq(i,k);
               double faltndi  = (falouti (i,k+1)-falouti (i,k))/dzq(i,k);
@@ -2297,7 +2297,7 @@ namespace modules {
       } // nstep(i)
 
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      parallel_for_F( YAKL_AUTO_LABEL() , SimpleBounds_F<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (hydro_pres(i)) {
             // add on sedimentation tendencies for mixing ratio to rest of tendencies
             qr3dten (i,k) = qr3dten (i,k) + qrsten (i,k);
