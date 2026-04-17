@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
     sfc_flux     .init        ( coupler );
-    time_averager.init        ( coupler );
+    time_averager.init        ( coupler , {"tank_tracer"});
     custom_modules::sc_perturb( coupler );
 
     real etime = coupler.get_option<real>("elapsed_time");

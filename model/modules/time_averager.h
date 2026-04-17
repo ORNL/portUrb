@@ -7,9 +7,12 @@ namespace modules {
   // This class keeps track of time-averaged u, v, w, and TKE fields since the last reset
   struct Time_Averager {
 
+    std::vector<std::string> add_3d_varnames;
+
     // Allocate and initialize time-averaged fields since the last reset
     // Also, register these fields as output variables with the coupler for output and restart
-    void init( core::Coupler &coupler ) {
+    void init( core::Coupler &coupler , std::vector<std::string> add_3d_varnames = {} ) {
+      this->add_3d_varnames = add_3d_varnames;
       auto nx   = coupler.get_nx();  // Local number of cells in the x-direction
       auto ny   = coupler.get_ny();  // Local number of cells in the y-direction
       auto nz   = coupler.get_nz();  // Number of cells in the z-direction
@@ -45,6 +48,11 @@ namespace modules {
         coupler.register_output_variable<real>( "avg_vp_wp"  , core::Coupler::DIMS_3D );
         coupler.register_output_variable<real>( "avg_wp_wp"  , core::Coupler::DIMS_3D );
       }
+      for (auto & varname : add_3d_varnames) {
+        dm.register_and_allocate<real>(std::string("avg_")+varname,"",{nz,ny,nx});
+        dm.get<real,3>(std::string("avg_")+varname) = 0;
+        coupler.register_output_variable<real>( std::string("avg_")+varname , core::Coupler::DIMS_3D );
+      }
     }
 
 
@@ -63,6 +71,9 @@ namespace modules {
         dm.get<real,3>("avg_vp_vp") = 0;
         dm.get<real,3>("avg_vp_wp") = 0;
         dm.get<real,3>("avg_wp_wp") = 0;
+      }
+      for (auto & varname : add_3d_varnames) {
+        dm.get<real,3>(std::string("avg_")+varname) = 0;
       }
     }
 
@@ -87,12 +98,22 @@ namespace modules {
       auto avg_tke    = dm.get<real      ,3>("avg_tke"    );
       auto etime      = coupler.get_option<real>("time_averager_etime"); // Get elapsed time for time-averaging since last reset
       real inertia = etime / (etime + dt);  // Compute inertia
+      core::MultiField<real,3> tavg_fields;
+      core::MultiField<real,3> fields;
+      for (auto & varname : add_3d_varnames) {
+        fields     .add_field( dm.get<real,3>(                    varname) );
+        tavg_fields.add_field( dm.get<real,3>(std::string("avg_")+varname) );
+      }
+      int nfields = fields.get_num_fields();
       // Update time-averaged fields using moving average formula
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         avg_u  (k,j,i) = inertia*avg_u  (k,j,i) + (1-inertia)*uvel(k,j,i);
         avg_v  (k,j,i) = inertia*avg_v  (k,j,i) + (1-inertia)*vvel(k,j,i);
         avg_w  (k,j,i) = inertia*avg_w  (k,j,i) + (1-inertia)*wvel(k,j,i);
         avg_tke(k,j,i) = inertia*avg_tke(k,j,i) + (1-inertia)*tke (k,j,i);
+        for (int l=0; l < nfields; l++) {
+          tavg_fields(l,k,j,i) = inertia*tavg_fields(l,k,j,i) + (1-inertia)*fields(l,k,j,i);
+        }
       });
       coupler.set_option<real>("time_averager_etime",etime+dt);  // Update elapsed time for time-averaging since last reset
       if (coupler.get_option<bool>("output_correlations",false)) {

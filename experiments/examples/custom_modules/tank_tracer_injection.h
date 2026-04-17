@@ -21,6 +21,7 @@ namespace custom_modules {
     using yakl::componentwise::operator/;  // Allows use of '/' on yakl::Array objects
     using yakl::componentwise::operator-;  // Allows use of '-' on yakl::Array objects
     auto nx       = coupler.get_nx();      // Get local number of cells in x-direction
+    auto nx_glob  = coupler.get_nx_glob(); // Get global number of cells in x-direction
     auto ny       = coupler.get_ny();      // Get local number of cells in y-direction
     auto nz       = coupler.get_nz();      // Get local number of cells in z-direction
     auto dx       = coupler.get_dx();      // Get grid spacing in x-direction
@@ -44,6 +45,8 @@ namespace custom_modules {
         dm_trac(k,j,i) = conc*dm_rho_d(k,j,i);
         dm_w   (k,j,i) = wvel*std::exp(-((x-x0)*(x-x0)+(y-y0)*(y-y0))/(2*sigma*sigma));
       }
+      int start = std::round(0.95*nx_glob);
+      if ((i_beg+i) >= start) dm_trac(k,j,i) *= (nx_glob-1-(i_beg+i)) / (nx_glob-1-start);
     });
   }
 }
