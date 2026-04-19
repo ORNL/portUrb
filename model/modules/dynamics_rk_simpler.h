@@ -173,7 +173,7 @@ namespace modules {
             }
           }
           if (! dm.entry_exists("dycore_ghost_x1")) { // if not existing, register and allocate
-            dm.register_and_allocate<FLOC>("dycore_ghost_x1","",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+            dm.register_and_allocate<FLOC>("dycore_ghost_x1",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
           }
         }
         if (px == npx-1) { // If we're at the east edge process of the domain
@@ -183,7 +183,7 @@ namespace modules {
             }
           }
           if (! dm.entry_exists("dycore_ghost_x2")) { // if not existing, register and allocate
-            dm.register_and_allocate<FLOC>("dycore_ghost_x2","",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+            dm.register_and_allocate<FLOC>("dycore_ghost_x2",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
           }
         }
         if (py == 0) { // If we're at the south edge process of the domain
@@ -193,7 +193,7 @@ namespace modules {
             }
           }
           if (! dm.entry_exists("dycore_ghost_y1")) { // if not existing, register and allocate
-            dm.register_and_allocate<FLOC>("dycore_ghost_y1","",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+            dm.register_and_allocate<FLOC>("dycore_ghost_y1",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
           }
         }
         if (py == npy-1) { // If we're at the north edge process of the domain
@@ -203,7 +203,7 @@ namespace modules {
             }
           }
           if (! dm.entry_exists("dycore_ghost_y2")) { // if not existing, register and allocate
-            dm.register_and_allocate<FLOC>("dycore_ghost_y2","",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+            dm.register_and_allocate<FLOC>("dycore_ghost_y2",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
           }
         }
       }
@@ -1551,7 +1551,7 @@ namespace modules {
           }
         }
         if (! dm_main.entry_exists("dycore_ghost_x1")) { // If entry does not exist, register and allocate it
-          dm_main.register_and_allocate<FLOC>("dycore_ghost_x1","",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+          dm_main.register_and_allocate<FLOC>("dycore_ghost_x1",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
         }
       }
       if (px == npx-1) { // If my rank is on the east edge of the domain
@@ -1562,7 +1562,7 @@ namespace modules {
           }
         }
         if (! dm_main.entry_exists("dycore_ghost_x2")) { // If entry does not exist, register and allocate it
-          dm_main.register_and_allocate<FLOC>("dycore_ghost_x2","",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+          dm_main.register_and_allocate<FLOC>("dycore_ghost_x2",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
         }
       }
       if (py == 0) { // If my rank is on the south edge of the domain
@@ -1573,7 +1573,7 @@ namespace modules {
           }
         }
         if (! dm_main.entry_exists("dycore_ghost_y1")) { // If entry does not exist, register and allocate it
-          dm_main.register_and_allocate<FLOC>("dycore_ghost_y1","",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+          dm_main.register_and_allocate<FLOC>("dycore_ghost_y1",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
         }
       }
       if (py == npy-1) { // If my rank is on the north edge of the domain
@@ -1584,7 +1584,7 @@ namespace modules {
           }
         }
         if (! dm_main.entry_exists("dycore_ghost_y2")) { // If entry does not exist, register and allocate it
-          dm_main.register_and_allocate<FLOC>("dycore_ghost_y2","",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+          dm_main.register_and_allocate<FLOC>("dycore_ghost_y2",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
         }
       }
 
@@ -1651,7 +1651,7 @@ namespace modules {
       // print( 60*p.diff(x).subs(x=0) )
       // print( 60*p.diff(x).subs(x=1) )
       //
-      dm.register_and_allocate<real>("dycore_metjac_edges","",{nz+2,2});
+      dm.register_and_allocate<real>("dycore_metjac_edges",{nz+2,2});
       auto metjac_edges = dm.get<real,2>("dycore_metjac_edges");
       parallel_for( YAKL_AUTO_LABEL() , nz+2 , KOKKOS_LAMBDA (int k_in) {
         int k = k_in-1;
@@ -1681,10 +1681,10 @@ namespace modules {
       // Copy to device, register in coupler data manager, and store in data manager memory
       tracer_positive_host .deep_copy_to(tracer_positive );
       tracer_adds_mass_host.deep_copy_to(tracer_adds_mass);
-      dm.register_and_allocate<bool>("tracer_adds_mass","",{num_tracers});
+      dm.register_and_allocate<bool>("tracer_adds_mass",{num_tracers});
       auto dm_tracer_adds_mass = dm.get<bool,1>("tracer_adds_mass");
       tracer_adds_mass.deep_copy_to(dm_tracer_adds_mass);
-      dm.register_and_allocate<bool>("tracer_positive","",{num_tracers});
+      dm.register_and_allocate<bool>("tracer_positive",{num_tracers});
       auto dm_tracer_positive = dm.get<bool,1>("tracer_positive");
       tracer_positive.deep_copy_to(dm_tracer_positive);
 
@@ -1697,9 +1697,9 @@ namespace modules {
       //  in initializing the hydrostatic profiles including halo cells
       // The computation being here is why init should be called after initializing initial data
       //  but before applying perturbations to the flow
-      dm.register_and_allocate<real>("hy_dens_cells"    ,"",{nz+2*hs});
-      dm.register_and_allocate<real>("hy_theta_cells"   ,"",{nz+2*hs});
-      dm.register_and_allocate<real>("hy_pressure_cells","",{nz+2*hs});
+      dm.register_and_allocate<real>("hy_dens_cells"    ,{nz+2*hs});
+      dm.register_and_allocate<real>("hy_theta_cells"   ,{nz+2*hs});
+      dm.register_and_allocate<real>("hy_pressure_cells",{nz+2*hs});
       auto r = dm.get<real,1>("hy_dens_cells"    );    r = 0;
       auto t = dm.get<real,1>("hy_theta_cells"   );    t = 0;
       auto p = dm.get<real,1>("hy_pressure_cells");    p = 0;
@@ -1771,8 +1771,7 @@ namespace modules {
           // Create and exchange halos (vertical is not set after calling this function)
           auto fields_halos = coupler.create_and_exchange_halos( fields , hs );
           // Create and populate dycore_immersed_proportion_halos in the coupler data manager
-          dm.register_and_allocate<real>("dycore_immersed_proportion_halos","",{nz+2*hs,ny+2*hs,nx+2*hs},
-                                         {"z_halod","y_halod","x_halod"});
+          dm.register_and_allocate<real>("dycore_immersed_proportion_halos",{nz+2*hs,ny+2*hs,nx+2*hs});
           // Fill in the dycore's top and bottom halos with 1's to indicate fully immersed
           // This does not affect the immersed_proportion DataManager array since we are assigning to a different array
           parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
@@ -1789,7 +1788,7 @@ namespace modules {
           // These are only used to determine if / how hyperviscosity should be added near immersed boundaries.
           {
             int hsnew = 2;
-            dm.register_and_allocate<bool>("dycore_any_immersed2","",{nz,ny,nx},{"z","y","x"});
+            dm.register_and_allocate<bool>("dycore_any_immersed2",{nz,ny,nx});
             auto any_immersed = dm.get<bool,3>("dycore_any_immersed2");
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
@@ -1810,7 +1809,7 @@ namespace modules {
           }
           {
             int hsnew = 4;
-            dm.register_and_allocate<bool>("dycore_any_immersed4","",{nz,ny,nx},{"z","y","x"});
+            dm.register_and_allocate<bool>("dycore_any_immersed4",{nz,ny,nx});
             auto any_immersed = dm.get<bool,3>("dycore_any_immersed4");
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
@@ -1831,7 +1830,7 @@ namespace modules {
           }
           {
             int hsnew = 6;
-            dm.register_and_allocate<bool>("dycore_any_immersed6","",{nz,ny,nx},{"z","y","x"});
+            dm.register_and_allocate<bool>("dycore_any_immersed6",{nz,ny,nx});
             auto any_immersed = dm.get<bool,3>("dycore_any_immersed6");
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
@@ -1852,7 +1851,7 @@ namespace modules {
           }
           {
             int hsnew = 8;
-            dm.register_and_allocate<bool>("dycore_any_immersed8","",{nz,ny,nx},{"z","y","x"});
+            dm.register_and_allocate<bool>("dycore_any_immersed8",{nz,ny,nx});
             auto any_immersed = dm.get<bool,3>("dycore_any_immersed8");
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
@@ -1873,7 +1872,7 @@ namespace modules {
           }
           {
             int hsnew = 10;
-            dm.register_and_allocate<bool>("dycore_any_immersed10","",{nz,ny,nx},{"z","y","x"});
+            dm.register_and_allocate<bool>("dycore_any_immersed10",{nz,ny,nx});
             auto any_immersed = dm.get<bool,3>("dycore_any_immersed10");
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
@@ -1905,9 +1904,9 @@ namespace modules {
         auto nx   = coupler.get_nx  (); // Number of cells in x-direction (not including halos)
         auto &dm  = coupler.get_data_manager_readwrite(); // Get data manager as read-write
         // Register edge hydrostatic values if they do not already exist
-        if (! dm.entry_exists("hy_dens_edges"    )) dm.register_and_allocate<real>("hy_dens_edges"    ,"",{nz+1});
-        if (! dm.entry_exists("hy_theta_edges"   )) dm.register_and_allocate<real>("hy_theta_edges"   ,"",{nz+1});
-        if (! dm.entry_exists("hy_pressure_edges")) dm.register_and_allocate<real>("hy_pressure_edges","",{nz+1});
+        if (! dm.entry_exists("hy_dens_edges"    )) dm.register_and_allocate<real>("hy_dens_edges"    ,{nz+1});
+        if (! dm.entry_exists("hy_theta_edges"   )) dm.register_and_allocate<real>("hy_theta_edges"   ,{nz+1});
+        if (! dm.entry_exists("hy_pressure_edges")) dm.register_and_allocate<real>("hy_pressure_edges",{nz+1});
         // Obtain the cells (with halos) and edges hydrostatic values
         auto hy_dens_cells     = dm.get<real const,1>("hy_dens_cells"    );
         auto hy_theta_cells    = dm.get<real const,1>("hy_theta_cells"   );

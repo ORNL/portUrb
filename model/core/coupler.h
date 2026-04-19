@@ -36,15 +36,15 @@ namespace core {
       size_t      type_hash;  // Hash of the variable type for type checking during output
     };
 
-    real        xlen;          // Domain length in the x-direction in meters
-    real        ylen;          // Domain length in the y-direction in meters
-    real        zlen;          // Domain length in the z-direction in meters
-    int         file_counter;  // Number of files that have been written so far
-    real1d      zint;          // Interface heights of z levels (variable vertical grid)
-    real1d      zmid;          // Interface heights of z levels (variable vertical grid)
-    real1d      dz;            // Grid spacing of vertical cells (variable vertical grid)
-    Options     options;       // Organizes shared scalar options
-    DataManager dm;            // Organizes shared variables
+    real          xlen;          // Domain length in the x-direction in meters
+    real          ylen;          // Domain length in the y-direction in meters
+    real          zlen;          // Domain length in the z-direction in meters
+    int           file_counter;  // Number of files that have been written so far
+    real1d        zint;          // Interface heights of z levels (variable vertical grid)
+    real1d        zmid;          // Interface heights of z levels (variable vertical grid)
+    real1d        dz;            // Grid spacing of vertical cells (variable vertical grid)
+    Options       options;       // Organizes shared scalar options
+    DataManager<> dm;            // Organizes shared variables
     std::vector<Tracer>    tracers;     // Organizes tracer entries for transport and diffusion
     std::vector<OutputVar> output_vars; // Organizes output variables on the standard grid dims
     // Allows modules to register their own output writing functions for variables not on the standard grid dims
@@ -58,6 +58,8 @@ namespace core {
                              //   perform MPI operations such as reductions on the communicator
     size_t nx_glob;          // Total global number of cells in the x-direction (summing all MPI Processes)
     size_t ny_glob;          // Total global number of cells in the y-direction (summing all MPI Processes)
+    int    nx;               // Total number of cells in the x-direction
+    int    ny;               // Total number of cells in the y-direction
     int    nz;               // Total number of cells in the z-direction
     int    nproc_x;          // Number of parallel processes distributed over the x-dimension
     int    nproc_y;          // Number of parallel processes distributed over the y-dimension
@@ -88,6 +90,8 @@ namespace core {
       this->inform_timer = std::chrono::high_resolution_clock::now();
       this->nx_glob      = 0;
       this->ny_glob      = 0;
+      this->nx           = 0;
+      this->ny           = 0;
       this->nz           = 0;
       this->nproc_x      = 0;
       this->nproc_y      = 0;
@@ -120,6 +124,8 @@ namespace core {
       this->file_counter = 0;
       this->nx_glob      = 0;
       this->ny_glob      = 0;
+      this->nx           = 0;
+      this->ny           = 0;
       this->nz           = 0;
       this->nproc_x      = 0;
       this->nproc_y      = 0;
@@ -140,6 +146,8 @@ namespace core {
       coupler.par_comm           = this->par_comm          ;
       coupler.nx_glob            = this->nx_glob           ;
       coupler.ny_glob            = this->ny_glob           ;
+      coupler.nx                 = this->nx                ;
+      coupler.ny                 = this->ny                ;
       coupler.nz                 = this->nz                ;
       coupler.nproc_x            = this->nproc_x           ;
       coupler.nproc_y            = this->nproc_y           ;
@@ -283,8 +291,8 @@ namespace core {
       if (j_end_in   > 0) j_end   = j_end_in  ;
 
       // Determine my number of grid cells for my MPI task
-      int nx = i_end - i_beg + 1;
-      int ny = j_end - j_beg + 1;
+      nx = i_end - i_beg + 1;
+      ny = j_end - j_beg + 1;
       // Determine neighboring rank IDs in a fully tensored 3x3 grid
       for (int j = 0; j < 3; j++) {
         for (int i = 0; i < 3; i++) {
@@ -298,11 +306,6 @@ namespace core {
         }
       }
 
-      // Register the grid dimensions with the data manager so that variables using these dimensions
-      //   automatically get the correct dimension labels.
-      dm.add_dimension( "x" , nx );
-      dm.add_dimension( "y" , ny );
-      dm.add_dimension( "z" , nz );
       // Set initial elapsed time to zero
       set_option<real>("elapsed_time",0._fp);
       // Inform the user about the domain decomposition, grid, , number of DOFs, etc.
@@ -359,6 +362,12 @@ namespace core {
     // Get the number of MPI processes in the x-direction
     int                       get_nproc_x               () const { return this->nproc_x               ; }
 
+    // Get the number of cells in the x-direction on this MPI process
+    int                       get_nx                    () const { return this->nx                   ; }
+
+    // Get the number of cells in the y-direction on this MPI process
+    int                       get_ny                    () const { return this->ny                   ; }
+
     // Get the total number of cells in the z-direction (same for all MPI processes)
     int                       get_nz                    () const { return this->nz                    ; }
 
@@ -393,10 +402,10 @@ namespace core {
     SArray<int,3,3>   const & get_neighbor_rankid_matrix() const { return this->neigh                 ; }
 
     // Get the DataManager as a const reference for read-only access to allocated variables
-    DataManager       const & get_data_manager_readonly () const { return this->dm                    ; }
+    DataManager<>     const & get_data_manager_readonly () const { return this->dm                    ; }
 
     // Get the DataManager as a non-const reference for read-write access to allocated variables
-    DataManager             & get_data_manager_readwrite()       { return this->dm                    ; }
+    DataManager<>           & get_data_manager_readwrite()       { return this->dm                    ; }
 
     // Get the x-direction grid spacing in meters
     real                      get_dx                    () const { return get_xlen() / get_nx_glob()  ; }
@@ -415,20 +424,6 @@ namespace core {
 
     // Get the number of tracers registered with the coupler
     int                       get_num_tracers           () const { return tracers.size()              ; }
-
-
-    // Get the number of cells in the x-direction on this MPI process
-    int get_nx() const {
-      if (dm.find_dimension("x") == -1) return -1;
-      return dm.get_dimension_size("x");
-    }
-
-
-    // Get the number of cells in the y-direction on this MPI process
-    int get_ny() const {
-      if (dm.find_dimension("y") == -1) return -1;
-      return dm.get_dimension_size("y");
-    }
 
 
     // Add the option of the templated type only if it does not already exist
@@ -611,7 +606,7 @@ namespace core {
       int ny   = get_ny();
       int nx   = get_nx();
       // Register and allocate the tracer variable in the DataManager with dimensions (z,y,x)
-      dm.register_and_allocate<real>( tracer_name , tracer_desc , {nz,ny,nx} , {"z","y","x"} );
+      dm.register_and_allocate<real>( tracer_name , {nz,ny,nx} );
       // Add the tracer to the coupler's list of tracers
       tracers.push_back( { tracer_name , tracer_desc , positive , adds_mass , diffuse } );
       // Return the index of the newly added tracer

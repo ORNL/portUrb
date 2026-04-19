@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
 
     real scale = 1./1250.;
     real dx = 0.3*scale;
-    real u0 = 0.62;
+    real u0 = 0.655;
 
     modules::TriMesh mesh;
     mesh.load_file("/ccs/home/imn/330deg.obj");
@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     if (core::ParallelComm(MPI_COMM_WORLD).get_rank_id()==0) std::cout << mesh;
     real disk_x    = mesh.domain_hi.x;
     real disk_y    = mesh.domain_hi.y;
-    real offset_x1 = 10 + 1 + 38.85;
+    real offset_x1 = 10 + 1 + 50; // 38.85 is the original fetch between grid and circle
     real offset_x2 = 30;
     real offset_y1 = (200-disk_y)/2;
     real offset_y2 = (200-disk_y)/2;
@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
                   ny_glob , nx_glob , ylen , xlen );
 
     int nfaces = mesh.faces.extent(0);
-    coupler.get_data_manager_readwrite().register_and_allocate<float>("mesh_faces","",{nfaces,3,3});
+    coupler.get_data_manager_readwrite().register_and_allocate<float>("mesh_faces",{nfaces,3,3});
     mesh.faces.deep_copy_to( coupler.get_data_manager_readwrite().get<float,3>("mesh_faces") );
     Kokkos::fence();
 
@@ -138,22 +138,29 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
-        using modules::uniform_pg_wind_forcing_height;
+        using modules::uniform_pg_wind_forcing_yzplane;
         using custom_modules::tank_tracer_injection;
-        real x1   = (offset_x1+disk_x/2-2)*scale;
-        real x2   = (offset_x1+disk_x/2+2)*scale;
-        real y1   = (offset_y1+disk_y/2-2)*scale;
-        real y2   = (offset_y1+disk_y/2+2)*scale;
-        real z1   = 2   *scale;
-        real z2   = 4.25*scale;
-        real conc = 1;
-        real wvel = 0.77;
-        coupler.run_module( [&] (Coupler &c) { tank_tracer_injection(c,dt,x1,x2,y1,y2,z1,z2,conc,wvel,"tank_tracer"); } , "tracer_inj" );
-        real hr = 11.2*scale*2;
-        real ur = u0;
-        real vr = 0;
-        real tr = xlen/u0;
-        coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );
+        {
+          real x1   = (offset_x1+disk_x/2-2)*scale;
+          real x2   = (offset_x1+disk_x/2+2)*scale;
+          real y1   = (offset_y1+disk_y/2-2)*scale;
+          real y2   = (offset_y1+disk_y/2+2)*scale;
+          real z1   = 2   *scale;
+          real z2   = 4.25*scale;
+          real conc = 1;
+          real wvel = 0.77;
+          coupler.run_module( [&] (Coupler &c) { tank_tracer_injection(c,dt,x1,x2,y1,y2,z1,z2,conc,wvel,"tank_tracer"); } , "tracer_inj" );
+        }
+        {
+          real z1  = 0.5*zlen;
+          real z2  = 0.9*zlen;
+          real y1  = 0.1*ylen;
+          real y2  = 0.9*ylen;
+          real x0  = (offset_x1+disk_x/2)*scale;
+          real v0  = 0.;
+          real tau = dt;
+          coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_yzplane(c,dt,z1,z2,y1,y2,x0,u0,v0,tau); } , "pg_forcing" );
+        }
         coupler.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt);             } , "dycore"         );
         coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt);             } , "surface_fluxes" );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt);             } , "les_closure"    );

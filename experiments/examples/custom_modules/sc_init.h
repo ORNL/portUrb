@@ -63,15 +63,15 @@ namespace custom_modules {
     auto &dm = coupler.get_data_manager_readwrite();
     auto dims3d = {nz,ny,nx};
     auto dims2d = {   ny,nx};
-    if (! dm.entry_exists("density_dry"        )) dm.register_and_allocate<real>("density_dry"        ,"",dims3d);
-    if (! dm.entry_exists("uvel"               )) dm.register_and_allocate<real>("uvel"               ,"",dims3d);
-    if (! dm.entry_exists("vvel"               )) dm.register_and_allocate<real>("vvel"               ,"",dims3d);
-    if (! dm.entry_exists("wvel"               )) dm.register_and_allocate<real>("wvel"               ,"",dims3d);
-    if (! dm.entry_exists("temp"               )) dm.register_and_allocate<real>("temp"               ,"",dims3d);
-    if (! dm.entry_exists("water_vapor"        )) dm.register_and_allocate<real>("water_vapor"        ,"",dims3d);
-    if (! dm.entry_exists("immersed_proportion")) dm.register_and_allocate<real>("immersed_proportion","",dims3d);
-    if (! dm.entry_exists("immersed_roughness" )) dm.register_and_allocate<real>("immersed_roughness" ,"",dims3d);
-    if (! dm.entry_exists("surface_roughness"  )) dm.register_and_allocate<real>("surface_roughness"  ,"",dims2d);
+    if (! dm.entry_exists("density_dry"        )) dm.register_and_allocate<real>("density_dry"        ,dims3d);
+    if (! dm.entry_exists("uvel"               )) dm.register_and_allocate<real>("uvel"               ,dims3d);
+    if (! dm.entry_exists("vvel"               )) dm.register_and_allocate<real>("vvel"               ,dims3d);
+    if (! dm.entry_exists("wvel"               )) dm.register_and_allocate<real>("wvel"               ,dims3d);
+    if (! dm.entry_exists("temp"               )) dm.register_and_allocate<real>("temp"               ,dims3d);
+    if (! dm.entry_exists("water_vapor"        )) dm.register_and_allocate<real>("water_vapor"        ,dims3d);
+    if (! dm.entry_exists("immersed_proportion")) dm.register_and_allocate<real>("immersed_proportion",dims3d);
+    if (! dm.entry_exists("immersed_roughness" )) dm.register_and_allocate<real>("immersed_roughness" ,dims3d);
+    if (! dm.entry_exists("surface_roughness"  )) dm.register_and_allocate<real>("surface_roughness"  ,dims2d);
     auto dm_rho_d          = dm.get<real,3>("density_dry"        );
     auto dm_uvel           = dm.get<real,3>("uvel"               );
     auto dm_vvel           = dm.get<real,3>("vvel"               );
@@ -949,8 +949,8 @@ namespace custom_modules {
       fields.add_field( dm_immersed_rough );
       auto fields_halos = coupler.create_and_exchange_halos( fields , hs );
       std::vector<std::string> dim_names = {"z_halo1","y_halo1","x_halo1"};
-      dm.register_and_allocate<real>("immersed_proportion_halos","",{nz+2*hs,ny+2*hs,nx+2*hs},dim_names);
-      dm.register_and_allocate<real>("immersed_roughness_halos" ,"",{nz+2*hs,ny+2*hs,nx+2*hs},dim_names);
+      dm.register_and_allocate<real>("immersed_proportion_halos",{nz+2*hs,ny+2*hs,nx+2*hs});
+      dm.register_and_allocate<real>("immersed_roughness_halos" ,{nz+2*hs,ny+2*hs,nx+2*hs});
       fields_halos.get_field(0).deep_copy_to( dm.get<real,3>("immersed_proportion_halos") );
       fields_halos.get_field(1).deep_copy_to( dm.get<real,3>("immersed_roughness_halos" ) );
     }
@@ -959,7 +959,7 @@ namespace custom_modules {
       fields.add_field( dm_surface_rough );
       auto fields_halos = coupler.create_and_exchange_halos( fields , hs );
       std::vector<std::string> dim_names = {"y_halo1","x_halo1"};
-      dm.register_and_allocate<real>("surface_roughness_halos" ,"",{ny+2*hs,nx+2*hs},dim_names);
+      dm.register_and_allocate<real>("surface_roughness_halos",{ny+2*hs,nx+2*hs});
       fields_halos.get_field(0).deep_copy_to( dm.get<real,2>("surface_roughness_halos" ) );
     }
 

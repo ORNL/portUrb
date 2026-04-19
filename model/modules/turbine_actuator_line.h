@@ -368,9 +368,9 @@ namespace modules {
         }
       }
       trace_size = 0;  // Initialize trace size to zero
-      dm.register_and_allocate<real>("turbine_tend_u","",{nz,ny,nx});
-      dm.register_and_allocate<real>("turbine_tend_v","",{nz,ny,nx});
-      dm.register_and_allocate<real>("turbine_tend_w","",{nz,ny,nx});
+      dm.register_and_allocate<real>("turbine_tend_u",{nz,ny,nx});
+      dm.register_and_allocate<real>("turbine_tend_v",{nz,ny,nx});
+      dm.register_and_allocate<real>("turbine_tend_w",{nz,ny,nx});
       coupler.register_output_variable<real>( "turbine_tend_u" , coupler.DIMS_3D );
       coupler.register_output_variable<real>( "turbine_tend_v" , coupler.DIMS_3D );
       coupler.register_output_variable<real>( "turbine_tend_w" , coupler.DIMS_3D );

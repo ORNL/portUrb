@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
                        ny_glob , nx_glob , ylen , xlen );
 
     int nfaces = mesh.faces.extent(0);
-    coupler_main.get_data_manager_readwrite().register_and_allocate<float>("mesh_faces","",{nfaces,3,3});
+    coupler_main.get_data_manager_readwrite().register_and_allocate<float>("mesh_faces",{nfaces,3,3});
     mesh.faces.deep_copy_to( coupler_main.get_data_manager_readwrite().get<float,3>("mesh_faces") );
     Kokkos::fence();
     if (coupler_main.is_mainproc()) std::cout << mesh;

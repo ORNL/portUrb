@@ -143,5 +143,72 @@ namespace modules {
     });
   }
 
+
+
+  inline void uniform_pg_wind_forcing_yzplane( core::Coupler & coupler ,
+                                               real            dt      ,
+                                               real            z1      ,
+                                               real            z2      ,
+                                               real            y1      ,
+                                               real            y2      ,
+                                               real            x0      ,
+                                               real            u0      ,
+                                               real            v0      ,
+                                               real            tau     ) {
+    using yakl::parallel_for;
+    using yakl::SimpleBounds;
+    auto dx      = coupler.get_dx();
+    auto dy      = coupler.get_dy();
+    auto dz      = coupler.get_dz();
+    auto zmid_h  = coupler.get_zmid().createHostCopy();
+    auto nz      = coupler.get_nz();        // number of vertical levels
+    auto ny      = coupler.get_ny();        // local number of cells in y-direction
+    auto nx      = coupler.get_nx();        // local number of cells in x-direction
+    auto ny_glob = coupler.get_ny_glob();   // global number of cells in y-direction
+    auto nx_glob = coupler.get_nx_glob();   // global number of cells in x-direction  
+    auto i_beg   = coupler.get_i_beg();
+    auto j_beg   = coupler.get_j_beg();
+    auto &dm     = coupler.get_data_manager_readwrite();  // data manager for read/write access
+    auto uvel    = dm.get<real,3>("uvel");  // get u-velocity field
+    auto vvel    = dm.get<real,3>("vvel");  // get v-velocity field
+    auto imm     = dm.get<real,3>("immersed_proportion");
+    // Find the cell whose midpoint forms the lower bound for interpolation
+    int  k1 = 0;
+    int  k2 = 0;
+    real m1 = std::abs(zmid_h(0)-z1);
+    real m2 = std::abs(zmid_h(0)-z2);
+    for (int k = 1; k < nz; k++) {
+      if (std::abs(zmid_h(k)-z1) < m1) { k1 = k; m1 = std::abs(zmid_h(k)-z1); }
+      if (std::abs(zmid_h(k)-z2) < m2) { k2 = k; m2 = std::abs(zmid_h(k)-z2); }
+    }
+    int i0 = std::round(x0/dx-0.5-(int)i_beg);
+    int j1 = std::round(y1/dy-0.5-(int)j_beg);
+    int j2 = std::round(y2/dy-0.5-(int)j_beg);
+    real3d uvel_obs ("uvel_obs" ,nz,ny,nx);
+    real3d vvel_obs ("vvel_obs" ,nz,ny,nx);
+    real3d count_obs("count_obs",nz,ny,nx);
+    uvel_obs  = 0;
+    vvel_obs  = 0;
+    count_obs = 0;
+    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      if (k >= k1 && k <= k2 && j >= j1 && j <= j2 && i == i0) {
+        uvel_obs (k,j,i) = uvel(k,j,i)*dz(k);
+        vvel_obs (k,j,i) = vvel(k,j,i)*dz(k);
+        count_obs(k,j,i) = dz(k);
+      }
+    });
+    auto uvel_sum  = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(uvel_obs ) , MPI_SUM , "");
+    auto vvel_sum  = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(vvel_obs ) , MPI_SUM , "");
+    auto count_sum = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(count_obs) , MPI_SUM , "");
+    real u = uvel_sum / count_sum;
+    real v = vvel_sum / count_sum;
+    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      if (imm(k,j,i) == 0) {
+        uvel(k,j,i) += dt/tau*(u0-u);
+        vvel(k,j,i) += dt/tau*(v0-v);
+      }
+    });
+  }
+
 }
 

@@ -34,16 +34,16 @@ namespace modules {
       real4d state  ("state"  ,num_state  ,nz,ny,nx);
       real4d tracers("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
-      dm.register_and_allocate<real>("surface_flux_sfc_ustar","",{ny,nx});
+      dm.register_and_allocate<real>("surface_flux_sfc_ustar",{ny,nx});
       coupler.register_output_variable<real>("surface_flux_sfc_ustar",core::Coupler::DIMS_SURFACE);
-      dm.register_and_allocate<real>("surface_flux_sfc_thstar","",{ny,nx});
+      dm.register_and_allocate<real>("surface_flux_sfc_thstar",{ny,nx});
       coupler.register_output_variable<real>("surface_flux_sfc_thstar",core::Coupler::DIMS_SURFACE);
-      dm.register_and_allocate<real>("surface_flux_sfc_buoy_flux","",{ny,nx});
+      dm.register_and_allocate<real>("surface_flux_sfc_buoy_flux",{ny,nx});
       coupler.register_output_variable<real>("surface_flux_sfc_buoy_flux",core::Coupler::DIMS_SURFACE);
       dm.get<real,2>("surface_flux_sfc_ustar") = 0;
       dm.get<real,2>("surface_flux_sfc_thstar") = 0;
       dm.get<real,2>("surface_flux_sfc_buoy_flux") = 0;
-      dm.register_and_allocate<real>("surface_flux_imm_theta","",{nz+2*hs,ny+2*hs,nx+2*hs});
+      dm.register_and_allocate<real>("surface_flux_imm_theta",{nz+2*hs,ny+2*hs,nx+2*hs});
       auto imm_theta = dm.get<real,3>("surface_flux_imm_theta");
       parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         imm_theta(hs+k,hs+j,hs+i) = state(idT,k,j,i);

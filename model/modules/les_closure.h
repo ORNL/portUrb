@@ -77,8 +77,8 @@ namespace modules {
       //   e.g., velocity, potential temperature, and dry mixing ratios
       convert_coupler_to_dynamics( coupler , state , tracers , tke );
       // Initialize LES hydrostatic profiles for density and potential temperature using column averages
-      dm.register_and_allocate<real>("les_hy_dens_cells" ,"",{nz+2*hs});
-      dm.register_and_allocate<real>("les_hy_theta_cells","",{nz+2*hs});
+      dm.register_and_allocate<real>("les_hy_dens_cells" ,{nz+2*hs});
+      dm.register_and_allocate<real>("les_hy_theta_cells",{nz+2*hs});
       auto r = dm.get<real,1>("les_hy_dens_cells" );    r = 0;
       auto t = dm.get<real,1>("les_hy_theta_cells");    t = 0;
       // Accumulate local contributions to column sums

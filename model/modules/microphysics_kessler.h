@@ -72,7 +72,7 @@ namespace modules {
       auto &dm = coupler.get_data_manager_readwrite();  // Get the coupler's data manager for read/write access
 
       // Register and allocation non-tracer quantities used by the microphysics
-      dm.register_and_allocate<real>( "precl" , "precipitation rate" , {ny,nx} , {"y","x"} );
+      dm.register_and_allocate<real>( "precl" , {ny,nx} );  // "precipitation rate"
 
       // Initialize all micro data to zero
       auto rho_v = dm.get<real,3>("water_vapor"  );

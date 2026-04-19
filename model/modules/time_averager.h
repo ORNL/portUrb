@@ -19,25 +19,25 @@ namespace modules {
       auto &dm  = coupler.get_data_manager_readwrite();  // Get DataManager for read/write access
       coupler.set_option<real>("time_averager_etime",0); // Initialize elapsed time time-averaging option to zero
       // Allocate time-averaged fields to the coupler's DataManager, and initialize to zero
-      dm.register_and_allocate<real>("avg_u"     ,"",{nz,ny,nx});    dm.get<real,3>("avg_u"     ) = 0;
-      dm.register_and_allocate<real>("avg_v"     ,"",{nz,ny,nx});    dm.get<real,3>("avg_v"     ) = 0;
-      dm.register_and_allocate<real>("avg_w"     ,"",{nz,ny,nx});    dm.get<real,3>("avg_w"     ) = 0;
-      dm.register_and_allocate<real>("avg_tke"   ,"",{nz,ny,nx});    dm.get<real,3>("avg_tke"   ) = 0;
+      dm.register_and_allocate<real>("avg_u"     ,{nz,ny,nx});    dm.get<real,3>("avg_u"     ) = 0;
+      dm.register_and_allocate<real>("avg_v"     ,{nz,ny,nx});    dm.get<real,3>("avg_v"     ) = 0;
+      dm.register_and_allocate<real>("avg_w"     ,{nz,ny,nx});    dm.get<real,3>("avg_w"     ) = 0;
+      dm.register_and_allocate<real>("avg_tke"   ,{nz,ny,nx});    dm.get<real,3>("avg_tke"   ) = 0;
       // Register these fields as output variables with the coupler for output / restart
       coupler.register_output_variable<real>( "avg_u"   , core::Coupler::DIMS_3D );
       coupler.register_output_variable<real>( "avg_v"   , core::Coupler::DIMS_3D );
       coupler.register_output_variable<real>( "avg_w"   , core::Coupler::DIMS_3D );
       coupler.register_output_variable<real>( "avg_tke" , core::Coupler::DIMS_3D );
       if (coupler.get_option<bool>("output_correlations",false)) {
-        dm.register_and_allocate<real>("corr_avg_u","",{nz,ny,nx});    dm.get<real,3>("corr_avg_u") = 0;
-        dm.register_and_allocate<real>("corr_avg_v","",{nz,ny,nx});    dm.get<real,3>("corr_avg_v") = 0;
-        dm.register_and_allocate<real>("corr_avg_w","",{nz,ny,nx});    dm.get<real,3>("corr_avg_w") = 0;
-        dm.register_and_allocate<real>("avg_up_up" ,"",{nz,ny,nx});    dm.get<real,3>("avg_up_up" ) = 0;
-        dm.register_and_allocate<real>("avg_up_vp" ,"",{nz,ny,nx});    dm.get<real,3>("avg_up_vp" ) = 0;
-        dm.register_and_allocate<real>("avg_up_wp" ,"",{nz,ny,nx});    dm.get<real,3>("avg_up_wp" ) = 0;
-        dm.register_and_allocate<real>("avg_vp_vp" ,"",{nz,ny,nx});    dm.get<real,3>("avg_vp_vp" ) = 0;
-        dm.register_and_allocate<real>("avg_vp_wp" ,"",{nz,ny,nx});    dm.get<real,3>("avg_vp_wp" ) = 0;
-        dm.register_and_allocate<real>("avg_wp_wp" ,"",{nz,ny,nx});    dm.get<real,3>("avg_wp_wp" ) = 0;
+        dm.register_and_allocate<real>("corr_avg_u",{nz,ny,nx});    dm.get<real,3>("corr_avg_u") = 0;
+        dm.register_and_allocate<real>("corr_avg_v",{nz,ny,nx});    dm.get<real,3>("corr_avg_v") = 0;
+        dm.register_and_allocate<real>("corr_avg_w",{nz,ny,nx});    dm.get<real,3>("corr_avg_w") = 0;
+        dm.register_and_allocate<real>("avg_up_up" ,{nz,ny,nx});    dm.get<real,3>("avg_up_up" ) = 0;
+        dm.register_and_allocate<real>("avg_up_vp" ,{nz,ny,nx});    dm.get<real,3>("avg_up_vp" ) = 0;
+        dm.register_and_allocate<real>("avg_up_wp" ,{nz,ny,nx});    dm.get<real,3>("avg_up_wp" ) = 0;
+        dm.register_and_allocate<real>("avg_vp_vp" ,{nz,ny,nx});    dm.get<real,3>("avg_vp_vp" ) = 0;
+        dm.register_and_allocate<real>("avg_vp_wp" ,{nz,ny,nx});    dm.get<real,3>("avg_vp_wp" ) = 0;
+        dm.register_and_allocate<real>("avg_wp_wp" ,{nz,ny,nx});    dm.get<real,3>("avg_wp_wp" ) = 0;
         coupler.register_output_variable<real>( "corr_avg_u" , core::Coupler::DIMS_3D );
         coupler.register_output_variable<real>( "corr_avg_v" , core::Coupler::DIMS_3D );
         coupler.register_output_variable<real>( "corr_avg_w" , core::Coupler::DIMS_3D );
@@ -49,7 +49,7 @@ namespace modules {
         coupler.register_output_variable<real>( "avg_wp_wp"  , core::Coupler::DIMS_3D );
       }
       for (auto & varname : add_3d_varnames) {
-        dm.register_and_allocate<real>(std::string("avg_")+varname,"",{nz,ny,nx});
+        dm.register_and_allocate<real>(std::string("avg_")+varname,{nz,ny,nx});
         dm.get<real,3>(std::string("avg_")+varname) = 0;
         coupler.register_output_variable<real>( std::string("avg_")+varname , core::Coupler::DIMS_3D );
       }
@@ -98,11 +98,11 @@ namespace modules {
       auto avg_tke    = dm.get<real      ,3>("avg_tke"    );
       auto etime      = coupler.get_option<real>("time_averager_etime"); // Get elapsed time for time-averaging since last reset
       real inertia = etime / (etime + dt);  // Compute inertia
-      core::MultiField<real,3> tavg_fields;
-      core::MultiField<real,3> fields;
+      core::MultiField<real      ,3> tavg_fields;
+      core::MultiField<real const,3> fields;
       for (auto & varname : add_3d_varnames) {
-        fields     .add_field( dm.get<real,3>(                    varname) );
-        tavg_fields.add_field( dm.get<real,3>(std::string("avg_")+varname) );
+        fields     .add_field( dm.get<real const,3>(                    varname) );
+        tavg_fields.add_field( dm.get<real      ,3>(std::string("avg_")+varname) );
       }
       int nfields = fields.get_num_fields();
       // Update time-averaged fields using moving average formula

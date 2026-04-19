@@ -78,9 +78,9 @@ namespace modules {
       coupler.add_tracer("graupel_num"   , ""          , true     , false      , true);
 
       auto &dm = coupler.get_data_manager_readwrite(); // Get the DataManager with read/write access
-      dm.register_and_allocate<real>("micro_rainnc"   ,"accumulated precipitation (mm)"      ,{ny,nx},{"y","x"});
-      dm.register_and_allocate<real>("micro_snownc"   ,"accumulated snow plus cloud ice (mm)",{ny,nx},{"y","x"});
-      dm.register_and_allocate<real>("micro_graupelnc","accumulated graupel (mm)"            ,{ny,nx},{"y","x"});
+      dm.register_and_allocate<real>("micro_rainnc"   ,{ny,nx});  // "accumulated precipitation (mm)"      
+      dm.register_and_allocate<real>("micro_snownc"   ,{ny,nx});  // "accumulated snow plus cloud ice (mm)"
+      dm.register_and_allocate<real>("micro_graupelnc",{ny,nx});  // "accumulated graupel (mm)"            
 
       // Register surface precipitation variables as output / restart variables.
       coupler.register_output_variable<real>( "micro_rainnc"    , core::Coupler::DIMS_SURFACE );
