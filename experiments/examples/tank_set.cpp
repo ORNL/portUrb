@@ -9,6 +9,7 @@
 #include "uniform_pg_wind_forcing.h"
 #include "TriMesh.h"
 #include "tank_tracer_injection.h"
+#include <numeric>
 
 /*
 In blender, delete the initial objects.
@@ -57,7 +58,7 @@ int main(int argc, char** argv) {
     int         dyn_cycle   = 4;
     real        out_freq    = xlen/u0/2;
     real        inform_freq = xlen/u0/20;
-    std::string out_prefix  = "city_2m";
+    std::string out_prefix  = "tank_set";
     bool        is_restart  = false;
 
     core::Coupler coupler;
@@ -73,8 +74,8 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "init_uvel"                          , u0          );
     coupler.set_option<real       >( "init_vvel"                          , 0           );
     coupler.set_option<real       >( "cfl"                                , 0.6         );
-    coupler.set_option<real       >( "dycore_max_wind"                    , 1.5         );
-    coupler.set_option<real       >( "dycore_cs"                          , 4.5         );
+    coupler.set_option<real       >( "dycore_max_wind"                    , 2           );
+    coupler.set_option<real       >( "dycore_cs"                          , 6           );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false       );
     coupler.set_option<bool       >( "dycore_use_weno_immersed"           , true        );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , false       );
@@ -126,6 +127,8 @@ int main(int argc, char** argv) {
       coupler.write_output_file( out_prefix , true );
     }
 
+    std::vector<real> pgu;
+
     real dt = dtphys_in;
     Kokkos::fence();
     auto tm = std::chrono::high_resolution_clock::now();
@@ -139,6 +142,7 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_yzplane;
+        using modules::uniform_pg_wind_forcing_specified;
         using custom_modules::tank_tracer_injection;
         {
           real x1   = (offset_x1+disk_x/2-2)*scale;
@@ -149,22 +153,34 @@ int main(int argc, char** argv) {
           real z2   = 4.25*scale;
           real conc = 1;
           real wvel = 0.77;
-          coupler.run_module( [&] (Coupler &c) { tank_tracer_injection(c,dt,x1,x2,y1,y2,z1,z2,conc,wvel,"tank_tracer"); } , "tracer_inj" );
+          coupler.run_module( [&] (Coupler &c) {
+            tank_tracer_injection(c,dt,x1,x2,y1,y2,z1,z2,conc,wvel,"tank_tracer");
+          } , "tracer_inj" );
         }
+        // {
+        //   real z1  = 0.5*zlen;
+        //   real z2  = 0.9*zlen;
+        //   real y1  = 0.1*ylen;
+        //   real y2  = 0.9*ylen;
+        //   real x0  = (offset_x1+disk_x/2)*scale;
+        //   real v0  = 0.;
+        //   real tau = dt;
+        //   real force_v = false;
+        //   real pguloc, pgvloc;
+        //   coupler.run_module( [&] (Coupler &c) {
+        //     std::tie(pguloc,pgvloc) = uniform_pg_wind_forcing_yzplane(c,dt,z1,z2,y1,y2,x0,force_v,u0,v0,tau);
+        //   } , "pg_forcing" );
+        //   pgu.push_back(pguloc);
+        // }
         {
-          real z1  = 0.5*zlen;
-          real z2  = 0.9*zlen;
-          real y1  = 0.1*ylen;
-          real y2  = 0.9*ylen;
-          real x0  = (offset_x1+disk_x/2)*scale;
-          real v0  = 0.;
-          real tau = dt;
-          coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_yzplane(c,dt,z1,z2,y1,y2,x0,u0,v0,tau); } , "pg_forcing" );
+          real utend = 1.1;
+          real vtend = 0;
+          coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,utend,vtend); } , "pg_forcing" );
         }
-        coupler.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt);             } , "dycore"         );
-        coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt);             } , "surface_fluxes" );
-        coupler.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt);             } , "les_closure"    );
-        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt);             } , "time_averager"  );
+        coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"         );
+        coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
+        coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager"  );
       }
 
       // Update time step
@@ -173,6 +189,8 @@ int main(int argc, char** argv) {
       if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
         coupler.inform_user();
         inform_counter.reset();
+        // DEBUG_PRINT_MAIN_VAL(std::accumulate(pgu.begin(), pgu.end(), 0.0) / pgu.size());
+        // pgu.clear();
       }
       if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
         coupler.write_output_file( out_prefix , true );

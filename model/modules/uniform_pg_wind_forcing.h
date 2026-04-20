@@ -130,31 +130,35 @@ namespace modules {
                                                  real            vtend   ) {
     using yakl::parallel_for;
     using yakl::SimpleBounds;
-    auto nz      = coupler.get_nz();  // number of vertical levels
-    auto ny      = coupler.get_ny();  // local number of cells in y-direction
-    auto nx      = coupler.get_nx();  // local number of cells in x-direction
-    auto &dm     = coupler.get_data_manager_readwrite();  // data manager for read/write access
-    auto uvel    = dm.get<real,3>("uvel");  // get u-velocity field
-    auto vvel    = dm.get<real,3>("vvel");  // get v-velocity field
+    auto nz   = coupler.get_nz();  // number of vertical levels
+    auto ny   = coupler.get_ny();  // local number of cells in y-direction
+    auto nx   = coupler.get_nx();  // local number of cells in x-direction
+    auto &dm  = coupler.get_data_manager_readwrite();  // data manager for read/write access
+    auto uvel = dm.get<real,3>("uvel");  // get u-velocity field
+    auto vvel = dm.get<real,3>("vvel");  // get v-velocity field
+    auto imm  = dm.get<real,3>("immersed_proportion");
     // Apply the specified wind tendencies uniformly
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      uvel(k,j,i) += dt*utend;
-      vvel(k,j,i) += dt*vtend;
+      if (imm(k,j,i) == 0) {
+        uvel(k,j,i) += dt*utend;
+        vvel(k,j,i) += dt*vtend;
+      }
     });
   }
 
 
 
-  inline void uniform_pg_wind_forcing_yzplane( core::Coupler & coupler ,
-                                               real            dt      ,
-                                               real            z1      ,
-                                               real            z2      ,
-                                               real            y1      ,
-                                               real            y2      ,
-                                               real            x0      ,
-                                               real            u0      ,
-                                               real            v0      ,
-                                               real            tau     ) {
+  inline std::pair<real,real> uniform_pg_wind_forcing_yzplane( core::Coupler & coupler ,
+                                                               real            dt      ,
+                                                               real            z1      ,
+                                                               real            z2      ,
+                                                               real            y1      ,
+                                                               real            y2      ,
+                                                               real            x0      ,
+                                                               bool            force_v ,
+                                                               real            u0      ,
+                                                               real            v0      ,
+                                                               real            tau     ) {
     using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto dx      = coupler.get_dx();
@@ -205,9 +209,10 @@ namespace modules {
     parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       if (imm(k,j,i) == 0) {
         uvel(k,j,i) += dt/tau*(u0-u);
-        vvel(k,j,i) += dt/tau*(v0-v);
+        if (force_v) vvel(k,j,i) += dt/tau*(v0-v);
       }
     });
+    return std::make_pair((u0-u)/tau,(v0-v)/tau);
   }
 
 }

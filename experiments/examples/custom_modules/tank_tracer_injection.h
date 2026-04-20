@@ -46,7 +46,9 @@ namespace custom_modules {
         dm_w   (k,j,i) = wvel*std::exp(-((x-x0)*(x-x0)+(y-y0)*(y-y0))/(2*sigma*sigma));
       }
       int start = std::round(0.95*nx_glob);
-      if ((i_beg+i) >= start) dm_trac(k,j,i) *= (nx_glob-1-(i_beg+i)) / (nx_glob-1-start);
+      if ((i_beg+i) >= start) {
+        dm_trac(k,j,i) *= (nx_glob-1-(i_beg+i)) / (nx_glob-1-start);
+      }
     });
   }
 }
