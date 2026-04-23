@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     real        xlen        = mesh.domain_hi.x + offset_x2*scale;
     real        ylen        = 200*scale;
     real        zlen        = 50 *scale;
-    real        sim_time    = xlen/u0*10;
+    real        sim_time    = xlen/u0;
     int         nx_glob     = xlen/dx;
     int         ny_glob     = ylen/dx;
     int         nz          = zlen/dx;

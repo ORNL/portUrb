@@ -464,7 +464,7 @@ namespace modules {
       // Compute time derivatives of the state and tracers using a time steyp of dt
       compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn,0,icycle);
       // Apply tendencies for the first stage for state and tracers
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
           state_tmp  (l,k,j,i) = state  (l,k,j,i) + dt_dyn * state_tend  (l,k,j,i);
@@ -478,7 +478,7 @@ namespace modules {
       // Compute time derivatives of the state and tracers using a time step of dt/4
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/4.,1,icycle);
       // Apply tendencies for the second stage for state and tracers
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
           state_tmp  (l,k,j,i) = (3._fp/4._fp) * state      (l,k,j,i) + 
@@ -496,7 +496,7 @@ namespace modules {
       // Compute time derivatives of the state and tracers using a time step of dt*2/3
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn*2./3.,2,icycle);
       // Apply tendencies for the third stage for state and tracers
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
           state  (l,k,j,i) = (1._fp/3._fp) * state      (l,k,j,i) +
@@ -545,7 +545,7 @@ namespace modules {
       auto immersed_prop   = dm.get<real const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion (with halos)
       auto tracer_positive = dm.get<bool const,1>("tracer_positive");      // Whether each tracer is positive definite
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real mult = std::pow( immersed_prop(hs+k,hs+j,hs+i) , immersed_power ); // Pre-compute multiplier
         // TODO: Find a way to calculate drag in here
         // Density
@@ -747,7 +747,7 @@ namespace modules {
       //  and subtracting hydrostatic values from density, potential temperature, and pressure
       // If Reduced Speed of Sound Technique (RSST) is being used, set pressure using cs^2 * (rho - rho_hydrostatic)
       //  Otherwise, use true pressure from equation of state
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         // Perturbation pressure if RSST is not used
         if (!rsst) fields_loc(idP,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,k,j,i),gamma) - hy_pressure_cells(hs+k);
         real r_r = 1._fp / state(idR,k,j,i); // Reciprocal of density
@@ -811,7 +811,7 @@ namespace modules {
       /////////////////////////////////////////////////////////////////////////////////////////
 
       // Reconstruct upwind cell-edge pressure and momentum in x-direction
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         SArray<FLOC,ord> s;        // Stencil values
         
@@ -870,7 +870,7 @@ namespace modules {
       });
 
       // Reconstruct upwind cell-edge pressure and momentum in y-direction
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         SArray<FLOC,ord> s;         // Stencil values
 
@@ -935,7 +935,7 @@ namespace modules {
       });
 
       // Reconstruct upwind cell-edge pressure and momentum in z-direction
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         SArray<FLOC,ord> s;         // Stencil values
 
@@ -1025,7 +1025,7 @@ namespace modules {
       int num_fields = advect_fields.get_num_fields(); // This will be num_state+num_tracers
 
       // Reconstruct cell-edge advectively upwind advected quantities and compute total fluxes in x-direction
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         FLOC ru = ru_x(k,j,i);        // Acoustically upwinded momentum in x-direction
         int ind = ru > 0 ? 0 : 1;     // Determine index offset based on flow direction
@@ -1055,7 +1055,7 @@ namespace modules {
       });
 
       // Reconstruct cell-edge advectively upwind advected quantities and compute total fluxes in y-direction
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         FLOC rv = rv_y(k,j,i);        // Acoustically upwinded momentum in y-direction
         int ind = rv > 0 ? 0 : 1;     // Determine index offset based on flow direction
@@ -1085,7 +1085,7 @@ namespace modules {
       });
 
       // Reconstruct cell-edge advectively upwind advected quantities and compute total fluxes in z-direction
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         FLOC rw = rw_z(k,j,i);        // Acoustically upwinded momentum in z-direction
         int ind = rw > 0 ? 0 : 1;     // Determine index offset based on flow direction
@@ -1127,7 +1127,7 @@ namespace modules {
       auto buoy_theta = coupler.get_option<bool>("dycore_buoyancy_theta",false) || rsst;
       int mx = std::max(num_state,num_tracers);
       // Compute tendencies as the flux divergence + gravity source term + coriolis
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(mx,nz,ny,nx) ,
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(mx,nz,ny,nx) ,
                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (l < num_state) {
           // Compute tendencies as the flux divergence
@@ -1166,7 +1166,7 @@ namespace modules {
         for (int l=0; l < num_state  ; l++) { fields_visc.add_field(fields_loc.slice<3>(            l,0,0,0)); }
         for (int l=0; l < num_tracers; l++) { fields_visc.add_field(fields_loc.slice<3>(num_state+1+l,0,0,0)); }
 
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           FLOC hv_beta = 0;  // This is a multiplier to the maximum stable hyperviscosity coefficient
           // any_immersed* are pre-computed arrays that indicate if there is any immersed boundary within
           //  a certain number of cells of the current cell in any direction (including diagonals)
