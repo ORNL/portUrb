@@ -1982,5 +1982,40 @@ namespace TransformMatrices {
     m(8,7) = static_cast<F>(0.0016778987525834201);
     m(8,8) = static_cast<F>(0.0039062500000000000);
   }
+
+
+  ////////////////
+  // sampL, sampR
+  ////////////////
+  template <class F> KOKKOS_INLINE_FUNCTION real sampL(yakl::SArray<F,1> const & s) {
+    return s(0);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION real sampR(yakl::SArray<F,1> const & s) {
+    return s(0);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION real sampL(yakl::SArray<F,3> const & s) {
+    return static_cast<real>(0.333333333333333)*s(0) + static_cast<real>(0.833333333333333)*s(1) - static_cast<real>(0.166666666666667)*s(2);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION real sampR(yakl::SArray<F,3> const & s) {
+    return -static_cast<real>(0.166666666666667)*s(0) + static_cast<real>(0.833333333333333)*s(1) + static_cast<real>(0.333333333333333)*s(2);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION real sampL(yakl::SArray<F,5> const & s) {
+    return -static_cast<real>(0.0500000000000000)*s(0) + static_cast<real>(0.450000000000000)*s(1) + static_cast<real>(0.783333333333333)*s(2) - static_cast<real>(0.216666666666667)*s(3) + static_cast<real>(0.0333333333333333)*s(4);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION real sampR(yakl::SArray<F,5> const & s) {
+    return static_cast<real>(0.0333333333333333)*s(0) - static_cast<real>(0.216666666666667)*s(1) + static_cast<real>(0.783333333333333)*s(2) + static_cast<real>(0.450000000000000)*s(3) - static_cast<real>(0.0500000000000000)*s(4);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION real sampL(yakl::SArray<F,7> const & s) {
+    return static_cast<real>(0.00952380952380952)*s(0) - static_cast<real>(0.0904761904761905)*s(1) + static_cast<real>(0.509523809523809)*s(2) + static_cast<real>(0.759523809523810)*s(3) - static_cast<real>(0.240476190476190)*s(4) + static_cast<real>(0.0595238095238095)*s(5) - static_cast<real>(0.00714285714285714)*s(6);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION real sampR(yakl::SArray<F,7> const & s) {
+    return -static_cast<real>(0.00714285714285714)*s(0) + static_cast<real>(0.0595238095238095)*s(1) - static_cast<real>(0.240476190476190)*s(2) + static_cast<real>(0.759523809523810)*s(3) + static_cast<real>(0.509523809523809)*s(4) - static_cast<real>(0.0904761904761905)*s(5) + static_cast<real>(0.00952380952380952)*s(6);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION real sampL(yakl::SArray<F,9> const & s) {
+    return -static_cast<real>(0.00198412698412698)*s(0) + static_cast<real>(0.0218253968253968)*s(1) - static_cast<real>(0.121031746031746)*s(2) + static_cast<real>(0.545634920634921)*s(3) + static_cast<real>(0.745634920634921)*s(4) - static_cast<real>(0.254365079365079)*s(5) + static_cast<real>(0.0789682539682540)*s(6) - static_cast<real>(0.0162698412698413)*s(7) + static_cast<real>(0.00158730158730159)*s(8);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION real sampR(yakl::SArray<F,9> const & s) {
+    return static_cast<real>(0.00158730158730159)*s(0) - static_cast<real>(0.0162698412698413)*s(1) + static_cast<real>(0.0789682539682540)*s(2) - static_cast<real>(0.254365079365079)*s(3) + static_cast<real>(0.745634920634921)*s(4) + static_cast<real>(0.545634920634921)*s(5) - static_cast<real>(0.121031746031746)*s(6) + static_cast<real>(0.0218253968253968)*s(7) - static_cast<real>(0.00198412698412698)*s(8);
+  }
 }
 

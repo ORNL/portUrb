@@ -94,7 +94,8 @@ def gen_weno(N) :
 
 
 if __name__ == "__main__" :
-  idl_L,TVlist,L,R,coeflist,TVgen = gen_weno(9)
-  print(coeflist[0])
-  print(TVgen.n(17))
+    s2g = gen_coefs_to_gll(5,2)*gen_sten_to_coefs(5)*gen_coefs(5,'s')
+    print(s2g)
+    print(s2g[0,:].tolist()[0][0])
+    print(s2g[1,:].tolist()[0][0])
 

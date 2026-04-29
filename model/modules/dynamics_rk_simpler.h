@@ -695,50 +695,6 @@ namespace modules {
 
       int constexpr hsm1 = hs-1; // Halo size minus one
 
-      // High-order edge interpolation weights for cell edges when not using WENO
-      SArray<FLOC,ord> wt;
-      if      constexpr (ord == 3 ) {
-        wt(0) =  0.333333333f;
-        wt(1) = +0.833333333f;
-        wt(2) = -0.166666667f;
-      } else if constexpr (ord == 5 ) {
-        wt(0) = -0.0500000000f;
-        wt(1) = +0.450000000f;
-        wt(2) = +0.783333333f;
-        wt(3) = -0.216666667f;
-        wt(4) = +0.0333333333f;
-      } else if constexpr (ord == 7 ) {
-        wt(0 ) =  0.00952380952f;
-        wt(1 ) = -0.0904761905f;
-        wt(2 ) = +0.509523810f;
-        wt(3 ) = +0.759523810f;
-        wt(4 ) = -0.240476190f;
-        wt(5 ) = +0.0595238095f;
-        wt(6 ) = -0.00714285714f;
-      } else if constexpr (ord == 9 ) {
-        wt(0 ) = -0.00198412698f;
-        wt(1 ) = +0.0218253968f;
-        wt(2 ) = -0.121031746f;
-        wt(3 ) = +0.545634921f;
-        wt(4 ) = +0.745634921f;
-        wt(5 ) = -0.254365079f;
-        wt(6 ) = +0.0789682540f;
-        wt(7 ) = -0.0162698413f;
-        wt(8 ) = +0.00158730159f;
-      } else if constexpr (ord == 11) {
-        wt(0 ) =  0.000432900433f;
-        wt(1 ) = -0.00551948052f;
-        wt(2 ) = +0.0341630592f;
-        wt(3 ) = -0.144408369f;
-        wt(4 ) = +0.569877345f;
-        wt(5 ) = +0.736544012f;
-        wt(6 ) = -0.263455988f;
-        wt(7 ) = +0.0936868687f;
-        wt(8 ) = -0.0253607504f;
-        wt(9 ) = +0.00440115440f;
-        wt(10) = -0.000360750361f;
-      }
-
       // The main working array that holds all prognostic variables plus pressure
       yakl::Array<FLOC ****> fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
       bool rsst = coupler.get_option<real>("dycore_cs",350) != 350; // Whether reduced speed of sound technique is being used
@@ -822,23 +778,16 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy;  // To hold left pressure and dummy right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-          Limiter::value_based( s , dummy , p_L);
-        } else {
-          p_L = 0;
-          for (int ii=0; ii < ord; ii++) { p_L += wt(ord-1-ii)*s(ii); }
-        }
+        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) { Limiter::value_based( s , dummy , p_L); }
+        else                                                               { p_L = TransformMatrices::sampR(s); }
 
         // Load the stencil for momentum with the cell to the left of the edge as the center cell
         for (int ii = 0; ii < ord; ii++) { s(ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*
                                                     fields_loc(idU,hs+k,hs+j,i+ii); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC ru_L = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-          Limiter::value_based( s , dummy , ru_L);
-        } else {
-          for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
-        }
+        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) { Limiter::value_based( s , dummy , ru_L); }
+        else                                                               { ru_L = TransformMatrices::sampR(s); }
 
         // Load the stencils for cell immersion and pressure with the cell to the right of the edge as the center cell
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > imm_th; }
@@ -847,23 +796,16 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-          Limiter::value_based( s , p_R , dummy);
-        } else {
-          p_R = 0;
-          for (int ii=0; ii < ord; ii++) { p_R += wt(ii)*s(ii); }
-        }
+        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) { Limiter::value_based( s , p_R , dummy); }
+        else                                                               { p_R = TransformMatrices::sampL(s);      }
 
         // Load the stencil for momentum with the cell to the right of the edge as the center cell
         for (int ii = 0; ii < ord; ii++) { s(ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*
                                                     fields_loc(idU,hs+k,hs+j,i+ii+1); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC ru_R = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-          Limiter::value_based( s , ru_R , dummy);
-        } else {
-          for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
-        }
+        if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) { Limiter::value_based( s , ru_R , dummy); }
+        else                                                               { ru_R = TransformMatrices::sampL(s);      }
         // Compute the upwind state of pressure and momentum at this edge
         p_x (k,j,i) = 0.5f*(p_L  + p_R  - cs*(ru_R-ru_L)   );
         ru_x(k,j,i) = 0.5f*(ru_L + ru_R -    (p_R -p_L )/cs);
@@ -881,23 +823,16 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-          Limiter::value_based( s , dummy , p_L);
-        } else {
-          p_L = 0;
-          for (int jj=0; jj < ord; jj++) { p_L += wt(ord-1-jj)*s(jj); }
-        }
+        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) { Limiter::value_based( s , dummy , p_L); }
+        else                                                               { p_L = TransformMatrices::sampR(s);      }
 
         // Load the stencil for momentum with the cell left of the edge as the center cell
         for (int jj = 0; jj < ord; jj++) { s(jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*
                                                     fields_loc(idV,hs+k,j+jj,hs+i); }
         // Non-WENO reconstruction of momentum at this edge from the left side
-        FLOC rv_L = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-          Limiter::value_based( s , dummy , rv_L);
-        } else {
-          for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
-        }
+        FLOC rv_L;
+        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) { Limiter::value_based( s , dummy , rv_L); }
+        else                                                               { rv_L = TransformMatrices::sampR(s);      }
         if (wall_y1 && py == 0         && j == 0 ) rv_L = 0; // Impose wall boundary condition
         if (wall_y2 && py == nproc_y-1 && j == ny) rv_L = 0; // Impose wall boundary condition
 
@@ -908,23 +843,16 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-          Limiter::value_based( s , p_R , dummy);
-        } else {
-          p_R = 0;
-          for (int jj=0; jj < ord; jj++) { p_R += wt(jj)*s(jj); }
-        }
+        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) { Limiter::value_based( s , p_R , dummy); }
+        else                                                               { p_R = TransformMatrices::sampL(s);      }
 
         // Load the stencil for momentum with the cell right of the edge as the center cell
         for (int jj = 0; jj < ord; jj++) { s(jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*
                                                     fields_loc(idV,hs+k,j+jj+1,hs+i); }
         // Non-WENO reconstruction of momentum at this edge from the right side
-        FLOC rv_R = 0;
-        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-          Limiter::value_based( s , rv_R , dummy);
-        } else {
-          for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
-        }
+        FLOC rv_R;
+        if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) { Limiter::value_based( s , rv_R , dummy); }
+        else                                                               { rv_R = TransformMatrices::sampL(s);      }
         if (wall_y1 && py == 0         && j == 0 ) rv_R = 0; // Impose wall boundary condition
         if (wall_y2 && py == nproc_y-1 && j == ny) rv_R = 0; // Impose wall boundary condition
         // Compute the upwind state of pressure and momentum at this edge
@@ -947,12 +875,8 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
-        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-          Limiter::value_based( s , dummy , p_L);
-        } else {
-          p_L = 0;
-          for (int kk=0; kk < ord; kk++) { p_L += wt(ord-1-kk)*s(kk); }
-        }
+        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) { Limiter::value_based( s , dummy , p_L); }
+        else                                                               { p_L = TransformMatrices::sampR(s);      }
         p_L /= metjac_edges(1+k-1,1);
 
         // Load the stencil for momentum with the cell left of the edge as the center cell
@@ -961,12 +885,9 @@ namespace modules {
         // Multiply by normalized grid spacing to transform into zeta space
         for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
         // Non-WENO reconstruction of momentum at this edge from the left side
-        FLOC rw_L = 0;
-        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-          Limiter::value_based( s , dummy , rw_L);
-        } else {
-          for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
-        }
+        FLOC rw_L;
+        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) { Limiter::value_based( s , dummy , rw_L); }
+        else                                                               { rw_L = TransformMatrices::sampR(s);      }
         rw_L /= metjac_edges(1+k-1,1);  // Divide by metric jacobian at this edge to transform to physical space
         if (wall_z1 && k == 0 ) rw_L = 0; // Impose wall boundary condition
         if (wall_z2 && k == nz) rw_L = 0; // Impose wall boundary condition
@@ -980,12 +901,8 @@ namespace modules {
         // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
-        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-          Limiter::value_based( s , p_R , dummy);
-        } else {
-          p_R = 0;
-          for (int kk=0; kk < ord; kk++) { p_R += wt(kk)*s(kk); }
-        }
+        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) { Limiter::value_based( s , p_R , dummy); }
+        else                                                               { p_R = TransformMatrices::sampL(s);      }
         p_R /= metjac_edges(1+k,0); // Divide by metric jacobian at this edge to transform to physical space
 
         // Load the stencil for momentum with the cell right of the edge as the center cell
@@ -994,12 +911,9 @@ namespace modules {
         // Multiply by normalized grid spacing to transform into zeta space
         for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
         // Non-WENO reconstruction of momentum at this edge from the right side
-        FLOC rw_R = 0;
-        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-          Limiter::value_based( s , rw_R , dummy);
-        } else {
-          for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
-        }
+        FLOC rw_R;
+        if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) { Limiter::value_based( s , rw_R , dummy); }
+        else                                                               { rw_R = TransformMatrices::sampL(s);      }
         rw_R /= metjac_edges(1+k,0); // Divide by metric jacobian at this edge to transform to physical space
         if (wall_z1 && k == 0 ) rw_R = 0; // Impose wall boundary condition
         if (wall_z2 && k == nz) rw_R = 0; // Impose wall boundary condition
@@ -1038,15 +952,14 @@ namespace modules {
           for (int ii = 0; ii < ord; ii++) { s(ii) = advect_fields(l,hs+k,hs+j,i+ii+ind); }
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
-          FLOC val; // Reconstructed advected quantity at the edge
+          FLOC val_L, val_R;
           if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-            FLOC val_L, val_R;
             Limiter::value_based( s , val_L , val_R);
-            val = ru > 0 ? val_R : val_L;  // Choose value based on flow direction
           } else {
-            val = 0;
-            for (int ii=0; ii < ord; ii++) { val += wt(ru>0?ord-1-ii:ii)*s(ii); }
+            val_L = TransformMatrices::sampL(s);
+            val_R = TransformMatrices::sampR(s);
           }
+          FLOC val = ru > 0 ? val_R : val_L;
           if (l == idT) val += hy_theta_cells(hs+k); // Add hydrostatic potential temperature back in
           flux_x(l,k,j,i) = ru*val;      // Compute total flux vector for advected fields
         }
@@ -1068,15 +981,14 @@ namespace modules {
           for (int jj = 0; jj < ord; jj++) { s(jj) = advect_fields(l,hs+k,j+jj+ind,hs+i); }
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
           if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
-          FLOC val; // Reconstructed advected quantity at the edge
+          FLOC val_L, val_R;
           if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-            FLOC val_L, val_R;
             Limiter::value_based( s , val_L , val_R);
-            val = rv > 0 ? val_R : val_L; // Choose value based on flow direction
           } else {
-            val = 0;
-            for (int jj=0; jj < ord; jj++) { val += wt(rv>0?ord-1-jj:jj)*s(jj); }
+            val_L = TransformMatrices::sampL(s);
+            val_R = TransformMatrices::sampR(s);
           }
+          FLOC val = rv > 0 ? val_R : val_L; // Choose value based on flow direction
           if (l == idT) val += hy_theta_cells(hs+k); // Add hydrostatic potential temperature back in
           flux_y(l,k,j,i) = rv*val;       // Compute total flux vector for advected fields
         }
@@ -1101,15 +1013,14 @@ namespace modules {
           // Multiply by normalized grid spacing to transform into zeta space
           for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+ind+kk)))/
                                                       dz(std::max(0,std::min(nz-1,k-1 +ind   ))); }
-          FLOC val; // Reconstructed advected quantity at the edge
+          FLOC val_L, val_R;
           if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-            FLOC val_L, val_R;
             Limiter::value_based( s , val_L , val_R);
-            val = rw > 0 ? val_R : val_L; // Choose value based on flow direction
           } else {
-            val = 0;
-            for (int kk=0; kk < ord; kk++) { val += wt(rw>0?ord-1-kk:kk)*s(kk); }
+            val_L = TransformMatrices::sampL(s);
+            val_R = TransformMatrices::sampR(s);
           }
+          FLOC val = rw > 0 ? val_R : val_L; // Choose value based on flow direction
           // Divide by metric jacobian at this edge to transform to physical space
           val /= rw > 0 ? metjac_edges(1+k-1,1) : metjac_edges(1+k,0);
           if (l == idT)  val += hy_theta_edges(k); // Add hydrostatic potential temperature back in
@@ -1137,8 +1048,8 @@ namespace modules {
           // Add gravity term to vertical momentum
           if (l == idW && enable_gravity) {
             if (buoy_theta) { // theta-based buoyancy
-              real thetap = fields_loc(idT,hs+k,hs+j,hs+i);
-              real rho    = state(idR,k,j,i);
+              FLOC thetap = fields_loc(idT,hs+k,hs+j,hs+i);
+              FLOC rho    = state(idR,k,j,i);
               state_tend(l,k,j,i) += grav*rho*thetap/hy_theta_cells(hs+k);
             } else {          // density-based buoyancy
               state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
