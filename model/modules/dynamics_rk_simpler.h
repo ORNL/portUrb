@@ -803,9 +803,6 @@ namespace modules {
       auto wall_y1 = coupler.get_option<std::string>("bc_y1") == "wall_free_slip";
       auto wall_y2 = coupler.get_option<std::string>("bc_y2") == "wall_free_slip";
       typedef WenoLimiter<FLOC,ord> Limiter; // Declare the WENO limiter
-      Limiter limiter;
-      TransformMatrices::weno(limiter.params.s2g,limiter.params.idl_L,limiter.params.ATV);
-      auto limiter_params = limiter.params;
       auto use_weno = coupler.get_option<bool>("dycore_use_weno",true); // Whether to use WENO limiter
       auto imm_weno = coupler.get_option<bool>("dycore_use_weno_immersed",false); // Whether to use WENO limiter
 
@@ -826,7 +823,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy;  // To hold left pressure and dummy right pressure
         if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-          Limiter::compute_limited_edges( s , dummy , p_L , false , false , limiter_params );
+          Limiter::compute( s , dummy , p_L);
         } else {
           p_L = 0;
           for (int ii=0; ii < ord; ii++) { p_L += wt(ord-1-ii)*s(ii); }
@@ -838,7 +835,7 @@ namespace modules {
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC ru_L = 0;
         if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-          Limiter::compute_limited_edges( s , dummy , ru_L , false , false , limiter_params );
+          Limiter::compute( s , dummy , ru_L);
         } else {
           for (int ii=0; ii < ord; ii++) { ru_L += wt(ord-1-ii)*s(ii); }
         }
@@ -851,7 +848,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
         if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-          Limiter::compute_limited_edges( s , p_R , dummy , false , false , limiter_params );
+          Limiter::compute( s , p_R , dummy);
         } else {
           p_R = 0;
           for (int ii=0; ii < ord; ii++) { p_R += wt(ii)*s(ii); }
@@ -863,7 +860,7 @@ namespace modules {
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC ru_R = 0;
         if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-          Limiter::compute_limited_edges( s , ru_R , dummy , false , false , limiter_params );
+          Limiter::compute( s , ru_R , dummy);
         } else {
           for (int ii=0; ii < ord; ii++) { ru_R += wt(ii)*s(ii); }
         }
@@ -885,7 +882,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
         if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-          Limiter::compute_limited_edges( s , dummy , p_L , false , false , limiter_params );
+          Limiter::compute( s , dummy , p_L);
         } else {
           p_L = 0;
           for (int jj=0; jj < ord; jj++) { p_L += wt(ord-1-jj)*s(jj); }
@@ -897,7 +894,7 @@ namespace modules {
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rv_L = 0;
         if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-          Limiter::compute_limited_edges( s , dummy , rv_L , false , false , limiter_params );
+          Limiter::compute( s , dummy , rv_L);
         } else {
           for (int jj=0; jj < ord; jj++) { rv_L += wt(ord-1-jj)*s(jj); }
         }
@@ -912,7 +909,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
         if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-          Limiter::compute_limited_edges( s , p_R , dummy , false , false , limiter_params );
+          Limiter::compute( s , p_R , dummy);
         } else {
           p_R = 0;
           for (int jj=0; jj < ord; jj++) { p_R += wt(jj)*s(jj); }
@@ -924,7 +921,7 @@ namespace modules {
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rv_R = 0;
         if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-          Limiter::compute_limited_edges( s , rv_R , dummy , false , false , limiter_params );
+          Limiter::compute( s , rv_R , dummy);
         } else {
           for (int jj=0; jj < ord; jj++) { rv_R += wt(jj)*s(jj); }
         }
@@ -951,7 +948,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_L, dummy; // To hold left pressure and dummy right pressure
         if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-          Limiter::compute_limited_edges( s , dummy , p_L , false , false , limiter_params );
+          Limiter::compute( s , dummy , p_L);
         } else {
           p_L = 0;
           for (int kk=0; kk < ord; kk++) { p_L += wt(ord-1-kk)*s(kk); }
@@ -966,7 +963,7 @@ namespace modules {
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rw_L = 0;
         if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-          Limiter::compute_limited_edges( s , dummy , rw_L , false , false , limiter_params );
+          Limiter::compute( s , dummy , rw_L);
         } else {
           for (int kk=0; kk < ord; kk++) { rw_L += wt(ord-1-kk)*s(kk); }
         }
@@ -984,7 +981,7 @@ namespace modules {
         modify_stencil_immersed_der0( s , immersed );
         FLOC p_R; // To hold right pressure
         if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-          Limiter::compute_limited_edges( s , p_R , dummy , false , false , limiter_params );
+          Limiter::compute( s , p_R , dummy);
         } else {
           p_R = 0;
           for (int kk=0; kk < ord; kk++) { p_R += wt(kk)*s(kk); }
@@ -999,7 +996,7 @@ namespace modules {
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rw_R = 0;
         if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-          Limiter::compute_limited_edges( s , rw_R , dummy , false , false , limiter_params );
+          Limiter::compute( s , rw_R , dummy);
         } else {
           for (int kk=0; kk < ord; kk++) { rw_R += wt(kk)*s(kk); }
         }
@@ -1044,7 +1041,7 @@ namespace modules {
           FLOC val; // Reconstructed advected quantity at the edge
           if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
             FLOC val_L, val_R;
-            Limiter::compute_limited_edges( s , val_L , val_R , false , false , limiter_params );
+            Limiter::compute( s , val_L , val_R);
             val = ru > 0 ? val_R : val_L;  // Choose value based on flow direction
           } else {
             val = 0;
@@ -1074,7 +1071,7 @@ namespace modules {
           FLOC val; // Reconstructed advected quantity at the edge
           if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
             FLOC val_L, val_R;
-            Limiter::compute_limited_edges( s , val_L , val_R , false , false , limiter_params );
+            Limiter::compute( s , val_L , val_R);
             val = rv > 0 ? val_R : val_L; // Choose value based on flow direction
           } else {
             val = 0;
@@ -1107,7 +1104,7 @@ namespace modules {
           FLOC val; // Reconstructed advected quantity at the edge
           if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
             FLOC val_L, val_R;
-            Limiter::compute_limited_edges( s , val_L , val_R , false , false , limiter_params );
+            Limiter::compute( s , val_L , val_R);
             val = rw > 0 ? val_R : val_L; // Choose value based on flow direction
           } else {
             val = 0;

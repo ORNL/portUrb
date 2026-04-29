@@ -54,29 +54,20 @@ def gen_weno_sten_to_edges_idl_TV(N) :
   assert N%2==1 , "Polynomial degree must be odd"
   NL = (N+1)//2
   hs = (N-1)//2  # "halo" size
-  edges = []
-  s2g   = []
-  ATV   = []
-  ATV_L = []
-  ATV_R = []
+  edges    = []
+  TVlist   = []
   for ipL in range(NL) :
-    coefs  = gen_coefs(NL,'a')
-    p      = gen_poly(coefs)
-    x      = sp.symbols('x')
-    constr = sp.Matrix([ sp.integrate(p,(x,sp.Rational(2*i-1,2),sp.Rational(2*i+1,2))) for i in range(-hs+ipL,-hs+ipL+NL) ])
-    Ainv   = constr.jacobian(coefs).inv()
-    vals   = gen_coefs(NL,'v',ipL)
-    coefs  = Ainv * vals
-    p      = gen_poly(coefs)
-    edges += [sp.Matrix([ p.subs(x,-sp.Rational(1,2)) , p.subs(x,sp.Rational(1,2)) ])]
-    s2g   += [sp.Matrix([p.subs(x,-sp.Rational(1,2)),p.subs(x,sp.Rational(1,2))]).jacobian(vals).tolist()]
-    TV     = sum([ sp.integrate(sp.diff(p,x,i)**2,(x,-sp.Rational(1,2),sp.Rational(1,2))) for i in range(1,NL) ]).expand()
-    ATV   += [(sp.Matrix([TV]).jacobian(vals).jacobian(vals)/2).tolist()]
-    TV_L   = sum([ sp.integrate(sp.diff(p,x,i)**2,(x,-1,0)) for i in range(1,NL) ]).expand()
-    ATV_L += [(sp.Matrix([TV_L]).jacobian(vals).jacobian(vals)/2).tolist()]
-    TV_R   = sum([ sp.integrate(sp.diff(p,x,i)**2,(x,0,1)) for i in range(1,NL) ]).expand()
-    ATV_R += [(sp.Matrix([TV_R]).jacobian(vals).jacobian(vals)/2).tolist()]
-    # print(sum([ATV[ipL][jj][ii]*vals[ii]*vals[jj] for ii in range(NL) for jj in range(NL)]).expand()-TV)
+    coefs   = gen_coefs(NL,'a')
+    p       = gen_poly(coefs)
+    x       = sp.symbols('x')
+    constr  = sp.Matrix([ sp.integrate(p,(x,sp.Rational(2*i-1,2),sp.Rational(2*i+1,2))) for i in range(-hs+ipL,-hs+ipL+NL) ])
+    Ainv    = constr.jacobian(coefs).inv()
+    vals    = gen_coefs(NL,'v',ipL)
+    coefs   = Ainv * vals
+    p       = gen_poly(coefs)
+    edges  += [sp.Matrix([ p.subs(x,-sp.Rational(1,2)) , p.subs(x,sp.Rational(1,2)) ])]
+    TV      = sum([ sp.integrate(sp.diff(p,x,i)**2,(x,-sp.Rational(1,2),sp.Rational(1,2))) for i in range(1,NL) ]).expand()
+    TVlist += [TV.n(17)]
   coefs   = gen_coefs(N,'a')
   p       = gen_poly(coefs)
   x       = sp.symbols('x')
@@ -92,5 +83,8 @@ def gen_weno_sten_to_edges_idl_TV(N) :
   ATAinv  = (A.transpose()*A).inv()
   ATb     = A.transpose()*sp.Matrix([edges_h[0]]).jacobian(vals).transpose()
   idl_L   = (ATAinv*ATb).transpose().tolist()[0]
-  return s2g,idl_L,ATV,ATV_L,ATV_R
+  L       = [edge[0].n(17) for edge in edges]
+  R       = [edge[1].n(17) for edge in edges]
+  return idl_L,TVlist,L,R
+
 
