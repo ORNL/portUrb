@@ -7,12 +7,13 @@ from sympy.printing.precedence import PRECEDENCE
 
 
 class MyCXX11Printer(CXX11CodePrinter):
-  def __init__(self, *, result_name="rslt", vector_name="v", real_type="real", **settings):
+  def __init__(self, *, result_name="rslt", vector_name="v", real_type="real",i0=0, **settings):
     super().__init__(settings)
     self.result_name = result_name
     self.vector_name = vector_name
     self.real_type = real_type
     self._vector_re = re.compile(rf"^{re.escape(vector_name)}(\d+)$")
+    self.i0 = i0
 
   def _print_Pow(self, expr):
     base, exp = expr.as_base_exp()
@@ -34,17 +35,18 @@ class MyCXX11Printer(CXX11CodePrinter):
   def doprint(self, expr, assign_to=None):
     if isinstance(expr, list):
       return "\n".join(
-        f"{self.result_name}{i} = {self._print(e)};"
+        f"{self.result_name}{self.i0+i} = {self._print(e)};"
         for i, e in enumerate(expr)
       )
     return super().doprint(expr, assign_to=assign_to)
 
 
-def my_cxxcode(expr, *, result_name="rslt", vector_name="v", real_type="real", **settings):
+def my_cxxcode(expr, *, result_name="rslt", vector_name="v", real_type="real",i0=0, **settings):
   return MyCXX11Printer(
     result_name=result_name,
     vector_name=vector_name,
     real_type=real_type,
+    i0=i0,
     **settings,
   ).doprint(expr)
 
@@ -57,12 +59,13 @@ print("\ntemplate <class real, int ord> struct WenoLimiter;")
 
 for N in range(3,Nmax+1,2) :
   NL = (N+1)//2
-  idl_L,TV,L,R = tr.gen_weno_sten_to_edges_idl_TV(N)
+  idl_L,TV,L,R,coeflist,TVgen = tr.gen_weno(N)
   TVcode  = my_cxxcode(TV,result_name='    real TV',vector_name='v',real_type='real')
   Lcode   = my_cxxcode(L ,result_name='    real L' ,vector_name='v',real_type='real')
   Rcode   = my_cxxcode(R ,result_name='    real R' ,vector_name='v',real_type='real')
   print(f"\n\ntemplate <class real> struct WenoLimiter<real,{N}> "+"{")
-  print(f"  static KOKKOS_INLINE_FUNCTION void compute(SArray<real,{N}> v, real &L, real &R) "+"{")
+
+  print(f"  static KOKKOS_INLINE_FUNCTION void value_based(SArray<real,{N}> v, real &L, real &R) "+"{")
   print(TVcode)
   for i in range(NL) : print(f"    TV{i} *= TV{i};")
   print("    // Left Edge")
@@ -84,5 +87,41 @@ for N in range(3,Nmax+1,2) :
   print("    R = ",end="")
   for i in range(NL) : print(f"w{i}*R{i}",end=" + " if i<NL-1 else ";\n")
   print("  }")
+
+  print(f"  static KOKKOS_INLINE_FUNCTION void coef_based(SArray<real,{N}> v, real &L, real &R) "+"{")
+  print("    real ",end="")
+  for i in range(1,NL) : print(f"c{i}",end="," if i<NL-1 else ";\n")
+  for i in range(NL) :
+    coefcode = my_cxxcode(coeflist[i][1:],result_name=f'    c',vector_name='v',real_type='real',i0=1)
+    print(coefcode)
+    print(f"    real TV{i} = coefs_to_TV(",end="")
+    for j in range(1,NL) : print(f"c{j}",end="," if j<NL-1 else ");\n")
+    print(f"    TV{i} *= TV{i};")
+  print("    // Left Edge")
+  for i in range(NL) :
+    print(f"    real w{i} = static_cast<real>({idl_L[i].n(prec)})/(TV{i}+1.e-10);")
+  print(f"    real r_sm = static_cast<real>(1.)/std::max(static_cast<real>(1.e-10),",end="")
+  for i in range(NL) : print(f"w{i}",end=" + " if i<NL-1 else ");\n")
+  for i in range(NL) : print(f"    w{i} *= r_sm;")
+  print(Lcode)
+  print("    L = ",end="")
+  for i in range(NL) : print(f"w{i}*L{i}",end=" + " if i<NL-1 else ";\n")
+  print("    // Right Edge")
+  for i in range(NL) :
+    print(f"    w{i} = static_cast<real>({idl_L[NL-1-i].n(prec)})/(TV{i}+1.e-10);")
+  print(f"    r_sm = static_cast<real>(1.)/std::max(static_cast<real>(1.e-10),",end="")
+  for i in range(NL) : print(f"w{i}",end=" + " if i<NL-1 else ");\n")
+  for i in range(NL) : print(f"    w{i} *= r_sm;")
+  print(Rcode)
+  print("    R = ",end="")
+  for i in range(NL) : print(f"w{i}*R{i}",end=" + " if i<NL-1 else ";\n")
+  print("  }")
+
+  print("  static KOKKOS_INLINE_FUNCTION real coefs_to_TV(",end="")
+  for i in range(1,NL) : print(f"real a{i}",end=',' if i<NL-1 else ") {\n")
+  print("    return ",end="")
+  print(my_cxxcode(TVgen.n(prec),result_name=f'',vector_name='v',real_type='real'),end=";\n")
+  print("  }")
+
   print("};")
 
