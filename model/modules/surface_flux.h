@@ -139,7 +139,7 @@ namespace modules {
 
       real vk   = 0.40;   // von karman constant
       real Czil = 0.1;
-      real Ctke = 0.25;
+      real Ctke = 0; // 0.25;
 
       // Allocate arrays to hold surface flux tendencies
       real3d tend_u  ("tend_u"  ,nz,ny,nx);

@@ -697,7 +697,7 @@ namespace modules {
 
       // The main working array that holds all prognostic variables plus pressure
       yakl::Array<FLOC ****> fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
-      bool rsst = coupler.get_option<real>("dycore_cs",350) != 350; // Whether reduced speed of sound technique is being used
+      bool rsst = coupler.get_option<bool>("dycore_rsst",false) || (coupler.get_option<real>("dycore_cs",350) != 350);
 
       // Load state and tracers into working array, dividing by density to get specific quantities, computing pressure,
       //  and subtracting hydrostatic values from density, potential temperature, and pressure
@@ -1071,7 +1071,7 @@ namespace modules {
       // ADD HYPERVISCOSITY NEAR IMMERSED BOUNDARIES TO TENDENCIES
       //////////////////////////////////////////////////////////////////////////////////////////////
 
-      if (coupler.get_option<bool>("dycore_immersed_hypervis",true)) {
+      if (coupler.get_option<bool>("dycore_immersed_hypervis",false)) {
         // Same as advected fields, the viscous fields do not include pressure
         core::MultiField<FLOC,3> fields_visc;
         for (int l=0; l < num_state  ; l++) { fields_visc.add_field(fields_loc.slice<3>(            l,0,0,0)); }

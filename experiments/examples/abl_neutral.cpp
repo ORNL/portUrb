@@ -15,13 +15,18 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
+    YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
+    if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    auto cs         = config["cs"        ].as<real>();
+    auto buoy_theta = config["buoy_theta"].as<bool>();
+    auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx = 4;
+    real dx = 20;
 
     real        sim_time    = 3600*10+1;
-    real        xlen        = 4096;
-    real        ylen        = 4096;
-    real        zlen        = 896;
+    real        xlen        = 4000;
+    real        ylen        = 4000;
+    real        zlen        = 1000;
     int         nx_glob     = (int) std::round(xlen/dx);
     int         ny_glob     = (int) std::round(ylen/dx);
     int         nz          = (int) std::round(zlen/dx);
@@ -29,26 +34,37 @@ int main(int argc, char** argv) {
     int         dyn_cycle   = 2;
     real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_neutral";
+    std::string out_prefix  = std::string("ABL_neutral_buoy-") +
+                              (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
+                              (rsst       ? std::string("rsst_cs-")    : std::string("orig_cs-")) +
+                              std::to_string((int)std::round(cs));
     bool        is_restart  = false;
     real        u_g         = 10;
     real        v_g         = 0 ;
     real        lat_g       = 43.289340204;
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"            , out_prefix    );
-    coupler.set_option<std::string>( "init_data"             , "ABL_neutral" );
-    coupler.set_option<real       >( "out_freq"              , out_freq      );
-    coupler.set_option<bool       >( "is_restart"            , is_restart    );
-    coupler.set_option<std::string>( "restart_file"          , ""            );
-    coupler.set_option<real       >( "latitude"              , 0.            );
-    coupler.set_option<real       >( "roughness"             , 0.1           );
-    coupler.set_option<real       >( "cfl"                   , 0.6           );
-    coupler.set_option<bool       >( "enable_gravity"        , true          );
-    coupler.set_option<real       >( "dycore_max_wind"       , 15            );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
-    coupler.set_option<real       >( "dycore_cs"             , 30            );
-    coupler.set_option<bool       >( "dycore_use_weno"       , true          );
+    coupler.set_option<std::string>( "out_prefix"                         , out_prefix    );
+    coupler.set_option<std::string>( "init_data"                          , "ABL_neutral" );
+    coupler.set_option<real       >( "out_freq"                           , out_freq      );
+    coupler.set_option<bool       >( "is_restart"                         , is_restart    );
+    coupler.set_option<std::string>( "restart_file"                       , ""            );
+    coupler.set_option<real       >( "latitude"                           , 0.            );
+    coupler.set_option<real       >( "roughness"                          , 0.1           );
+    coupler.set_option<real       >( "cfl"                                , 0.6           );
+    coupler.set_option<bool       >( "enable_gravity"                     , true          );
+    coupler.set_option<real       >( "dycore_max_wind"                    , 15            );
+    coupler.set_option<bool       >( "dycore_rsst"                        , rsst          );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"              , buoy_theta    );
+    coupler.set_option<real       >( "dycore_cs"                          , cs            );
+    coupler.set_option<bool       >( "dycore_use_weno"                    , false         );
+    coupler.set_option<bool       >( "surface_flux_force_theta"           , false         );
+    coupler.set_option<bool       >( "surface_flux_stability_corrections" , false         );
+    coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5        );
+    coupler.set_option<bool       >( "surface_flux_predict_z0h"           , false         );
+    coupler.set_option<bool       >( "surface_flux_prescribe_wpthetap"    , false         );
+
+
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,

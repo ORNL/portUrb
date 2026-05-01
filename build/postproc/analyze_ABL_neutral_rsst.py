@@ -3,22 +3,42 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
-import xarray
+import re
 
-workdir = "/lustre/storm/nwp501/scratch/imn/rsst_paper/neutral"
-files    = [f"{workdir}/ABL_neutral_orig_rho_350",
-            f"{workdir}/ABL_neutral_orig_theta_350",
-            f"{workdir}/ABL_neutral_rss_350",
-            f"{workdir}/ABL_neutral_rss_100",
-            f"{workdir}/ABL_neutral_rss_50",
-            f"{workdir}/ABL_neutral_rss_12",
-            f"{workdir}/ABL_neutral_rss_10"]
-cs     = [350,350,350,100,50,12,10]
-labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_350","RSS_100","RSS_50","RSS_12","RSS_10"]
-colors = ["black","red","green","blue","cyan","magenta","orange"]
-styles = ["-","-","-","-","-","-","-"]
-nexp = 7
-times = [13,14,15,16,17,18,19,20]
+workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+files = [f"{workdir}/ABL_neutral_buoy-rhop_press-orig_cs-350",
+         f"{workdir}/ABL_neutral_buoy-thetap_press-orig_cs-350",
+         f"{workdir}/ABL_neutral_buoy-thetap_press-rsst_cs-350",
+         f"{workdir}/ABL_neutral_buoy-thetap_press-rsst_cs-100",
+         f"{workdir}/ABL_neutral_buoy-thetap_press-rsst_cs-50",
+         f"{workdir}/ABL_neutral_buoy-thetap_press-rsst_cs-25",
+         f"{workdir}/ABL_neutral_buoy-thetap_press-rsst_cs-20",
+         f"{workdir}/ABL_neutral_buoy-thetap_press-rsst_cs-15",
+         f"{workdir}/ABL_neutral_buoy-thetap_press-rsst_cs-12",
+         f"{workdir}/ABL_neutral_buoy-thetap_press-rsst_cs-10",]
+buoy   = np.array([("rhop" if "buoy-rhop" in f else "thetap") for f in files])
+press  = np.array([("orig" if "press-orig" in f else "rsst") for f in files])
+cs     = np.array([int(re.search(r'cs-(\d+)', f).group(1)) for f in files])
+labels = np.array([f"{press[i]}-{buoy[i]}-{cs[i]}" for i in range(len(files))])
+colors = ['black','#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', # Black, Red, Green, Yellow, Blue, Orange
+          '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', # Purple, Cyan, Magenta, Lime, Pink
+          '#469990', '#dcbeff',]                                 # Teal, Lavender
+styles = ["-" for i in range(len(files))]
+nexp = len(files)
+times = range(13,21)
+
+R_d     = 287.
+cp_d    = 1003.
+R_v     = 461.
+cp_v    = 1859
+p0      = 1.e5
+grav    = 9.81
+cv_d    = cp_d-R_d
+gamma_d = cp_d/cv_d
+kappa_d = R_d/cp_d
+cv_v    = cp_v-R_v
+C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d);
+hs      = 5
 
 def spectra(T,dx = 1) :
   spd  = np.abs( np.fft.rfft(T[0,0,:]) )**2
@@ -37,12 +57,15 @@ def get_ind(arr,val) :
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
-  nc   = Dataset(f"{files[j]}_00000010.nc","r")
-  z    = np.array(nc["z"])/1000
-  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
-  pert = np.mean(pert,axis=(1,2))
-  pert = pert - np.mean(pert)
-  z2 = get_ind(z,1.25)
+  nc      = Dataset(f"{files[j]}_00000010.nc","r")
+  z       = np.array(nc["z"][:])/1000
+  nz      = len(z)
+  pp      = np.array(nc["density_dry"][:,:,:])*R_d*np.array(nc["temperature"][:,:,:]) - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
+  rhopcs2 = (np.array(nc["density_dry"][:,:,:])-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
+  pert    = pp if j < 2 else rhopcs2
+  pert    = np.mean(pert,axis=(1,2))
+  pert    = pert - np.mean(pert)
+  z2      = get_ind(z,1.25)
   ax.plot(pert[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
 ax.set_xlabel("pressure perturbation (Pa)")
 ax.set_ylabel("z-location (km)")
@@ -58,12 +81,15 @@ plt.close()
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
-  nc   = Dataset(f"{files[j]}_00000020.nc","r")
-  z    = np.array(nc["z"])/1000
-  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
-  pert = np.mean(pert,axis=(1,2))
-  pert = pert - np.mean(pert)
-  z2 = get_ind(z,1.25)
+  nc      = Dataset(f"{files[j]}_00000020.nc","r")
+  z       = np.array(nc["z"][:])/1000
+  nz      = len(z)
+  pp      = np.array(nc["density_dry"][:,:,:])*R_d*np.array(nc["temperature"][:,:,:]) - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
+  rhopcs2 = (np.array(nc["density_dry"][:,:,:])-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
+  pert    = pp if j < 2 else rhopcs2
+  pert    = np.mean(pert,axis=(1,2))
+  pert    = pert - np.mean(pert)
+  z2      = get_ind(z,1.25)
   ax.plot(pert[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
 ax.set_xlabel("pressure perturbation (Pa)")
 ax.set_ylabel("z-location (km)")
@@ -80,7 +106,7 @@ fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
   nc   = Dataset(f"{files[j]}_00000020.nc","r")
-  z    = np.array(nc["z"])/1000
+  z    = np.array(nc["z"][:])/1000
   uvel = np.array(nc["uvel"][:,:,:])
   vvel = np.array(nc["vvel"][:,:,:])
   wvel = np.array(nc["wvel"][:,:,:])
@@ -110,7 +136,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -138,7 +164,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -166,7 +192,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -194,7 +220,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -222,7 +248,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -250,7 +276,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -278,11 +304,14 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
+    rho  = np.array(nc["density_dry"][:,:,:])
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
-    thet = np.array(nc["theta_pert"][:,:,:])
+    T    = np.array(nc["temperature"][:,:,:])
+    pres = rho*R_d*T
+    thet = np.pow(pres/C0,1/gamma_d)/rho - np.array(nc["hy_theta_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     vp = vvel - np.mean(vvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     wp = wvel - np.mean(wvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -308,7 +337,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     rho  = np.array(nc["density_dry"][:,:,:])
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
@@ -339,7 +368,7 @@ fig = plt.figure(figsize=(6,4))
 ax = fig.gca()
 for j in range(nexp) :
   nc   = Dataset(f"{files[j]}_00000020.nc","r")
-  z    = np.array(nc["z"])/1000
+  z    = np.array(nc["z"][:])/1000
   dx   = z[1]-z[0]
   rho  = np.array(nc["density_dry"][:,:,:])
   uvel = np.array(nc["uvel"][:,:,:])
@@ -367,8 +396,8 @@ plt.close()
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
-  u0  = np.mean(np.array(Dataset(f"{files[j]}_00000000.nc","r")["uvel"]),axis=(1,2))
-  u10 = np.mean(np.array(Dataset(f"{files[j]}_00000020.nc","r")["uvel"]),axis=(1,2))
+  u0  = np.mean(np.array(Dataset(f"{files[j]}_00000000.nc","r")["uvel"][:,:,:]),axis=(1,2))
+  u10 = np.mean(np.array(Dataset(f"{files[j]}_00000020.nc","r")["uvel"][:,:,:]),axis=(1,2))
   z2 = get_ind(z,0.75)
   ax.plot(u10[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
 ax.plot(u0 [:z2],z[:z2],color="black",linestyle="--",label="t=0 hr")
@@ -387,8 +416,8 @@ plt.close()
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
-  u0  = np.mean(np.array(Dataset(f"{files[j]}_00000000.nc","r")["vvel"]),axis=(1,2))
-  u10 = np.mean(np.array(Dataset(f"{files[j]}_00000020.nc","r")["vvel"]),axis=(1,2))
+  u0  = np.mean(np.array(Dataset(f"{files[j]}_00000000.nc","r")["vvel"][:,:,:]),axis=(1,2))
+  u10 = np.mean(np.array(Dataset(f"{files[j]}_00000020.nc","r")["vvel"][:,:,:]),axis=(1,2))
   z2 = get_ind(z,0.75)
   ax.plot(u10[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
 ax.plot(u0 [:z2],z[:z2],color="black",linestyle="--",label="t=0 hr")
@@ -411,8 +440,14 @@ for j in range(nexp) :
   nc10 = Dataset(f"{files[j]}_00000020.nc","r")
   hs = 5
   nz = len(z)
-  u0  = np.mean(np.array(nc0 ["theta_pert"])+np.array(nc0 ["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis],axis=(1,2))
-  u10 = np.mean(np.array(nc10["theta_pert"])+np.array(nc10["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis],axis=(1,2))
+  rho  = np.array(nc0["density_dry"][:,:,:])
+  T    = np.array(nc0["temperature"][:,:,:])
+  pres = rho*R_d*T
+  u0   = np.mean(np.pow(pres/C0,1/gamma_d)/rho,axis=(1,2))
+  rho  = np.array(nc10["density_dry"][:,:,:])
+  T    = np.array(nc10["temperature"][:,:,:])
+  pres = rho*R_d*T
+  u10  = np.mean(np.pow(pres/C0,1/gamma_d)/rho,axis=(1,2))
   z2 = get_ind(z,0.75)
   ax.plot(u10[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
 ax.plot(u0 [:z2],z[:z2],color="black",linestyle="--",label="t=0 hr")
