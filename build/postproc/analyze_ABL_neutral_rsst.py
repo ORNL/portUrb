@@ -5,7 +5,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
 import re
 
-workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build"
+workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build/neutral_immweno"
 files = [f"{workdir}/ABL_neutral_buoy-rhop_press-orig_cs-350",
          f"{workdir}/ABL_neutral_buoy-thetap_press-orig_cs-350",
          f"{workdir}/ABL_neutral_buoy-thetap_press-rsst_cs-350",
@@ -62,7 +62,7 @@ for j in range(nexp) :
   nz      = len(z)
   pp      = np.array(nc["density_dry"][:,:,:])*R_d*np.array(nc["temperature"][:,:,:]) - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
   rhopcs2 = (np.array(nc["density_dry"][:,:,:])-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
-  pert    = pp if j < 2 else rhopcs2
+  pert    = pp if press[j]=="orig" else rhopcs2
   pert    = np.mean(pert,axis=(1,2))
   pert    = pert - np.mean(pert)
   z2      = get_ind(z,1.25)
@@ -86,7 +86,7 @@ for j in range(nexp) :
   nz      = len(z)
   pp      = np.array(nc["density_dry"][:,:,:])*R_d*np.array(nc["temperature"][:,:,:]) - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
   rhopcs2 = (np.array(nc["density_dry"][:,:,:])-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
-  pert    = pp if j < 2 else rhopcs2
+  pert    = pp if press[j]=="orig" else rhopcs2
   pert    = np.mean(pert,axis=(1,2))
   pert    = pert - np.mean(pert)
   z2      = get_ind(z,1.25)

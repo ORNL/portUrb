@@ -3,21 +3,40 @@ import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
-import xarray
+import re
 
-workdir = "/lustre/storm/nwp501/scratch/imn/rsst_paper/convective"
-files    = [f"{workdir}/nrel_5mw_convective_orig_rho_350_precursor",
-            f"{workdir}/nrel_5mw_convective_orig_theta_350_precursor",
-            f"{workdir}/nrel_5mw_convective_rss_350_precursor",
-            f"{workdir}/nrel_5mw_convective_rss_100_precursor",
-            f"{workdir}/nrel_5mw_convective_rss_50_precursor",
-            f"{workdir}/nrel_5mw_convective_rss_20_precursor"]
-cs     = [350,350,350,100,50,20]
-labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_350","RSS_100","RSS_50","RSS_20"]
-colors = ["black","red","green","blue","cyan","magenta","orange"]
-styles = ["-","-","-","-","-","-","-"]
-nexp = 6
-times = [11,12,13,14,15,16,17,18,19,20]
+workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build/convective_immweno"
+files = [f"{workdir}/nrel_convective_buoy-rhop_press-orig_cs-350_precursor",
+         f"{workdir}/nrel_convective_buoy-thetap_press-orig_cs-350_precursor",
+         f"{workdir}/nrel_convective_buoy-thetap_press-rsst_cs-350_precursor",
+         f"{workdir}/nrel_convective_buoy-thetap_press-rsst_cs-100_precursor",
+         f"{workdir}/nrel_convective_buoy-thetap_press-rsst_cs-50_precursor",
+         f"{workdir}/nrel_convective_buoy-thetap_press-rsst_cs-25_precursor",
+         f"{workdir}/nrel_convective_buoy-thetap_press-rsst_cs-20_precursor",
+         f"{workdir}/nrel_convective_buoy-thetap_press-rsst_cs-15_precursor",]
+buoy   = np.array([("rhop" if "buoy-rhop" in f else "thetap") for f in files])
+press  = np.array([("orig" if "press-orig" in f else "rsst") for f in files])
+cs     = np.array([int(re.search(r'cs-(\d+)', f).group(1)) for f in files])
+labels = np.array([f"{press[i]}-{buoy[i]}-{cs[i]}" for i in range(len(files))])
+colors = ['black','#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', # Black, Red, Green, Yellow, Blue, Orange
+          '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', # Purple, Cyan, Magenta, Lime, Pink
+          '#469990', '#dcbeff',]                                 # Teal, Lavender
+styles = ["-" for i in range(len(files))]
+nexp = len(files)
+times = range(10,21)
+
+R_d     = 287.
+cp_d    = 1003.
+R_v     = 461.
+cp_v    = 1859
+p0      = 1.e5
+grav    = 9.81
+cv_d    = cp_d-R_d
+gamma_d = cp_d/cv_d
+kappa_d = R_d/cp_d
+cv_v    = cp_v-R_v
+C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d);
+hs      = 5
 
 def spectra(T,dx = 1) :
   spd  = np.abs( np.fft.rfft(T[0,0,:]) )**2
@@ -36,21 +55,46 @@ def get_ind(arr,val) :
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
-  nc   = Dataset(f"{files[j]}_00000010.nc","r")
-  z    = np.array(nc["z"])/1000
-  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
-  pert = np.mean(pert,axis=(1,2))
-  pert = pert - np.mean(pert)
-  z2 = get_ind(z,1.25)
+  nc      = Dataset(f"{files[j]}_00000010.nc","r")
+  z       = np.array(nc["z"][:])/1000
+  nz      = len(z)
+  pp      = np.array(nc["density_dry"][:,:,:])*R_d*np.array(nc["temperature"][:,:,:]) - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
+  rhopcs2 = (np.array(nc["density_dry"][:,:,:])-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
+  pert    = pp if press[j]=="orig" else rhopcs2
+  pert    = np.mean(pert,axis=(1,2))
+  pert    = pert - np.mean(pert)
+  z2      = get_ind(z,1.25)
   ax.plot(pert[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
 ax.set_xlabel("pressure perturbation (Pa)")
 ax.set_ylabel("z-location (km)")
-ax.legend(loc="upper right")
-# ax.set_xlim(left=0)
+ax.legend(loc="upper left")
 ax.margins(x=0)
 plt.grid()
 plt.tight_layout()
-plt.savefig("ABL_convective_pp_rhop_allcs_10000s.png",dpi=600)
+plt.savefig("convective_pp_rhop_allcs_5hr.png",dpi=600)
+plt.show()
+plt.close()
+
+fig = plt.figure(figsize=(4,6))
+ax = fig.gca()
+for j in range(nexp) :
+  nc      = Dataset(f"{files[j]}_00000020.nc","r")
+  z       = np.array(nc["z"][:])/1000
+  nz      = len(z)
+  pp      = np.array(nc["density_dry"][:,:,:])*R_d*np.array(nc["temperature"][:,:,:]) - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
+  rhopcs2 = (np.array(nc["density_dry"][:,:,:])-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
+  pert    = pp if press[j]=="orig" else rhopcs2
+  pert    = np.mean(pert,axis=(1,2))
+  pert    = pert - np.mean(pert)
+  z2      = get_ind(z,1.25)
+  ax.plot(pert[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
+ax.set_xlabel("pressure perturbation (Pa)")
+ax.set_ylabel("z-location (km)")
+ax.legend(loc="upper left")
+ax.margins(x=0)
+plt.grid()
+plt.tight_layout()
+plt.savefig("convective_pp_rhop_allcs_10hr.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -58,44 +102,26 @@ fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
   nc   = Dataset(f"{files[j]}_00000020.nc","r")
-  z    = np.array(nc["z"])/1000
-  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
-  pert = np.mean(pert,axis=(1,2))
-  pert = pert - np.mean(pert)
-  z2 = get_ind(z,1.25)
-  ax.plot(pert[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
-ax.set_xlabel("pressure perturbation (Pa)")
-ax.set_ylabel("z-location (km)")
-ax.legend(loc="upper right")
-# ax.set_xlim(left=0)
-ax.margins(x=0)
-plt.grid()
-plt.tight_layout()
-plt.savefig("ABL_convective_pp_rhop_allcs_20000s.png",dpi=600)
-plt.show()
-plt.close()
-
-fig = plt.figure(figsize=(4,6))
-ax = fig.gca()
-for j in range(nexp) :
-  nc   = Dataset(f"{files[j]}_00000020.nc","r")
-  z    = np.array(nc["z"])/1000
+  z    = np.array(nc["z"][:])/1000
   uvel = np.array(nc["uvel"][:,:,:])
   vvel = np.array(nc["vvel"][:,:,:])
   wvel = np.array(nc["wvel"][:,:,:])
   mag  = np.sqrt(uvel*uvel+vvel*vvel+wvel*wvel)
   umean = np.mean(mag,axis=(1,2))
+  roughness = 0.1
+  uref = 10
+  href = 500
+  u_mo  = uref*np.log((z*1000+roughness)/roughness)/np.log((href+roughness)/roughness);
   z2 = get_ind(z,1.25)
   ax.plot(umean[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
 ax.set_xlabel("velocity magnitude (m/s)")
 ax.set_ylabel("z-location (km)")
 ax.set_yscale("log")
 ax.legend(loc="lower right")
-# ax.set_xlim(left=0)
 ax.margins(x=0)
 plt.grid()
 plt.tight_layout()
-plt.savefig("ABL_convective_uvel_height.png",dpi=600)
+plt.savefig("convective_uvel_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -104,7 +130,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -123,7 +149,7 @@ ax.margins(x=0)
 plt.grid()
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_convective_up_up_height.png",dpi=600)
+plt.savefig("convective_up_up_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -132,7 +158,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -151,7 +177,7 @@ ax.margins(x=0)
 plt.grid()
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_convective_up_vp_height.png",dpi=600)
+plt.savefig("convective_up_vp_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -160,7 +186,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -179,7 +205,7 @@ ax.margins(x=0)
 plt.grid()
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_convective_up_wp_height.png",dpi=600)
+plt.savefig("convective_up_wp_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -188,7 +214,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -207,7 +233,7 @@ ax.margins(x=0)
 plt.grid()
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_convective_vp_vp_height.png",dpi=600)
+plt.savefig("convective_vp_vp_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -216,7 +242,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -235,7 +261,7 @@ ax.margins(x=0)
 plt.grid()
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_convective_vp_wp_height.png",dpi=600)
+plt.savefig("convective_vp_wp_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -244,7 +270,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
@@ -263,7 +289,7 @@ ax.margins(x=0)
 plt.grid()
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_convective_wp_wp_height.png",dpi=600)
+plt.savefig("convective_wp_wp_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -272,11 +298,14 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
+    rho  = np.array(nc["density_dry"][:,:,:])
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
     wvel = np.array(nc["wvel"][:,:,:])
-    thet = np.array(nc["theta_pert"][:,:,:])
+    T    = np.array(nc["temperature"][:,:,:])
+    pres = rho*R_d*T
+    thet = np.pow(pres/C0,1/gamma_d)/rho - np.array(nc["hy_theta_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     vp = vvel - np.mean(vvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     wp = wvel - np.mean(wvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -293,7 +322,7 @@ ax.margins(x=0)
 plt.grid()
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_convective_wp_tp_height.png",dpi=600)
+plt.savefig("convective_wp_tp_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -302,7 +331,7 @@ ax = fig.gca()
 for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
-    z    = np.array(nc["z"])/1000
+    z    = np.array(nc["z"][:])/1000
     rho  = np.array(nc["density_dry"][:,:,:])
     uvel = np.array(nc["uvel"][:,:,:])
     vvel = np.array(nc["vvel"][:,:,:])
@@ -323,7 +352,7 @@ plt.legend()
 plt.grid()
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_convective_tke_height.png",dpi=600)
+plt.savefig("convective_tke_height.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -333,7 +362,7 @@ fig = plt.figure(figsize=(6,4))
 ax = fig.gca()
 for j in range(nexp) :
   nc   = Dataset(f"{files[j]}_00000020.nc","r")
-  z    = np.array(nc["z"])/1000
+  z    = np.array(nc["z"][:])/1000
   dx   = z[1]-z[0]
   rho  = np.array(nc["density_dry"][:,:,:])
   uvel = np.array(nc["uvel"][:,:,:])
@@ -353,47 +382,7 @@ ax.margins(x=0)
 plt.grid()
 plt.margins(x=0)
 plt.tight_layout()
-plt.savefig("ABL_convective_spectra.png",dpi=600)
-plt.show()
-plt.close()
-
-
-fig = plt.figure(figsize=(4,6))
-ax = fig.gca()
-for j in range(nexp) :
-  u0  = np.mean(np.array(Dataset(f"{files[j]}_00000000.nc","r")["uvel"]),axis=(1,2))
-  u10 = np.mean(np.array(Dataset(f"{files[j]}_00000020.nc","r")["uvel"]),axis=(1,2))
-  z2 = get_ind(z,1.25)
-  ax.plot(u10[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
-ax.plot(u0 [:z2],z[:z2],color="black",linestyle="--",label="t=0 hr")
-ax.set_xlabel("velocity (m/s)")
-ax.set_ylabel("z-location (km)")
-ax.legend(loc="upper left")
-# ax.set_xlim(left=0)
-ax.margins(x=0)
-plt.tight_layout()
-plt.grid()
-plt.savefig("ABL_convective_uvel_height_times.png",dpi=600)
-plt.show()
-plt.close()
-
-
-fig = plt.figure(figsize=(4,6))
-ax = fig.gca()
-for j in range(nexp) :
-  u0  = np.mean(np.array(Dataset(f"{files[j]}_00000000.nc","r")["vvel"]),axis=(1,2))
-  u10 = np.mean(np.array(Dataset(f"{files[j]}_00000020.nc","r")["vvel"]),axis=(1,2))
-  z2 = get_ind(z,1.25)
-  ax.plot(u10[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
-ax.plot(u0 [:z2],z[:z2],color="black",linestyle="--",label="t=0 hr")
-ax.set_xlabel("velocity (m/s)")
-ax.set_ylabel("z-location (km)")
-ax.legend(loc="lower left")
-# ax.set_xlim(left=-0.2)
-ax.margins(x=0)
-plt.tight_layout()
-plt.grid()
-plt.savefig("ABL_convective_vvel_height_times.png",dpi=600)
+plt.savefig("convective_spectra.png",dpi=600)
 plt.show()
 plt.close()
 
@@ -405,66 +394,24 @@ for j in range(nexp) :
   nc10 = Dataset(f"{files[j]}_00000020.nc","r")
   hs = 5
   nz = len(z)
-  u0  = np.mean(np.array(nc0 ["theta_pert"])+np.array(nc0 ["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis],axis=(1,2))
-  u10 = np.mean(np.array(nc10["theta_pert"])+np.array(nc10["hy_theta_cells"])[hs:hs+nz,np.newaxis,np.newaxis],axis=(1,2))
+  rho  = np.array(nc0["density_dry"][:,:,:])
+  T    = np.array(nc0["temperature"][:,:,:])
+  pres = rho*R_d*T
+  u0   = np.mean(np.pow(pres/C0,1/gamma_d)/rho,axis=(1,2))
+  rho  = np.array(nc10["density_dry"][:,:,:])
+  T    = np.array(nc10["temperature"][:,:,:])
+  pres = rho*R_d*T
+  u10  = np.mean(np.pow(pres/C0,1/gamma_d)/rho,axis=(1,2))
   z2 = get_ind(z,1.25)
   ax.plot(u10[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
 ax.plot(u0 [:z2],z[:z2],color="black",linestyle="--",label="t=0 hr")
 ax.set_xlabel("Potential Temperature (K)")
 ax.set_ylabel("z-location (km)")
 ax.legend(loc="lower right")
-# ax.set_xlim(left=299,right=313)
 ax.margins(x=0)
 plt.tight_layout()
 plt.grid()
-plt.savefig("ABL_convective_theta_height_times.png",dpi=600)
+plt.savefig("convective_theta_height_times.png",dpi=600)
 plt.show()
 plt.close()
 
-
-
-# # fig = plt.figure(figsize=(6,6))
-# # ax = fig.gca()
-# # X,Y = np.meshgrid(x,y)
-# # print(z[get_ind(z,.0786)])
-# # mn  = np.mean(mag[get_ind(z,.0786),:,:])
-# # std = np.std (mag[get_ind(z,.0786),:,:])
-# # t1 = 4
-# # t2 = 12
-# # CS = ax.contourf(X,Y,mag[get_ind(z,.0786),:,:],levels=np.arange(t1,t2,(t2-t1)/100),cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
-# # ax.axis('scaled')
-# # ax.set_xlabel("x-location (km)")
-# # ax.set_ylabel("y-location (km)")
-# # ax.margins(x=0)
-# # divider = make_axes_locatable(plt.gca())
-# # cax = divider.append_axes("bottom", size="4%", pad=0.5)
-# # plt.colorbar(CS,orientation="horizontal",cax=cax)
-# # plt.margins(x=0)
-# # plt.tight_layout()
-# # plt.savefig("ABL_convective_contour_xy.png",dpi=600)
-# # plt.show()
-# # plt.close()
-# # 
-# # 
-# # fig = plt.figure(figsize=(8,4))
-# # ax = fig.gca()
-# # z2 = get_ind(z,0.7)
-# # yind = int(ny/2)
-# # X,Z = np.meshgrid(x,z[:z2])
-# # mn  = np.mean(mag[:z2,yind,:])
-# # std = np.std (mag[:z2,yind,:])
-# # t1 = 4
-# # t2 = 12
-# # CS = ax.contourf(X,Z,mag[:z2,yind,:],levels=np.arange(t1,t2,(t2-t1)/100),cmap=Colormap('cmasher:fusion_r').to_mpl(),extend="both")
-# # ax.axis('scaled')
-# # ax.set_xlabel("x-location (km)")
-# # ax.set_ylabel("z-location (km)")
-# # ax.margins(x=0)
-# # divider = make_axes_locatable(plt.gca())
-# # cax = divider.append_axes("bottom", size="4%", pad=0.5)
-# # plt.colorbar(CS,orientation="horizontal",cax=cax)
-# # plt.margins(x=0)
-# # plt.tight_layout()
-# # plt.savefig("ABL_convective_contour_xz.png",dpi=600)
-# # plt.show()
-# # plt.close()
