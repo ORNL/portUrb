@@ -15,34 +15,52 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
+    YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
+    if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    auto cs         = config["cs"        ].as<real>();
+    auto buoy_theta = config["buoy_theta"].as<bool>();
+    auto rsst       = config["rsst"      ].as<bool>();
 
-    real        sim_time    = 3600*10+1;
-    int         nx_glob     = 100;
-    int         ny_glob     = 100;
-    int         nz          = 100;
+    real usfc = 2;
+
     real        xlen        = 400;
     real        ylen        = 400;
     real        zlen        = 400;
+    real        sim_time    = xlen/usfc*20+0.1;
+    int         nx_glob     = 100;
+    int         ny_glob     = 100;
+    int         nz          = 100;
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 1;
-    real        out_freq    = 100;
+    int         dyn_cycle   = 10;
+    real        out_freq    = xlen/usfc;
     real        inform_freq = 10;
-    std::string out_prefix  = "building_rss_20";
+    std::string out_prefix  = std::string("building_buoy-") +
+                              (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
+                              (rsst       ? std::string("rsst_cs-")      : std::string("orig_cs-")) +
+                              std::to_string((int)std::round(cs));
     bool        is_restart  = false;
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"            , out_prefix    );
-    coupler.set_option<std::string>( "init_data"             , "building"    );
-    coupler.set_option<real       >( "out_freq"              , out_freq      );
-    coupler.set_option<bool       >( "is_restart"            , is_restart    );
-    coupler.set_option<std::string>( "restart_file"          , ""            );
-    coupler.set_option<real       >( "latitude"              , 0.            );
-    coupler.set_option<real       >( "roughness"             , 0.05          );
-    coupler.set_option<real       >( "cfl"                   , 0.6           );
-    coupler.set_option<bool       >( "enable_gravity"        , true          );
-    coupler.set_option<real       >( "dycore_max_wind"       , 25            );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta" , true          );
-    coupler.set_option<real       >( "dycore_cs"             , 100           );
+    coupler.set_option<std::string>( "out_prefix"                         , out_prefix    );
+    coupler.set_option<std::string>( "init_data"                          , "building"    );
+    coupler.set_option<real       >( "out_freq"                           , out_freq      );
+    coupler.set_option<bool       >( "is_restart"                         , is_restart    );
+    coupler.set_option<std::string>( "restart_file"                       , ""            );
+    coupler.set_option<real       >( "latitude"                           , 0.            );
+    coupler.set_option<real       >( "roughness"                          , 0.05          );
+    coupler.set_option<real       >( "cfl"                                , 0.6           );
+    coupler.set_option<bool       >( "enable_gravity"                     , true          );
+    coupler.set_option<real       >( "dycore_max_wind"                    , 25            );
+    coupler.set_option<bool       >( "dycore_rsst"                        , rsst          );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"              , buoy_theta    );
+    coupler.set_option<real       >( "dycore_cs"                          , cs            );
+    coupler.set_option<bool       >( "dycore_use_weno"                    , false         );
+    coupler.set_option<bool       >( "dycore_use_weno_immersed"           , true          );
+    coupler.set_option<bool       >( "surface_flux_force_theta"           , false         );
+    coupler.set_option<bool       >( "surface_flux_stability_corrections" , false         );
+    coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5        );
+    coupler.set_option<bool       >( "surface_flux_predict_z0h"           , false         );
+    coupler.set_option<bool       >( "surface_flux_prescribe_wpthetap"    , false         );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
@@ -61,7 +79,7 @@ int main(int argc, char** argv) {
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
     sfc_flux     .init        ( coupler );
-    time_averager.init        ( coupler );
+    time_averager.init        ( coupler , {"density_dry","temp"} );
     custom_modules::sc_perturb( coupler );
 
     real etime = coupler.get_option<real>("elapsed_time");

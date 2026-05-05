@@ -18,8 +18,13 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
+    YAML::Node config_dycore = YAML::LoadFile( std::string(argv[1]) );
+    if ( !config_dycore ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    auto cs         = config_dycore["cs"        ].as<real>();
+    auto buoy_theta = config_dycore["buoy_theta"].as<bool>();
+    auto rsst       = config_dycore["rsst"      ].as<bool>();
 
-    bool run_main = true;
+    bool run_main = false;
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler_main;
@@ -44,7 +49,10 @@ int main(int argc, char** argv) {
     std::string init_data         = "nrel_5mw_convective";
     real        out_freq          = 1000;
     real        inform_freq       = 10;
-    std::string out_prefix        = "nrel_5mw_convective_rss_18";
+    std::string out_prefix        = std::string("nrel_convective_buoy-") +
+                                    (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
+                                    (rsst       ? std::string("rsst_cs-")      : std::string("orig_cs-")) +
+                                    std::to_string((int)std::round(cs));
     std::string out_prefix_prec   = out_prefix+std::string("_precursor");
     bool        is_restart        = false;
     std::string restart_file      = "";
@@ -78,8 +86,11 @@ int main(int argc, char** argv) {
     coupler_main.set_option<bool       >( "turbine_orig_C_T"                   , true              );
     coupler_main.set_option<real       >( "turbine_f_TKE"                      , 0.25              );
     coupler_main.set_option<real       >( "dycore_max_wind"                    , 20                );
-    coupler_main.set_option<bool       >( "dycore_buoyancy_theta"              , true              );
-    coupler_main.set_option<real       >( "dycore_cs"                          , 40                );
+    coupler_main.set_option<bool       >( "dycore_rsst"                        , rsst              );
+    coupler_main.set_option<bool       >( "dycore_buoyancy_theta"              , buoy_theta        );
+    coupler_main.set_option<real       >( "dycore_cs"                          , cs                );
+    coupler_main.set_option<bool       >( "dycore_use_weno"                    , false             );
+    coupler_main.set_option<bool       >( "dycore_use_weno_immersed"           , true              );
     coupler_main.set_option<bool       >( "surface_flux_force_theta"           , false             );
     coupler_main.set_option<bool       >( "surface_flux_stability_corrections" , true              );
     coupler_main.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5            );
@@ -224,7 +235,7 @@ int main(int argc, char** argv) {
           pgv = pgv_sum/n_pg;
           coupler_prec.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
         }
-        coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
+        coupler_main.run_module( [&] (Coupler &c) { modules::sponge_layer_w          (c,dt,1000,0.05); } , "sponge"         );
         coupler_prec.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_prec.run_module( [&] (Coupler &c) { sfc_flux.apply                   (c,dt);           } , "surface_fluxes" );
         coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
@@ -238,7 +249,7 @@ int main(int argc, char** argv) {
                                    nx_glob/10 , 0 , ny_glob/10 , 0 );
         coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv);   } , "pg_forcing"     );
         coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column   (c,dt,dt*100);    } , "col_nudge"      );
-        coupler_prec.run_module( [&] (Coupler &c) { sponge_layer                     (c,dt,100,0.1);   } , "sponge"         );
+        coupler_main.run_module( [&] (Coupler &c) { modules::sponge_layer_w          (c,dt,1000,0.05); } , "sponge"         );
         coupler_main.run_module( [&] (Coupler &c) { dycore.time_step                 (c,dt);           } , "dycore"         );
         coupler_main.run_module( [&] (Coupler &c) { sfc_flux.apply                   (c,dt);           } , "surface_fluxes" );
         coupler_main.run_module( [&] (Coupler &c) { turbines.apply                   (c,dt);           } , "turbines"       );

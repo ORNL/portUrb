@@ -94,7 +94,7 @@ namespace custom_modules {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z    = zmid(k);
         real ztop = 50;
-        if (z <= ztop)  dm_temp(k,j,i) += rand.genFP<real>(-1.4,1.4);
+        if (z <= ztop)  dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "shallow_convection") {
