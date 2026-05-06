@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
     auto buoy_theta = config["buoy_theta"].as<bool>();
     auto rsst       = config["rsst"      ].as<bool>();
 
-    real usfc = 2;
+    real usfc = 1;
 
     real        xlen        = 400;
     real        ylen        = 400;

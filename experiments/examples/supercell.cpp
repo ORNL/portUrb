@@ -5,7 +5,6 @@
 #include "sc_init.h"
 #include "sc_perturb.h"
 #include "les_closure.h"
-#include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
 #include "microphysics_morr.h"
@@ -26,30 +25,41 @@ int main(int argc, char** argv) {
     auto nx_glob       = config["nx_glob"     ].as<int        >(400);
     auto ny_glob       = config["ny_glob"     ].as<int        >(400);
     auto nz            = config["nz"          ].as<int        >(40);
-    auto out_prefix    = config["out_prefix"  ].as<std::string>("supercell");
     auto dtphys_in     = config["dt_phys"     ].as<real       >(0);
-    auto dyn_cycle     = config["dyn_cycle"   ].as<int        >(10);
     auto out_freq      = config["out_freq"    ].as<real       >(900);
     auto inform_freq   = config["inform_freq" ].as<real       >(10);
     auto is_restart    = config["is_restart"  ].as<bool       >(false);
     auto restart_file  = config["restart_file"].as<std::string>("");
     auto cfl           = config["cfl"         ].as<real       >(0.6);
-    auto cs            = config["cs"          ].as<real       >(350);
-    auto buoy_theta    = config["buoy_theta"  ].as<bool       >(false);
+
+    YAML::Node config_dycore = YAML::LoadFile( std::string(argv[2]) );
+    if ( !config_dycore ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    auto cs         = config_dycore["cs"        ].as<real>();
+    auto buoy_theta = config_dycore["buoy_theta"].as<bool>();
+    auto rsst       = config_dycore["rsst"      ].as<bool>();
+    auto dyn_cycle  = config_dycore["dyn_cycle" ].as<int >();
+
+    std::string out_prefix  = std::string("supercell_buoy-") +
+                              (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
+                              (rsst       ? std::string("rsst_cs-")      : std::string("orig_cs-")) +
+                              std::to_string((int)std::round(cs));
 
     core::Coupler coupler;
-    coupler.set_option<std::string>( "out_prefix"                , out_prefix  );
-    coupler.set_option<std::string>( "init_data"                 , "supercell" );
-    coupler.set_option<real       >( "out_freq"                  , out_freq    );
-    coupler.set_option<bool       >( "is_restart"                , is_restart  );
-    coupler.set_option<std::string>( "restart_file"              , restart_file);
-    coupler.set_option<real       >( "latitude"                  , 0.          );
-    coupler.set_option<real       >( "cfl"                       , cfl         );
-    coupler.set_option<bool       >( "enable_gravity"            , true        );
-    coupler.set_option<int        >( "micro_morr_ihail"          , 1           );
-    coupler.set_option<real       >( "dycore_max_wind"           , 90          );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta"     , buoy_theta  );
-    coupler.set_option<real       >( "dycore_cs"                 , cs          );
+    coupler.set_option<std::string>( "out_prefix"                , out_prefix   );
+    coupler.set_option<std::string>( "init_data"                 , "supercell"  );
+    coupler.set_option<real       >( "out_freq"                  , out_freq     );
+    coupler.set_option<bool       >( "is_restart"                , is_restart   );
+    coupler.set_option<std::string>( "restart_file"              , restart_file );
+    coupler.set_option<real       >( "latitude"                  , 0.           );
+    coupler.set_option<real       >( "cfl"                       , cfl          );
+    coupler.set_option<bool       >( "enable_gravity"            , true         );
+    coupler.set_option<int        >( "micro_morr_ihail"          , 1            );
+    coupler.set_option<real       >( "dycore_max_wind"           , 90           );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"     , buoy_theta   );
+    coupler.set_option<real       >( "dycore_cs"                 , cs           );
+    coupler.set_option<bool       >( "dycore_rsst"               , rsst         );
+    coupler.set_option<bool       >( "dycore_use_weno"           , false        );
+    coupler.set_option<bool       >( "dycore_use_weno_immersed"  , true         );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
@@ -101,11 +111,11 @@ int main(int argc, char** argv) {
       {
         using core::Coupler;
         coupler.track_max_wind();
-        // coupler.run_module( [&] (Coupler &c) { modules::sponge_layer   (c,dt,dt,0.02); } , "sponge"         );
-        coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt);         } , "dycore"         );
-        coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt);         } , "les_closure"    );
-        coupler.run_module( [&] (Coupler &c) { micro.time_step         (c,dt);         } , "microphysics"   );
-        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt);         } , "time_averager"  );
+        coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w (c,dt,1000,0.05); } , "sponge"         );
+        coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt);           } , "dycore"         );
+        coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt);           } , "les_closure"    );
+        coupler.run_module( [&] (Coupler &c) { micro.time_step         (c,dt);           } , "microphysics"   );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt);           } , "time_averager"  );
       }
 
       // Update time step

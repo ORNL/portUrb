@@ -1,4 +1,5 @@
 from netCDF4 import Dataset
+import re
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
@@ -7,36 +8,66 @@ import os.path
 def get_ind(arr,val) :
     return np.argmin(np.abs(arr-val))
 
-nfiles = 41
+nfiles = 21
 times = np.array([120*i/(nfiles-1) for i in range(nfiles)])
 
-workdir = "/lustre/storm/nwp501/scratch/imn/rsst_paper/supercell"
+workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build/supercell_immweno"
+files = [[f"{workdir}/supercell_buoy-rhop_press-orig_cs-350_{i:08d}.nc"   for i in range(21)],
+         [f"{workdir}/supercell_buoy-thetap_press-orig_cs-350_{i:08d}.nc" for i in range(21)],
+         [f"{workdir}/supercell_buoy-thetap_press-rsst_cs-350_{i:08d}.nc" for i in range(21)],
+         [f"{workdir}/supercell_buoy-thetap_press-rsst_cs-262_{i:08d}.nc" for i in range(21)],
+         [f"{workdir}/supercell_buoy-thetap_press-rsst_cs-174_{i:08d}.nc" for i in range(21)],
+         [f"{workdir}/supercell_buoy-thetap_press-rsst_cs-86_{i:08d}.nc"  for i in range(21)],]
+buoy   = np.array([("rhop" if "buoy-rhop" in f[0] else "thetap") for f in files])
+press  = np.array([("orig" if "press-orig" in f[0] else "rsst") for f in files])
+cs     = np.array([int(re.search(r'cs-(\d+)', f[0]).group(1)) for f in files])
+labels = np.array([f"{press[i]}-{buoy[i]}-{cs[i]}" for i in range(len(files))])
+colors = ['black','#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', # Black, Red, Green, Yellow, Blue, Orange
+          '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', # Purple, Cyan, Magenta, Lime, Pink
+          '#469990', '#dcbeff',]                                 # Teal, Lavender
+styles = ["-" for i in range(len(files))]
+nexp = len(files)
 
-nexp = 6
-files = [[f"{workdir}/supercell_orig_rho_350_{i:08}.nc"   for i in range(nfiles)],
-         [f"{workdir}/supercell_orig_theta_350_{i:08}.nc" for i in range(nfiles)],
-         [f"{workdir}/supercell_rsst_350_{i:08}.nc"       for i in range(nfiles)],
-         [f"{workdir}/supercell_rsst_262_{i:08}.nc"       for i in range(nfiles)],
-         [f"{workdir}/supercell_rsst_174_{i:08}.nc"       for i in range(nfiles)],
-         [f"{workdir}/supercell_rsst_86_{i:08}.nc"        for i in range(nfiles)],]
-cs = [350,350,350,262,174,86]
-labels = ["ORIG-RHO_350","ORIG-THETA_350","RSS_350","RSS_262","RSS_174","RSS_86"]
-colors = ["black","red","green","blue","cyan","magenta"]
 
+
+R_d     = 287.
+cp_d    = 7.*R_d/2.
+cv_d    = cp_d - R_d
+gamma_d = cp_d / cv_d
+kappa_d = R_d  / cp_d
+R_v     = 461.6
+cp_v    = 4.*R_v
+cv_v    = cp_v - R_v
+p0      = 1.e5
+grav    = 9.81
+C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d)
+hs      = 5
 
 
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
-  nc   = Dataset(f"{files[j][20]}","r")
-  z    = np.array(nc["z"])/1000
-  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
-  pert = np.mean(pert,axis=(1,2))
-  pert = pert - np.mean(pert)
+  nc      = Dataset(f"{files[j][10]}","r")
+  z       = np.array(nc["z"][:])/1000
+  nz      = len(z)
+  rho_d   = np.array(nc["density_dry"][:,:,:])
+  rho_v   = np.array(nc["water_vapor"][:,:,:])
+  rho_c   = np.array(nc["cloud_water"][:,:,:])
+  rho_i   = np.array(nc["cloud_ice"  ][:,:,:])
+  rho_r   = np.array(nc["rain_water" ][:,:,:])
+  rho_s   = np.array(nc["snow"       ][:,:,:])
+  rho_g   = np.array(nc["graupel"    ][:,:,:])
+  rho     = rho_d+rho_v+rho_c+rho_i+rho_r+rho_s+rho_g
+  T       = np.array(nc["temperature"][:,:,:])
+  pp      = rho_d*R_d*T + rho_v*R_v*T - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
+  rhopcs2 = (rho-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
+  pert    = pp if press[j]=="orig" else rhopcs2
+  pert    = np.mean(pert,axis=(1,2))
+  pert    = pert - np.mean(pert)
   ax.plot(pert,z,color=colors[j],label=labels[j])
 ax.set_xlabel("pressure perturbation (Pa)")
 ax.set_ylabel("z-location (km)")
-ax.legend(loc="upper left")
+ax.legend(loc="center left")
 # ax.set_xlim(left=0)
 ax.margins(x=0)
 plt.grid()
@@ -48,15 +79,27 @@ plt.close()
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
-  nc   = Dataset(f"{files[j][40]}","r")
-  z    = np.array(nc["z"])/1000
-  pert = np.array(nc["pressure_pert"][:,:,:]) if j < 2 else cs[j]*cs[j]*np.array(nc["density_pert"][:,:,:])
-  pert = np.mean(pert,axis=(1,2))
-  pert = pert - np.mean(pert)
+  nc      = Dataset(f"{files[j][20]}","r")
+  z       = np.array(nc["z"][:])/1000
+  nz      = len(z)
+  rho_d   = np.array(nc["density_dry"][:,:,:])
+  rho_v   = np.array(nc["water_vapor"][:,:,:])
+  rho_c   = np.array(nc["cloud_water"][:,:,:])
+  rho_i   = np.array(nc["cloud_ice"  ][:,:,:])
+  rho_r   = np.array(nc["rain_water" ][:,:,:])
+  rho_s   = np.array(nc["snow"       ][:,:,:])
+  rho_g   = np.array(nc["graupel"    ][:,:,:])
+  rho     = rho_d+rho_v+rho_c+rho_i+rho_r+rho_s+rho_g
+  T       = np.array(nc["temperature"][:,:,:])
+  pp      = rho_d*R_d*T + rho_v*R_v*T - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
+  rhopcs2 = (rho-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
+  pert    = pp if press[j]=="orig" else rhopcs2
+  pert    = np.mean(pert,axis=(1,2))
+  pert    = pert - np.mean(pert)
   ax.plot(pert,z,color=colors[j],label=labels[j])
 ax.set_xlabel("pressure perturbation (Pa)")
 ax.set_ylabel("z-location (km)")
-ax.legend(loc="upper left")
+ax.legend(loc="center left")
 # ax.set_xlim(left=0)
 ax.margins(x=0)
 plt.grid()
@@ -66,7 +109,7 @@ plt.show()
 plt.close()
 
 
-z = np.array(Dataset(files[0][0],"r")["z"])
+z = np.array(Dataset(files[0][0],"r")["z"][:])
 sfc_theta_min  = np.array([[0. for i in range(nfiles)] for j in range(nexp)])
 cold_pool_frac = np.array([[0. for i in range(nfiles)] for j in range(nexp)])
 precip_accum   = np.array([[0. for i in range(nfiles)] for j in range(nexp)])
@@ -76,12 +119,22 @@ if ( not os.path.isfile("cell_data.npz") ) :
   for j in range(nexp) :
     for i in range(nfiles) :
       nc = Dataset(files[j][i],"r")
-      sfc_theta = np.array(nc["theta_pert"][0,:,:])
-      w         = np.array(nc["wvel"])
-      rho_d     = np.array(nc["density_dry"])
+      rho_d     = np.array(nc["density_dry"][:,:,:])
+      rho_v     = np.array(nc["water_vapor"][:,:,:])
+      rho_c     = np.array(nc["cloud_water"][:,:,:])
+      rho_i     = np.array(nc["cloud_ice"  ][:,:,:])
+      rho_r     = np.array(nc["rain_water" ][:,:,:])
+      rho_s     = np.array(nc["snow"       ][:,:,:])
+      rho_g     = np.array(nc["graupel"    ][:,:,:])
+      rho       = rho_d+rho_v+rho_c+rho_i+rho_r+rho_s+rho_g
+      T         = np.array(nc["temperature"][:,:,:])
+      w         = np.array(nc["wvel"       ][:,:,:])
+      p         = rho_d*R_d*T + rho_v*R_v*T
+      thetap    = np.pow(p/C0,1/gamma_d)/rho - np.array(nc["hy_theta_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
+      sfc_theta = thetap[0,:,:]
       sfc_theta_min [j,i] = np.min(sfc_theta)
       cold_pool_frac[j,i] = np.sum(np.where(sfc_theta <= -2,True,False)) / sfc_theta.size
-      precip_accum  [j,i] = np.mean(np.array(nc["micro_rainnc"]) + np.array(nc["micro_snownc"]) + np.array(nc["micro_graupelnc"]))
+      precip_accum  [j,i] = np.mean(np.array(nc["micro_rainnc"][:,:]) + np.array(nc["micro_snownc"][:,:]) + np.array(nc["micro_graupelnc"][:,:]))
       min_w         [j,i] = np.min(w[:get_ind(z,3500),:,:])
       max_w         [j,i] = np.max(w)
       print(j,i)
@@ -111,7 +164,7 @@ morr_y_q4 = -1/25920000*(y_q4[0] - 2*y_q4[1] + y_q4[2])*morr_x**4 + 1/864000*(9*
 for j in range(nexp) :
   plt.plot(times,sfc_theta_min[j,:],label=labels[j],color=colors[j])
 plt.fill_between(morr_x,morr_y_q0,morr_y_q4,color="lightskyblue")
-plt.xlabel("Time (hrs)")
+plt.xlabel("Time (min)")
 plt.ylabel(r"Min sfc $\theta^\prime$ (K)")
 plt.grid()
 plt.legend()
@@ -131,7 +184,7 @@ morr_y_q4 = 1/864000*(3*y_q4[0] - 4*y_q4[1] + y_q4[2])*morr_x**3 - 1/14400*(7*y_
 for j in range(nexp) :
   plt.plot(times,cold_pool_frac[j,:],label=labels[j],color=colors[j])
 plt.fill_between(morr_x,morr_y_q0,morr_y_q4,color="lightskyblue")
-plt.xlabel("Time (hrs)")
+plt.xlabel("Time (min)")
 plt.ylabel(r"Sfc cold pool fraction ($\theta^\prime \leq -2K$)")
 plt.grid()
 plt.legend()
@@ -151,7 +204,7 @@ morr_y_q4 = 1/864000*(3*y_q4[0] - 4*y_q4[1] + y_q4[2])*morr_x**3 - 1/14400*(7*y_
 for j in range(nexp) :
   plt.plot(times,precip_accum[j,:],label=labels[j],color=colors[j])
 plt.fill_between(morr_x,morr_y_q0,morr_y_q4,color="lightskyblue")
-plt.xlabel("Time (hrs)")
+plt.xlabel("Time (min)")
 plt.ylabel(r"Total sfc accum precip (mm)")
 plt.grid()
 plt.legend()
@@ -162,7 +215,7 @@ plt.close()
 
 for j in range(nexp) :
   plt.plot(times,min_w[j,:],label=labels[j],color=colors[j])
-plt.xlabel("Time (hrs)")
+plt.xlabel("Time (min)")
 plt.ylabel(r"Min Vertical Velocity (m/s)")
 plt.legend()
 plt.grid()
@@ -174,7 +227,7 @@ plt.close()
 
 for j in range(nexp) :
   plt.plot(times,max_w[j,:],label=labels[j],color=colors[j])
-plt.xlabel("Time (hrs)")
+plt.xlabel("Time (min)")
 plt.ylabel(r"Max Vertical Velocity (m/s)")
 plt.legend()
 plt.grid()
@@ -184,10 +237,10 @@ plt.show()
 plt.close()
 
 
-for i in [20,40] :
+for i in [10,20] :
   for j in range(nexp) :
     nc = Dataset(files[j][i],"r")
-    qc = (np.array(nc["graupel"])+np.array(nc["snow"])+np.array(nc["rain_water"]))# /np.array(nc["density_dry"])
+    qc = (np.array(nc["graupel"][:,:,:])+np.array(nc["snow"][:,:,:])+np.array(nc["rain_water"][:,:,:]))# /np.array(nc["density_dry"])
     plt.plot(np.mean(qc ,axis=(1,2))*1000,z/1000,label=labels[j],linewidth=2,color=colors[j])
   plt.xlim(left=0)
   plt.ylim(0,15)

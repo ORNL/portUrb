@@ -258,7 +258,7 @@ for j in range(nexp) :
   ax.plot(vp_wp_mean[:z2],z[:z2],color=colors[j],label=labels[j],linestyle=styles[j])
 ax.set_xlabel(r"v'w' $(m^2/s^2)$")
 ax.set_ylabel("z-location (km)")
-ax.legend()
+ax.legend(loc="upper left")
 ax.margins(x=0)
 plt.grid()
 plt.margins(x=0)

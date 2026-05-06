@@ -37,17 +37,17 @@ namespace custom_modules {
       coupler.set_option<int>("idWV",idWV);
     }
     // Physics parameters
-    real R_d     = 287.     ;
-    real cp_d    = 1003.    ;
-    real R_v     = 461.     ;
-    real cp_v    = 1859     ;
-    real p0      = 1.e5     ;
-    real grav    = 9.81     ;
-    real cv_d    = cp_d-R_d ;
-    real gamma_d = cp_d/cv_d;
-    real kappa_d = R_d/cp_d ;
-    real cv_v    = cp_v-R_v ;
-    real C0      = pow(R_d*pow(p0,-kappa_d),gamma_d);
+    real R_d     = coupler.get_option<real>( "R_d"     , 287.                              );
+    real cp_d    = coupler.get_option<real>( "cp_d"    , 1003.                             );
+    real R_v     = coupler.get_option<real>( "R_v"     , 461.                              );
+    real cp_v    = coupler.get_option<real>( "cp_v"    , 1859                              );
+    real p0      = coupler.get_option<real>( "p0"      , 1.e5                              );
+    real grav    = coupler.get_option<real>( "grav"    , 9.81                              );
+    real cv_d    = coupler.get_option<real>( "cv_d"    , cp_d-R_d                          );
+    real gamma_d = coupler.get_option<real>( "gamma_d" , cp_d/cv_d                         );
+    real kappa_d = coupler.get_option<real>( "kappa_d" , R_d/cp_d                          );
+    real cv_v    = coupler.get_option<real>( "cv_v"    , cp_v-R_v                          );
+    real C0      = coupler.get_option<real>( "C0"      , pow(R_d*pow(p0,-kappa_d),gamma_d) );
     if (! coupler.option_exists("R_d"    )) coupler.set_option<real>("R_d"    ,R_d    );
     if (! coupler.option_exists("cp_d"   )) coupler.set_option<real>("cp_d"   ,cp_d   );
     if (! coupler.option_exists("R_v"    )) coupler.set_option<real>("R_v"    ,R_v    );
