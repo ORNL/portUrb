@@ -75,8 +75,6 @@ int main(int argc, char** argv) {
         coupler.set_option<real       >( "dycore_cs"                            , u0*1.4*acoust );
         coupler.set_option<bool       >( "dycore_use_weno"                      , false         );
         coupler.set_option<bool       >( "dycore_use_weno_immersed"             , true          );
-        coupler.set_option<bool       >( "dycore_immersed_hypervis"             , false         );
-        coupler.set_option<real       >( "les_closure_delta_multiplier"         , 0.6           );
         coupler.set_option<bool       >( "surface_flux_force_theta"             , false         );
         coupler.set_option<bool       >( "surface_flux_stability_corrections"   , false         );
         coupler.set_option<real       >( "surface_flux_kinematic_viscosity"     , 8e-6          );
