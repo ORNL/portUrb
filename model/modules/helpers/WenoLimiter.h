@@ -6,13 +6,8 @@ template <class real, int ord> struct WenoLimiter;
 
 template <class real> struct WenoLimiter<real,3> {
   static KOKKOS_INLINE_FUNCTION void value_based(SArray<real,3> const & v, real &L, real &R, bool immL, bool immR) {
-    real mn = std::min(v(0),std::min(v(1),v(2)));
-    real mx = std::max(v(0),std::max(v(1),v(2)));
-    real v0 = (v(0)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v1 = (v(1)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v2 = (v(2)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real TV0 = v0*v0 - static_cast<real>(2.0000000000000000)*v0*v1 + v1*v1;
-    real TV1 = v1*v1 - static_cast<real>(2.0000000000000000)*v1*v2 + v2*v2;
+    real TV0 = v(0)*v(0) - static_cast<real>(2.0000000000000000)*v(0)*v(1) + v(1)*v(1);
+    real TV1 = v(1)*v(1) - static_cast<real>(2.0000000000000000)*v(1)*v(2) + v(2)*v(2);
     if (TV0==0) TV0 = std::min(TV0,TV1);
     if (TV1==0) TV1 = std::min(TV0,TV1);
     if (immL) TV1 = std::max(TV0,TV1);
@@ -43,16 +38,9 @@ template <class real> struct WenoLimiter<real,3> {
 
 template <class real> struct WenoLimiter<real,5> {
   static KOKKOS_INLINE_FUNCTION void value_based(SArray<real,5> const & v, real &L, real &R, bool immL, bool immR) {
-    real mn = std::min(v(0),std::min(v(1),std::min(v(2),std::min(v(3),v(4)))));
-    real mx = std::max(v(0),std::max(v(1),std::max(v(2),std::max(v(3),v(4)))));
-    real v0 = (v(0)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v1 = (v(1)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v2 = (v(2)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v3 = (v(3)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v4 = (v(4)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real TV0 = static_cast<real>(1.3333333333333333)*v0*v0 - static_cast<real>(6.3333333333333333)*v0*v1 + static_cast<real>(3.6666666666666667)*v0*v2 + static_cast<real>(8.3333333333333333)*v1*v1 - static_cast<real>(10.333333333333333)*v1*v2 + static_cast<real>(3.3333333333333333)*v2*v2;
-    real TV1 = static_cast<real>(1.3333333333333333)*v1*v1 - static_cast<real>(4.3333333333333333)*v1*v2 + static_cast<real>(1.6666666666666667)*v1*v3 + static_cast<real>(4.3333333333333333)*v2*v2 - static_cast<real>(4.3333333333333333)*v2*v3 + static_cast<real>(1.3333333333333333)*v3*v3;
-    real TV2 = static_cast<real>(3.3333333333333333)*v2*v2 - static_cast<real>(10.333333333333333)*v2*v3 + static_cast<real>(3.6666666666666667)*v2*v4 + static_cast<real>(8.3333333333333333)*v3*v3 - static_cast<real>(6.3333333333333333)*v3*v4 + static_cast<real>(1.3333333333333333)*v4*v4;
+    real TV0 = static_cast<real>(1.3333333333333333)*v(0)*v(0) - static_cast<real>(6.3333333333333333)*v(0)*v(1) + static_cast<real>(3.6666666666666667)*v(0)*v(2) + static_cast<real>(8.3333333333333333)*v(1)*v(1) - static_cast<real>(10.333333333333333)*v(1)*v(2) + static_cast<real>(3.3333333333333333)*v(2)*v(2);
+    real TV1 = static_cast<real>(1.3333333333333333)*v(1)*v(1) - static_cast<real>(4.3333333333333333)*v(1)*v(2) + static_cast<real>(1.6666666666666667)*v(1)*v(3) + static_cast<real>(4.3333333333333333)*v(2)*v(2) - static_cast<real>(4.3333333333333333)*v(2)*v(3) + static_cast<real>(1.3333333333333333)*v(3)*v(3);
+    real TV2 = static_cast<real>(3.3333333333333333)*v(2)*v(2) - static_cast<real>(10.333333333333333)*v(2)*v(3) + static_cast<real>(3.6666666666666667)*v(2)*v(4) + static_cast<real>(8.3333333333333333)*v(3)*v(3) - static_cast<real>(6.3333333333333333)*v(3)*v(4) + static_cast<real>(1.3333333333333333)*v(4)*v(4);
     if (TV0==0) TV0 = std::min(TV0,std::min(TV1,TV2));
     if (TV2==0) TV2 = std::min(TV0,std::min(TV1,TV2));
     if (immL) TV2 = std::max(TV0,std::max(TV1,TV2));
@@ -90,19 +78,10 @@ template <class real> struct WenoLimiter<real,5> {
 
 template <class real> struct WenoLimiter<real,7> {
   static KOKKOS_INLINE_FUNCTION void value_based(SArray<real,7> const & v, real &L, real &R, bool immL, bool immR) {
-    real mn = std::min(v(0),std::min(v(1),std::min(v(2),std::min(v(3),std::min(v(4),std::min(v(5),v(6)))))));
-    real mx = std::max(v(0),std::max(v(1),std::max(v(2),std::max(v(3),std::max(v(4),std::max(v(5),v(6)))))));
-    real v0 = (v(0)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v1 = (v(1)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v2 = (v(2)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v3 = (v(3)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v4 = (v(4)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v5 = (v(5)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v6 = (v(6)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real TV0 = static_cast<real>(2.2791666666666667)*v0*v0 - static_cast<real>(16.175000000000000)*v0*v1 + static_cast<real>(19.341666666666667)*v0*v2 - static_cast<real>(7.7250000000000000)*v0*v3 + static_cast<real>(29.345833333333333)*v1*v1 - static_cast<real>(71.858333333333333)*v1*v2 + static_cast<real>(29.341666666666667)*v1*v3 + static_cast<real>(45.845833333333333)*v2*v2 - static_cast<real>(39.175000000000000)*v2*v3 + static_cast<real>(8.7791666666666667)*v3*v3;
-    real TV1 = static_cast<real>(1.1125000000000000)*v1*v1 - static_cast<real>(6.8416666666666667)*v1*v2 + static_cast<real>(6.6750000000000000)*v1*v3 - static_cast<real>(2.0583333333333333)*v1*v4 + static_cast<real>(11.845833333333333)*v2*v2 - static_cast<real>(24.858333333333333)*v2*v3 + static_cast<real>(8.0083333333333333)*v2*v4 + static_cast<real>(14.345833333333333)*v3*v3 - static_cast<real>(10.508333333333333)*v3*v4 + static_cast<real>(2.2791666666666667)*v4*v4;
-    real TV2 = static_cast<real>(2.2791666666666667)*v2*v2 - static_cast<real>(10.508333333333333)*v2*v3 + static_cast<real>(8.0083333333333333)*v2*v4 - static_cast<real>(2.0583333333333333)*v2*v5 + static_cast<real>(14.345833333333333)*v3*v3 - static_cast<real>(24.858333333333333)*v3*v4 + static_cast<real>(6.6750000000000000)*v3*v5 + static_cast<real>(11.845833333333333)*v4*v4 - static_cast<real>(6.8416666666666667)*v4*v5 + static_cast<real>(1.1125000000000000)*v5*v5;
-    real TV3 = static_cast<real>(8.7791666666666667)*v3*v3 - static_cast<real>(39.175000000000000)*v3*v4 + static_cast<real>(29.341666666666667)*v3*v5 - static_cast<real>(7.7250000000000000)*v3*v6 + static_cast<real>(45.845833333333333)*v4*v4 - static_cast<real>(71.858333333333333)*v4*v5 + static_cast<real>(19.341666666666667)*v4*v6 + static_cast<real>(29.345833333333333)*v5*v5 - static_cast<real>(16.175000000000000)*v5*v6 + static_cast<real>(2.2791666666666667)*v6*v6;
+    real TV0 = static_cast<real>(2.2791666666666667)*v(0)*v(0) - static_cast<real>(16.175000000000000)*v(0)*v(1) + static_cast<real>(19.341666666666667)*v(0)*v(2) - static_cast<real>(7.7250000000000000)*v(0)*v(3) + static_cast<real>(29.345833333333333)*v(1)*v(1) - static_cast<real>(71.858333333333333)*v(1)*v(2) + static_cast<real>(29.341666666666667)*v(1)*v(3) + static_cast<real>(45.845833333333333)*v(2)*v(2) - static_cast<real>(39.175000000000000)*v(2)*v(3) + static_cast<real>(8.7791666666666667)*v(3)*v(3);
+    real TV1 = static_cast<real>(1.1125000000000000)*v(1)*v(1) - static_cast<real>(6.8416666666666667)*v(1)*v(2) + static_cast<real>(6.6750000000000000)*v(1)*v(3) - static_cast<real>(2.0583333333333333)*v(1)*v(4) + static_cast<real>(11.845833333333333)*v(2)*v(2) - static_cast<real>(24.858333333333333)*v(2)*v(3) + static_cast<real>(8.0083333333333333)*v(2)*v(4) + static_cast<real>(14.345833333333333)*v(3)*v(3) - static_cast<real>(10.508333333333333)*v(3)*v(4) + static_cast<real>(2.2791666666666667)*v(4)*v(4);
+    real TV2 = static_cast<real>(2.2791666666666667)*v(2)*v(2) - static_cast<real>(10.508333333333333)*v(2)*v(3) + static_cast<real>(8.0083333333333333)*v(2)*v(4) - static_cast<real>(2.0583333333333333)*v(2)*v(5) + static_cast<real>(14.345833333333333)*v(3)*v(3) - static_cast<real>(24.858333333333333)*v(3)*v(4) + static_cast<real>(6.6750000000000000)*v(3)*v(5) + static_cast<real>(11.845833333333333)*v(4)*v(4) - static_cast<real>(6.8416666666666667)*v(4)*v(5) + static_cast<real>(1.1125000000000000)*v(5)*v(5);
+    real TV3 = static_cast<real>(8.7791666666666667)*v(3)*v(3) - static_cast<real>(39.175000000000000)*v(3)*v(4) + static_cast<real>(29.341666666666667)*v(3)*v(5) - static_cast<real>(7.7250000000000000)*v(3)*v(6) + static_cast<real>(45.845833333333333)*v(4)*v(4) - static_cast<real>(71.858333333333333)*v(4)*v(5) + static_cast<real>(19.341666666666667)*v(4)*v(6) + static_cast<real>(29.345833333333333)*v(5)*v(5) - static_cast<real>(16.175000000000000)*v(5)*v(6) + static_cast<real>(2.2791666666666667)*v(6)*v(6);
     if (TV0==0) TV0 = std::min(TV0,std::min(TV1,std::min(TV2,TV3)));
     if (TV3==0) TV3 = std::min(TV0,std::min(TV1,std::min(TV2,TV3)));
     if (immL) TV3 = std::max(TV0,std::max(TV1,std::max(TV2,TV3)));
@@ -147,22 +126,11 @@ template <class real> struct WenoLimiter<real,7> {
 
 template <class real> struct WenoLimiter<real,9> {
   static KOKKOS_INLINE_FUNCTION void value_based(SArray<real,9> const & v, real &L, real &R, bool immL, bool immR) {
-    real mn = std::min(v(0),std::min(v(1),std::min(v(2),std::min(v(3),std::min(v(4),std::min(v(5),std::min(v(6),std::min(v(7),v(8)))))))));
-    real mx = std::max(v(0),std::max(v(1),std::max(v(2),std::max(v(3),std::max(v(4),std::max(v(5),std::max(v(6),std::max(v(7),v(8)))))))));
-    real v0 = (v(0)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v1 = (v(1)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v2 = (v(2)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v3 = (v(3)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v4 = (v(4)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v5 = (v(5)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v6 = (v(6)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v7 = (v(7)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real v8 = (v(8)-mn)/std::max(static_cast<real>(1.e-20),mx-mn);
-    real TV0 = static_cast<real>(4.4956349206349206)*v0*v0 - static_cast<real>(41.369246031746032)*v0*v1 + static_cast<real>(72.393452380952381)*v0*v2 - static_cast<real>(57.144246031746032)*v0*v3 + static_cast<real>(17.128769841269841)*v0*v4 + static_cast<real>(95.825992063492063)*v1*v1 - static_cast<real>(338.17380952380952)*v1*v2 + static_cast<real>(269.53531746031746)*v1*v3 - static_cast<real>(81.644246031746032)*v1*v4 + static_cast<real>(301.86369047619048)*v2*v2 - static_cast<real>(488.50714285714286)*v2*v3 + static_cast<real>(150.56011904761905)*v2*v4 + static_cast<real>(202.49265873015873)*v3*v3 - static_cast<real>(128.86924603174603)*v3*v4 + static_cast<real>(21.412301587301587)*v4*v4;
-    real TV1 = static_cast<real>(1.3706349206349206)*v1*v1 - static_cast<real>(12.077579365079365)*v1*v2 + static_cast<real>(19.685119047619048)*v1*v3 - static_cast<real>(13.935912698412698)*v1*v4 + static_cast<real>(3.5871031746031746)*v1*v5 + static_cast<real>(27.492658730158730)*v2*v2 - static_cast<real>(92.257142857142857)*v2*v3 + static_cast<real>(66.868650793650794)*v2*v4 - static_cast<real>(17.519246031746032)*v2*v5 + static_cast<real>(80.613690476190476)*v3*v3 - static_cast<real>(121.42380952380952)*v3*v4 + static_cast<real>(32.768452380952381)*v3*v5 + static_cast<real>(48.159325396825397)*v4*v4 - static_cast<real>(27.827579365079365)*v4*v5 + static_cast<real>(4.4956349206349206)*v5*v5;
-    real TV2 = static_cast<real>(1.3706349206349206)*v2*v2 - static_cast<real>(10.119246031746032)*v2*v3 + static_cast<real>(13.476785714285714)*v2*v4 - static_cast<real>(7.7275793650793651)*v2*v5 + static_cast<real>(1.6287698412698413)*v2*v6 + static_cast<real>(20.825992063492063)*v3*v3 - static_cast<real>(59.340476190476190)*v3*v4 + static_cast<real>(35.535317460317460)*v3*v5 - static_cast<real>(7.7275793650793651)*v3*v6 + static_cast<real>(45.863690476190476)*v4*v4 - static_cast<real>(59.340476190476190)*v4*v5 + static_cast<real>(13.476785714285714)*v4*v6 + static_cast<real>(20.825992063492063)*v5*v5 - static_cast<real>(10.119246031746032)*v5*v6 + static_cast<real>(1.3706349206349206)*v6*v6;
-    real TV3 = static_cast<real>(4.4956349206349206)*v3*v3 - static_cast<real>(27.827579365079365)*v3*v4 + static_cast<real>(32.768452380952381)*v3*v5 - static_cast<real>(17.519246031746032)*v3*v6 + static_cast<real>(3.5871031746031746)*v3*v7 + static_cast<real>(48.159325396825397)*v4*v4 - static_cast<real>(121.42380952380952)*v4*v5 + static_cast<real>(66.868650793650794)*v4*v6 - static_cast<real>(13.935912698412698)*v4*v7 + static_cast<real>(80.613690476190476)*v5*v5 - static_cast<real>(92.257142857142857)*v5*v6 + static_cast<real>(19.685119047619048)*v5*v7 + static_cast<real>(27.492658730158730)*v6*v6 - static_cast<real>(12.077579365079365)*v6*v7 + static_cast<real>(1.3706349206349206)*v7*v7;
-    real TV4 = static_cast<real>(21.412301587301587)*v4*v4 - static_cast<real>(128.86924603174603)*v4*v5 + static_cast<real>(150.56011904761905)*v4*v6 - static_cast<real>(81.644246031746032)*v4*v7 + static_cast<real>(17.128769841269841)*v4*v8 + static_cast<real>(202.49265873015873)*v5*v5 - static_cast<real>(488.50714285714286)*v5*v6 + static_cast<real>(269.53531746031746)*v5*v7 - static_cast<real>(57.144246031746032)*v5*v8 + static_cast<real>(301.86369047619048)*v6*v6 - static_cast<real>(338.17380952380952)*v6*v7 + static_cast<real>(72.393452380952381)*v6*v8 + static_cast<real>(95.825992063492063)*v7*v7 - static_cast<real>(41.369246031746032)*v7*v8 + static_cast<real>(4.4956349206349206)*v8*v8;
+    real TV0 = static_cast<real>(4.4956349206349206)*v(0)*v(0) - static_cast<real>(41.369246031746032)*v(0)*v(1) + static_cast<real>(72.393452380952381)*v(0)*v(2) - static_cast<real>(57.144246031746032)*v(0)*v(3) + static_cast<real>(17.128769841269841)*v(0)*v(4) + static_cast<real>(95.825992063492063)*v(1)*v(1) - static_cast<real>(338.17380952380952)*v(1)*v(2) + static_cast<real>(269.53531746031746)*v(1)*v(3) - static_cast<real>(81.644246031746032)*v(1)*v(4) + static_cast<real>(301.86369047619048)*v(2)*v(2) - static_cast<real>(488.50714285714286)*v(2)*v(3) + static_cast<real>(150.56011904761905)*v(2)*v(4) + static_cast<real>(202.49265873015873)*v(3)*v(3) - static_cast<real>(128.86924603174603)*v(3)*v(4) + static_cast<real>(21.412301587301587)*v(4)*v(4);
+    real TV1 = static_cast<real>(1.3706349206349206)*v(1)*v(1) - static_cast<real>(12.077579365079365)*v(1)*v(2) + static_cast<real>(19.685119047619048)*v(1)*v(3) - static_cast<real>(13.935912698412698)*v(1)*v(4) + static_cast<real>(3.5871031746031746)*v(1)*v(5) + static_cast<real>(27.492658730158730)*v(2)*v(2) - static_cast<real>(92.257142857142857)*v(2)*v(3) + static_cast<real>(66.868650793650794)*v(2)*v(4) - static_cast<real>(17.519246031746032)*v(2)*v(5) + static_cast<real>(80.613690476190476)*v(3)*v(3) - static_cast<real>(121.42380952380952)*v(3)*v(4) + static_cast<real>(32.768452380952381)*v(3)*v(5) + static_cast<real>(48.159325396825397)*v(4)*v(4) - static_cast<real>(27.827579365079365)*v(4)*v(5) + static_cast<real>(4.4956349206349206)*v(5)*v(5);
+    real TV2 = static_cast<real>(1.3706349206349206)*v(2)*v(2) - static_cast<real>(10.119246031746032)*v(2)*v(3) + static_cast<real>(13.476785714285714)*v(2)*v(4) - static_cast<real>(7.7275793650793651)*v(2)*v(5) + static_cast<real>(1.6287698412698413)*v(2)*v(6) + static_cast<real>(20.825992063492063)*v(3)*v(3) - static_cast<real>(59.340476190476190)*v(3)*v(4) + static_cast<real>(35.535317460317460)*v(3)*v(5) - static_cast<real>(7.7275793650793651)*v(3)*v(6) + static_cast<real>(45.863690476190476)*v(4)*v(4) - static_cast<real>(59.340476190476190)*v(4)*v(5) + static_cast<real>(13.476785714285714)*v(4)*v(6) + static_cast<real>(20.825992063492063)*v(5)*v(5) - static_cast<real>(10.119246031746032)*v(5)*v(6) + static_cast<real>(1.3706349206349206)*v(6)*v(6);
+    real TV3 = static_cast<real>(4.4956349206349206)*v(3)*v(3) - static_cast<real>(27.827579365079365)*v(3)*v(4) + static_cast<real>(32.768452380952381)*v(3)*v(5) - static_cast<real>(17.519246031746032)*v(3)*v(6) + static_cast<real>(3.5871031746031746)*v(3)*v(7) + static_cast<real>(48.159325396825397)*v(4)*v(4) - static_cast<real>(121.42380952380952)*v(4)*v(5) + static_cast<real>(66.868650793650794)*v(4)*v(6) - static_cast<real>(13.935912698412698)*v(4)*v(7) + static_cast<real>(80.613690476190476)*v(5)*v(5) - static_cast<real>(92.257142857142857)*v(5)*v(6) + static_cast<real>(19.685119047619048)*v(5)*v(7) + static_cast<real>(27.492658730158730)*v(6)*v(6) - static_cast<real>(12.077579365079365)*v(6)*v(7) + static_cast<real>(1.3706349206349206)*v(7)*v(7);
+    real TV4 = static_cast<real>(21.412301587301587)*v(4)*v(4) - static_cast<real>(128.86924603174603)*v(4)*v(5) + static_cast<real>(150.56011904761905)*v(4)*v(6) - static_cast<real>(81.644246031746032)*v(4)*v(7) + static_cast<real>(17.128769841269841)*v(4)*v(8) + static_cast<real>(202.49265873015873)*v(5)*v(5) - static_cast<real>(488.50714285714286)*v(5)*v(6) + static_cast<real>(269.53531746031746)*v(5)*v(7) - static_cast<real>(57.144246031746032)*v(5)*v(8) + static_cast<real>(301.86369047619048)*v(6)*v(6) - static_cast<real>(338.17380952380952)*v(6)*v(7) + static_cast<real>(72.393452380952381)*v(6)*v(8) + static_cast<real>(95.825992063492063)*v(7)*v(7) - static_cast<real>(41.369246031746032)*v(7)*v(8) + static_cast<real>(4.4956349206349206)*v(8)*v(8);
     if (TV0==0) TV0 = std::min(TV0,std::min(TV1,std::min(TV2,std::min(TV3,TV4))));
     if (TV4==0) TV4 = std::min(TV0,std::min(TV1,std::min(TV2,std::min(TV3,TV4))));
     if (immL) TV4 = std::max(TV0,std::max(TV1,std::max(TV2,std::max(TV3,TV4))));

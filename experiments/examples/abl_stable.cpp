@@ -15,8 +15,13 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
+    YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
+    if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    auto cs         = config["cs"        ].as<real>();
+    auto buoy_theta = config["buoy_theta"].as<bool>();
+    auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx = 1;
+    real dx = 2;
 
     real        sim_time    = 3600*9+1;
     real        xlen        = 400;
@@ -26,10 +31,13 @@ int main(int argc, char** argv) {
     int         ny_glob     = (int) std::ceil(ylen/dx);
     int         nz          = (int) std::ceil(zlen/dx);
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 4;
-    real        out_freq    = 1800;
+    int         dyn_cycle   = 2;
+    real        out_freq    = 1620;
     real        inform_freq = 10;
-    std::string out_prefix  = "ABL_stable_1m";
+    std::string out_prefix  = std::string("ABL_stable_buoy-") +
+                              (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
+                              (rsst       ? std::string("rsst_cs-")      : std::string("orig_cs-")) +
+                              std::to_string((int)std::round(cs));
     bool        is_restart  = false;
     real        u_g         = 8;
     real        v_g         = 0;
@@ -47,13 +55,17 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "cfl"                                , 0.6          );
     coupler.set_option<bool       >( "enable_gravity"                     , true         );
     coupler.set_option<real       >( "dycore_max_wind"                    , 15           );
-    coupler.set_option<bool       >( "dycore_buoyancy_theta"              , true         );
-    coupler.set_option<real       >( "dycore_cs"                          , 50           );
+    coupler.set_option<bool       >( "dycore_rsst"                        , rsst         );
+    coupler.set_option<bool       >( "dycore_buoyancy_theta"              , buoy_theta   );
+    coupler.set_option<real       >( "dycore_cs"                          , cs           );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false        );
+    coupler.set_option<bool       >( "dycore_use_weno_immersed"           , true         );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , true         );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , true         );
     coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5       );
     coupler.set_option<bool       >( "surface_flux_predict_z0h"           , false        );
+    coupler.set_option<bool       >( "surface_flux_prescribe_wpthetap"    , false        );
+    coupler.set_option<bool       >( "surface_flux_use_fixed_ustar"       , false        );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_equal(nz,zlen) ,
@@ -101,21 +113,15 @@ int main(int argc, char** argv) {
       // Run modules
       {
         using core::Coupler;
+        using modules::geostrophic_wind_forcing_indiv;
         coupler.track_max_wind();
-        auto run_scr       = [&] (Coupler &c) { sfc_flux.change_surface_theta    (c,dt,-scr);          };
-        auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
-        auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
-        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,dt*100,0.1);    };
-        auto run_surf_flux = [&] (Coupler &c) { sfc_flux.apply                   (c,dt);               };
-        auto run_les       = [&] (Coupler &c) { les_closure.apply                (c,dt);               };
-        auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate         (c,dt);               };
-        coupler.run_module( run_scr       , "sfc_cooling"         );
-        coupler.run_module( run_geo       , "geostrophic_forcing" );
-        coupler.run_module( run_dycore    , "dycore"              );
-        coupler.run_module( run_sponge    , "sponge"              );
-        coupler.run_module( run_surf_flux , "surface_fluxes"      );
-        coupler.run_module( run_les       , "les_closure"         );
-        coupler.run_module( run_tavg      , "time_averager"       );
+        coupler.run_module( [&] (Coupler &c) { sfc_flux.change_surface_theta (c,dt,-scr);          } , "sfc_cooling"         );
+        coupler.run_module( [&] (Coupler &c) { geostrophic_wind_forcing_indiv(c,dt,lat_g,u_g,v_g); } , "geostrophic_forcing" );
+        coupler.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt);               } , "dycore"              );
+        coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w       (c,dt,1000,0.05);     } , "sponge"              );
+        coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                (c,dt);               } , "surface_fluxes"      );
+        coupler.run_module( [&] (Coupler &c) { les_closure.apply             (c,dt);               } , "les_closure"         );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate      (c,dt);               } , "time_averager"       );
       }
 
       // Update time step
