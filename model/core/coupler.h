@@ -743,7 +743,7 @@ namespace core {
       auto w = get_data_manager_readonly().get_collapsed<real const>("wvel"); // Get w-velocity
       auto mag = u.createDeviceObject(); // Create array to hold wind speed magnitude
       // Compute wind speed magnitude at each grid point
-      parallel_for( YAKL_AUTO_LABEL() , mag.size() , KOKKOS_LAMBDA (int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , mag.size() , KOKKOS_LAMBDA (int i) {
         mag(i) = std::sqrt( u(i)*u(i) + v(i)*v(i) + w(i)*w(i) );
       });
       // Perform parallel reduction to find maximum wind speed across all MPI processes
@@ -777,7 +777,7 @@ namespace core {
       auto w = get_data_manager_readonly().get_collapsed<real const>("wvel"); // Get w-velocity
       auto mag = u.createDeviceObject(); // Create array to hold wind speed magnitude
       // Compute wind speed magnitude at each grid point
-      parallel_for( YAKL_AUTO_LABEL() , mag.size() , KOKKOS_LAMBDA (int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , mag.size() , KOKKOS_LAMBDA (int i) {
         mag(i) = std::sqrt( u(i)*u(i) + v(i)*v(i) + w(i)*w(i) );
       });
       // Perform parallel reduction to find maximum wind speed and maximum vertical velocity across all MPI processes

@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
     auto buoy_theta = config["buoy_theta"].as<bool>();
     auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx = 2;
+    real dx = 4;
 
     real        sim_time    = 3600*9+1;
     real        xlen        = 400;
