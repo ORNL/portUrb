@@ -17,7 +17,6 @@ namespace modules {
     // names_in   : Vector of field names to compute column averages for (default: {"uvel"})
     // Allocates the column array and computes the column averages for the specified fields
     void set_column( core::Coupler &coupler , std::vector<std::string> names_in = {"uvel"} ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       int nx   = coupler.get_nx();
       int ny   = coupler.get_ny();
@@ -39,7 +38,6 @@ namespace modules {
     // For each specified field, compute the difference between the current column average and the target column average
     //  and adjust the field values accordingly, scaled by dt and time_scale
     void nudge_to_column( core::Coupler &coupler , real dt , real time_scale = 900 ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       int nx   = coupler.get_nx();
       int ny   = coupler.get_ny();
@@ -52,8 +50,8 @@ namespace modules {
       auto state_col_avg = get_column_average( coupler , state ); // Compute current column averages
       YAKL_SCOPE( column , this->column ); // Capture target column averages into local scope
       // Nudge desired fields toward target column averages if not immersed
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
-                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
+                                              KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (immersed(k,j,i) == 0) {
           state(l,k,j,i) += dt * ( column(l,k) - state_col_avg(l,k) ) / time_scale;
         }
@@ -71,7 +69,6 @@ namespace modules {
     // This differs from nudge_to_column in that it nudges each cell toward the target column average
     //  rather than the current column average
     void nudge_to_column_strict( core::Coupler &coupler , real dt , real time_scale = 900 ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       int nx   = coupler.get_nx();
       int ny   = coupler.get_ny();
@@ -83,8 +80,8 @@ namespace modules {
       for (int i=0; i < names.size(); i++) { state.add_field( dm.get<real,3>(names.at(i)) ); }
       YAKL_SCOPE( column , this->column ); // Capture target column averages into local scope
       // Nudge desired fields toward target column averages if not immersed
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
-                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
+                                              KOKKOS_LAMBDA (int l, int k, int j, int i) {
         if (immersed(k,j,i) == 0) {
           state(l,k,j,i) += dt * ( column(l,k) - state(l,k,j,i) ) / time_scale;
         }
@@ -98,7 +95,6 @@ namespace modules {
     // Returns a real2d array of size (names.size() , nz) containing the column average
     template <class MF>
     real2d get_column_average( core::Coupler const &coupler , MF &state ) const requires (MF::view_type::rank()==3) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       int nx_glob = coupler.get_nx_glob(); // Global number of cells in x-direction
       int ny_glob = coupler.get_ny_glob(); // Global number of cells in y-direction
@@ -107,8 +103,8 @@ namespace modules {
       int nz      = coupler.get_nz(); // Number of cells in z-direction
       real2d column_loc("column_loc",names.size(),nz); // Allocate column average array
       // Compute local column sums (avoiding atomics for reproducibility)
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) ,
-                                        KOKKOS_LAMBDA (int l, int k) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) ,
+                                              KOKKOS_LAMBDA (int l, int k) {
         column_loc(l,k) = 0;
         for (int j=0; j < ny; j++) {
           for (int i=0; i < nx; i++) {
@@ -119,7 +115,7 @@ namespace modules {
       // Reduce to global column sums
       column_loc = coupler.get_parallel_comm().all_reduce( column_loc , MPI_SUM , "column_nudging_Allreduce" );
       // Divide by total number of horizontal cells to get averaged column
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) , KOKKOS_LAMBDA (int l, int k) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) , KOKKOS_LAMBDA (int l, int k) {
         column_loc(l,k) /= (nx_glob*ny_glob);
       });
       return column_loc;

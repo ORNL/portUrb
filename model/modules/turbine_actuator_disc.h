@@ -76,7 +76,6 @@ namespace modules {
                         real                  base_loc_x  ,
                         real                  base_loc_y  ,
                         RefTurbine    const & ref_turbine ) {
-        using yakl::parallel_for;
         using yakl::SimpleBounds;
         auto i_beg  = coupler.get_i_beg();  // Get the beginning x-direction index for this MPI task
         auto j_beg  = coupler.get_j_beg();  // Get the beginning y-direction index for this MPI task
@@ -120,7 +119,6 @@ namespace modules {
 
     // Initialize the turbine actuator disc module, adding all the specified turbines from the coupler options
     void init( core::Coupler &coupler ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx    = coupler.get_nx();    // Get the local number of x-direction cells
       auto ny    = coupler.get_ny();    // Get the local number of y-direction cells
@@ -187,7 +185,6 @@ namespace modules {
     //   thrust and torque forces. Keep traces of the power, yaw angle, and inflow wind speed normal to the turbine plane.
     // Injects a portion of the unused thrust energy back into the flow as SGS/unresolved TKE.
     void apply( core::Coupler & coupler , float dt ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx    = coupler.get_nx   ();  // Get the local number of x-direction cells
       auto ny    = coupler.get_ny   ();  // Get the local number of y-direction cells
@@ -211,7 +208,7 @@ namespace modules {
       float3d tend_v  ("tend_v"  ,nz,ny,nx);
       float3d tend_w  ("tend_w"  ,nz,ny,nx);
       float3d tend_tke("tend_tke",nz,ny,nx);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         tend_u  (k,j,i) = 0;
         tend_v  (k,j,i) = 0;
         tend_w  (k,j,i) = 0;
@@ -244,7 +241,7 @@ namespace modules {
           float3d uvel_3d          ("uvel_3d"          ,nz,ny,nx);  // For determining upstream direction
           float3d vvel_3d          ("vvel_3d"          ,nz,ny,nx);  // For determining upstream direction
           // Local MPI task's contribution to upstream wind direction
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             // Initialize weights to zero
             disk_weight_angle(k,j,i) = 0;
             disk_weight_proj (k,j,i) = 0;
@@ -304,7 +301,7 @@ namespace modules {
             };
             auto use_thrust_shape = coupler.get_option<bool>("turbine_thrust_shape",false);
             // Compute the local MPI task's contribution to the disk projection and sampling weights
-            parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_z,num_y,num_x) , KOKKOS_LAMBDA (int k, int j, int i) {
+            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_z,num_y,num_x) , KOKKOS_LAMBDA (int k, int j, int i) {
               // Initial point in the y-z plane facing the negative x direction
               float x = -xr              + (2*xr             *i)/(num_x-1); // Compute reference x location
               float y = -rad*(1+decay/2) + (2*rad*(1+decay/2)*j)/(num_y-1); // Compute reference y location
@@ -362,7 +359,7 @@ namespace modules {
           float3d samp_u("samp_u",nz,ny,nx);  // u-velocity sampled at the upstream disk
           float3d samp_v("samp_v",nz,ny,nx);  // v-velocity sampled at the upstream disk
           // Compute local MPI task's contribution to normalized weights and sampled velocities
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             if (disk_weight_proj(k,j,i) > 1.e-10) {
               disk_weight_angle(k,j,i) /= disk_weight_proj(k,j,i);
               disk_weight_proj (k,j,i) /= disk_proj_tot;
@@ -392,7 +389,7 @@ namespace modules {
           float C_Q       = rot_speed == 0 ? 0 : C_P * mag0 / (rot_speed * rad);              // Torque coefficient
           float C_TKE     = coupler.get_option<real>("turbine_f_TKE",0.25) * (C_T - C_P);     // TKE injection coefficient
           // Application of disk onto u, v, w, and TKE tendencies
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             if (disk_weight_proj(k,j,i) > 0) {
               // If normal wind is negative, don't do anything.
               if (uvel(k,j,i)*cos_yaw + vvel(k,j,i)*sin_yaw > 0) {
@@ -425,7 +422,7 @@ namespace modules {
       } // for (int iturb = 0; iturb < turbine_group.turbines.size(); iturb++)
 
       // Apply accumulated tendencies to the flow field
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         uvel(k,j,i) += dt * tend_u  (k,j,i);
         vvel(k,j,i) += dt * tend_v  (k,j,i);
         wvel(k,j,i) += dt * tend_w  (k,j,i);
@@ -442,7 +439,6 @@ namespace modules {
                             RefTurbine    const & ref_turbine ,
                             real                & avg_u       ,
                             real                & avg_v       ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto  nx         = coupler.get_nx  ();     // Get the local number of x-direction cells
       auto  ny         = coupler.get_ny  ();     // Get the local number of y-direction cells
@@ -503,7 +499,7 @@ namespace modules {
       vdisk = 0;
       real r_nx_ny = 1./(nx_glob*ny_glob);  // Reciprocal of total number of horizontal cells
       // Compute local MPI task's contribution to disk-averaged velocities
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         if (shp(k) > 0) {
           Kokkos::atomic_add( &udisk(j,i) , shp(k)*uvel(k,j,i)*r_nx_ny );
           Kokkos::atomic_add( &vdisk(j,i) , shp(k)*vvel(k,j,i)*r_nx_ny );

@@ -16,7 +16,6 @@ namespace custom_modules {
                                      real            conc        ,
                                      real            wvel        ,
                                      std::string     tracer_name ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     using yakl::componentwise::operator/;  // Allows use of '/' on yakl::Array objects
     using yakl::componentwise::operator-;  // Allows use of '-' on yakl::Array objects
@@ -37,7 +36,7 @@ namespace custom_modules {
     real x0       = (x1+x2)/2;
     real y0       = (y1+y2)/2;
     real sigma    = (x2-x1)/4;
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       real x = (i_beg+i+0.5)*dx;
       real y = (j_beg+j+0.5)*dy;
       real z = zmid(k);

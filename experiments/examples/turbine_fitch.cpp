@@ -134,7 +134,6 @@ int main(int argc, char** argv) {
       auto ghost_col = dycore.compute_average_ghost_column( coupler );
 
       {
-        using yakl::parallel_for;
         using yakl::SimpleBounds;
         yakl::SimpleNetCDF nc;
         nc.open("/lustre/storm/nwp501/scratch/imn/turbine_coarse_z0_0.000010.nc",yakl::NETCDF_MODE_READ);
@@ -148,7 +147,7 @@ int main(int argc, char** argv) {
         auto nx    = coupler.get_nx();
         auto ny    = coupler.get_ny();
         auto nz    = coupler.get_nz();
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           uvel(k,j,i) = noturb_u(iwind,k);
           vvel(k,j,i) = 0;
           wvel(k,j,i) = 0;

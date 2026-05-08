@@ -20,7 +20,6 @@ namespace modules {
 
 
     void init( core::Coupler & coupler ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx           = coupler.get_nx();  // Get local number of grid points in x-direction
       auto ny           = coupler.get_ny();  // Get local number of grid points in y-direction
@@ -45,18 +44,17 @@ namespace modules {
       dm.get<real,2>("surface_flux_sfc_buoy_flux") = 0;
       dm.register_and_allocate<real>("surface_flux_imm_theta",{nz+2*hs,ny+2*hs,nx+2*hs});
       auto imm_theta = dm.get<real,3>("surface_flux_imm_theta");
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         imm_theta(hs+k,hs+j,hs+i) = state(idT,k,j,i);
       });
       core::MultiField<real,3> fields;
       fields.add_field(imm_theta);
       coupler.halo_exchange( fields , hs );
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int j, int i) {
         imm_theta(0    ,j,i) = imm_theta(1      ,j,i);
         imm_theta(hs+nz,j,i) = imm_theta(hs+nz-1,j,i);
       });
       coupler.register_write_output_module( [=] (core::Coupler &coupler , yakl::SimplePNetCDF &nc) {
-        using yakl::parallel_for;
         using yakl::SimpleBounds;
         auto nz        = coupler.get_nz();
         auto ny        = coupler.get_ny();
@@ -70,7 +68,7 @@ namespace modules {
         nc.create_var<real>( "surface_flux_imm_theta" , {"zp2","y","x"} );
         nc.enddef();
         real3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           imm_theta_loc(k,j,i) = imm_theta(k,hs+j,hs+i);
         });
         std::vector<MPI_Offset> start = {(MPI_Offset)0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
@@ -87,7 +85,7 @@ namespace modules {
         real3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
         std::vector<MPI_Offset> start = {(MPI_Offset)0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
         nc.read_all( imm_theta_loc , "surface_flux_imm_theta" , start );
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           imm_theta(k,hs+j,hs+i) = imm_theta_loc(k,j,i);
         });
         core::MultiField<real,3> fields;
@@ -104,7 +102,6 @@ namespace modules {
     // dt      : Timestep size in seconds
     void apply( core::Coupler &coupler   ,
                 real dt                  ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx          = coupler.get_nx();  // Get local number of grid points in x-direction
       auto ny          = coupler.get_ny();  // Get local number of grid points in y-direction
@@ -151,7 +148,7 @@ namespace modules {
       // Compute surface flux tendencies using Monin-Obukhov similarity theory
       // This applies surface friction to neighboring cells if they are the surface or if they are
       //   immersed. 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real u  = state(idU,k,j,i);  // u-velocity at this grid point
         real v  = state(idV,k,j,i);  // v-velocity at this grid point
         real w  = state(idW,k,j,i);  // w-velocity at this grid point
@@ -282,7 +279,7 @@ namespace modules {
       });
 
       // Apply the accumulated tendencies to the state variables
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         state(idU,k,j,i) += dt*tend_u (k,j,i);
         state(idV,k,j,i) += dt*tend_v (k,j,i);
         state(idW,k,j,i) += dt*tend_w (k,j,i);
@@ -362,13 +359,12 @@ namespace modules {
 
 
     void change_surface_theta( core::Coupler & coupler , real dt , real rate ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       int  nx           = coupler.get_nx();  // Get the number of grid points in the x-direction
       int  ny           = coupler.get_ny();  // Get the number of grid points in the y-direction
       auto &dm          = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
       auto imm_theta    = dm.get<real,3>("surface_flux_imm_theta");
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int j, int i) {
         imm_theta(0,j,i) += dt*rate;
       });
     }
@@ -382,7 +378,6 @@ namespace modules {
     void convert_dynamics_to_coupler( core::Coupler &coupler ,
                                       realConst4d    state   ,
                                       realConst4d    tracers ) const {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto  nx          = coupler.get_nx();                     // Number of cells in x-direction (not including halos)
       auto  ny          = coupler.get_ny();                     // Number of cells in y-direction (not including halos)
@@ -406,7 +401,7 @@ namespace modules {
       auto tracer_names = coupler.get_tracer_names();
       for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real,3>(tracer_names.at(tr)) ); }
       // Loop over all grid cells to compute dry density, velocities, temperature, and store in coupler arrays
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real rho   = state(idR,k,j,i);              // Total density
         real u     = state(idU,k,j,i);              // u-velocity
         real v     = state(idV,k,j,i);              // v-velocity
@@ -437,7 +432,6 @@ namespace modules {
     void convert_coupler_to_dynamics( core::Coupler const &coupler ,
                                       real4d              &state   ,
                                       real4d              &tracers ) const {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto  nx          = coupler.get_nx();                    // Number of cells in x-direction (not including halos)
       auto  ny          = coupler.get_ny();                    // Number of cells in y-direction (not including halos)
@@ -461,7 +455,7 @@ namespace modules {
       auto tracer_names = coupler.get_tracer_names(); // Get the tracer names
       for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real const,3>(tracer_names.at(tr)) ); }
       // Loop over all grid cells to compute dynamics state and tracers arrays from coupler data
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real rho_d = dm_rho_d(k,j,i);                         // Dry air density
         real u     = dm_uvel (k,j,i);                         // u-velocity
         real v     = dm_vvel (k,j,i);                         // v-velocity

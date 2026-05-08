@@ -11,8 +11,7 @@
 namespace custom_modules {
 
   inline void sc_init( core::Coupler & coupler ) {
-    using yakl::c::parallel_for;
-    using yakl::c::SimpleBounds;
+    using yakl::SimpleBounds;
     // Grid and variable parameters
     auto nx        = coupler.get_nx();
     auto ny        = coupler.get_ny();
@@ -112,14 +111,14 @@ namespace custom_modules {
       auto t1 = std::chrono::high_resolution_clock::now();
       if (coupler.is_mainproc()) std::cout << "*** Beginning setup ***" << std::endl;
       float4d zmesh("zmesh",ny,nx,nqpoints,nqpoints);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ny,nx,nqpoints,nqpoints) ,
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ny,nx,nqpoints,nqpoints) ,
                                         KOKKOS_LAMBDA (int j, int i, int jj, int ii) {
         real x           = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
         real y           = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
         zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
         if (zmesh(j,i,jj,ii) == 0) zmesh(j,i,jj,ii) = -1;
       });
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d        (k,j,i) = 0;
         dm_uvel         (k,j,i) = 0;
         dm_vvel         (k,j,i) = 0;
@@ -168,7 +167,7 @@ namespace custom_modules {
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
       auto u_g = coupler.get_option<real>("geostrophic_u",10.);
       auto v_g = coupler.get_option<real>("geostrophic_v",0.);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = 0;
         dm_uvel (k,j,i) = 0;
         dm_vvel (k,j,i) = 0;
@@ -205,7 +204,7 @@ namespace custom_modules {
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
       auto u_g = coupler.get_option<real>("geostrophic_u",8.);
       auto v_g = coupler.get_option<real>("geostrophic_v",0.);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = 0;
         dm_uvel (k,j,i) = 0;
         dm_vvel (k,j,i) = 0;
@@ -246,7 +245,7 @@ namespace custom_modules {
       real T  = coupler.get_option<real>( "constant_temp"  , 300. );
       real p  = coupler.get_option<real>( "constant_press" , 1.e5 );
       real r  = p/(R_d*T);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = r;
         dm_uvel (k,j,i) = u;
         dm_vvel (k,j,i) = v;
@@ -265,7 +264,7 @@ namespace custom_modules {
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
       auto u_g = coupler.get_option<real>("geostrophic_u",10.);
       auto v_g = coupler.get_option<real>("geostrophic_v",0. );
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = 0;
         dm_uvel (k,j,i) = 0;
         dm_vvel (k,j,i) = 0;
@@ -304,7 +303,7 @@ namespace custom_modules {
       real uref     = coupler.get_option<real>("hub_height_wind_mag",12); // Velocity at hub height
       real href     = coupler.get_option<real>("turbine_hub_height",90);  // Height of hub / center of windmills
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = 0;
         dm_uvel (k,j,i) = 0;
         dm_vvel (k,j,i) = 0;
@@ -387,7 +386,7 @@ namespace custom_modules {
       auto c_qv = KOKKOS_LAMBDA (real z) -> real { return interp_host( shost_height , shost_qv , z ); };
       using modules::integrate_hydrostatic_pressure_gll_temp_qv;
       auto pressGLL = integrate_hydrostatic_pressure_gll_temp_qv(c_T,c_qv,zint,dz,p0,grav,R_d,R_v).createDeviceCopy();
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_rho_d(k,j,i) = 0;
         dm_uvel (k,j,i) = 0;
         dm_vvel (k,j,i) = 0;
@@ -446,7 +445,7 @@ namespace custom_modules {
     auto imm_prop  = dm.get<real,3>("immersed_proportion_halos");
     auto imm_rough = dm.get<real,3>("immersed_roughness_halos" );
     auto sfc_rough = dm.get<real,2>("surface_roughness_halos"  );
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
       imm_prop (      kk,j,i) = 1;
       imm_rough(      kk,j,i) = sfc_rough(j,i);
       imm_prop (hs+nz+kk,j,i) = 0;

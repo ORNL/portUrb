@@ -22,7 +22,6 @@ namespace modules {
                                 int                        cells_x2 = 0 ,
                                 int                        cells_y1 = 0 ,
                                 int                        cells_y2 = 0 ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     using yakl::componentwise::operator/;  // Allows componentwise '/' operator on yakl::Array
     using yakl::componentwise::operator-;  // Allows componentwise '-' operator on yakl::Array
@@ -44,7 +43,7 @@ namespace modules {
       fields_prec.add_field( dm_prec.get<real const,3>(vnames.at(i)) );
     }
     // Perform the sponge operation
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(numvars,nz,ny,nx) , KOKKOS_LAMBDA (int l, int k, int j, int i) {
       real weight = 0;
       if (i_beg+i < cells_x1) {
         int nfull = cells_x1/3;     // Full weight for a third of the sponge region

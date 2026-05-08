@@ -56,7 +56,6 @@ namespace modules {
     // Call this before the dynamics module's init so that tracers are registered properly
     // Also allocates non-tracer microphysics variable: precl
     void init(core::Coupler &coupler) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
 
       int nx   = coupler.get_nx();  // Number of local grid cells in the x-direction
@@ -80,7 +79,7 @@ namespace modules {
       auto rho_p = dm.get<real,3>("precip_liquid");
       auto precl = dm.get<real,2>("precl"        );
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         rho_v(k,j,i) = 0;
         rho_c(k,j,i) = 0;
         rho_p(k,j,i) = 0;
@@ -108,7 +107,6 @@ namespace modules {
     // coupler : Reference to the coupler object
     // dt : Time step size in seconds
     void time_step( core::Coupler &coupler , real dt ) const {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
 
       auto &dm = coupler.get_data_manager_readwrite(); // Get the coupler's data manager for read/write access
@@ -143,7 +141,7 @@ namespace modules {
       real p0   = this->p0;    // Reference pressure
 
       // Compute the inputs to kessler(...)
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
         zmid    (k,i) = zmid_in(k);                 // Expand zmid to 2-D for kessler
         qv      (k,i) = rho_v(k,i) / rho_dry(k,i);  // water vapor dry mixing ratio
         qc      (k,i) = rho_c(k,i) / rho_dry(k,i);  // cloud liquid dry mixing ratio
@@ -163,7 +161,7 @@ namespace modules {
       kessler(theta, qv, qc, qr, rho_dry, precl, zmid, exner, dt, R_d, cp_d, p0, no_rain);
 
       // Post-process microphysics changes back to the coupler state
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
         rho_v(k,i) = qv(k,i)*rho_dry(k,i);     // Water vapor density
         rho_c(k,i) = qc(k,i)*rho_dry(k,i);     // Cloud liquid density
         rho_r(k,i) = qr(k,i)*rho_dry(k,i);     // Precip liquid density
@@ -246,7 +244,6 @@ namespace modules {
                  real2d const &qr, realConst2d rho,
                  real1d const &precl, realConst2d z, realConst2d pk, real dt,
                  real Rd, real cp, real p0, bool no_rain) const {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
 
       int nz   = theta.extent(0);
@@ -265,7 +262,7 @@ namespace modules {
       real2d velqr("velqr",nz  ,ncol);
       real2d dt2d ("dt2d" ,nz-1,ncol);
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
         r    (k,i) = 0.001_fp * rho(k,i);
         rhalf(k,i) = sqrt( rho(0,i) / rho(k,i) );
         pc   (k,i) = 3.8_fp / ( pow( pk(k,i) , cp/Rd ) * psl );
@@ -298,7 +295,7 @@ namespace modules {
       for (int nt=0; nt < rainsplit; nt++) {
 
         // Sedimentation term using upstream differencing
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           if (k == 0) {
             // Precipitation rate (m/s)
             precl(i) = precl(i) + rho(0,i) * qr(0,i) * velqr(0,i) / rhoqr;
@@ -312,7 +309,7 @@ namespace modules {
         });
 
         // Adjustment terms
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
           // Autoconversion and accretion rates following KW eq. 2.13a,b
           real qrprod = qc(k,i) - ( qc(k,i)-dt0*std::max( 0.001_fp * (qc(k,i)-0.001_fp) , 0._fp ) ) /
                                   ( 1 + dt0 * 2.2_fp * pow( qr(k,i) , 0.875_fp ) );

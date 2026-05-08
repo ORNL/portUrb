@@ -16,7 +16,6 @@ namespace modules {
   //   geostrophic_wind_forcing_specified routine.
   // This routine applyies geostrophic forcing to the overall model column rather than each individual cell.
   inline real2d geostrophic_wind_forcing( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto nz      = coupler.get_nz();       // number of vertical levels
     auto ny      = coupler.get_ny();       // number of local cells in the y-direction
@@ -34,7 +33,7 @@ namespace modules {
     real2d col("col",nfld,nz);  // Allocate averaged column array for u and v velocities
     real r_nx_ny = 1. / (ny_glob*nx_glob); // precompute reciprocal of total global horizontal cells
     // Compute local contributions to the column-averaged velocities
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nfld,nz) , KOKKOS_LAMBDA (int v, int k) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nfld,nz) , KOKKOS_LAMBDA (int v, int k) {
       col(v,k) = 0;
       for (int j=0; j < ny; j++) {
         for (int i=0; i < nx; i++) {
@@ -46,7 +45,7 @@ namespace modules {
     // Reduce across all MPI ranks to get the global column-averaged velocities
     col = coupler.get_parallel_comm().all_reduce( col , MPI_SUM , "" );
     // Apply geostrophic forcing to the u and v velocity fields based on averaged column forcing
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       uvel(k,j,i) += dt*( fcor*(col(idV,k)-v_g));
       vvel(k,j,i) += dt*(-fcor*(col(idU,k)-u_g));
     });
@@ -65,7 +64,6 @@ namespace modules {
   // This routine applies geostrophic forcing to the overall model column rather than each individual cell.
   inline void geostrophic_wind_forcing_specified( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ,
                                                   real2d const &col ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto nz      = coupler.get_nz();       // number of vertical levels
     auto ny      = coupler.get_ny();       // number of local cells in the y-direction
@@ -79,7 +77,7 @@ namespace modules {
     int constexpr idU  = 0;  // label for u-velocity in the column-averaged array
     int constexpr idV  = 1;  // label for v-velocity in the column-averaged array
     // Apply geostrophic forcing to the u and v velocity fields based on averaged column forcing
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       uvel(k,j,i) += dt*( fcor*(col(idV,k)-v_g));
       vvel(k,j,i) += dt*(-fcor*(col(idU,k)-u_g));
     });
@@ -94,7 +92,6 @@ namespace modules {
   // v_g     : Geostrophic meridional wind speed in m/s
   // This routine applies geostrophic forcing to each individual cell rather than the overall model column.
   inline void geostrophic_wind_forcing_indiv( core::Coupler &coupler , real dt , real lat_g , real u_g , real v_g ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto nz      = coupler.get_nz();        // number of vertical levels
     auto ny      = coupler.get_ny();        // number of local cells in the y-direction
@@ -107,7 +104,7 @@ namespace modules {
     auto imm     = dm.get<real const,3>("immersed_proportion");  // Get the immersed proportion field
     real fcor    = 2*7.2921e-5*std::sin(lat_g/180*M_PI);  // Compute coriolis parameter
     // Apply geostrophic forcing to the u and v velocity fields for each individual cell
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       uvel(k,j,i) += dt*( fcor*(vvel(k,j,i)-v_g));
       vvel(k,j,i) += dt*(-fcor*(uvel(k,j,i)-u_g));
     });

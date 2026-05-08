@@ -10,7 +10,6 @@
 namespace custom_modules {
 
   inline void sc_perturb( core::Coupler & coupler ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto nx       = coupler.get_nx();
     auto ny       = coupler.get_ny();
@@ -65,7 +64,7 @@ namespace custom_modules {
     } else if (coupler.get_option<std::string>("init_data") == "cubes_periodic") {
 
       real u0 = 10;
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         if (dm_imm(k,j,i) == 0) {
           yakl::Random rng(3*(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + i_beg+i));
           dm_uvel(k,j,i) += rng.genFP<real>(-0.1,0.1)*u0;
@@ -79,7 +78,7 @@ namespace custom_modules {
     } else if (coupler.get_option<std::string>("init_data") == "channel") {
 
       real u0 = coupler.get_option<real>( "constant_uvel" , 1. );
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         if (k >= 1.*nz/16. && k <= 15.*nz/16.) {
           yakl::Random rng(3*(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + i_beg+i));
           dm_uvel(k,j,i) += rng.genFP<real>(-0.1,0.1)*u0;
@@ -90,7 +89,7 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "nrel_5mw_convective") {
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z    = zmid(k);
         real ztop = 50;
@@ -99,7 +98,7 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "shallow_convection") {
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
         if (z <= 1600) dm_temp (k,j,i) += rand.genFP<real>(-0.1,0.1);
@@ -108,7 +107,7 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
         if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
@@ -116,7 +115,7 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_convective") {
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
         if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
@@ -124,7 +123,7 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_convective2") {
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
         if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
@@ -133,7 +132,7 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable") {
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
         if (z <= 50) dm_temp(k,j,i) += rand.genFP<real>(-0.10,0.10);
@@ -141,7 +140,7 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable_bvf") {
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
         if (z <= 80) dm_temp(k,j,i) += rand.genFP<real>(-0.5,0.5);
@@ -153,7 +152,7 @@ namespace custom_modules {
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
 
       auto wind = coupler.get_option<real>("hub_height_wind_mag");
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z    = zmid(k);
         real ztop = 100;
@@ -173,7 +172,7 @@ namespace custom_modules {
       real rady  = 10000;
       real radz  = 1500;
       real amp   = 3;
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real Tpert = 0;
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {

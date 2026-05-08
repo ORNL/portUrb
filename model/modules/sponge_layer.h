@@ -12,7 +12,6 @@ namespace modules {
   // time_scale  : Time scale for sponge layer damping in seconds
   // top_prop    : Proportion of the domain height to apply the sponge layer over
   inline void sponge_layer( core::Coupler &coupler , real dt , real time_scale , real top_prop ) {
-    using yakl::parallel_for;
     using yakl::Bounds;
 
     auto ny_glob = coupler.get_ny_glob(); // global number of cells in y direction
@@ -53,7 +52,7 @@ namespace modules {
     real2d col("col",nfld,nzloc);  // Allocate array to hold horizontal averages of u, v, and T
     real r_nx_ny = 1./(nx_glob*ny_glob);  // pre-compute reciprocal of total number of horizontal cells
     // Compute local contributions to horizontal averages
-    parallel_for( YAKL_AUTO_LABEL() , Bounds<2>(nfld,{k1,nz-1}) , KOKKOS_LAMBDA (int v, int k) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , Bounds<2>(nfld,{k1,nz-1}) , KOKKOS_LAMBDA (int v, int k) {
       col(v,k-k1) = 0;
       for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx; i++) {
@@ -68,7 +67,7 @@ namespace modules {
     col = coupler.get_parallel_comm().all_reduce( col , MPI_SUM , "" );
 
     // Apply sponge layer to relax u, v, and T toward their horizontal averages and w toward zero
-    parallel_for( YAKL_AUTO_LABEL() , Bounds<3>({k1,nz-1},ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , Bounds<3>({k1,nz-1},ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       real z = zmid(k);
       if (z > z1) {
         real factor = std::pow((z-z1)/(z2-z1),p) * dt / time_scale;
@@ -88,7 +87,6 @@ namespace modules {
   // time_scale  : Time scale for sponge layer damping in seconds
   // top_prop    : Proportion of the domain height to apply the sponge layer over
   inline void sponge_layer_w( core::Coupler &coupler , real dt , real time_scale , real top_prop ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto nz   = coupler.get_nz  ();    // number of cells in z direction
     auto ny   = coupler.get_ny  ();    // local number of cells in y direction
@@ -99,7 +97,7 @@ namespace modules {
     auto dm_w = dm.get<real,3>("wvel"); // Get 3-D w-velocity array from DataManager
     real z1 = zlen*(1-top_prop);  // bottom height of sponge layer
     real p  = 2;                  // exponent for sponge layer relaxation profile
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       real z = zmid(k);
       if (z > z1) {
         real factor = std::pow((z-z1)/(zlen-z1),p) * dt / time_scale;

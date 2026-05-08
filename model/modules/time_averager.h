@@ -80,7 +80,6 @@ namespace modules {
 
     // Accumulate time-averaged fields since the last reset
     void accumulate( core::Coupler &coupler , real dt ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx_glob    = coupler.get_nx_glob();  // Get the global number of cells in the x-direction
       auto ny_glob    = coupler.get_ny_glob();  // Get the global number of cells in the y-direction
@@ -106,7 +105,7 @@ namespace modules {
       }
       int nfields = fields.get_num_fields();
       // Update time-averaged fields using moving average formula
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         avg_u  (k,j,i) = inertia*avg_u  (k,j,i) + (1-inertia)*uvel(k,j,i);
         avg_v  (k,j,i) = inertia*avg_v  (k,j,i) + (1-inertia)*vvel(k,j,i);
         avg_w  (k,j,i) = inertia*avg_w  (k,j,i) + (1-inertia)*wvel(k,j,i);
@@ -127,7 +126,7 @@ namespace modules {
         auto avg_vp_wp  = dm.get<real,3>("avg_vp_wp"  );
         auto avg_wp_wp  = dm.get<real,3>("avg_wp_wp"  );
         real tau = coupler.get_option<real>("correlation_time_scale");
-        parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           corr_avg_u(k,j,i) = (tau-dt)/tau*corr_avg_u(k,j,i) + dt/tau*uvel(k,j,i);
           corr_avg_v(k,j,i) = (tau-dt)/tau*corr_avg_v(k,j,i) + dt/tau*vvel(k,j,i);
           corr_avg_w(k,j,i) = (tau-dt)/tau*corr_avg_w(k,j,i) + dt/tau*wvel(k,j,i);

@@ -17,7 +17,6 @@ namespace modules {
                                                                real            u0       ,
                                                                real            v0       ,
                                                                real            tau = 10 ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto dz      = coupler.get_dz  ().createHostCopy(); // dz on host to find vertical index
     auto zint    = coupler.get_zint().createHostCopy(); // zint on host to find vertical index
@@ -75,7 +74,7 @@ namespace modules {
     // Apply the wind forcing uniformly to nudge the domain-averaged wind toward the target wind
     real u_forcing = dt / tau*(u0-u);
     real v_forcing = dt / tau*(v0-v);
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       uvel(k,j,i) += u_forcing;
       vvel(k,j,i) += v_forcing;
     });
@@ -100,7 +99,6 @@ namespace modules {
                                                               real            u0       ,
                                                               real            v0       ,
                                                               real            tau = 10 ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto nz   = coupler.get_nz();  // number of vertical levels
     auto ny   = coupler.get_ny();  // local number of cells in y-direction
@@ -110,7 +108,7 @@ namespace modules {
     auto vvel = dm.get<real,3>("vvel");   // get v-velocity field
     real u_forcing = dt / tau*(u0-u_in);  // compute u forcing
     real v_forcing = dt / tau*(v0-v_in);  // compute v forcing
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       uvel(k,j,i) += u_forcing;
       vvel(k,j,i) += v_forcing;
     });
@@ -128,7 +126,6 @@ namespace modules {
                                                  real            dt      ,
                                                  real            utend   ,
                                                  real            vtend   ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto nz   = coupler.get_nz();  // number of vertical levels
     auto ny   = coupler.get_ny();  // local number of cells in y-direction
@@ -138,7 +135,7 @@ namespace modules {
     auto vvel = dm.get<real,3>("vvel");  // get v-velocity field
     auto imm  = dm.get<real,3>("immersed_proportion");
     // Apply the specified wind tendencies uniformly
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       if (imm(k,j,i) == 0) {
         uvel(k,j,i) += dt*utend;
         vvel(k,j,i) += dt*vtend;
@@ -159,7 +156,6 @@ namespace modules {
                                                                real            u0      ,
                                                                real            v0      ,
                                                                real            tau     ) {
-    using yakl::parallel_for;
     using yakl::SimpleBounds;
     auto dx      = coupler.get_dx();
     auto dy      = coupler.get_dy();
@@ -194,7 +190,7 @@ namespace modules {
     uvel_obs  = 0;
     vvel_obs  = 0;
     count_obs = 0;
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       if (k >= k1 && k <= k2 && j >= j1 && j <= j2 && i == i0) {
         uvel_obs (k,j,i) = uvel(k,j,i)*dz(k);
         vvel_obs (k,j,i) = vvel(k,j,i)*dz(k);
@@ -206,7 +202,7 @@ namespace modules {
     auto count_sum = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(count_obs) , MPI_SUM , "");
     real u = uvel_sum / count_sum;
     real v = vvel_sum / count_sum;
-    parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
       if (imm(k,j,i) == 0) {
         uvel(k,j,i) += dt/tau*(u0-u);
         if (force_v) vvel(k,j,i) += dt/tau*(v0-v);

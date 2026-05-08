@@ -146,7 +146,6 @@ namespace modules {
                         real                  base_loc_y  ,
                         RefTurbine    const & ref_turbine ,
                         bool                  apply_thrust = true ) {
-        using yakl::parallel_for;
         using yakl::SimpleBounds;
         auto i_beg  = coupler.get_i_beg();
         auto j_beg  = coupler.get_j_beg();
@@ -220,7 +219,7 @@ namespace modules {
           real tower_base_rad = ref_turbine.tower_base_rad;
           real tower_top_rad  = ref_turbine.tower_top_rad ;
           int N = 10;
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             int count = 0;
             for (int kk=0; kk < N; kk++) {
               for (int jj=0; jj < N; jj++) {
@@ -297,7 +296,6 @@ namespace modules {
 
 
     void init( core::Coupler &coupler ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx   = coupler.get_nx  ();
       auto ny   = coupler.get_ny  ();
@@ -465,7 +463,6 @@ namespace modules {
 
 
     void apply( core::Coupler & coupler , F dt ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx              = coupler.get_nx   ();
       auto ny              = coupler.get_ny   ();
@@ -492,7 +489,7 @@ namespace modules {
       yakl::Array<F ***,yakl::DeviceSpace> tend_v  ("tend_v"  ,nz,ny,nx);
       yakl::Array<F ***,yakl::DeviceSpace> tend_w  ("tend_w"  ,nz,ny,nx);
       yakl::Array<F ***,yakl::DeviceSpace> tend_tke("tend_tke",nz,ny,nx);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         tend_u         (k,j,i) = 0;
         tend_v         (k,j,i) = 0;
         tend_w         (k,j,i) = 0;
@@ -541,7 +538,7 @@ namespace modules {
             F s0x = base_x - ov*cos_yaw;
             F s0y = base_y - ov*sin_yaw;
             F s0z = hub_height;
-            parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               F imm = 0;
               for (int kk=0; kk < N; kk++) {
                 for (int jj=0; jj < N; jj++) {
@@ -579,7 +576,7 @@ namespace modules {
           yakl::Array<F ***,yakl::DeviceSpace> blade_weight_proj("blade_weight_proj",nz,ny,nx);
           yakl::Array<F ***,yakl::DeviceSpace> uvel_3d          ("uvel_3d"          ,nz,ny,nx);
           yakl::Array<F ***,yakl::DeviceSpace> vvel_3d          ("vvel_3d"          ,nz,ny,nx);
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             disk_weight_angle(k,j,i) = 0;
             disk_weight_proj (k,j,i) = 0;
             disk_weight_samp (k,j,i) = 0;
@@ -624,7 +621,7 @@ namespace modules {
             int num_x = std::ceil(20/dx*xr             *2);
             int num_y = std::ceil(20/dx*rad*(1+decay/2)*2);
             int num_z = std::ceil(20/dx*rad*(1+decay/2)*2);
-            parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_z,num_y,num_x) , KOKKOS_LAMBDA (int k, int j, int i) {
+            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_z,num_y,num_x) , KOKKOS_LAMBDA (int k, int j, int i) {
               // Initial point in the y-z plane facing the negative x direction
               F x = -xr              + (2*xr             *i)/(num_x-1);
               F y = -rad*(1+decay/2) + (2*rad*(1+decay/2)*j)/(num_y-1);
@@ -674,7 +671,7 @@ namespace modules {
               yakl::Array<F ***,yakl::DeviceSpace> blade_1("blade_1",nz,ny,nx);
               yakl::Array<F ***,yakl::DeviceSpace> blade_2("blade_2",nz,ny,nx);
               yakl::Array<F ***,yakl::DeviceSpace> blade_3("blade_3",nz,ny,nx);
-              parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+              yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
                 blade_1(k,j,i) = 0;
                 blade_2(k,j,i) = 0;
                 blade_3(k,j,i) = 0;
@@ -695,7 +692,7 @@ namespace modules {
               F   sin_th1 = std::sin(th1);
               F   sin_th2 = std::sin(th2);
               F   sin_th3 = std::sin(th3);
-              parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_z,num_y,num_x) ,
+              yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_z,num_y,num_x) ,
                                                 KOKKOS_LAMBDA (int k, int j, int i) {
                 // Compute coords for this sample point in reference space
                 F x = -xr  + (2*xr           *i)/(num_x-1);
@@ -801,7 +798,7 @@ namespace modules {
               F r_sum3 = 1./blade_sum(2);
               // Normalize blade weights by sum
               // Compute the max over each cell as the "disk weight" to avoid double counting multiple blades
-              parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+              yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
                 F n1 = blade_1(k,j,i) * r_sum1;
                 F n2 = blade_2(k,j,i) * r_sum2;
                 F n3 = blade_3(k,j,i) * r_sum3;
@@ -810,7 +807,7 @@ namespace modules {
               // Disk weights for projection will be normalized by sum later
             }
             // Compute 19.5m winds for floating motions parameterization
-            parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
+            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
               F x = (i_beg+i+0.5f)*dx;
               F y = (j_beg+j+0.5f)*dy;
               if (std::abs(x-(base_x+upstream_x_offset)) <= rad && std::abs(y-(base_y+upstream_y_offset)) <= rad) {
@@ -855,7 +852,7 @@ namespace modules {
           turbine.mag195_trace.push_back( umag_19_5m ); // Save trace of 19.5m wind speed
           // Blend blades and disk based on grid spacing, and normalize cell angle by projected weights
           if (do_blades) {
-            parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               if (disk_weight_proj(k,j,i) > 1.e-10) disk_weight_angle(k,j,i) /= disk_weight_proj(k,j,i);
               disk_weight_proj (k,j,i) /= disk_proj_tot;
               blade_weight_proj(k,j,i) /= blade_proj_tot;
@@ -871,7 +868,7 @@ namespace modules {
           // Normalize cell angle by projected weights if blades are not used
           yakl::Array<F ***,yakl::DeviceSpace> samp_u("samp_u",nz,ny,nx);
           yakl::Array<F ***,yakl::DeviceSpace> samp_v("samp_v",nz,ny,nx);
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
             if (disk_weight_proj(k,j,i) > 0) {
               if (! do_blades && disk_weight_proj(k,j,i) > 1.e-10) disk_weight_angle(k,j,i) /= disk_weight_proj(k,j,i);
               disk_weight_proj(k,j,i) /= disk_proj_tot;
@@ -986,7 +983,7 @@ namespace modules {
           // Application of disk onto tendencies
           ///////////////////////////////////////////////////
           if (turbine.apply_thrust) {
-            parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               if (disk_weight_proj(k,j,i) > 0) {
                 // This is needed to compute the thrust force based on windmill proportion in each cell
                 F turb_factor = M_PI*rad*rad/(dx*dy*dz(k));
@@ -1029,7 +1026,7 @@ namespace modules {
       // Application of tendencies onto model variables
       ///////////////////////////////////////////////////
       // Update velocities and TKE based on tendencies
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         uvel(k,j,i) += dt * tend_u  (k,j,i);
         vvel(k,j,i) += dt * tend_v  (k,j,i);
         wvel(k,j,i) += dt * tend_w  (k,j,i);

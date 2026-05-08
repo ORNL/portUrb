@@ -137,14 +137,13 @@ int main(int argc, char** argv) {
         real vr = 20*std::sin(29./180.*M_PI);
         real tr = dt*100;
         {
-          using yakl::parallel_for;
           using yakl::SimpleBounds;
           auto smoke = coupler.get_data_manager_readwrite().get<real      ,3>("smoke");
           auto imm   = coupler.get_data_manager_readonly() .get<real const,3>("immersed_proportion");
           auto nx = coupler.get_nx();
           auto ny = coupler.get_ny();
           auto nz = coupler.get_nz();
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
             if (imm(0,j,i) == 0) smoke(0,j,i) += dt*1.0e-4/sim_time;
           });
         }

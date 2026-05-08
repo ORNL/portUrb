@@ -146,7 +146,6 @@ namespace modules {
 
     // Apply thrust and power estimations from all turbines to the flow field
     void apply( core::Coupler & coupler , real dt ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx    = coupler.get_nx   ();  // Local number of cells in the x-direction
       auto ny    = coupler.get_ny   ();  // Local number of cells in the y-direction
@@ -166,7 +165,7 @@ namespace modules {
       real3d tend_u  ("tend_u"  ,nz,ny,nx);
       real3d tend_v  ("tend_v"  ,nz,ny,nx);
       real3d tend_tke("tend_tke",nz,ny,nx);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         tend_u  (k,j,i) = 0;
         tend_v  (k,j,i) = 0;
         tend_tke(k,j,i) = 0;
@@ -190,7 +189,7 @@ namespace modules {
           // Accumulate disk-averaged wind velocity components at the turbine plane
           yakl::ScalarLiveOut<real> u_d(0);
           yakl::ScalarLiveOut<real> v_d(0);
-          parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
             if (prop(k) > 0) {
               Kokkos::atomic_add( &(u_d()) , prop(k)*uvel(k,j,i) );
               Kokkos::atomic_add( &(v_d()) , prop(k)*vvel(k,j,i) );
@@ -208,7 +207,7 @@ namespace modules {
           real pwr     =                 interp( ref_velmag , ref_power       , mag0 );   // Power generation in MW
           real C_TKE   = coupler.get_option<real>("turbine_f_TKE",0.25) * (C_T - C_P);    // TKE coefficient
           // Application of disk onto tendencies
-          parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
             if (prop(k) > 0) {
               real wt = prop(k)*M_PI*rad*rad/(dx*dy*dz(k));
               // Compute tendencies implied by actuator disk thoery; Only apply TKE for disk, not blades
@@ -228,7 +227,7 @@ namespace modules {
       } // for (int iturb = 0; iturb < turbine_group.turbines.size(); iturb++)
 
       // Appoy accumulated tendencies to the flow field
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         uvel(k,j,i) += dt * tend_u  (k,j,i);
         vvel(k,j,i) += dt * tend_v  (k,j,i);
         tke (k,j,i) += dt * tend_tke(k,j,i);
@@ -244,7 +243,6 @@ namespace modules {
                             RefTurbine    const & ref_turbine ,
                             real                & avg_u       ,
                             real                & avg_v       ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx      = coupler.get_nx();      // Local number of cells in the x-direction
       auto ny      = coupler.get_ny();      // Local number of cells in the y-direction
@@ -261,7 +259,7 @@ namespace modules {
       vdisk = 0;
       real r_nx_ny = 1./(nx_glob*ny_glob);  // Reciprocal of total global number of horizontal cells
       // Local contribution to disk-averaged velocities
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         if (prop(k) > 0) {
           Kokkos::atomic_add( &udisk(j,i) , prop(k)*uvel(k,j,i)*r_nx_ny );
           Kokkos::atomic_add( &vdisk(j,i) , prop(k)*vvel(k,j,i)*r_nx_ny );

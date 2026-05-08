@@ -19,7 +19,6 @@ namespace modules {
     // The column averages are computed and stored in the column member variable
     void set_column( core::Coupler &coupler ,
                      std::vector<std::string> names_in = {"density_dry","uvel","vvel","wvel","temp"} ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       int nx   = coupler.get_nx(); // Get number of cells in x-direction
       int ny   = coupler.get_ny(); // Get number of cells in y-direction
@@ -46,7 +45,6 @@ namespace modules {
                                          real prop_x2 = 0.1 ,
                                          real prop_y1 = 0.1 ,
                                          real prop_y2 = 0.1 ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       int  nx_glob = coupler.get_nx_glob(); // Global number of cells in x-direction
       int  ny_glob = coupler.get_ny_glob(); // Global number of cells in y-direction
@@ -63,8 +61,8 @@ namespace modules {
       // Bring the column member variable into local scope for the parallel_for
       YAKL_SCOPE( column , this->column );
       // Apply the sponge towards each edge of the domain
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
-                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
+                                              KOKKOS_LAMBDA (int l, int k, int j, int i) {
         real prop_x = static_cast<real>(i_beg+i)/(nx_glob-1); // This cell's proportional x location in the global domain
         real prop_y = static_cast<real>(j_beg+j)/(ny_glob-1); // This cell's proportional y location in the global domain
         // Use convex weightings determined by the distance into the edge sponge to the fifth power
@@ -99,7 +97,6 @@ namespace modules {
     // Returns a 2-D array holding the column averages for each field in state
     template <class MF>
     real2d get_column_average( core::Coupler const & coupler , MF & state ) const requires (MF::view_type::rank()==3) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       int nx_glob = coupler.get_nx_glob(); // Global number of cells in x-direction
       int ny_glob = coupler.get_ny_glob(); // Global number of cells in y-direction
@@ -108,8 +105,8 @@ namespace modules {
       int nz      = coupler.get_nz();      // Number of cells in z-direction
       real2d column("column",names.size(),nz);  // Allocate the column averages array
       // Compute local summed column for each field
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) ,
-                                        KOKKOS_LAMBDA (int l, int k) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) ,
+                                              KOKKOS_LAMBDA (int l, int k) {
         column(l,k) = 0;
         for (int j=0; j < ny; j++) {
           for (int i=0; i < nx; i++) {
@@ -120,7 +117,7 @@ namespace modules {
       // Accumulate global summed column across all MPI ranks
       column = coupler.get_parallel_comm().all_reduce( column , MPI_SUM , "column_nudging_Allreduce" );
       // Compute the average by dividing by the total number of cells globally
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) , KOKKOS_LAMBDA (int l, int k) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) , KOKKOS_LAMBDA (int l, int k) {
         column(l,k) /= (nx_glob*ny_glob);
       });
       return column; // return the computed column averages

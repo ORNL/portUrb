@@ -99,9 +99,9 @@ int nz = coupler.get_nz();
 int ny = coupler.get_ny();
 int nx = coupler.get_nx();
 yakl::ScalarLiveOut<bool> has_neg(false);
-yakl::c::parallel_for( YAKL_AUTO_LABEL() ,
-                       yakl::c::SimpleBounds<4>(num_fields,nz,ny,nx) ,
-                       KOKKOS_LAMBDA (int l, int k, int j, int i) {
+yakl::parallel_for( YAKL_AUTO_LABEL() ,
+                    yakl::SimpleBounds<4>(num_fields,nz,ny,nx) ,
+                    KOKKOS_LAMBDA (int l, int k, int j, int i) {
   // Index the MultiField object as if it were a single 4-dimensional array
   if ( fields(l,k,j,i) < 0 ) has_neg = true;
 });

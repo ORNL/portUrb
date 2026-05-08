@@ -333,7 +333,6 @@ namespace modules {
 
     // Initialize the turbine actuator disc module, adding all the specified turbines from the coupler options
     void init( core::Coupler &coupler ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx    = coupler.get_nx();    // Get the local number of x-direction cells
       auto ny    = coupler.get_ny();    // Get the local number of y-direction cells
@@ -437,7 +436,6 @@ namespace modules {
     //   thrust and torque forces. Keep traces of the power, yaw angle, and inflow wind speed normal to the turbine plane.
     // Injects a portion of the unused thrust energy back into the flow as SGS/unresolved TKE.
     void apply( core::Coupler & coupler , real dt ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
       auto nx                = coupler.get_nx   ();  // Get the local number of x-direction cells
       auto ny                = coupler.get_ny   ();  // Get the local number of y-direction cells
@@ -507,7 +505,7 @@ namespace modules {
       };
 
       // Allocate tendency arrays for u, v, w and initialize to zero
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_tend_u(k,j,i) = 0;
         dm_tend_v(k,j,i) = 0;
         dm_tend_w(k,j,i) = 0;
@@ -533,8 +531,8 @@ namespace modules {
           int num_z = (int) std::ceil(max_eps/dz*4);
           int num_y = (int) std::ceil(max_eps/dy*4);
           int num_x = (int) std::ceil(max_eps/dx*4);
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z+1,2*num_y+1,2*num_x+1) ,
-                                            KOKKOS_LAMBDA (int iblade, int irad, int kk, int jj, int ii) {
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z+1,2*num_y+1,2*num_x+1) ,
+                                                  KOKKOS_LAMBDA (int iblade, int irad, int kk, int jj, int ii) {
             // Get center point for this Gaussian point projection
             real x      = 0;
             real y      = 0;
@@ -716,7 +714,7 @@ namespace modules {
           num_z = (int) std::ceil(max_eps/dz*4);
           num_y = (int) std::ceil(max_eps/dy*4);
           num_x = (int) std::ceil(max_eps/dx*4);
-          parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z+1,2*num_y+1,2*num_x+1) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(B,nrad,2*num_z+1,2*num_y+1,2*num_x+1) ,
                                             KOKKOS_LAMBDA (int iblade, int irad, int kk, int jj, int ii) {
             // Get center point for this Gaussian point projection
             real x      = 0;
@@ -769,7 +767,7 @@ namespace modules {
       } // for (int iturb = 0; iturb < turbine_group.turbines.size(); iturb++)
 
       // Apply accumulated tendencies to the flow field
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_uvel(k,j,i) += dt * dm_tend_u(k,j,i);
         dm_vvel(k,j,i) += dt * dm_tend_v(k,j,i);
         dm_wvel(k,j,i) += dt * dm_tend_w(k,j,i);
@@ -791,7 +789,7 @@ namespace modules {
             real s0y = by;
             real s0z = H;
             real tower_top = H - fh/2;
-            parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
               real imm = 0;
               for (int kk=0; kk < N; kk++) {
                 for (int jj=0; jj < N; jj++) {

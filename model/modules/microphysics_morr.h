@@ -50,7 +50,6 @@ namespace modules {
     // Initializes the microphysics module within the coupler by registering tracers and persistent variables,
     //   initializing tracers to zero, and setting microphysics-related options in the coupler
     void init(core::Coupler &coupler) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
 
       // hm added new option for hail
@@ -132,7 +131,6 @@ namespace modules {
     // coupler : Reference to the coupler object
     // dt      : Time step length in seconds
     void time_step( core::Coupler &coupler , real dt ) {
-      using yakl::parallel_for;
       using yakl::SimpleBounds;
 
       // Get the dimensions sizes
@@ -198,7 +196,7 @@ namespace modules {
       real cp_d = coupler.get_option<real>("cp_d"); // specific heat at constant pressure for dry air
       real p0   = coupler.get_option<real>("p0"  ); // reference pressure in Pa
 
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
         // Compute dry mixing ratios for water vapor, cloud liquid, rain water, cloud ice, snow, graupel
         qv     (i+1,k+1) = dm_rho_v (k,i)/dm_rho_dry(k,i);
         qc     (i+1,k+1) = dm_rho_c (k,i)/dm_rho_dry(k,i);
@@ -233,7 +231,7 @@ namespace modules {
                 nz, qlsink, precr, preci, precs, precg);
       
       // Convert Morrison 2mom outputs into dynamics coupler state, tracer masses, and mass-weighted number concentrations
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ncol) , KOKKOS_LAMBDA (int k, int i) {
         dm_rho_v (k,i) = qv(i+1,k+1)*dm_rho_dry(k,i);
         dm_rho_c (k,i) = qc(i+1,k+1)*dm_rho_dry(k,i);
         dm_rho_r (k,i) = qr(i+1,k+1)*dm_rho_dry(k,i);
