@@ -4,6 +4,7 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cmap import Colormap
 import re
+import sys
 
 workdir = "/lustre/orion/stf006/scratch/imn/portUrb/build/stable_immweno"
 files = [f"{workdir}/ABL_stable_buoy-rhop_press-orig_cs-350",
@@ -54,6 +55,91 @@ def spectra(T,dx = 1) :
 def get_ind(arr,val) :
     return np.argmin(np.abs(arr-val))
 
+
+fig = plt.figure(figsize=(8,4))
+ax = fig.gca()
+for j in range(nexp) :
+  t   = []
+  zbl = []
+  for k in range(21) :
+    nc   = Dataset(f"{files[j]}_{k:08d}.nc","r")
+    z    = np.array(nc["z"][:])
+    nz   = len(z)
+    rho  = np.array(nc["density_dry"][:,:,:])
+    u    = np.array(nc["uvel"       ][:,:,:])
+    v    = np.array(nc["vvel"       ][:,:,:])
+    w    = np.array(nc["wvel"       ][:,:,:])
+    up   = u - np.mean(u,axis=(1,2))[:,np.newaxis,np.newaxis]
+    vp   = v - np.mean(v,axis=(1,2))[:,np.newaxis,np.newaxis]
+    wp   = w - np.mean(w,axis=(1,2))[:,np.newaxis,np.newaxis]
+    sfc  = np.mean( rho[0,:,:]*np.array(nc["surface_flux_sfc_ustar"][:,:])**2 )
+    tau  = np.mean( rho*np.sqrt((up*wp)**2 + (vp*wp)**2) , axis=(1,2) )
+    kbl2 = 0
+    for l in range(2,nz) :
+      if (tau[l] < 0.05*sfc) :
+        kbl2 = l
+        break
+    kbl1 = max(0,l-1)
+    zbl_loc = 0
+    if (kbl2 > kbl1) :
+      zbl_loc = np.interp( 0.05*sfc , [tau[kbl1],tau[kbl2]] , [z[kbl1],z[kbl2]] )
+    zbl += [0.95*zbl_loc]
+    t   += [k/20*9]
+  ax.plot(t,zbl,color=colors[j],label=labels[j],linestyle=styles[j])
+ax.set_xlim(0,9)
+ax.set_xlabel("Time (hr)")
+ax.set_ylabel(r"Boundary Layer Height ($m$)")
+ax.legend()
+plt.grid()
+plt.tight_layout()
+plt.savefig("ABL_stable_bl_height.png",dpi=600)
+plt.show()
+plt.close()
+
+
+fig = plt.figure(figsize=(8,4))
+ax = fig.gca()
+for j in range(nexp) :
+  t   = []
+  us2 = []
+  for k in range(21) :
+    nc   = Dataset(f"{files[j]}_{k:08d}.nc","r")
+    us2 += [np.mean( np.array( nc["surface_flux_sfc_ustar"][:,:])**2 )]
+    t   += [k/20*9]
+  ax.plot(t,us2,color=colors[j],label=labels[j],linestyle=styles[j])
+ax.set_xlim(0,9)
+ax.set_ylim(bottom=0)
+ax.set_xlabel("Time (hr)")
+ax.set_ylabel(r"$u_{*}^2$ ($m^2/s^2$)")
+ax.legend(loc="lower right",ncol=2)
+plt.grid()
+plt.tight_layout()
+plt.savefig("ABL_stable_ustar.png",dpi=600)
+plt.show()
+plt.close()
+
+
+fig = plt.figure(figsize=(8,4))
+ax = fig.gca()
+for j in range(nexp) :
+  t  = []
+  bf = []
+  for k in range(21) :
+    nc  = Dataset(f"{files[j]}_{k:08d}.nc","r")
+    bf += [np.mean( np.array( nc["surface_flux_sfc_buoy_flux"][:,:]) )]
+    t  += [k/20*9]
+  ax.plot(t,bf,color=colors[j],label=labels[j],linestyle=styles[j])
+ax.set_xlim(0,9)
+ax.set_xlabel("Time (hr)")
+ax.set_ylabel(r"$-g/\theta_0 \overline{u^\prime w^\prime}$ ($m^2/s^3$)")
+ax.legend()
+plt.grid()
+plt.tight_layout()
+plt.savefig("ABL_stable_buoy_flux.png",dpi=600)
+plt.show()
+plt.close()
+
+
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
 for j in range(nexp) :
@@ -76,6 +162,7 @@ plt.tight_layout()
 plt.savefig("ABL_stable_pp_rhop_allcs_5hr.png",dpi=600)
 plt.show()
 plt.close()
+
 
 fig = plt.figure(figsize=(4,6))
 ax = fig.gca()
