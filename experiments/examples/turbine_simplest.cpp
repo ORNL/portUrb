@@ -70,6 +70,8 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
+    real cs = 350;
+
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
 
@@ -99,7 +101,7 @@ int main(int argc, char** argv) {
     std::string init_data    = "constant";
     real        out_freq     = 120;
     real        inform_freq  = 10.0;
-    std::string out_prefix   = std::string("jha2013");
+    std::string out_prefix   = std::string("jha2013_")+std::to_string((int)cs);
     bool        is_restart   = false;
     std::string restart_file = "";
     real        latitude     = 0;
@@ -130,9 +132,9 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "turbine_immerse_material" , false        );
     coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
     coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
-    coupler.set_option<real       >( "dycore_max_wind"          , 30           );
+    coupler.set_option<real       >( "dycore_max_wind"          , 15           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
-    coupler.set_option<real       >( "dycore_cs"                , 100          );
+    coupler.set_option<real       >( "dycore_cs"                , cs           );
 
     // Set the turbine
     coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{4*D   });
@@ -201,7 +203,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply       (c,0.1,0,0,0); } , "edge_sponge1"  );
         coupler.run_module( [&] (Coupler &c) { edge_sponge2.apply       (c,0,0.1,0,0); } , "edge_sponge2"  );
-        coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column(c,dt,dt*2);   } , "col_nudge"     );
+        // coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column(c,dt,10);     } , "col_nudge"     );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);        } , "dycore"        );
         coupler.run_module( [&] (Coupler &c) { windmills.apply          (c,dt);        } , "windmills"     );
         coupler.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);        } , "les_closure"   );
