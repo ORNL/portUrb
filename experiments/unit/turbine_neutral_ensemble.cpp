@@ -105,6 +105,7 @@ int main(int argc, char** argv) {
       coupler_main.set_option<real       >( "cfl"                      , 0.6               );
       coupler_main.set_option<real       >( "dycore_max_wind"          , 50                );
       coupler_main.set_option<real       >( "dycore_cs"                , 100               );
+      coupler_main.set_option<int        >( "dycore_max_cycles"        , dyn_cycle+1       );
       real z0       = coupler_main.get_option<real>("roughness");
       real u19_5    = hub_wind*std::log(19.5/z0)/std::log(turbine_hubz/z0);
       real omega_pm = 0.877*9.81/u19_5;

@@ -4,7 +4,7 @@
 
 namespace modules {
   
-  // This class keeps track of time-averaged u, v, w, and TKE fields since the last reset
+  // This class keeps track of time-averaged u, v, w
   struct Time_Averager {
 
     std::vector<std::string> add_3d_varnames;
@@ -22,12 +22,10 @@ namespace modules {
       dm.register_and_allocate<real>("avg_u"     ,{nz,ny,nx});    dm.get<real,3>("avg_u"     ) = 0;
       dm.register_and_allocate<real>("avg_v"     ,{nz,ny,nx});    dm.get<real,3>("avg_v"     ) = 0;
       dm.register_and_allocate<real>("avg_w"     ,{nz,ny,nx});    dm.get<real,3>("avg_w"     ) = 0;
-      dm.register_and_allocate<real>("avg_tke"   ,{nz,ny,nx});    dm.get<real,3>("avg_tke"   ) = 0;
       // Register these fields as output variables with the coupler for output / restart
       coupler.register_output_variable<real>( "avg_u"   , core::Coupler::DIMS_3D );
       coupler.register_output_variable<real>( "avg_v"   , core::Coupler::DIMS_3D );
       coupler.register_output_variable<real>( "avg_w"   , core::Coupler::DIMS_3D );
-      coupler.register_output_variable<real>( "avg_tke" , core::Coupler::DIMS_3D );
       if (coupler.get_option<bool>("output_correlations",false)) {
         dm.register_and_allocate<real>("corr_avg_u",{nz,ny,nx});    dm.get<real,3>("corr_avg_u") = 0;
         dm.register_and_allocate<real>("corr_avg_v",{nz,ny,nx});    dm.get<real,3>("corr_avg_v") = 0;
@@ -63,7 +61,6 @@ namespace modules {
       dm.get<real,3>("avg_u"    ) = 0;
       dm.get<real,3>("avg_v"    ) = 0;
       dm.get<real,3>("avg_w"    ) = 0;
-      dm.get<real,3>("avg_tke"  ) = 0;
       if (coupler.get_option<bool>("output_correlations",false)) {
         dm.get<real,3>("avg_up_up") = 0;
         dm.get<real,3>("avg_up_vp") = 0;
@@ -90,11 +87,9 @@ namespace modules {
       auto uvel       = dm.get<real const,3>("uvel"       );  // Get u-velocity field
       auto vvel       = dm.get<real const,3>("vvel"       );  // Get v-velocity field
       auto wvel       = dm.get<real const,3>("wvel"       );  // Get w-velocity field
-      auto tke        = dm.get<real const,3>("TKE"        );  // Get TKE field
       auto avg_u      = dm.get<real      ,3>("avg_u"      );
       auto avg_v      = dm.get<real      ,3>("avg_v"      );
       auto avg_w      = dm.get<real      ,3>("avg_w"      );
-      auto avg_tke    = dm.get<real      ,3>("avg_tke"    );
       auto etime      = coupler.get_option<real>("time_averager_etime"); // Get elapsed time for time-averaging since last reset
       real inertia = etime / (etime + dt);  // Compute inertia
       core::MultiField<real      ,3> tavg_fields;
@@ -109,7 +104,6 @@ namespace modules {
         avg_u  (k,j,i) = inertia*avg_u  (k,j,i) + (1-inertia)*uvel(k,j,i);
         avg_v  (k,j,i) = inertia*avg_v  (k,j,i) + (1-inertia)*vvel(k,j,i);
         avg_w  (k,j,i) = inertia*avg_w  (k,j,i) + (1-inertia)*wvel(k,j,i);
-        avg_tke(k,j,i) = inertia*avg_tke(k,j,i) + (1-inertia)*tke (k,j,i);
         for (int l=0; l < nfields; l++) {
           tavg_fields(l,k,j,i) = inertia*tavg_fields(l,k,j,i) + (1-inertia)*fields(l,k,j,i);
         }

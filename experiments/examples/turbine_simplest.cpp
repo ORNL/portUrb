@@ -7,7 +7,7 @@
 #include "les_closure.h"
 #include "turbine_actuator_line.h"
 #include "edge_sponge.h"
-#include "column_nudging.h"
+#include "sponge_layer.h"
 
 // Research on Aerodynamic Characteristics of Three Offshore Wind Turbines Based on Large Eddy Simulation and Actuator Line Model
 // Fu et al 2024
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real cs = 350;
+    real cs = 100;
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     std::string restart_file = "";
     real        latitude     = 0;
     real        roughness    = 0;
-    int         dyn_cycle    = 1;
+    int         dyn_cycle    = 5;
 
     // Things the coupler might need to know about
     coupler.set_option<real>       ( "cfl"                      , 0.6          );
@@ -135,6 +135,10 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "dycore_max_wind"          , 15           );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , true         );
     coupler.set_option<real       >( "dycore_cs"                , cs           );
+    coupler.set_option<int        >( "dycore_max_cycles"        , dyn_cycle+1  );
+    coupler.set_option<bool       >( "dycore_rsst"              , cs != 350    );
+    coupler.set_option<bool       >( "dycore_use_weno"          , false        );
+    coupler.set_option<bool       >( "dycore_use_weno_immersed" , true         );
 
     // Set the turbine
     coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{4*D   });
@@ -152,7 +156,6 @@ int main(int argc, char** argv) {
     modules::TurbineActuatorLine               windmills;
     modules::EdgeSponge                        edge_sponge1;
     modules::EdgeSponge                        edge_sponge2;
-    modules::ColumnNudger                      col_nudge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -160,17 +163,17 @@ int main(int argc, char** argv) {
 
     // Run the initialization modules
     custom_modules::sc_init   ( coupler );
-    coupler.set_option<std::string>("bc_x1","open"    );
-    coupler.set_option<std::string>("bc_x2","open"    );
-    coupler.set_option<std::string>("bc_y1","periodic");
-    coupler.set_option<std::string>("bc_y2","periodic");
-    col_nudge.set_column      ( coupler , {"density_dry","temp"} );
-    les_closure  .init        ( coupler );
+    coupler.set_option<std::string>("bc_x1","precursor");
+    coupler.set_option<std::string>("bc_x2","open"     );
+    coupler.set_option<std::string>("bc_y1","periodic" );
+    coupler.set_option<std::string>("bc_y2","periodic" );
+    // les_closure  .init        ( coupler );
     windmills    .init        ( coupler );
     dycore       .init        ( coupler ); // Important that dycore inits after windmills for base immersed boundaries
     time_averager.init        ( coupler );
-    edge_sponge1 .set_column  ( coupler , {"density_dry","uvel","vvel","wvel","temp"} );
-    edge_sponge2 .set_column  ( coupler , {"density_dry","temp"} );
+    edge_sponge1 .set_column  ( coupler , {"density_dry","temp"} );
+    edge_sponge2 .set_column  ( coupler , {"vvel","wvel"} );
+    auto ghost_col = dycore.compute_average_ghost_column( coupler );
     custom_modules::sc_perturb( coupler );
 
     // Get elapsed time (zero), and create counters for output and informing the user in stdout
@@ -199,15 +202,16 @@ int main(int argc, char** argv) {
       if (etime + dt > sim_time) { dt = sim_time - etime; }
 
       // Run modules
+      dycore.copy_column_to_precursor_ghost_cells( coupler , ghost_col );
       {
         using core::Coupler;
-        coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply       (c,0.1,0,0,0); } , "edge_sponge1"  );
-        coupler.run_module( [&] (Coupler &c) { edge_sponge2.apply       (c,0,0.1,0,0); } , "edge_sponge2"  );
-        // coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column(c,dt,10);     } , "col_nudge"     );
-        coupler.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);        } , "dycore"        );
-        coupler.run_module( [&] (Coupler &c) { windmills.apply          (c,dt);        } , "windmills"     );
-        coupler.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);        } , "les_closure"   );
-        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);        } , "time_averager" );
+        coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply       (c,0,0.1,0,0);   } , "edge_sponge1"  );
+        coupler.run_module( [&] (Coupler &c) { edge_sponge2.apply       (c,0.1,0,0,0);   } , "edge_sponge2"  );
+        coupler.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);          } , "dycore"        );
+        coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w  (c,dt,1000,0.05);} , "sponge"        );
+        coupler.run_module( [&] (Coupler &c) { windmills.apply          (c,dt);          } , "windmills"     );
+        // coupler.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);          } , "les_closure"   );
+        coupler.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);          } , "time_averager" );
       }
 
       // Update time step

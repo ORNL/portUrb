@@ -119,8 +119,6 @@ namespace modules {
     // dt_phys : Desired physical time step to advance the solution (may be sub-cycled internally for stability)
     // Advances the solution in the coupler's data manager state and tracer arrays by dt_phys
     // Uses sub-cycling with stable dynamical core time steps as needed
-    // Allocates storage for ghost cell exchanges between precursor and forced simulations if needed at the
-    //  appropriate MPI ranks
     void time_step(core::Coupler &coupler, real dt_phys) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("time_step");
@@ -130,80 +128,13 @@ namespace modules {
       auto nx          = coupler.get_nx(); // Number of cells in x-direction (excluding halos)
       auto ny          = coupler.get_ny(); // Number of cells in y-direction (excluding halos)
       auto nz          = coupler.get_nz(); // Number of cells in z-direction (excluding halos)
-      auto px          = coupler.get_px(); // MPI decomposition ID in x-direction
-      auto py          = coupler.get_py(); // MPI decomposition ID in y-direction
-      auto bc_x1       = coupler.get_option<std::string>("bc_x1"); // West x-boundary condition
-      auto bc_x2       = coupler.get_option<std::string>("bc_x2"); // East x-boundary condition
-      auto bc_y1       = coupler.get_option<std::string>("bc_y1"); // South y-boundary condition
-      auto bc_y2       = coupler.get_option<std::string>("bc_y2"); // North y-boundary condition
-      auto bc_z1       = coupler.get_option<std::string>("bc_z1"); // Bottom z-boundary condition
-      auto bc_z2       = coupler.get_option<std::string>("bc_z2"); // Top z-boundary condition
       auto &dm         = coupler.get_data_manager_readwrite(); // Get data manager for read/write access
-      auto npx         = coupler.get_nproc_x(); // MPI Decomposition size in x-direction
-      auto npy         = coupler.get_nproc_y(); // MPI Decomposition size in y-direction
       real4d state  ("state"  ,num_state  ,nz,ny,nx); // State array for the dynamical core
       real4d tracers("tracers",num_tracers,nz,ny,nx); // Tracer array for the dynamical core
       convert_coupler_to_dynamics( coupler , state , tracers ); // Convert coupler data to dynamical core format
       real dt_dyn = compute_time_step( coupler );        // Compute maximum stable dynamical core time step
       int ncycles = (int) std::ceil( dt_phys / dt_dyn ); // Determine number of sub-cycles needed for stability
       dt_dyn = dt_phys / ncycles;                        // Make sure individual sub-step time steps are equal
-
-      // If the current coupler object is a precursor for another simulation, or the current coupler is using
-      //  precursor BC's, then allocate ghost cell storage for exchanging data between the precursor and forced
-      //  simulation. This storage is only needed on the MPI ranks at the domain boundaries where precursor BC's
-      //  are applied.
-      // We need storage for all variables, all Runge-Kutta stages, all sub-cycles, and the halo size in
-      //  the horizontal directions.
-      // The array that is halo exchanged has 5 state variables (num_state), all tracers (num_tracers),
-      //  and a pressure variable, so num_state+num_tracers+1.
-      if ( coupler.get_option<bool>("dycore_is_precursor",false)   ||
-           coupler.get_option<std::string>("bc_x1") == "precursor" ||
-           coupler.get_option<std::string>("bc_x2") == "precursor" ||
-           coupler.get_option<std::string>("bc_y1") == "precursor" ||
-           coupler.get_option<std::string>("bc_y2") == "precursor" ) {
-        auto nstage = coupler.get_option<int>("dycore_num_stages"); // Number of Runge-Kutta stages
-        // Make sure that dycore_ghost_[xy][12] arrays are only accessed in the correct MPI ranks
-        if (px == 0) { // If we're at the west edge process of the domain
-          if (dm.entry_exists("dycore_ghost_x1")) { // Make sure existing array has correct size
-            if (dm.get<FLOC const,6>("dycore_ghost_x1").extent(0) != ncycles) {
-              dm.unregister_and_deallocate( "dycore_ghost_x1" );
-            }
-          }
-          if (! dm.entry_exists("dycore_ghost_x1")) { // if not existing, register and allocate
-            dm.register_and_allocate<FLOC>("dycore_ghost_x1",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
-          }
-        }
-        if (px == npx-1) { // If we're at the east edge process of the domain
-          if (dm.entry_exists("dycore_ghost_x2")) { // Make sure existing array has correct size
-            if (dm.get<FLOC const,6>("dycore_ghost_x2").extent(0) != ncycles) {
-              dm.unregister_and_deallocate( "dycore_ghost_x2" );
-            }
-          }
-          if (! dm.entry_exists("dycore_ghost_x2")) { // if not existing, register and allocate
-            dm.register_and_allocate<FLOC>("dycore_ghost_x2",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
-          }
-        }
-        if (py == 0) { // If we're at the south edge process of the domain
-          if (dm.entry_exists("dycore_ghost_y1")) { // Make sure existing array has correct size
-            if (dm.get<FLOC const,6>("dycore_ghost_y1").extent(0) != ncycles) {
-              dm.unregister_and_deallocate( "dycore_ghost_y1" );
-            }
-          }
-          if (! dm.entry_exists("dycore_ghost_y1")) { // if not existing, register and allocate
-            dm.register_and_allocate<FLOC>("dycore_ghost_y1",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
-          }
-        }
-        if (py == npy-1) { // If we're at the north edge process of the domain
-          if (dm.entry_exists("dycore_ghost_y2")) { // Make sure existing array has correct size
-            if (dm.get<FLOC const,6>("dycore_ghost_y2").extent(0) != ncycles) {
-              dm.unregister_and_deallocate( "dycore_ghost_y2" );
-            }
-          }
-          if (! dm.entry_exists("dycore_ghost_y2")) { // if not existing, register and allocate
-            dm.register_and_allocate<FLOC>("dycore_ghost_y2",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
-          }
-        }
-      }
 
       // auto mass1 = compute_mass( coupler , state );
       // Get the desired time stepper from the coupler options and perform the sub-cycled time stepping
@@ -744,7 +675,6 @@ namespace modules {
       /////////////////////////////////////////////////////////////////////////////////////////
       // COMPUTE UPWIND CELL_EDGE PRESSURE AND MOMENTUM (ACOUSTIC UPWINDING)
       /////////////////////////////////////////////////////////////////////////////////////////
-
       // Reconstruct upwind cell-edge pressure and momentum in x-direction
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
@@ -1081,13 +1011,13 @@ namespace modules {
 
       if (px == 0) { // If my rank is on the west edge of the domain
         if (bc_x1 == "periodic") { // Already handled in halo_exchange
-        } else if (bc_x1 == "open" ) {
+        } else if (bc_x1 == "open") {
           // Simple zero-gradient extrapolation for open boundary
           yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int j, int ii) {
             fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0);
           });
-        } else if (bc_x1 == "precursor" ) {
+        } else if (bc_x1 == "precursor") {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
           // For outflow boundaries, use zero-gradient extrapolation
           auto prec_x1 = dm.get<FLOC const,6>("dycore_ghost_x1");
@@ -1108,13 +1038,13 @@ namespace modules {
 
       if (px == nproc_x-1) { // If my rank is on the east edge of the domain
         if (bc_x2 == "periodic") { // Already handled in halo_exchange
-        } else if (bc_x2 == "open" ) {
+        } else if (bc_x2 == "open") {
           // Simple zero-gradient extrapolation for open boundary
           yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
                   fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
           });
-        } else if (bc_x2 == "precursor" ) {
+        } else if (bc_x2 == "precursor") {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
           // For outflow boundaries, use zero-gradient extrapolation
           auto prec_x2 = dm.get<FLOC const,6>("dycore_ghost_x2");
@@ -1135,20 +1065,20 @@ namespace modules {
 
       if (py == 0) { // If my rank is on the south edge of the domain
         if (bc_y1 == "periodic") { // Already handled in halo_exchange
-        } else if (bc_y1 == "open" ) {
+        } else if (bc_y1 == "open") {
           // Simple zero-gradient extrapolation for open boundary
           yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i);
           });
-        } else if (bc_y1 == "wall_free_slip" ) {
+        } else if (bc_y1 == "wall_free_slip") {
           // Simple zero-gradient extrapolation for open boundary
           yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             if (l == idV) { fields(l,hs+k,hs-1-jj,hs+i) = 0; }
             else          { fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i); }
           });
-        } else if (bc_y1 == "precursor" ) {
+        } else if (bc_y1 == "precursor") {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
           // For outflow boundaries, use zero-gradient extrapolation
           auto prec_y1 = dm.get<FLOC const,6>("dycore_ghost_y1");
@@ -1169,20 +1099,20 @@ namespace modules {
 
       if (py == nproc_y-1) { // If my rank is on the north edge of the domain
         if (bc_y2 == "periodic") { // Already handled in halo_exchange
-        } else if (bc_y2 == "open" ) {
+        } else if (bc_y2 == "open") {
           // Simple zero-gradient extrapolation for open boundary
           yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
           });
-        } else if (bc_y1 == "wall_free_slip" ) {
+        } else if (bc_y1 == "wall_free_slip") {
           // Simple zero-gradient extrapolation for open boundary
           yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             if (l == idV) { fields(l,hs+k,hs+ny+jj,hs+i) = 0; }
             else          { fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i); }
           });
-        } else if (bc_y2 == "precursor" ) {
+        } else if (bc_y2 == "precursor") {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
           // For outflow boundaries, use zero-gradient extrapolation
           auto prec_y2 = dm.get<FLOC const,6>("dycore_ghost_y2");
@@ -1348,65 +1278,59 @@ namespace modules {
       int  py          = coupler_main.get_py();       // MPI rank in y-direction
       int  npx         = coupler_main.get_nproc_x();  // Number of MPI ranks in x-direction
       int  npy         = coupler_main.get_nproc_y();  // Number of MPI ranks in y-direction
-      int  nstage      = coupler_main.get_option<int>("dycore_num_stages"); // Number of RK stages
-      int  num_tracers = coupler_main.get_num_tracers(); // Number of tracer fields
-      int  nx          = coupler_main.get_nx();       // Number of cells in x-direction
-      int  ny          = coupler_main.get_ny();       // Number of cells in y-direction
-      int  nz          = coupler_main.get_nz();       // Number of cells in z-direction
       auto &dm_prec    = coupler_prec.get_data_manager_readonly (); // Get precursor data manager as read-only
       auto &dm_main    = coupler_main.get_data_manager_readwrite(); // Get main data manager as read-write
-      
-      // Allocate ghost cell storage in main coupler if not already allocated
-      if (px == 0) { // If my rank is on the west edge of the domain
-        int ncycles = dm_prec.get<FLOC const,6>("dycore_ghost_x1").extent(0); // Number of cycles stored
-        if (dm_main.entry_exists("dycore_ghost_x1")) { // If entry already exists, check size
-          if (dm_main.get<FLOC const,6>("dycore_ghost_x1").extent(0) != ncycles) {
-            dm_main.unregister_and_deallocate( "dycore_ghost_x1" );
-          }
-        }
-        if (! dm_main.entry_exists("dycore_ghost_x1")) { // If entry does not exist, register and allocate it
-          dm_main.register_and_allocate<FLOC>("dycore_ghost_x1",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
-        }
-      }
-      if (px == npx-1) { // If my rank is on the east edge of the domain
-        int ncycles = dm_prec.get<FLOC const,6>("dycore_ghost_x2").extent(0);
-        if (dm_main.entry_exists("dycore_ghost_x2")) { // If entry already exists, check size
-          if (dm_main.get<FLOC const,6>("dycore_ghost_x2").extent(0) != ncycles) {
-            dm_main.unregister_and_deallocate( "dycore_ghost_x2" );
-          }
-        }
-        if (! dm_main.entry_exists("dycore_ghost_x2")) { // If entry does not exist, register and allocate it
-          dm_main.register_and_allocate<FLOC>("dycore_ghost_x2",{ncycles,nstage,num_state+num_tracers+1,nz,ny,hs});
-        }
-      }
-      if (py == 0) { // If my rank is on the south edge of the domain
-        int ncycles = dm_prec.get<FLOC const,6>("dycore_ghost_y1").extent(0);
-        if (dm_main.entry_exists("dycore_ghost_y1")) { // If entry already exists, check size
-          if (dm_main.get<FLOC const,6>("dycore_ghost_y1").extent(0) != ncycles) {
-            dm_main.unregister_and_deallocate( "dycore_ghost_y1" );
-          }
-        }
-        if (! dm_main.entry_exists("dycore_ghost_y1")) { // If entry does not exist, register and allocate it
-          dm_main.register_and_allocate<FLOC>("dycore_ghost_y1",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
-        }
-      }
-      if (py == npy-1) { // If my rank is on the north edge of the domain
-        int ncycles = dm_prec.get<FLOC const,6>("dycore_ghost_y2").extent(0);
-        if (dm_main.entry_exists("dycore_ghost_y2")) { // If entry already exists, check size
-          if (dm_main.get<FLOC const,6>("dycore_ghost_y2").extent(0) != ncycles) {
-            dm_main.unregister_and_deallocate( "dycore_ghost_y2" );
-          }
-        }
-        if (! dm_main.entry_exists("dycore_ghost_y2")) { // If entry does not exist, register and allocate it
-          dm_main.register_and_allocate<FLOC>("dycore_ghost_y2",{ncycles,nstage,num_state+num_tracers+1,nz,hs,nx});
-        }
-      }
-
-      // Copy ghost cell data from precursor coupler to main coupler
       if (px == 0    ) dm_prec.get<FLOC const,6>("dycore_ghost_x1").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_x1"));
       if (px == npx-1) dm_prec.get<FLOC const,6>("dycore_ghost_x2").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_x2"));
       if (py == 0    ) dm_prec.get<FLOC const,6>("dycore_ghost_y1").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_y1"));
       if (py == npy-1) dm_prec.get<FLOC const,6>("dycore_ghost_y2").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_y2"));
+    }
+
+
+
+    // For simulations forced by a concurrent turbulent precursor, copy the ghost cell data from the precursor coupler to the main coupler
+    // coupler_prec : reference to the precursor coupler object
+    // coupler_main : reference to the main coupler object
+    void copy_column_to_precursor_ghost_cells( core::Coupler & coupler , real2d const & col ) {
+      using yakl::SimpleBounds;
+      int  px          = coupler.get_px();       // MPI rank in x-direction
+      int  py          = coupler.get_py();       // MPI rank in y-direction
+      int  npx         = coupler.get_nproc_x();  // Number of MPI ranks in x-direction
+      int  npy         = coupler.get_nproc_y();  // Number of MPI ranks in y-direction
+      auto nx          = coupler.get_nx();
+      auto ny          = coupler.get_ny();
+      auto nz          = coupler.get_nz();
+      auto num_tracers = coupler.get_num_tracers();
+      auto num_stages  = coupler.get_option<int>("dycore_num_stages");
+      auto max_cycles  = coupler.get_option<int>("dycore_max_cycles");
+      if (px == 0) {
+        auto ghost_x1 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(max_cycles,num_stages,num_state+num_tracers+1,nz,ny,hs) ,
+                                                KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int j, int ii) {
+          ghost_x1(icycle,istage,l,k,j,ii) = col(l,k);
+        });
+      }
+      if (px == npx-1) {
+        auto ghost_x2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(max_cycles,num_stages,num_state+num_tracers+1,nz,ny,hs) ,
+                                                KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int j, int ii) {
+          ghost_x2(icycle,istage,l,k,j,ii) = col(l,k);
+        });
+      }
+      if (py == 0) {
+        auto ghost_y1 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(max_cycles,num_stages,num_state+num_tracers+1,nz,hs,nx) ,
+                                                KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int jj, int i) {
+          ghost_y1(icycle,istage,l,k,jj,i) = col(l,k);
+        });
+      }
+      if (py == npy-1) {
+        auto ghost_y2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(max_cycles,num_stages,num_state+num_tracers+1,nz,hs,nx) ,
+                                                KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int jj, int i) {
+          ghost_y2(icycle,istage,l,k,jj,i) = col(l,k);
+        });
+      }
     }
 
 
@@ -1447,6 +1371,35 @@ namespace modules {
       else if (time_stepper == "linrk3") { coupler.set_option("dycore_num_stages",3);    }
       else if (time_stepper == "linrk4") { coupler.set_option("dycore_num_stages",4);    }
       else                               { Kokkos::abort("Invalid dycore_time_stepper"); }
+
+      // If the current coupler object is a precursor for another simulation, or the current coupler is using
+      //  precursor BC's, then allocate ghost cell storage for exchanging data between the precursor and forced
+      //  simulation. This storage is only needed on the MPI ranks at the domain boundaries where precursor BC's
+      //  are applied.
+      // We need storage for all variables, all Runge-Kutta stages, all sub-cycles, and the halo size in
+      //  the horizontal directions.
+      // The array that is halo exchanged has 5 state variables (num_state), all tracers (num_tracers),
+      //  and a pressure variable, so num_state+num_tracers+1.
+      if ( coupler.get_option<bool>("dycore_is_precursor",false)   ||
+           coupler.get_option<std::string>("bc_x1") == "precursor" ||
+           coupler.get_option<std::string>("bc_x2") == "precursor" ||
+           coupler.get_option<std::string>("bc_y1") == "precursor" ||
+           coupler.get_option<std::string>("bc_y2") == "precursor" ) {
+        auto nstage     = coupler.get_option<int>("dycore_num_stages"); // Number of Runge-Kutta stages
+        auto max_cycles = coupler.get_option<int>("dycore_max_cycles");
+        if (px == 0) { // If we're at the west edge process of the domain
+          dm.register_and_allocate<FLOC>("dycore_ghost_x1",{max_cycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+        }
+        if (px == nproc_x-1) { // If we're at the east edge process of the domain
+          dm.register_and_allocate<FLOC>("dycore_ghost_x2",{max_cycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+        }
+        if (py == 0) { // If we're at the south edge process of the domain
+          dm.register_and_allocate<FLOC>("dycore_ghost_y1",{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+        }
+        if (py == nproc_y-1) { // If we're at the north edge process of the domain
+          dm.register_and_allocate<FLOC>("dycore_ghost_y2",{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+        }
+      }
 
       // Compute the metric jacobian (dz/dzeta) where zeta is the k interface index
       //

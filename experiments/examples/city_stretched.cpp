@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
     coupler_main.set_option<real       >( "dycore_cs"          , 60                );
     coupler_main.set_option<real       >( "geostrophic_u"      , 10.               );
     coupler_main.set_option<real       >( "geostrophic_v"      , 0.                );
+    coupler_main.set_option<int        >( "dycore_max_cycles"  , dyn_cycle+1       );
 
     coupler_main.init( core::ParallelComm(MPI_COMM_WORLD) ,
                        coupler_main.generate_levels_const_low_high(zlen,4,480,600,10) ,

@@ -74,14 +74,19 @@ for N in range(3,Nmax+1,2) :
   # for i in range(N-1) : print(")",end="" if i<N-2 else ";\n")
   # for i in range(N) : print(f"    real v{i} = (v({i})-mn)/std::max(static_cast<real>(1.e-20),mx-mn);")
   print(TVcode)
+  for i in range(NL) : print(f"    TV{i} = std::abs(TV{i});")
+  print(f"    real r_sm = static_cast<real>(1.)/std::max(static_cast<real>(1.e-20),",end="")
+  for i in range(NL) : print(f"TV{i}",end=" + " if i<NL-1 else ");\n")
+  for i in range(NL) : print(f"    TV{i} *= r_sm;")
 
-  print(f"    if (TV0==0) TV0 = ",end="")
-  for i in range(NL-1) : print(f"std::min(TV{i},",end="" if i<NL-2 else f"TV{i+1}")
-  for i in range(NL-1) : print(")",end="" if i<NL-2 else ";\n")
+  if N > 3 :
+    print(f"    if (TV0==0) TV0 = ",end="")
+    for i in range(1,NL-1) : print(f"std::min(TV{i},",end="" if i<NL-2 else f"TV{i+1}")
+    for i in range(NL-2) : print(")",end="" if i<NL-3 else ";\n")
 
-  print(f"    if (TV{NL-1}==0) TV{NL-1} = ",end="")
-  for i in range(NL-1) : print(f"std::min(TV{i},",end="" if i<NL-2 else f"TV{i+1}")
-  for i in range(NL-1) : print(")",end="" if i<NL-2 else ";\n")
+    print(f"    if (TV{NL-1}==0) TV{NL-1} = ",end="")
+    for i in range(NL-2) : print(f"std::min(TV{i},",end="" if i<NL-3 else f"TV{i+1}")
+    for i in range(NL-2) : print(")",end="" if i<NL-3 else ";\n")
 
   print(f"    if (immL) TV{NL-1} = ",end="")
   for i in range(NL-1) : print(f"std::max(TV{i},",end="" if i<NL-2 else f"TV{i+1}")
@@ -96,7 +101,7 @@ for N in range(3,Nmax+1,2) :
   print("    // Left Edge")
   for i in range(NL) :
     print(f"    real w{i} = static_cast<real>({idl_L[i].n(prec)})/(TV{i}+1.e-20);")
-  print(f"    real r_sm = static_cast<real>(1.)/std::max(static_cast<real>(1.e-20),",end="")
+  print(f"    r_sm = static_cast<real>(1.)/std::max(static_cast<real>(1.e-20),",end="")
   for i in range(NL) : print(f"w{i}",end=" + " if i<NL-1 else ");\n")
   for i in range(NL) : print(f"    w{i} *= r_sm;")
   print(Lcode)

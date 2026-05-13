@@ -100,6 +100,7 @@ int main(int argc, char** argv) {
       coupler_prec.set_option<real             >( "dycore_max_wind"          , 50           );
       coupler_prec.set_option<bool             >( "dycore_buoyancy_theta"    , true         );
       coupler_prec.set_option<real             >( "dycore_cs"                , 100          );
+      coupler_prec.set_option<int              >( "dycore_max_cycles"        , dyn_cycle+1  );
       coupler_prec.set_option<std::vector<real>>( "turbine_x_locs"           , {10*D}       );
       coupler_prec.set_option<std::vector<real>>( "turbine_y_locs"           , {ylen/2}     );
       coupler_prec.set_option<std::vector<bool>>( "turbine_apply_thrust"     , {true}       );
