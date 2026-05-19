@@ -22,6 +22,9 @@ int main(int argc, char** argv) {
     auto rsst       = config["rsst"      ].as<bool>();
 
     real dx = 20;
+    real umax = 15;
+    // real cfl = 0.6*(umax+cs)/(umax+350);
+    real cfl = 0.6;
 
     real        sim_time    = 3600*10+1;
     real        xlen        = 4000;
@@ -31,7 +34,7 @@ int main(int argc, char** argv) {
     int         ny_glob     = (int) std::round(ylen/dx);
     int         nz          = (int) std::round(zlen/dx);
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 2;
+    int         dyn_cycle   = 1;
     real        out_freq    = 1800;
     real        inform_freq = 10;
     std::string out_prefix  = std::string("ABL_neutral_buoy-") +
@@ -51,9 +54,9 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "restart_file"                       , ""            );
     coupler.set_option<real       >( "latitude"                           , 0.            );
     coupler.set_option<real       >( "roughness"                          , 0.1           );
-    coupler.set_option<real       >( "cfl"                                , 0.6           );
+    coupler.set_option<real       >( "cfl"                                , cfl           );
     coupler.set_option<bool       >( "enable_gravity"                     , true          );
-    coupler.set_option<real       >( "dycore_max_wind"                    , 15            );
+    coupler.set_option<real       >( "dycore_max_wind"                    , umax          );
     coupler.set_option<bool       >( "dycore_rsst"                        , rsst          );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , buoy_theta    );
     coupler.set_option<real       >( "dycore_cs"                          , cs            );

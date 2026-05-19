@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
     int         ny_glob     = (int) std::ceil(ylen/dx);
     int         nz          = (int) std::ceil(zlen/dx);
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 4;
+    int         dyn_cycle   = 1;
     real        out_freq    = 900;
     real        inform_freq = 10;
     std::string out_prefix  = "ABL_convective_10m";

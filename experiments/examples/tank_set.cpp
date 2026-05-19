@@ -43,6 +43,7 @@ int main(int argc, char** argv) {
     real offset_y2 = (200-disk_y)/2;
     mesh.add_offset(offset_x1,offset_y1,0);
     mesh.apply_scaling(scale,scale,scale);
+    DEBUG_PRINT_MAIN_VAL(offset_x1+disk_x/2);
 
     // real        xlen        = std::ceil((mesh.domain_hi.x + 0     *scale)/dx)*dx;
     // real        ylen        = std::ceil((mesh.domain_hi.y + 0     *scale)/dx)*dx;
@@ -55,7 +56,7 @@ int main(int argc, char** argv) {
     int         ny_glob     = ylen/dx;
     int         nz          = zlen/dx;
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 4;
+    int         dyn_cycle   = 2;
     real        out_freq    = xlen/u0/2;
     real        inform_freq = xlen/u0/20;
     std::string out_prefix  = "tank_set";
@@ -179,7 +180,7 @@ int main(int argc, char** argv) {
         }
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"         );
         coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
-        coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );
+        // coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );
         coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager"  );
       }
 
