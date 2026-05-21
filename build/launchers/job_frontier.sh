@@ -13,7 +13,15 @@ num_tasks=`echo "$SLURM_JOB_NUM_NODES*8" | bc`
 cd /lustre/orion/stf006/scratch/imn/portUrb/build
 source machines/frontier/frontier_gpu_O3.env
 
-srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./tank_set
+# srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest
+
+cat <<EOF > rsst1.yaml
+cs: 350
+buoy_theta: false
+dyn_cycle: 1
+rsst: false
+EOF
+srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./supercell ./inputs/input_supercell.yaml ./rsst1.yaml
 
 # cat <<EOF > rsst1.yaml
 # cs: 350

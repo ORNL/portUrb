@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real cs = 100;
+    real cs = 80;
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     std::string restart_file = "";
     real        latitude     = 0;
     real        roughness    = 0;
-    int         dyn_cycle    = 5;
+    int         dyn_cycle    = 1;
 
     // Things the coupler might need to know about
     coupler.set_option<real>       ( "cfl"                      , 0.6          );
