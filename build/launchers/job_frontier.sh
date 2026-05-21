@@ -3,7 +3,7 @@
 #SBATCH -J portUrb
 #SBATCH -o %x-%j.out
 #SBATCH -t 2:00:00
-#SBATCH -N 4
+#SBATCH -N 1
 #SBATCH --partition service
 #SBATCH -q develop
 # #SBATCH --partition extended
@@ -15,13 +15,13 @@ source machines/frontier/frontier_gpu_O3.env
 
 # srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest
 
-cat <<EOF > rsst1.yaml
-cs: 350
-buoy_theta: false
-dyn_cycle: 1
-rsst: false
-EOF
-srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./supercell ./inputs/input_supercell.yaml ./rsst1.yaml
+# cat <<EOF > rsst1.yaml
+# cs: 350
+# buoy_theta: false
+# dyn_cycle: 1
+# rsst: false
+# EOF
+# srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./supercell ./inputs/input_supercell.yaml ./rsst1.yaml
 
 # cat <<EOF > rsst1.yaml
 # cs: 350
@@ -65,12 +65,12 @@ srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./supercell ./input
 # EOF
 # srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_neutral ./rsst6.yaml 2>&1 | tee abl_neutral6.out &
 # 
-# cat <<EOF > rsst7.yaml
-# cs: 20
-# buoy_theta: true
-# rsst: true
-# EOF
-# srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_neutral ./rsst7.yaml 2>&1 | tee abl_neutral7.out &
+cat <<EOF > rsst7.yaml
+cs: 20
+buoy_theta: true
+rsst: true
+EOF
+srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_neutral ./rsst7.yaml 2>&1 | tee abl_neutral7.out &
 # 
 # cat <<EOF > rsst8.yaml
 # cs: 15
@@ -93,5 +93,5 @@ srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./supercell ./input
 # EOF
 # srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_neutral ./rsst10.yaml 2>&1 | tee abl_neutral10.out &
 # 
-# wait
+wait
 

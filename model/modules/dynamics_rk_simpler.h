@@ -852,11 +852,17 @@ namespace modules {
           // Gather the stencil values based on upwind offset
           SArray<FLOC,ord> s;
           for (int ii = 0; ii < ord; ii++) { s(ii) = advect_fields(l,hs+k,hs+j,i+ii+ind); }
+          bool immL = immersed(hsm1-1);
+          bool immR = immersed(hsm1+1);
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
-          if (l == idV || l == idW) modify_stencil_immersed_der0( s , immersed );
+          if (l == idV || l == idW) {
+            modify_stencil_immersed_der0( s , immersed );
+            immL = false;
+            immR = false;
+          }
           FLOC val_L, val_R;
           if (use_weno || (imm_weno && any_immersed6(k,j,std::min(nx-1,i)))) {
-            Limiter::value_based(s,val_L,val_R,immersed(hsm1-1),immersed(hsm1+1));
+            Limiter::value_based(s,val_L,val_R,immL,immR);
           } else {
             val_L = TransformMatrices::sampL(s);
             val_R = TransformMatrices::sampR(s);
@@ -880,11 +886,17 @@ namespace modules {
           // Gather the stencil values based on upwind offset
           SArray<FLOC,ord> s;
           for (int jj = 0; jj < ord; jj++) { s(jj) = advect_fields(l,hs+k,j+jj+ind,hs+i); }
+          bool immL = immersed(hsm1-1);
+          bool immR = immersed(hsm1+1);
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
-          if (l == idU || l == idW) modify_stencil_immersed_der0( s , immersed );
+          if (l == idU || l == idW) {
+            modify_stencil_immersed_der0( s , immersed );
+            immL = false;
+            immR = false;
+          }
           FLOC val_L, val_R;
           if (use_weno || (imm_weno && any_immersed6(k,std::min(ny-1,j),i))) {
-            Limiter::value_based(s,val_L,val_R,immersed(hsm1-1),immersed(hsm1+1));
+            Limiter::value_based(s,val_L,val_R,immL,immR);
           } else {
             val_L = TransformMatrices::sampL(s);
             val_R = TransformMatrices::sampR(s);
@@ -908,14 +920,20 @@ namespace modules {
           // Gather the stencil values based on upwind offset
           SArray<FLOC,ord> s;
           for (int kk = 0; kk < ord; kk++) { s(kk) = advect_fields(l,k+kk+ind,hs+j,hs+i); }
+          bool immL = immersed(hsm1-1);
+          bool immR = immersed(hsm1+1);
           // For transverse velocities, modify stencil for immersed boundary zero-derivative condition (free-slip)
-          if (l == idU || l == idV) modify_stencil_immersed_der0( s , immersed );
+          if (l == idU || l == idV) {
+            modify_stencil_immersed_der0( s , immersed );
+            immL = false;
+            immR = false;
+          }
           // Multiply by normalized grid spacing to transform into zeta space
           for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+ind+kk)))/
                                                       dz(std::max(0,std::min(nz-1,k-1 +ind   ))); }
           FLOC val_L, val_R;
           if (use_weno || (imm_weno && any_immersed6(std::min(nz-1,k),j,i))) {
-            Limiter::value_based(s,val_L,val_R,immersed(hsm1-1),immersed(hsm1+1));
+            Limiter::value_based(s,val_L,val_R,immL,immR);
           } else {
             val_L = TransformMatrices::sampL(s);
             val_R = TransformMatrices::sampR(s);
