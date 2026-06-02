@@ -91,7 +91,7 @@ namespace modules {
     //   auto uvel  = dm.get<real const,3>("uvel"       );
     //   auto vvel  = dm.get<real const,3>("vvel"       );
     //   auto wvel  = dm.get<real const,3>("wvel"       );
-    //   auto temp  = dm.get<real const,3>("temp"       );
+    //   auto temp  = dm.get<real const,3>("temperature");
     //   real3d dt3d("dt3d",nz,ny,nx);
     //   real cfl = coupler.get_option<real>("cfl",0.15);
     //   real csconst = coupler.get_option<real>( "dycore_cs" , -1 );
@@ -601,7 +601,7 @@ namespace modules {
       real r_dy = 1./dy; // reciprocal of grid spacing
       real fcor = 2*7.2921e-5*std::sin(latitude/180*M_PI);  // For coriolis: 2*Omega*sin(latitude)
 
-      real constexpr imm_th = 0.01;
+      real constexpr imm_th = 0.5;
 
       FLOC cs = coupler.get_option<real>("dycore_cs",350);  // Speed of sound
 
@@ -2030,41 +2030,49 @@ namespace modules {
         yakl::timer_start("convert_dynamics_to_coupler");
       #endif
       using yakl::SimpleBounds;
-      auto  nx          = coupler.get_nx();  // Number of cells in x-direction (not including halos)
-      auto  ny          = coupler.get_ny();  // Number of cells in y-direction (not including halos)
-      auto  nz          = coupler.get_nz();  // Number of cells in z-direction (not including halos)
-      auto  R_d         = coupler.get_option<real>("R_d"    ); // Gas constant for dry air
-      auto  R_v         = coupler.get_option<real>("R_v"    ); // Gas constant for water vapor
-      auto  gamma       = coupler.get_option<real>("gamma_d"); // Ratio of specific heats for dry air
-      auto  C0          = coupler.get_option<real>("C0"     ); // p = C0 * (rho*theta)^gamma
-      auto  idWV        = coupler.get_option<int >("idWV"   ); // Tracer index for water vapor
-      auto  num_tracers = coupler.get_num_tracers(); // Number of tracers
-      auto  &dm = coupler.get_data_manager_readwrite(); // Get data manager as read-write
-      auto  dm_rho_d = dm.get<real,3>("density_dry"); // Get coupler dry density array
-      auto  dm_uvel  = dm.get<real,3>("uvel"       ); // Get coupler u-velocity array
-      auto  dm_vvel  = dm.get<real,3>("vvel"       ); // Get coupler v-velocity array
-      auto  dm_wvel  = dm.get<real,3>("wvel"       ); // Get coupler w-velocity array
-      auto  dm_temp  = dm.get<real,3>("temp"       ); // Get coupler temperature array
-      // Get array that determines whether each tracer adds to the mass of the air mixture
-      auto  tracer_adds_mass = dm.get<bool const,1>("tracer_adds_mass");
+      auto nx          = coupler.get_nx();  // Number of cells in x-direction (not including halos)
+      auto ny          = coupler.get_ny();  // Number of cells in y-direction (not including halos)
+      auto nz          = coupler.get_nz();  // Number of cells in z-direction (not including halos)
+      auto R_d         = coupler.get_option<real>("R_d"    ); // Gas constant for dry air
+      auto R_v         = coupler.get_option<real>("R_v"    ); // Gas constant for water vapor
+      auto cp_d        = coupler.get_option<real>("cp_d"   ); // Gas constant for dry air
+      auto gamma       = coupler.get_option<real>("gamma_d"); // Ratio of specific heats for dry air
+      auto C0          = coupler.get_option<real>("C0"     ); // p = C0 * (rho*theta)^gamma
+      auto p0          = coupler.get_option<real>("p0"     ); // p0
+      auto idWV        = coupler.get_option<int >("idWV"   ); // Tracer index for water vapor
+      auto num_tracers = coupler.get_num_tracers(); // Number of tracers
+      auto &dm         = coupler.get_data_manager_readwrite(); // Get data manager as read-write
+      auto dm_rho_d          = dm.get<real,3>("density_dry"); // Get coupler dry density array
+      auto dm_uvel           = dm.get<real,3>("uvel"       ); // Get coupler u-velocity array
+      auto dm_vvel           = dm.get<real,3>("vvel"       ); // Get coupler v-velocity array
+      auto dm_wvel           = dm.get<real,3>("wvel"       ); // Get coupler w-velocity array
+      auto dm_temp           = dm.get<real,3>("temperature"); // Get coupler temperature array
+      auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");
+      auto tracer_adds_mass  = dm.get<bool const,1>("tracer_adds_mass");
+      bool rsst = coupler.get_option<bool>("dycore_rsst",false) || (coupler.get_option<real>("dycore_cs",350) != 350);
       // Accrue the tracer fields from the coupler data manager
       core::MultiField<real,3> dm_tracers;
       auto tracer_names = coupler.get_tracer_names();
       for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real,3>(tracer_names.at(tr)) ); }
-      // Loop over all grid cells to compute dry density, velocities, temperature, and store in coupler arrays
+
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real rho   = state(idR,k,j,i);        // Total density
         real u     = state(idU,k,j,i) / rho;  // u-velocity
         real v     = state(idV,k,j,i) / rho;  // v-velocity
         real w     = state(idW,k,j,i) / rho;  // w-velocity
         real theta = state(idT,k,j,i) / rho;  // Potential temperature
-        real press = C0 * pow( rho*theta , gamma ); // Full pressure
         real rho_v = tracers(idWV,k,j,i);     // Water vapor density
         real rho_d = rho;                     // Dry air density starting value
         // Subtract mass-adding tracers from total density to get dry air density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho_d -= tracers(tr,k,j,i); }
         // Use equation of state to compute temperature from pressure, dry density, and water vapor density
-        real temp = press / ( rho_d * R_d + rho_v * R_v );
+        real temp;
+        if (rsst) {
+          temp = theta*std::pow(hy_pressure_cells(hs+k)/p0,R_d/cp_d);
+        } else {
+          real press = C0 * pow( rho*theta , gamma ); // Full pressure
+          temp = press / ( rho_d * R_d + rho_v * R_v );
+        }
         dm_rho_d(k,j,i) = rho_d;  // Store dry air density in coupler array
         dm_uvel (k,j,i) = u;      // Store u-velocity in coupler array
         dm_vvel (k,j,i) = v;      // Store v-velocity in coupler array
@@ -2091,41 +2099,55 @@ namespace modules {
         yakl::timer_start("convert_coupler_to_dynamics");
       #endif
       using yakl::SimpleBounds;
-      auto  nx          = coupler.get_nx(); // Number of cells in x-direction (not including halos)
-      auto  ny          = coupler.get_ny(); // Number of cells in y-direction (not including halos)
-      auto  nz          = coupler.get_nz(); // Number of cells in z-direction (not including halos)
-      auto  R_d         = coupler.get_option<real>("R_d"    ); // Gas constant for dry air
-      auto  R_v         = coupler.get_option<real>("R_v"    ); // Gas constant for water vapor
-      auto  gamma       = coupler.get_option<real>("gamma_d"); // Ratio of specific heats for dry air
-      auto  C0          = coupler.get_option<real>("C0"     ); // p = C0 * (rho*theta)^gamma
-      auto  idWV        = coupler.get_option<int >("idWV"   ); // Tracer index for water vapor
-      auto  num_tracers = coupler.get_num_tracers(); // Number of tracers
-      auto  &dm = coupler.get_data_manager_readonly(); // Get data manager as read-only
-      auto  dm_rho_d = dm.get<real const,3>("density_dry"); // Get coupler dry density array
-      auto  dm_uvel  = dm.get<real const,3>("uvel"       ); // Get coupler u-velocity array
-      auto  dm_vvel  = dm.get<real const,3>("vvel"       ); // Get coupler v-velocity array
-      auto  dm_wvel  = dm.get<real const,3>("wvel"       ); // Get coupler w-velocity array
-      auto  dm_temp  = dm.get<real const,3>("temp"       ); // Get coupler temperature array
-      // Get array that determines whether each tracer adds to the mass of the air mixture
-      auto  tracer_adds_mass = dm.get<bool const,1>("tracer_adds_mass");
+      auto nx          = coupler.get_nx(); // Number of cells in x-direction (not including halos)
+      auto ny          = coupler.get_ny(); // Number of cells in y-direction (not including halos)
+      auto nz          = coupler.get_nz(); // Number of cells in z-direction (not including halos)
+      auto R_d         = coupler.get_option<real>("R_d"    ); // Gas constant for dry air
+      auto R_v         = coupler.get_option<real>("R_v"    ); // Gas constant for water vapor
+      auto cp_d        = coupler.get_option<real>("cp_d"   ); // Gas constant for dry air
+      auto gamma       = coupler.get_option<real>("gamma_d"); // Ratio of specific heats for dry air
+      auto C0          = coupler.get_option<real>("C0"     ); // p = C0 * (rho*theta)^gamma
+      auto p0          = coupler.get_option<real>("p0"     ); // p0
+      auto idWV        = coupler.get_option<int >("idWV"   ); // Tracer index for water vapor
+      auto num_tracers = coupler.get_num_tracers(); // Number of tracers
+      auto &dm         = coupler.get_data_manager_readonly(); // Get data manager as read-only
+      auto dm_rho_d         = dm.get<real const,3>("density_dry"); // Get coupler dry density array
+      auto dm_uvel          = dm.get<real const,3>("uvel"       ); // Get coupler u-velocity array
+      auto dm_vvel          = dm.get<real const,3>("vvel"       ); // Get coupler v-velocity array
+      auto dm_wvel          = dm.get<real const,3>("wvel"       ); // Get coupler w-velocity array
+      auto dm_temp          = dm.get<real const,3>("temperature"); // Get coupler temperature array
+      auto tracer_adds_mass = dm.get<bool const,1>("tracer_adds_mass");
+      bool rsst = coupler.get_option<bool>("dycore_rsst",false) || (coupler.get_option<real>("dycore_cs",350) != 350);
+      realConst1d hy_pressure_cells;
+      if (dm.entry_exists("hy_pressure_cells"))  hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");
       // Accrue the tracer fields from the coupler data manager
       core::MultiField<real const,3> dm_tracers;
       auto tracer_names = coupler.get_tracer_names(); // Get the tracer names
       for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real const,3>(tracer_names.at(tr)) ); }
-      // Loop over all grid cells to compute dynamics state and tracers arrays from coupler data
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         real rho_d = dm_rho_d(k,j,i); // Dry air density
         real u     = dm_uvel (k,j,i); // u-velocity
         real v     = dm_vvel (k,j,i); // v-velocity
         real w     = dm_wvel (k,j,i); // w-velocity
         real temp  = dm_temp (k,j,i); // Temperature
-        real rho_v = dm_tracers(idWV,k,j,i); // Water vapor density
-        real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
-        real rho = rho_d;              // Total density starting value
+        real rho   = rho_d;           // Total density starting value
         // Add mass-adding tracers to dry density to get total density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho += dm_tracers(tr,k,j,i); }
         // Compute potential temperature from pressure and total density
-        real theta = pow( press/C0 , 1._fp / gamma ) / rho;
+        real theta;
+        if (rsst) {
+          if (hy_pressure_cells.is_allocated()) {
+            theta = temp*std::pow(p0/hy_pressure_cells(hs+k),R_d/cp_d);
+          } else {
+            real rho_v = dm_tracers(idWV,k,j,i); // Water vapor density
+            real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
+            theta = temp*std::pow(p0/press,R_d/cp_d);
+          }
+        } else {
+          real rho_v = dm_tracers(idWV,k,j,i); // Water vapor density
+          real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
+          theta = std::pow( press/C0 , 1._fp / gamma ) / rho;
+        }
         state(idR,k,j,i) = rho;         // Store total density in dynamics state array
         state(idU,k,j,i) = rho * u;     // Store momentum in dynamics state array
         state(idV,k,j,i) = rho * v;     // Store momentum in dynamics state array

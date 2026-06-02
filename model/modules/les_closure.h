@@ -500,7 +500,7 @@ namespace modules {
       auto dm_uvel      = dm.get<real const,3>("uvel"       ); // Get u-velocity from data manager
       auto dm_vvel      = dm.get<real const,3>("vvel"       ); // Get v-velocity from data manager
       auto dm_wvel      = dm.get<real const,3>("wvel"       ); // Get w-velocity from data manager
-      auto dm_temp      = dm.get<real const,3>("temp"       ); // Get temperature from data manager
+      auto dm_temp      = dm.get<real const,3>("temperature"); // Get temperature from data manager
       auto dm_tke       = dm.get<real const,3>("TKE"        ); // Get TKE from data manager
       // Accrue all tracers that are to be diffused by the SGS scheme
       core::MultiField<real const,3> dm_tracers;
@@ -555,7 +555,7 @@ namespace modules {
       auto dm_uvel      = dm.get<real,3>("uvel"       );     // Get u-velocity from data manager
       auto dm_vvel      = dm.get<real,3>("vvel"       );     // Get v-velocity from data manager
       auto dm_wvel      = dm.get<real,3>("wvel"       );     // Get w-velocity from data manager
-      auto dm_temp      = dm.get<real,3>("temp"       );     // Get temperature from data manager
+      auto dm_temp      = dm.get<real,3>("temperature");     // Get temperature from data manager
       auto dm_tke       = dm.get<real,3>("TKE"        );     // Get TKE from data manager
       // Accrue all tracers that are to be diffused by the SGS scheme
       core::MultiField<real,3> dm_tracers;

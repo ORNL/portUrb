@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
     windmills    .init        ( coupler );
     dycore       .init        ( coupler ); // Important that dycore inits after windmills for base immersed boundaries
     time_averager.init        ( coupler );
-    edge_sponge1 .set_column  ( coupler , {"density_dry","temp"} );
+    edge_sponge1 .set_column  ( coupler , {"density_dry","temperature"} );
     edge_sponge2 .set_column  ( coupler , {"vvel","wvel"} );
     auto ghost_col = dycore.compute_average_ghost_column( coupler );
     custom_modules::sc_perturb( coupler );

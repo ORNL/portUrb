@@ -193,7 +193,7 @@ int main(int argc, char** argv) {
       dm_prec.get<real const,3>("uvel"       ).deep_copy_to(dm_main.get<real,3>("uvel"       ));
       dm_prec.get<real const,3>("vvel"       ).deep_copy_to(dm_main.get<real,3>("vvel"       ));
       dm_prec.get<real const,3>("wvel"       ).deep_copy_to(dm_main.get<real,3>("wvel"       ));
-      dm_prec.get<real const,3>("temp"       ).deep_copy_to(dm_main.get<real,3>("temp"       ));
+      dm_prec.get<real const,3>("temperature").deep_copy_to(dm_main.get<real,3>("temperature"));
       dm_prec.get<real const,3>("TKE"        ).deep_copy_to(dm_main.get<real,3>("TKE"        ));
     } else {
       if (out_freq >= 0) coupler_prec.write_output_file( out_prefix_prec );
@@ -241,11 +241,11 @@ int main(int argc, char** argv) {
         coupler_prec.run_module( [&] (Coupler &c) { les_closure.apply                (c,dt);           } , "les_closure"    );
         coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate         (c,dt);           } , "time_averager"  );
       }
-      col_nudge_prec.set_column( coupler_prec , {"density_dry","temp"} );
+      col_nudge_prec.set_column( coupler_prec , {"density_dry","temperature"} );
       col_nudge_main.column = col_nudge_prec.column;
       col_nudge_main.names  = col_nudge_prec.names;
       if (run_main) {
-        modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temp"} ,
+        modules::precursor_sponge( coupler_main , coupler_prec , {"density_dry","uvel","vvel","wvel","temperature"} ,
                                    nx_glob/10 , 0 , ny_glob/10 , 0 );
         coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv);   } , "pg_forcing"     );
         coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column   (c,dt,dt*100);    } , "col_nudge"      );

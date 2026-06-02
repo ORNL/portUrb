@@ -28,6 +28,7 @@ namespace modules {
     auto &dm     = coupler.get_data_manager_readwrite();  // data manager for read/write access
     auto uvel    = dm.get<real,3>("uvel");  // get u-velocity field
     auto vvel    = dm.get<real,3>("vvel");  // get v-velocity field
+    auto imm     = dm.get<real,3>("immersed_proportion");
     // Find the cell whose midpoint forms the lower bound for interpolation
     int k1_search = -1;
     if (height < dz(0)/2) {
@@ -75,8 +76,10 @@ namespace modules {
     real u_forcing = dt / tau*(u0-u);
     real v_forcing = dt / tau*(v0-v);
     yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      uvel(k,j,i) += u_forcing;
-      vvel(k,j,i) += v_forcing;
+      if (imm(k,j,i) == 0) {
+        uvel(k,j,i) += u_forcing;
+        vvel(k,j,i) += v_forcing;
+      }
     });
     // Return tendencies to be used later in uniform_pg_wind_forcing_specified for forced simulations
     return std::make_tuple(u_forcing/dt,v_forcing/dt);
@@ -106,11 +109,14 @@ namespace modules {
     auto &dm  = coupler.get_data_manager_readwrite();  // data manager for read/write access
     auto uvel = dm.get<real,3>("uvel");   // get u-velocity field
     auto vvel = dm.get<real,3>("vvel");   // get v-velocity field
+    auto imm     = dm.get<real,3>("immersed_proportion");
     real u_forcing = dt / tau*(u0-u_in);  // compute u forcing
     real v_forcing = dt / tau*(v0-v_in);  // compute v forcing
     yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      uvel(k,j,i) += u_forcing;
-      vvel(k,j,i) += v_forcing;
+      if (imm(k,j,i) == 0) {
+        uvel(k,j,i) += u_forcing;
+        vvel(k,j,i) += v_forcing;
+      }
     });
     // Return tendencies to be used later in uniform_pg_wind_forcing_specified for forced simulations
     return std::make_tuple(u_forcing/dt,v_forcing/dt);

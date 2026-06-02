@@ -393,7 +393,7 @@ namespace modules {
       auto  dm_uvel     = dm.get<real,3>("uvel"       );        // Get coupler u-velocity array
       auto  dm_vvel     = dm.get<real,3>("vvel"       );        // Get coupler v-velocity array
       auto  dm_wvel     = dm.get<real,3>("wvel"       );        // Get coupler w-velocity array
-      auto  dm_temp     = dm.get<real,3>("temp"       );        // Get coupler temperature array
+      auto  dm_temp     = dm.get<real,3>("temperature");        // Get coupler temperature array
       // Get array that determines whether each tracer adds to the mass of the air mixture
       auto  tracer_adds_mass = dm.get<bool const,1>("tracer_adds_mass");
       // Accrue the tracer fields from the coupler data manager
@@ -447,7 +447,7 @@ namespace modules {
       auto  dm_uvel     = dm.get<real const,3>("uvel"       ); // Get coupler u-velocity array
       auto  dm_vvel     = dm.get<real const,3>("vvel"       ); // Get coupler v-velocity array
       auto  dm_wvel     = dm.get<real const,3>("wvel"       ); // Get coupler w-velocity array
-      auto  dm_temp     = dm.get<real const,3>("temp"       ); // Get coupler temperature array
+      auto  dm_temp     = dm.get<real const,3>("temperature"); // Get coupler temperature array
       // Get array that determines whether each tracer adds to the mass of the air mixture
       auto  tracer_adds_mass = dm.get<bool const,1>("tracer_adds_mass");
       // Accrue the tracer fields from the coupler data manager

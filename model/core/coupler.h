@@ -524,7 +524,7 @@ namespace core {
       fields.add_field(dm.get<real const,3>("uvel"       ));  names.push_back("uvel"       );
       fields.add_field(dm.get<real const,3>("vvel"       ));  names.push_back("vvel"       );
       fields.add_field(dm.get<real const,3>("wvel"       ));  names.push_back("wvel"       );
-      fields.add_field(dm.get<real const,3>("temp"       ));  names.push_back("temp"       );
+      fields.add_field(dm.get<real const,3>("temperature"));  names.push_back("temperature");
       auto tracer_names = get_tracer_names();
       for (int tr=0; tr < tracer_names.size(); tr++) {
         fields.add_field(dm.get<real const,3>(tracer_names.at(tr)));
@@ -1057,7 +1057,7 @@ namespace core {
       nc.write_all(dm.get<real const,3>("uvel"       ).as<float>(),"uvel"       ,start_3d); // Write u-velocity
       nc.write_all(dm.get<real const,3>("vvel"       ).as<float>(),"vvel"       ,start_3d); // Write v-velocity
       nc.write_all(dm.get<real const,3>("wvel"       ).as<float>(),"wvel"       ,start_3d); // Write w-velocity
-      nc.write_all(dm.get<real const,3>("temp"       ).as<float>(),"temperature",start_3d); // Write temperature
+      nc.write_all(dm.get<real const,3>("temperature").as<float>(),"temperature",start_3d); // Write temperature
       // Write tracer variables to file
       for (int i=0; i < tracer_names.size(); i++) {
         nc.write_all(dm.get<real const,3>(tracer_names.at(i)).as<float>(),tracer_names.at(i),start_3d);
@@ -1141,7 +1141,7 @@ namespace core {
       nc.read_all(dm.get<real,3>("uvel"       ),"uvel"       ,start_3d); // Read u-velocity
       nc.read_all(dm.get<real,3>("vvel"       ),"vvel"       ,start_3d); // Read v-velocity
       nc.read_all(dm.get<real,3>("wvel"       ),"wvel"       ,start_3d); // Read w-velocity
-      nc.read_all(dm.get<real,3>("temp"       ),"temperature",start_3d); // Read temperature
+      nc.read_all(dm.get<real,3>("temperature"),"temperature",start_3d); // Read temperature
       // Read tracer variables from file
       for (int i=0; i < tracer_names.size(); i++) {
         if (nc.var_exists(tracer_names.at(i))) {

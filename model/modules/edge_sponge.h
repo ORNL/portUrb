@@ -15,10 +15,10 @@ namespace modules {
 
     // Compute the average column that should be used for forcing
     // coupler    : Coupler object holding the data manager and domain information
-    // names_in   : Names of the fields to sponge (default: {"density_dry","uvel","vvel","wvel","temp"})
+    // names_in   : Names of the fields to sponge (default: {"density_dry","uvel","vvel","wvel","temperature"})
     // The column averages are computed and stored in the column member variable
     void set_column( core::Coupler &coupler ,
-                     std::vector<std::string> names_in = {"density_dry","uvel","vvel","wvel","temp"} ) {
+                     std::vector<std::string> names_in = {"density_dry","uvel","vvel","wvel","temperature"} ) {
       using yakl::SimpleBounds;
       int nx   = coupler.get_nx(); // Get number of cells in x-direction
       int ny   = coupler.get_ny(); // Get number of cells in y-direction

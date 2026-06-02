@@ -175,14 +175,14 @@ int main(int argc, char** argv) {
       coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate (c,dt);               } , "time_averager"  );
 
       // // Copy the precursor column to the main column nudger for nudging to the precursor column state
-      col_nudge_prec.set_column( coupler_prec , {"density_dry","temp"} );
+      col_nudge_prec.set_column( coupler_prec , {"density_dry","temperature"} );
       col_nudge_main.column = col_nudge_prec.column;
       col_nudge_main.names  = col_nudge_prec.names;
       // Copy the precursor ghost cells to the main ghost cells
       dycore.copy_precursor_ghost_cells( coupler_prec , coupler_main );
 
       // Run the main modules using precursor ghost cells / open boundaries
-      precursor_sponge( coupler_main , coupler_prec , {"density_dry","temp"} , 0 , nx_glob/10 , 0 , ny_glob/10 );
+      precursor_sponge( coupler_main , coupler_prec , {"density_dry","temperature"} , 0 , nx_glob/10 , 0 , ny_glob/10 );
       coupler_main.run_module( [&] (Coupler &c) { col_nudge_main.nudge_to_column(c,dt,dt*100);   } , "col_nudge"  );
       coupler_main.run_module( [&] (Coupler &c) { geostrophic_wind_forcing_specified(c,dt,lat_g,u_g,v_g,col); } , "pg_forcing" );
       coupler_main.run_module( [&] (Coupler &c) { les_closure.apply        (c,dt);               } , "les_closure"    );

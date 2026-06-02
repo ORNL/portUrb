@@ -13,7 +13,7 @@ num_tasks=`echo "$SLURM_JOB_NUM_NODES*8" | bc`
 cd /lustre/orion/stf006/scratch/imn/portUrb/build
 source machines/frontier/frontier_gpu_O3.env
 
-# srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest
+srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_neutral
 
 # cat <<EOF > rsst1.yaml
 # cs: 350
@@ -45,49 +45,49 @@ source machines/frontier/frontier_gpu_O3.env
 # 
 # wait
 # 
-cat <<EOF > rsst5.yaml
-cs: 150
-buoy_theta: true
-rsst: true
-EOF
-srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst5.yaml 2>&1 | tee turbine_simplest5.out &
-
-cat <<EOF > rsst6.yaml
-cs: 100
-buoy_theta: true
-rsst: true
-EOF
-srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst6.yaml 2>&1 | tee turbine_simplest6.out &
-
-cat <<EOF > rsst7.yaml
-cs: 80
-buoy_theta: true
-rsst: true
-EOF
-srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst7.yaml 2>&1 | tee turbine_simplest7.out &
-
-cat <<EOF > rsst8.yaml
-cs: 60
-buoy_theta: true
-rsst: true
-EOF
-srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst8.yaml 2>&1 | tee turbine_simplest8.out &
-
-wait
-
-cat <<EOF > rsst9.yaml
-cs: 40
-buoy_theta: true
-rsst: true
-EOF
-srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst9.yaml 2>&1 | tee turbine_simplest9.out &
-
-cat <<EOF > rsst10.yaml
-cs: 20
-buoy_theta: true
-rsst: true
-EOF
-srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst10.yaml 2>&1 | tee turbine_simplest10.out &
-
-wait
-
+# cat <<EOF > rsst5.yaml
+# cs: 150
+# buoy_theta: true
+# rsst: true
+# EOF
+# srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst5.yaml 2>&1 | tee turbine_simplest5.out &
+# 
+# cat <<EOF > rsst6.yaml
+# cs: 100
+# buoy_theta: true
+# rsst: true
+# EOF
+# srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst6.yaml 2>&1 | tee turbine_simplest6.out &
+# 
+# cat <<EOF > rsst7.yaml
+# cs: 80
+# buoy_theta: true
+# rsst: true
+# EOF
+# srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst7.yaml 2>&1 | tee turbine_simplest7.out &
+# 
+# cat <<EOF > rsst8.yaml
+# cs: 60
+# buoy_theta: true
+# rsst: true
+# EOF
+# srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst8.yaml 2>&1 | tee turbine_simplest8.out &
+# 
+# wait
+# 
+# cat <<EOF > rsst9.yaml
+# cs: 40
+# buoy_theta: true
+# rsst: true
+# EOF
+# srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst9.yaml 2>&1 | tee turbine_simplest9.out &
+# 
+# cat <<EOF > rsst10.yaml
+# cs: 20
+# buoy_theta: true
+# rsst: true
+# EOF
+# srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./turbine_simplest ./rsst10.yaml 2>&1 | tee turbine_simplest10.out &
+# 
+# wait
+# 

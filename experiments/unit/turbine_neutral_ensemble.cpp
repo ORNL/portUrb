@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
         dm_prec.get<real const,3>("uvel"       ).deep_copy_to(dm_main.get<real,3>("uvel"       ));
         dm_prec.get<real const,3>("vvel"       ).deep_copy_to(dm_main.get<real,3>("vvel"       ));
         dm_prec.get<real const,3>("wvel"       ).deep_copy_to(dm_main.get<real,3>("wvel"       ));
-        dm_prec.get<real const,3>("temp"       ).deep_copy_to(dm_main.get<real,3>("temp"       ));
+        dm_prec.get<real const,3>("temperature").deep_copy_to(dm_main.get<real,3>("temperature"));
         dm_prec.get<real const,3>("TKE"        ).deep_copy_to(dm_main.get<real,3>("TKE"        ));
       } else {
         if (out_freq >= 0) coupler_prec.write_output_file( out_prefix_prec );
@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
           coupler_prec.run_module( [&] (Coupler &c) { time_averager.accumulate     (c,dt); } , "time_averager"  );
         }
 
-        col_nudge_prec.set_column( coupler_prec , {"density_dry","temp"} );
+        col_nudge_prec.set_column( coupler_prec , {"density_dry","temperature"} );
         col_nudge_main.column = col_nudge_prec.column;
         col_nudge_main.names  = col_nudge_prec.names;
         

@@ -27,7 +27,7 @@ namespace modules {
     auto dm_u = dm.get<real,3>("uvel"); // Get 3-D u-velocity array from DataManager
     auto dm_v = dm.get<real,3>("vvel"); // Get 3-D v-velocity array from DataManager
     auto dm_w = dm.get<real,3>("wvel"); // Get 3-D w-velocity array from DataManager
-    auto dm_T = dm.get<real,3>("temp"); // Get 3-D temperature array from DataManager
+    auto dm_T = dm.get<real,3>("temperature"); // Get 3-D temperature array from DataManager
 
     int constexpr idU  = 0;  // index for u-velocity in the column array
     int constexpr idV  = 1;  // index for v-velocity in the column array

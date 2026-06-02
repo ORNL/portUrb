@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_riemann_explore.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -8,6 +8,7 @@
 #include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
+#include "overwrite_interpolate.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -15,16 +16,18 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
-    YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
-    if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
-    auto cs         = config["cs"        ].as<real>();
-    auto buoy_theta = config["buoy_theta"].as<bool>();
-    auto rsst       = config["rsst"      ].as<bool>();
+    // YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
+    // if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    // auto cs         = config["cs"        ].as<real>();
+    // auto buoy_theta = config["buoy_theta"].as<bool>();
+    // auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx = 20;
-    real umax = 15;
-    // real cfl = 0.6*(umax+cs)/(umax+350);
-    real cfl = 0.6;
+    real dx         = 20;
+    real umax       = 15;
+    real cfl        = 0.6;
+    real cs         = 10;
+    bool buoy_theta = true;
+    bool rsst       = true;
 
     real        sim_time    = 3600*10+1;
     real        xlen        = 4000;
@@ -34,10 +37,11 @@ int main(int argc, char** argv) {
     int         ny_glob     = (int) std::round(ylen/dx);
     int         nz          = (int) std::round(zlen/dx);
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 1;
+    int         dyn_cycle   = 4;
     real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = std::string("ABL_neutral_buoy-") +
+    std::string out_prefix  = std::string("ABL_neutral_buoy-dx_") +
+                              std::to_string((int)std::round(dx));
                               (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
                               (rsst       ? std::string("rsst_cs-")      : std::string("orig_cs-")) +
                               std::to_string((int)std::round(cs));
@@ -89,6 +93,7 @@ int main(int argc, char** argv) {
     sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler );
     custom_modules::sc_perturb( coupler );
+    // modules::overwrite_interpolate( coupler , "ABL_neutral_buoy-dx_4_00000008.nc" , {"density_dry","uvel","vvel","wvel","temperature","TKE"} );
 
     real etime = coupler.get_option<real>("elapsed_time");
     core::Counter output_counter( out_freq    , etime );

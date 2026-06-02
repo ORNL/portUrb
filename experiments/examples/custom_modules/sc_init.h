@@ -66,7 +66,7 @@ namespace custom_modules {
     if (! dm.entry_exists("uvel"               )) dm.register_and_allocate<real>("uvel"               ,dims3d);
     if (! dm.entry_exists("vvel"               )) dm.register_and_allocate<real>("vvel"               ,dims3d);
     if (! dm.entry_exists("wvel"               )) dm.register_and_allocate<real>("wvel"               ,dims3d);
-    if (! dm.entry_exists("temp"               )) dm.register_and_allocate<real>("temp"               ,dims3d);
+    if (! dm.entry_exists("temperature"        )) dm.register_and_allocate<real>("temperature"        ,dims3d);
     if (! dm.entry_exists("water_vapor"        )) dm.register_and_allocate<real>("water_vapor"        ,dims3d);
     if (! dm.entry_exists("immersed_proportion")) dm.register_and_allocate<real>("immersed_proportion",dims3d);
     if (! dm.entry_exists("immersed_roughness" )) dm.register_and_allocate<real>("immersed_roughness" ,dims3d);
@@ -75,7 +75,7 @@ namespace custom_modules {
     auto dm_uvel           = dm.get<real,3>("uvel"               );
     auto dm_vvel           = dm.get<real,3>("vvel"               );
     auto dm_wvel           = dm.get<real,3>("wvel"               );
-    auto dm_temp           = dm.get<real,3>("temp"               );
+    auto dm_temp           = dm.get<real,3>("temperature"        );
     auto dm_rho_v          = dm.get<real,3>("water_vapor"        );
     auto dm_immersed_prop  = dm.get<real,3>("immersed_proportion");
     auto dm_immersed_rough = dm.get<real,3>("immersed_roughness" );
@@ -395,20 +395,21 @@ namespace custom_modules {
               real z         = zmid(k)          + qpoints(kk)*dz(k);
               real wt = qweights(kk)*qweights(jj)*qweights(ii);
               dm_immersed_prop(k,j,i) += (z<=zmesh(j,i,jj,ii) ? 1 : 0) * wt;
-              bool grid = false;
+              bool gridy = false;
+              bool gridz = false;
               if (x >= 10*scale && x <= 11*scale) {
                 real ywall = 4.025;
                 for (int jw=0; jw < 39; jw++) {
-                  if (y >= ywall*scale && y <= (ywall+1)*scale) grid = true;
+                  if (y >= ywall*scale && y <= (ywall+1)*scale) gridy = true;
                   ywall += 5.025;
                 }
                 real zwall = 4.1;
                 for (int kw=0; kw < 9; kw++) {
-                  if (z >= zwall*scale && z <= (zwall+1)*scale) grid = true;
+                  if (z >= zwall*scale && z <= (zwall+1)*scale) gridz = true;
                   zwall += 5.1;
                 }
               }
-              if (grid) dm_immersed_prop(k,j,i) += 1*wt;
+              if (gridy && gridz) dm_immersed_prop(k,j,i) += 1*wt;
             }
           }
         }

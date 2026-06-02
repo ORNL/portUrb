@@ -243,7 +243,7 @@ int main(int argc, char** argv) {
 
         // We're going to force the forced simulations to maintain the precursor average col density and temperature
         modules::ColumnNudger col_nudge_prec;
-        col_nudge_prec.set_column( coupler_prec , {"density_dry","temp"} );
+        col_nudge_prec.set_column( coupler_prec , {"density_dry","temperature"} );
 
         // Force domain avg col density and temperature, and copy in precursor ghost cells
         modules::ColumnNudger col_nudge_noturb;
@@ -252,7 +252,7 @@ int main(int argc, char** argv) {
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_noturb );
 
         {
-          precursor_sponge( coupler_noturb , coupler_prec , {"density_dry","temp"} , nx_glob/20 , nx_glob/20 , 0 , 0 );
+          precursor_sponge( coupler_noturb , coupler_prec , {"density_dry","temperature"} , nx_glob/20 , nx_glob/20 , 0 , 0 );
           coupler_noturb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_noturb.run_module( [&] (Coupler &c) { col_nudge_noturb.nudge_to_column(c,dt,dt*2); } , "col_nudge");
           coupler_noturb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );
@@ -269,7 +269,7 @@ int main(int argc, char** argv) {
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_turb );
 
         {
-          precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temp"} , nx_glob/20 , nx_glob/20 , 0 , 0 );
+          precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temperature"} , nx_glob/20 , nx_glob/20 , 0 , 0 );
           coupler_turb.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
           coupler_turb.run_module( [&] (Coupler &c) { col_nudge_turb.nudge_to_column(c,dt,dt*2); } , "col_nudge"  );
           coupler_turb.run_module( [&] (Coupler &c) { dycore.time_step              (c,dt); } , "dycore"            );

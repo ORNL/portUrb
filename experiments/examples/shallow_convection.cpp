@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
     dycore       .init        ( coupler );
     sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler );
-    col_nudge.set_column      ( coupler , {"water_vapor","temp"} );
+    col_nudge.set_column      ( coupler , {"water_vapor","temperature"} );
     custom_modules::sc_perturb( coupler );
 
     coupler.set_option<std::string>("bc_x1","periodic");

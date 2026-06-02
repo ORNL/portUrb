@@ -89,7 +89,7 @@ if (par_comm.valid()) {
 // The line below declares a MultiField of multiple Array objects of type real const, each with 3 dimensions
 core::MultiField<real const,3> fields;
 auto rho_d = coupler.get_data_manager_readonly().get<real const,3>("density_dry");
-auto temp  = coupler.get_data_manager_readonly().get<real const,3>("temp"       );
+auto temp  = coupler.get_data_manager_readonly().get<real const,3>("temperature");
 auto rho_v = coupler.get_data_manager_readonly().get<real const,3>("water_vapor");
 fields.add_field( rho_d );
 fields.add_field( temp  );

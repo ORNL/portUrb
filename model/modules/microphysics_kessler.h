@@ -116,7 +116,7 @@ namespace modules {
       auto rho_c   = dm.get_lev_col<real      >("cloud_liquid" ); // Get cloud liquid density
       auto rho_r   = dm.get_lev_col<real      >("precip_liquid"); // Get precip liquid density
       auto rho_dry = dm.get_lev_col<real const>("density_dry"  ); // Get dry air density
-      auto temp    = dm.get_lev_col<real      >("temp"         ); // Get temperature
+      auto temp    = dm.get_lev_col<real      >("temperature"  ); // Get temperature
 
       // Grab the dimension sizes
       auto zmid_in = coupler.get_zmid(); // Get mid-point heights (1-D array of size nz)

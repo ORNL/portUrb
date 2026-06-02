@@ -10,6 +10,7 @@
 #include "TriMesh.h"
 #include "tank_tracer_injection.h"
 #include <numeric>
+#include "edge_sponge.h"
 
 /*
 In blender, delete the initial objects.
@@ -28,8 +29,8 @@ int main(int argc, char** argv) {
     yakl::timer_start("main");
 
     real scale = 1./1250.;
-    real dx = 0.3*scale;
-    real u0 = 0.655;
+    real dx = 0.15*scale;
+    real u0 = 0.5624;
 
     modules::TriMesh mesh;
     mesh.load_file("/ccs/home/imn/330deg.obj");
@@ -51,7 +52,7 @@ int main(int argc, char** argv) {
     real        xlen        = mesh.domain_hi.x + offset_x2*scale;
     real        ylen        = 200*scale;
     real        zlen        = 50 *scale;
-    real        sim_time    = xlen/u0;
+    real        sim_time    = 10*xlen/u0;
     int         nx_glob     = xlen/dx;
     int         ny_glob     = ylen/dx;
     int         nz          = zlen/dx;
@@ -69,7 +70,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "is_restart"                         , is_restart  );
     coupler.set_option<std::string>( "restart_file"                       , ""          );
     coupler.set_option<real       >( "latitude"                           , 0.          );
-    coupler.set_option<real       >( "roughness"                          , dx/50.      );
+    coupler.set_option<real       >( "roughness"                          , dx/100.     );
     coupler.set_option<real       >( "init_density"                       , 1           );
     coupler.set_option<real       >( "init_temperature"                   , 300         );
     coupler.set_option<real       >( "init_uvel"                          , u0          );
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_use_weno_immersed"           , true        );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , false       );
     coupler.set_option<bool       >( "dycore_immersed_hypervis"           , false       );
+    coupler.set_option<int        >( "dycore_max_cycles"                  , dyn_cycle+1 );
     coupler.set_option<real       >( "kinematic_viscosity"                , 2.e-6       );
     coupler.set_option<real       >( "les_closure_delta_multiplier"       , 0.3         );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false       );
@@ -100,6 +102,8 @@ int main(int argc, char** argv) {
     modules::SurfaceFlux                       sfc_flux;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
+    modules::EdgeSponge                        edge_sponge1;
+    modules::EdgeSponge                        edge_sponge2;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -108,10 +112,22 @@ int main(int argc, char** argv) {
     coupler.get_data_manager_readwrite().get<real,3>("tank_tracer") = 0;
 
     custom_modules::sc_init   ( coupler );
+    coupler.set_option<std::string>("bc_x1","precursor");
+    coupler.set_option<std::string>("bc_x2","open"     );
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
     sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler , {"tank_tracer"});
+    edge_sponge1 .set_column  ( coupler , {"density_dry","temperature"} );
+    edge_sponge2 .set_column  ( coupler , {"vvel","wvel"} );
+    auto ghost_col = dycore.compute_average_ghost_column( coupler );
+    yakl::parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
+      ghost_col(dycore.idR,k) = 0;
+      ghost_col(dycore.idU,k) = u0;
+      ghost_col(dycore.idV,k) = 0;
+      ghost_col(dycore.idW,k) = 0;
+      ghost_col(dycore.idT,k) = 0;
+    });
     custom_modules::sc_perturb( coupler );
 
     real etime = coupler.get_option<real>("elapsed_time");
@@ -153,14 +169,14 @@ int main(int argc, char** argv) {
           real z1   = 2   *scale;
           real z2   = 4.25*scale;
           real conc = 1;
-          real wvel = 0.77;
+          real wvel = 0.78;
           coupler.run_module( [&] (Coupler &c) {
             tank_tracer_injection(c,dt,x1,x2,y1,y2,z1,z2,conc,wvel,"tank_tracer");
           } , "tracer_inj" );
         }
         // {
-        //   real z1  = 0.5*zlen;
-        //   real z2  = 0.9*zlen;
+        //   real z1  = 0.013470728;
+        //   real z2  = 0.02;
         //   real y1  = 0.1*ylen;
         //   real y2  = 0.9*ylen;
         //   real x0  = (offset_x1+disk_x/2)*scale;
@@ -173,13 +189,15 @@ int main(int argc, char** argv) {
         //   } , "pg_forcing" );
         //   pgu.push_back(pguloc);
         // }
-        {
-          real utend = 1.1;
-          real vtend = 0;
-          coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,utend,vtend); } , "pg_forcing" );
-        }
+        // {
+        //   real utend = 1.1;
+        //   real vtend = 0;
+        //   coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,utend,vtend); } , "pg_forcing" );
+        // }
+        coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply      (c,0,0.1,0,0);   } , "edge_sponge1"  );
+        dycore.copy_column_to_precursor_ghost_cells( coupler , ghost_col );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"         );
-        coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
+        // coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
         // coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );
         coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager"  );
       }

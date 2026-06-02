@@ -41,13 +41,14 @@ namespace custom_modules {
       real y = (j_beg+j+0.5)*dy;
       real z = zmid(k);
       if (x >= x1 && x <= x2 && y >= y1 && y <= y2 && z >= z1 && z <= z2) {
+        real r = std::sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0));
         dm_trac(k,j,i) = conc*dm_rho_d(k,j,i);
-        dm_w   (k,j,i) = wvel*std::exp(-((x-x0)*(x-x0)+(y-y0)*(y-y0))/(2*sigma*sigma));
+        dm_w   (k,j,i) = wvel - (r/0.0022)*(r/0.0022);
       }
-      int start = std::round(0.95*nx_glob);
-      if ((i_beg+i) >= start) {
-        dm_trac(k,j,i) *= (nx_glob-1-(i_beg+i)) / (nx_glob-1-start);
-      }
+      // int start = std::round(0.95*nx_glob);
+      // if ((i_beg+i) >= start) {
+      //   dm_trac(k,j,i) *= (nx_glob-1-(i_beg+i)) / (nx_glob-1-start);
+      // }
     });
   }
 }

@@ -152,7 +152,7 @@ namespace modules {
       auto dm_rho_rn    = dm.get_lev_col  <real>("rain_num"       );
       auto dm_rho_gn    = dm.get_lev_col  <real>("graupel_num"    );
       auto dm_rho_dry   = dm.get_lev_col  <real>("density_dry"    );
-      auto dm_temp      = dm.get_lev_col  <real>("temp"           );
+      auto dm_temp      = dm.get_lev_col  <real>("temperature"    );
       auto dm_rainnc    = dm.get_collapsed<real>("micro_rainnc"   );
       auto dm_snownc    = dm.get_collapsed<real>("micro_snownc"   );
       auto dm_graupelnc = dm.get_collapsed<real>("micro_graupelnc");
