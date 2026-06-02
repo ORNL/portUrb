@@ -1832,7 +1832,7 @@ namespace modules {
       auto dm_wvel           = dm.get<real,3>("wvel"       ); // Get coupler w-velocity array
       auto dm_temp           = dm.get<real,3>("temperature"); // Get coupler temperature array
       auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells");
-      auto tracer_adds_mass  = dm.get<bool const,1>("tracer_adds_mass");
+      auto tracer_adds_mass  = dm.get<bool const,1>("tracer_adds_mass" );
       bool rsst = coupler.get_option<bool>("dycore_rsst",false) || (coupler.get_option<real>("dycore_cs",350) != 350);
       // Accrue the tracer fields from the coupler data manager
       core::MultiField<real,3> dm_tracers;
@@ -1849,6 +1849,7 @@ namespace modules {
         real rho_d = rho;                     // Dry air density starting value
         // Subtract mass-adding tracers from total density to get dry air density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho_d -= tracers(tr,k,j,i); }
+        if (rsst) rho_d = rho - rho_v;
         // Use equation of state to compute temperature from pressure, dry density, and water vapor density
         real temp;
         if (rsst) {
@@ -1915,21 +1916,21 @@ namespace modules {
         real v     = dm_vvel (k,j,i); // v-velocity
         real w     = dm_wvel (k,j,i); // w-velocity
         real temp  = dm_temp (k,j,i); // Temperature
+        real rho_v = dm_tracers(idWV,k,j,i); // Water vapor density
         real rho   = rho_d;           // Total density starting value
         // Add mass-adding tracers to dry density to get total density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho += dm_tracers(tr,k,j,i); }
+        if (rsst) rho = rho_d + rho_v;
         // Compute potential temperature from pressure and total density
         real theta;
         if (rsst) {
           if (hy_pressure_cells.is_allocated()) {
             theta = temp*std::pow(p0/hy_pressure_cells(hs+k),R_d/cp_d);
           } else {
-            real rho_v = dm_tracers(idWV,k,j,i); // Water vapor density
             real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
             theta = temp*std::pow(p0/press,R_d/cp_d);
           }
         } else {
-          real rho_v = dm_tracers(idWV,k,j,i); // Water vapor density
           real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
           theta = std::pow( press/C0 , 1._fp / gamma ) / rho;
         }
