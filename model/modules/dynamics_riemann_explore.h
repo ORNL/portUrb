@@ -594,6 +594,7 @@ namespace modules {
       auto hy_dens_edges     = dm.get<real const,1>("hy_dens_edges"        ); // Hydrostatic density in cells with halos
       auto hy_theta_edges    = dm.get<real const,1>("hy_theta_edges"       ); // Hydrostatic potential temperature at edges (no halos)
       auto metjac_edges      = dm.get<real const,2>("dycore_metjac_edges"  ); // Vertical metric jacobian at edges
+      auto tracer_adds_mass  = dm.get<bool const,1>("tracer_adds_mass" );
       auto &neigh            = coupler.get_neighbor_rankid_matrix();
       // Compute matrices to convert polynomial coefficients to 2 GLL points and stencil values to 2 GLL points
       // These matrices will be in column-row format. That performed better than row-column format in performance tests
@@ -966,9 +967,14 @@ namespace modules {
           // Add gravity term to vertical momentum
           if (l == idW && enable_gravity) {
             if (buoy_theta) { // theta-based buoyancy
-              FLOC thetap = fields_loc(idT,hs+k,hs+j,hs+i);
               FLOC rho    = state(idR,k,j,i);
-              state_tend(l,k,j,i) += grav*rho*thetap/hy_theta_cells(hs+k);
+              FLOC thetap = fields_loc(idT,hs+k,hs+j,hs+i);
+              FLOC theta  = thetap + hy_theta_cells(hs+k);
+              FLOC pp, p;
+              pp = fields_loc(idP,hs+k,hs+j,hs+i);
+              p  = pp + hy_pressure_cells(hs+k);
+              // state_tend(l,k,j,i) += grav*rho*thetap/hy_theta_cells(hs+k);
+              state_tend(l,k,j,i) += grav*rho*(thetap/theta - pp/(gamma*p));
             } else {          // density-based buoyancy
               state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
             }
@@ -1454,7 +1460,7 @@ namespace modules {
       real4d tracers("tracers",num_tracers,nz,ny,nx); // Tracer variables
       convert_coupler_to_dynamics( coupler , state , tracers ); // Convert coupler data to dynamics format
       real4d fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs); // Local fields with halos
-      bool rsst = coupler.get_option<real>("dycore_cs",350) != 350; // Whether RSST is being used
+      bool rsst = coupler.get_option<bool>("dycore_rsst",false) || (coupler.get_option<real>("dycore_cs",350) != 350);
       // Replicate the working array computation from compute_tendencies to get fields_loc populated
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         // Compute pressure perturbation if not using RSST
@@ -2065,15 +2071,10 @@ namespace modules {
         real rho_d = rho;                     // Dry air density starting value
         // Subtract mass-adding tracers from total density to get dry air density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho_d -= tracers(tr,k,j,i); }
-        if (rsst) rho_d = rho - rho_v;
         // Use equation of state to compute temperature from pressure, dry density, and water vapor density
         real temp;
-        if (rsst) {
-          temp = theta*std::pow(hy_pressure_cells(hs+k)/p0,R_d/cp_d);
-        } else {
-          real press = C0 * pow( rho*theta , gamma ); // Full pressure
-          temp = press / ( rho_d * R_d + rho_v * R_v );
-        }
+        real press = C0 * pow( rho*theta , gamma ); // Full pressure
+        temp = press / ( rho_d * R_d + rho_v * R_v );
         dm_rho_d(k,j,i) = rho_d;  // Store dry air density in coupler array
         dm_uvel (k,j,i) = u;      // Store u-velocity in coupler array
         dm_vvel (k,j,i) = v;      // Store v-velocity in coupler array
@@ -2136,20 +2137,10 @@ namespace modules {
         real rho   = rho_d;           // Total density starting value
         // Add mass-adding tracers to dry density to get total density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho += dm_tracers(tr,k,j,i); }
-        if (rsst) rho = rho_d + rho_v;
         // Compute potential temperature from pressure and total density
         real theta;
-        if (rsst) {
-          if (hy_pressure_cells.is_allocated()) {
-            theta = temp*std::pow(p0/hy_pressure_cells(hs+k),R_d/cp_d);
-          } else {
-            real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
-            theta = temp*std::pow(p0/press,R_d/cp_d);
-          }
-        } else {
-          real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
-          theta = std::pow( press/C0 , 1._fp / gamma ) / rho;
-        }
+        real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
+        theta = std::pow( press/C0 , 1._fp / gamma ) / rho;
         state(idR,k,j,i) = rho;         // Store total density in dynamics state array
         state(idU,k,j,i) = rho * u;     // Store momentum in dynamics state array
         state(idV,k,j,i) = rho * v;     // Store momentum in dynamics state array

@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_riemann_explore.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -37,7 +37,13 @@ int main(int argc, char** argv) {
     auto cs         = config_dycore["cs"        ].as<real>();
     auto buoy_theta = config_dycore["buoy_theta"].as<bool>();
     auto rsst       = config_dycore["rsst"      ].as<bool>();
-    auto dyn_cycle  = config_dycore["dyn_cycle" ].as<int >();
+
+    real umax       = 90;
+    // real cs         = 350;
+    // bool buoy_theta = true;
+    // bool rsst       = false;
+    int  dyn_cycle  = 1;
+         cfl        = cfl*(cs+umax)/(350+umax);
 
     std::string out_prefix  = std::string("supercell_buoy-") +
                               (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
@@ -54,7 +60,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "cfl"                       , cfl          );
     coupler.set_option<bool       >( "enable_gravity"            , true         );
     coupler.set_option<int        >( "micro_morr_ihail"          , 1            );
-    coupler.set_option<real       >( "dycore_max_wind"           , 90           );
+    coupler.set_option<real       >( "dycore_max_wind"           , umax         );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"     , buoy_theta   );
     coupler.set_option<real       >( "dycore_cs"                 , cs           );
     coupler.set_option<bool       >( "dycore_rsst"               , rsst         );

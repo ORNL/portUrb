@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 def get_ind(arr,val) :
     return np.argmin(np.abs(arr-val))
 
-nfiles = 121
+nfiles = 21
 times = np.array([2.*i/nfiles for i in range(nfiles)])
 
 # dx200_files = [f"/lustre/storm/nwp501/scratch/imn/supercell/supercell_200m_{i:08}.nc" for i in range(nfiles)]
@@ -26,7 +26,20 @@ times = np.array([2.*i/nfiles for i in range(nfiles)])
 #   dx200_min_w         [i] = np.min(w[:get_ind(dx200_z,3500),:,:])
 #   dx200_max_w         [i] = np.max(w)
 
-dx1000_files = [f"/lustre/storm/nwp501/scratch/imn/supercell/supercell_1000m_{i:08}.nc" for i in range(nfiles)]
+R_d     = 287.
+cp_d    = 7.*R_d/2.
+cv_d    = cp_d - R_d
+gamma_d = cp_d / cv_d
+kappa_d = R_d  / cp_d
+R_v     = 461.6
+cp_v    = 4.*R_v
+cv_v    = cp_v - R_v
+p0      = 1.e5
+grav    = 9.81
+C0      = np.pow(R_d*np.pow(p0,-kappa_d),gamma_d)
+
+
+dx1000_files = [f"/lustre/orion/stf006/scratch/imn/portUrb/build/supercell_buoy-thetap_press-orig_cs-350_{i:08}.nc" for i in range(nfiles)]
 dx1000_z = np.array(Dataset(dx1000_files[0],"r")["z"])
 dx1000_sfc_theta_min  = [0. for i in range(nfiles)]
 dx1000_cold_pool_frac = [0. for i in range(nfiles)]
@@ -35,9 +48,13 @@ dx1000_min_w          = [0. for i in range(nfiles)]
 dx1000_max_w          = [0. for i in range(nfiles)]
 for i in range(nfiles) :
   nc = Dataset(dx1000_files[i],"r")
-  sfc_theta = np.array(nc["theta_pert"][0,:,:])
+  rho_d     = np.array(nc["density_dry"][:,:,:])
+  rho_v     = np.array(nc["water_vapor"][:,:,:])
+  temp      = np.array(nc["temperature"][:,:,:])
+  press     = rho_d*R_d*temp + rho_v*R_v*temp
+  theta     = np.pow(press/C0,1/gamma_d)/(rho_d+rho_v)
+  sfc_theta = np.array(theta[0,:,:])
   w         = np.array(nc["wvel"])
-  rho_d     = np.array(nc["density_dry"])
   dx1000_sfc_theta_min [i] = np.min(sfc_theta)
   dx1000_cold_pool_frac[i] = np.sum(np.where(sfc_theta <= -2,True,False)) / sfc_theta.size
   dx1000_precip_accum  [i] = np.mean(np.array(nc["micro_rainnc"]) + np.array(nc["micro_snownc"]) + np.array(nc["micro_graupelnc"]))
@@ -89,7 +106,7 @@ plt.close()
 
 
 # for i in [20,40,60,80,100,120] :
-for i in [60,120] :
+for i in [20] :
   nc = Dataset(dx1000_files[i],"r")
   rho_d = np.array(nc["density_dry"])
   rho_v = np.array(nc["water_vapor"])
@@ -104,7 +121,7 @@ for i in [60,120] :
   dx1000_qi  = rho_i / rho
   dx1000_qs  = rho_s / rho
   dx1000_qg  = rho_g / rho
-  dx1000_tot = (rho-rho_d-rho_v) / rho
+  dx1000_tot = rho_g+rho_r+rho_s
   # nc = Dataset(dx200_files[i],"r")
   # rho_d = np.array(nc["density_dry"])
   # rho_v = np.array(nc["water_vapor"])

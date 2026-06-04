@@ -1849,15 +1849,10 @@ namespace modules {
         real rho_d = rho;                     // Dry air density starting value
         // Subtract mass-adding tracers from total density to get dry air density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho_d -= tracers(tr,k,j,i); }
-        if (rsst) rho_d = rho - rho_v;
         // Use equation of state to compute temperature from pressure, dry density, and water vapor density
         real temp;
-        if (rsst) {
-          temp = theta*std::pow(hy_pressure_cells(hs+k)/p0,R_d/cp_d);
-        } else {
-          real press = C0 * pow( rho*theta , gamma ); // Full pressure
-          temp = press / ( rho_d * R_d + rho_v * R_v );
-        }
+        real press = C0 * pow( rho*theta , gamma ); // Full pressure
+        temp = press / ( rho_d * R_d + rho_v * R_v );
         dm_rho_d(k,j,i) = rho_d;  // Store dry air density in coupler array
         dm_uvel (k,j,i) = u;      // Store u-velocity in coupler array
         dm_vvel (k,j,i) = v;      // Store v-velocity in coupler array
@@ -1920,20 +1915,10 @@ namespace modules {
         real rho   = rho_d;           // Total density starting value
         // Add mass-adding tracers to dry density to get total density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho += dm_tracers(tr,k,j,i); }
-        if (rsst) rho = rho_d + rho_v;
         // Compute potential temperature from pressure and total density
         real theta;
-        if (rsst) {
-          if (hy_pressure_cells.is_allocated()) {
-            theta = temp*std::pow(p0/hy_pressure_cells(hs+k),R_d/cp_d);
-          } else {
-            real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
-            theta = temp*std::pow(p0/press,R_d/cp_d);
-          }
-        } else {
-          real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
-          theta = std::pow( press/C0 , 1._fp / gamma ) / rho;
-        }
+        real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
+        theta = std::pow( press/C0 , 1._fp / gamma ) / rho;
         state(idR,k,j,i) = rho;         // Store total density in dynamics state array
         state(idU,k,j,i) = rho * u;     // Store momentum in dynamics state array
         state(idV,k,j,i) = rho * v;     // Store momentum in dynamics state array
