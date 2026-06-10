@@ -967,9 +967,14 @@ namespace modules {
           // Add gravity term to vertical momentum
           if (l == idW && enable_gravity) {
             if (buoy_theta) { // theta-based buoyancy
-              FLOC thetap = fields_loc(idT,hs+k,hs+j,hs+i);
               FLOC rho    = state(idR,k,j,i);
-              state_tend(l,k,j,i) += grav*rho*thetap/hy_theta_cells(hs+k);
+              FLOC thetap = fields_loc(idT,hs+k,hs+j,hs+i);
+              FLOC theta  = thetap + hy_theta_cells(hs+k);
+              FLOC pp, p;
+              pp = fields_loc(idP,hs+k,hs+j,hs+i);
+              p  = pp + hy_pressure_cells(hs+k);
+              // state_tend(l,k,j,i) += grav*rho*thetap/hy_theta_cells(hs+k);
+              state_tend(l,k,j,i) += grav*rho*(thetap/theta - pp/(gamma*p));
             } else {          // density-based buoyancy
               state_tend(l,k,j,i) += -grav*fields_loc(idR,hs+k,hs+j,hs+i);
             }

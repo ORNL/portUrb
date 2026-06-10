@@ -16,18 +16,18 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
-    // YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
-    // if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
-    // auto cs         = config["cs"        ].as<real>();
-    // auto buoy_theta = config["buoy_theta"].as<bool>();
-    // auto rsst       = config["rsst"      ].as<bool>();
+    YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
+    if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    auto cs         = config["cs"        ].as<real>();
+    auto buoy_theta = config["buoy_theta"].as<bool>();
+    auto rsst       = config["rsst"      ].as<bool>();
 
     real dx         = 20;
     real umax       = 15;
     real cfl        = 0.6;
-    real cs         = 10;
-    bool buoy_theta = true;
-    bool rsst       = true;
+    // real cs         = 10;
+    // bool buoy_theta = true;
+    // bool rsst       = true;
 
     real        sim_time    = 3600*10+1;
     real        xlen        = 4000;
@@ -40,8 +40,7 @@ int main(int argc, char** argv) {
     int         dyn_cycle   = 4;
     real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = std::string("ABL_neutral_buoy-dx_") +
-                              std::to_string((int)std::round(dx));
+    std::string out_prefix  = std::string("ABL_neutral_buoy-") +
                               (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
                               (rsst       ? std::string("rsst_cs-")      : std::string("orig_cs-")) +
                               std::to_string((int)std::round(cs));

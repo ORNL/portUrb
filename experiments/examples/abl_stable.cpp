@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_riemann_explore.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
                               (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
                               (rsst       ? std::string("rsst_cs-")      : std::string("orig_cs-")) +
                               std::to_string((int)std::round(cs));
-    bool        is_restart  = false;
+    bool        is_restart  = true;
     real        u_g         = 8;
     real        v_g         = 0;
     real        lat_g       = 73.0;
@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "init_data"                          , "ABL_stable" );
     coupler.set_option<real       >( "out_freq"                           , out_freq     );
     coupler.set_option<bool       >( "is_restart"                         , is_restart   );
-    coupler.set_option<std::string>( "restart_file"                       , ""           );
+    coupler.set_option<std::string>( "restart_file"                       , out_prefix+std::string("_00000018.nc")           );
     coupler.set_option<real       >( "latitude"                           , 0.           );
     coupler.set_option<real       >( "roughness"                          , 0.05         );
     coupler.set_option<real       >( "cfl"                                , 0.6          );

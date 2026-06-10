@@ -101,8 +101,8 @@ namespace custom_modules {
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
-        if (z <= 1600) dm_temp (k,j,i) += rand.genFP<real>(-0.1,0.1);
-        if (z <= 1600) dm_rho_v(k,j,i) += rand.genFP<real>(-2.5e-5,2.5e-5)*dm_rho_d(k,j,i);
+        if (z <= 500) dm_temp (k,j,i) += rand.genFP<real>(-0.1,0.1);
+        // if (z <= 500) dm_rho_v(k,j,i) += rand.genFP<real>(-2.5e-5,2.5e-5)*dm_rho_d(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {

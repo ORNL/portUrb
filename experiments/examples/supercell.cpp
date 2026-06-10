@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
     // bool buoy_theta = true;
     // bool rsst       = false;
     int  dyn_cycle  = 1;
-         cfl        = cfl*(cs+umax)/(350+umax);
+    //      cfl        = cfl*(cs+umax)/(350+umax);
 
     std::string out_prefix  = std::string("supercell_buoy-") +
                               (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +

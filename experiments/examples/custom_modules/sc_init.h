@@ -531,7 +531,7 @@ namespace custom_modules {
           real w         = 0;
           real T         = p/(rho_d*R_d+rho_v*R_v);
           real wt = qweights(kk);
-          dm_rho_d(k,j,i) += rho   * wt;
+          dm_rho_d(k,j,i) += rho_d * wt;
           dm_uvel (k,j,i) += u     * wt;
           dm_vvel (k,j,i) += v     * wt;
           dm_wvel (k,j,i) += w     * wt;
