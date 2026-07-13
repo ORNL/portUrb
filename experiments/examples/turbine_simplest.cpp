@@ -69,14 +69,18 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
-    YAML::Node config_cs = YAML::LoadFile( std::string(argv[1]) );
-    if ( !config_cs ) { endrun("ERROR: Invalid abl_neutral input file"); }
-    auto cs         = config_cs["cs"        ].as<real>();
-    auto buoy_theta = config_cs["buoy_theta"].as<bool>();
-    auto rsst       = config_cs["rsst"      ].as<bool>();
+    // YAML::Node config_cs = YAML::LoadFile( std::string(argv[1]) );
+    // if ( !config_cs ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    // auto cs         = config_cs["cs"        ].as<real>();
+    // auto buoy_theta = config_cs["buoy_theta"].as<bool>();
+    // auto rsst       = config_cs["rsst"      ].as<bool>();
 
     real umax = 15;
-    real cfl = 0.6*(umax+cs)/(umax+350);
+    // real cfl = 0.6*(umax+cs)/(umax+350);
+    real cfl = 0.6;
+    real cs  = 350;
+    bool rsst = false;
+    bool buoy_theta = false;
 
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
@@ -96,7 +100,7 @@ int main(int argc, char** argv) {
     if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
     real D = config["blade_radius"].as<real>()*2;
 
-    real        sim_time     = 120*2+1;
+    real        sim_time     = 120*3+1;
     real        xlen         = D*10;
     real        ylen         = D*4;
     real        zlen         = D*4;
@@ -141,7 +145,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "turbine_omega_rad_sec"    , omega_rpm*2.*M_PI/60. );
     coupler.set_option<bool       >( "turbine_immerse_material" , false        );
     coupler.set_option<real       >( "turbine_pitch_fixed"      , 0.           );
-    coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
+    // coupler.set_option<real       >( "turbine_eps_fixed"        , 3.9375       );
     coupler.set_option<real       >( "dycore_max_wind"          , umax         );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"    , buoy_theta   );
     coupler.set_option<real       >( "dycore_cs"                , cs           );
@@ -151,7 +155,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_use_weno_immersed" , true         );
 
     // Set the turbine
-    coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{4*D   });
+    coupler.set_option<std::vector<real>>("turbine_x_locs"      ,{3*D   });
     coupler.set_option<std::vector<real>>("turbine_y_locs"      ,{ylen/2});
     coupler.set_option<std::vector<bool>>("turbine_apply_thrust",{true  });
 
@@ -215,8 +219,8 @@ int main(int argc, char** argv) {
       dycore.copy_column_to_precursor_ghost_cells( coupler , ghost_col );
       {
         using core::Coupler;
-        coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply       (c,0,0.1,0,0);   } , "edge_sponge1"  );
-        coupler.run_module( [&] (Coupler &c) { edge_sponge2.apply       (c,0.1,0,0,0);   } , "edge_sponge2"  );
+        coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply       (c,0,0.05,0,0);   } , "edge_sponge1"  );
+        coupler.run_module( [&] (Coupler &c) { edge_sponge2.apply       (c,0.05,0,0,0);   } , "edge_sponge2"  );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step         (c,dt);          } , "dycore"        );
         coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w  (c,dt,1000,0.05);} , "sponge"        );
         coupler.run_module( [&] (Coupler &c) { windmills.apply          (c,dt);          } , "windmills"     );

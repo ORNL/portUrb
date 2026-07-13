@@ -9,6 +9,7 @@
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
 #include "overwrite_interpolate.h"
+#include "column_nudging.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -16,34 +17,34 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
-    YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
-    if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
-    auto cs         = config["cs"        ].as<real>();
-    auto buoy_theta = config["buoy_theta"].as<bool>();
-    auto rsst       = config["rsst"      ].as<bool>();
+    // YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
+    // if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    // auto cs         = config["cs"        ].as<real>();
+    // auto buoy_theta = config["buoy_theta"].as<bool>();
+    // auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx         = 20;
+    real dx         = 2;
     real umax       = 15;
     real cfl        = 0.6;
+    real cs         = umax*2;
+    bool buoy_theta = true;
+    bool rsst       = true;
     // real cs         = 10;
     // bool buoy_theta = true;
     // bool rsst       = true;
 
-    real        sim_time    = 3600*10+1;
-    real        xlen        = 4000;
-    real        ylen        = 4000;
+    real        sim_time    = 3600*5+1;
+    real        xlen        = 1000;
+    real        ylen        = 1000;
     real        zlen        = 1000;
     int         nx_glob     = (int) std::round(xlen/dx);
     int         ny_glob     = (int) std::round(ylen/dx);
     int         nz          = (int) std::round(zlen/dx);
     real        dtphys_in   = 0;    // Use dycore time step
-    int         dyn_cycle   = 4;
+    int         dyn_cycle   = 2;
     real        out_freq    = 1800;
     real        inform_freq = 10;
-    std::string out_prefix  = std::string("ABL_neutral_buoy-") +
-                              (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
-                              (rsst       ? std::string("rsst_cs-")      : std::string("orig_cs-")) +
-                              std::to_string((int)std::round(cs));
+    std::string out_prefix  = std::string("ABL_neutral-dx_") + std::to_string((int)dx);
     bool        is_restart  = false;
     real        u_g         = 10;
     real        v_g         = 0 ;
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
     modules::SurfaceFlux                          sfc_flux;
     modules::Time_Averager                        time_averager;
     modules::LES_Closure                          les_closure;
+    modules::ColumnNudger                         col_nudge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -91,8 +93,9 @@ int main(int argc, char** argv) {
     dycore       .init        ( coupler );
     sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler );
+    col_nudge    .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
-    // modules::overwrite_interpolate( coupler , "ABL_neutral_buoy-dx_4_00000008.nc" , {"density_dry","uvel","vvel","wvel","temperature","TKE"} );
+    modules::overwrite_interpolate( coupler , "ABL_neutral-dx_5_00000010.nc" , {"uvel","vvel","wvel","TKE"} );
 
     real etime = coupler.get_option<real>("elapsed_time");
     core::Counter output_counter( out_freq    , etime );
@@ -122,6 +125,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         coupler.track_max_wind();
         coupler.run_module( [&] (Coupler &c) { modules::geostrophic_wind_forcing_indiv(c,dt,lat_g,u_g,v_g); } , "geostrophic_forcing" );
+        coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column              (c,dt,1800);          } , "column_nudging"      );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step                       (c,dt);               } , "dycore"              );
         coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w                (c,dt,1000,0.05);     } , "sponge"              );
         coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                         (c,dt);               } , "surface_fluxes"      );
