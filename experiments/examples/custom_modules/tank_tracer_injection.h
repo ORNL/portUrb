@@ -27,6 +27,8 @@ namespace custom_modules {
     auto dy       = coupler.get_dy();      // Get grid spacing in y-direction
     auto dz       = coupler.get_dz();      // Get grid spacing in z-direction
     auto zmid     = coupler.get_zmid();    // Get vertical grid mid points
+    auto xdom_beg    = coupler.get_xdom_beg();   // Get beginning of the physical x-domain
+    auto ydom_beg    = coupler.get_ydom_beg();   // Get beginning of the physical y-domain
     auto i_beg    = coupler.get_i_beg();   // Get global starting index in x-direction
     auto j_beg    = coupler.get_j_beg();   // Get global starting index in y-direction
     auto &dm      = coupler.get_data_manager_readwrite(); // Get DataManager for read/write access
@@ -37,8 +39,8 @@ namespace custom_modules {
     real y0       = (y1+y2)/2;
     real sigma    = (x2-x1)/4;
     yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      real x = (i_beg+i+0.5)*dx;
-      real y = (j_beg+j+0.5)*dy;
+      real x = xdom_beg + (i_beg+i+0.5)*dx;
+      real y = ydom_beg + (j_beg+j+0.5)*dy;
       real z = zmid(k);
       if (x >= x1 && x <= x2 && y >= y1 && y <= y2 && z >= z1 && z <= z2) {
         real r = std::sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0));
@@ -52,5 +54,3 @@ namespace custom_modules {
     });
   }
 }
-
-

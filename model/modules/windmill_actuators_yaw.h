@@ -157,14 +157,16 @@ namespace modules {
         auto dz     = coupler.get_dz();
         auto zint   = coupler.get_zint();
         auto zmid   = coupler.get_zmid();
+        auto xdom_beg  = coupler.get_xdom_beg();
+        auto ydom_beg  = coupler.get_ydom_beg();
         auto myrank = coupler.get_myrank();
         auto imm    = coupler.get_data_manager_readwrite().get<real,3>("immersed_proportion");
         auto imm_h  = coupler.get_data_manager_readwrite().get<real,3>("immersed_proportion_halos");
         // bounds of this MPI task's domain
-        real dom_x1  = (i_beg+0 )*dx;
-        real dom_x2  = (i_beg+nx)*dx;
-        real dom_y1  = (j_beg+0 )*dy;
-        real dom_y2  = (j_beg+ny)*dy;
+        real dom_x1  = xdom_beg + i_beg*dx;
+        real dom_x2  = xdom_beg + (i_beg+nx)*dx;
+        real dom_y1  = ydom_beg + j_beg*dy;
+        real dom_y2  = ydom_beg + (j_beg+ny)*dy;
         // Rectangular bounds of this turbine's potential influence
         real turb_x1 = base_loc_x-6*ref_turbine.blade_radius-6*std::sqrt(dx*dy);
         real turb_x2 = base_loc_x+6*ref_turbine.blade_radius+6*std::sqrt(dx*dy);
@@ -194,14 +196,14 @@ namespace modules {
           loc.nranks     = loc.par_comm.get_size();
           loc.sub_rankid = loc.par_comm.get_rank_id();
           // Determine if I "own" the turbine (if the hub's in my domain)
-          bool owner = base_loc_x >= i_beg*dx && base_loc_x < (i_beg+nx)*dx &&
-                       base_loc_y >= j_beg*dy && base_loc_y < (j_beg+ny)*dy ;
+          bool owner = base_loc_x >= xdom_beg+i_beg*dx && base_loc_x < xdom_beg+(i_beg+nx)*dx &&
+                       base_loc_y >= ydom_beg+j_beg*dy && base_loc_y < ydom_beg+(j_beg+ny)*dy;
           // Gather who owns the turbine, so yaw angles can be broadcast later
           if ( loc.nranks == 1) {
             loc.owning_sub_rankid = 0;
           } else {
-            bool owner = base_loc_x >= i_beg*dx && base_loc_x < (i_beg+nx)*dx &&
-                         base_loc_y >= j_beg*dy && base_loc_y < (j_beg+ny)*dy ;
+            bool owner = base_loc_x >= xdom_beg+i_beg*dx && base_loc_x < xdom_beg+(i_beg+nx)*dx &&
+                         base_loc_y >= ydom_beg+j_beg*dy && base_loc_y < ydom_beg+(j_beg+ny)*dy;
             auto owner_arr = loc.par_comm.all_gather( owner );
             for (int i=0; i < loc.nranks; i++) { if (owner_arr(i)) loc.owning_sub_rankid = i; }
           }
@@ -224,9 +226,9 @@ namespace modules {
             for (int kk=0; kk < N; kk++) {
               for (int jj=0; jj < N; jj++) {
                 for (int ii=0; ii < N; ii++) {
-                  int x = (i_beg+i)*dx + ii*dx   /(N-1);
-                  int y = (j_beg+j)*dy + jj*dy   /(N-1);
-                  int z = zmid(k)      + kk*dz(k)/(N-1);
+                  real x = xdom_beg + (i_beg+i)*dx + ii*dx/(N-1);
+                  real y = ydom_beg + (j_beg+j)*dy + jj*dy/(N-1);
+                  real z = zmid(k) + kk*dz(k)/(N-1);
                   auto bx  = base_loc_x;
                   auto by  = base_loc_y;
                   auto rad = tower_base_rad + (tower_top_rad-tower_base_rad)*(z/tower_top);
@@ -302,6 +304,8 @@ namespace modules {
       auto nz   = coupler.get_nz  ();
       auto xlen = coupler.get_xlen();
       auto ylen = coupler.get_ylen();
+      auto xdom_beg = coupler.get_xdom_beg();
+      auto ydom_beg = coupler.get_ydom_beg();
       auto &dm  = coupler.get_data_manager_readwrite();
 
       trace_size = 0;
@@ -330,8 +334,8 @@ namespace modules {
                                      apply_thrust.at(iturb) );
         }
       } else {
-        for (real y = yinc/2; y < ylen; y += yinc) {
-          for (real x = xinc/2; x < xlen; x += xinc) {
+        for (real y = ydom_beg+yinc/2; y < ydom_beg+ylen; y += yinc) {
+          for (real x = xdom_beg+xinc/2; x < xdom_beg+xlen; x += xinc) {
             turbine_group.add_turbine( coupler , x , y , ref_turbine );
           }
         }
@@ -474,6 +478,8 @@ namespace modules {
       auto zmid            = coupler.get_zmid();
       auto i_beg           = coupler.get_i_beg();
       auto j_beg           = coupler.get_j_beg();
+      auto xdom_beg           = coupler.get_xdom_beg();
+      auto ydom_beg           = coupler.get_ydom_beg();
       auto &dm             = coupler.get_data_manager_readwrite();
       auto rho_d           = dm.get<real const,3>("density_dry"  );
       auto uvel            = dm.get<real      ,3>("uvel"         );
@@ -543,8 +549,8 @@ namespace modules {
               for (int kk=0; kk < N; kk++) {
                 for (int jj=0; jj < N; jj++) {
                   for (int ii=0; ii < N; ii++) {
-                    F x = (i_beg+i)*dx + ii*dx   /(N-1);
-                    F y = (j_beg+j)*dy + jj*dy   /(N-1);
+                    F x = xdom_beg + (i_beg+i)*dx + ii*dx/(N-1);
+                    F y = ydom_beg + (j_beg+j)*dy + jj*dy/(N-1);
                     F z = zmid(k)      + kk*dz(k)/(N-1);
                     // Rotate in (-yaw) direction to compare against vanilla x and y
                     F cos_nyaw =  cos_yaw;
@@ -581,8 +587,8 @@ namespace modules {
             disk_weight_proj (k,j,i) = 0;
             disk_weight_samp (k,j,i) = 0;
             blade_weight_proj(k,j,i) = 0;
-            F x = (i_beg+i+0.5f)*dx;
-            F y = (j_beg+j+0.5f)*dy;
+            F x = xdom_beg + (i_beg+i+0.5f)*dx;
+            F y = ydom_beg + (j_beg+j+0.5f)*dy;
             F z = zmid(k);
             if ( z >= hub_height-rad && z <= hub_height+rad &&
                  y >= base_y    -rad && y <= base_y    +rad &&
@@ -640,8 +646,8 @@ namespace modules {
                 F zp = hub_height + z1;
                 // If it's in this task's domain, atomically add to the cell's total shape function sum for projection
                 //     Also, add the average angle for torque application later
-                int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-                int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                int ti = static_cast<int>(std::floor((xp-xdom_beg)/dx))-i_beg;
+                int tj = static_cast<int>(std::floor((yp-ydom_beg)/dy))-j_beg;
                 int tk = 0;
                 for (int kk=0; kk < nz; kk++) {
                   if (zp >= zint(kk) && zp < zint(kk+1)) {
@@ -656,8 +662,8 @@ namespace modules {
                 // Now do the same thing for the upwind sampling disk for computing inflow velocity
                 xp += upstream_x_offset;
                 yp += upstream_y_offset;
-                ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-                tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                ti = static_cast<int>(std::floor((xp-xdom_beg)/dx))-i_beg;
+                tj = static_cast<int>(std::floor((yp-ydom_beg)/dy))-j_beg;
                 // tk is the same because only a horizontal translation was applied
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_samp(tk,tj,ti) , shp );
@@ -717,8 +723,8 @@ namespace modules {
                     F yp = base_y     + sin_yaw*x2 + cos_yaw*y2;
                     F zp = hub_height + z2;
                     // if it's in this task's domain, then atomically add shape to this cell's total
-                    int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-                    int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                    int ti = static_cast<int>(std::floor((xp-xdom_beg)/dx))-i_beg;
+                    int tj = static_cast<int>(std::floor((yp-ydom_beg)/dy))-j_beg;
                     int tk = 0;
                     for (int kk=0; kk < nz; kk++) {
                       if (zp >= zint(kk) && zp < zint(kk+1)) {
@@ -745,8 +751,8 @@ namespace modules {
                     F yp = base_y     + sin_yaw*x2 + cos_yaw*y2;
                     F zp = hub_height + z2;
                     // if it's in this task's domain, then atomically add shape to this cell's total
-                    int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-                    int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                    int ti = static_cast<int>(std::floor((xp-xdom_beg)/dx))-i_beg;
+                    int tj = static_cast<int>(std::floor((yp-ydom_beg)/dy))-j_beg;
                     int tk = 0;
                     for (int kk=0; kk < nz; kk++) {
                       if (zp >= zint(kk) && zp < zint(kk+1)) {
@@ -773,8 +779,8 @@ namespace modules {
                     F yp = base_y     + sin_yaw*x2 + cos_yaw*y2;
                     F zp = hub_height + z2;
                     // if it's in this task's domain, then atomically add shape to this cell's total
-                    int ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-                    int tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                    int ti = static_cast<int>(std::floor((xp-xdom_beg)/dx))-i_beg;
+                    int tj = static_cast<int>(std::floor((yp-ydom_beg)/dy))-j_beg;
                     int tk = 0;
                     for (int kk=0; kk < nz; kk++) {
                       if (zp >= zint(kk) && zp < zint(kk+1)) {
@@ -808,8 +814,8 @@ namespace modules {
             }
             // Compute 19.5m winds for floating motions parameterization
             yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
-              F x = (i_beg+i+0.5f)*dx;
-              F y = (j_beg+j+0.5f)*dy;
+              F x = xdom_beg + (i_beg+i+0.5f)*dx;
+              F y = ydom_beg + (j_beg+j+0.5f)*dy;
               if (std::abs(x-(base_x+upstream_x_offset)) <= rad && std::abs(y-(base_y+upstream_y_offset)) <= rad) {
                 real zp = 19.5;
                 int k19_5 = 0;
@@ -1057,5 +1063,3 @@ namespace modules {
   };
 
 }
-
-

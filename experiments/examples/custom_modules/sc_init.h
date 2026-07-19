@@ -24,6 +24,8 @@ namespace custom_modules {
     auto xlen      = coupler.get_xlen();
     auto ylen      = coupler.get_ylen();
     auto zlen      = coupler.get_zlen();
+    auto xdom_beg     = coupler.get_xdom_beg();
+    auto ydom_beg     = coupler.get_ydom_beg();
     auto i_beg     = coupler.get_i_beg();
     auto j_beg     = coupler.get_j_beg();
     auto nx_glob   = coupler.get_nx_glob();
@@ -106,8 +108,8 @@ namespace custom_modules {
       real href = 300;
       auto compute_theta = KOKKOS_LAMBDA (real z) -> real { return 300; };
       auto pressGLL = modules::integrate_hydrostatic_pressure_gll_theta(compute_theta,zint,dz,p0,grav,R_d,cp_d).createDeviceCopy();
-      real x0 = xlen/3;
-      real y0 = ylen/2;
+      real x0 = xdom_beg + xlen/3;
+      real y0 = ydom_beg + ylen/2;
       real xr = xlen/8;
       real yr = ylen/8;
       real z2 = zlen/4;
@@ -122,8 +124,8 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real x         = xdom_beg + (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y         = ydom_beg + (j_beg+j+0.5)*dy + qpoints(jj)*dy;
               real z         = zmid(k)          + qpoints(kk)*dz(k);
               real theta     = compute_theta(z);
               real p         = pressGLL(k,kk);
@@ -163,8 +165,8 @@ namespace custom_modules {
       coupler.add_option<std::string>("bc_z2","wall_free_slip");
       auto enable_gravity = coupler.get_option<bool>("enable_gravity",false);
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        real x  = (i_beg+i+0.5_fp)*dx;
-        real y  = (j_beg+j+0.5_fp)*dy;
+        real x  = xdom_beg + (i_beg+i+0.5_fp)*dx;
+        real y  = ydom_beg + (j_beg+j+0.5_fp)*dy;
         real z  = zmid(k);
         real p  = p0;
         real rt = std::pow( p/C0 , 1._fp/gamma_d );
@@ -255,8 +257,8 @@ namespace custom_modules {
       float4d zmesh("zmesh",ny,nx,nqpoints,nqpoints);
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ny,nx,nqpoints,nqpoints) ,
                                         KOKKOS_LAMBDA (int j, int i, int jj, int ii) {
-        real x           = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-        real y           = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+        real x           = xdom_beg + (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+        real y           = ydom_beg + (j_beg+j+0.5)*dy + qpoints(jj)*dy;
         zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
         if (zmesh(j,i,jj,ii) < 1.e-6) zmesh(j,i,jj,ii) = -1;
       });
@@ -309,8 +311,8 @@ namespace custom_modules {
       float4d zmesh("zmesh",ny,nx,nqpoints,nqpoints);
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ny,nx,nqpoints,nqpoints) ,
                                         KOKKOS_LAMBDA (int j, int i, int jj, int ii) {
-        real x           = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-        real y           = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+        real x           = xdom_beg + (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+        real y           = ydom_beg + (j_beg+j+0.5)*dy + qpoints(jj)*dy;
         zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
         if (zmesh(j,i,jj,ii) < 1.e-6) zmesh(j,i,jj,ii) = -1;
       });
@@ -325,8 +327,8 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real x         = xdom_beg + (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y         = ydom_beg + (j_beg+j+0.5)*dy + qpoints(jj)*dy;
               real z         = zmid(k)          + qpoints(kk)*dz(k);
               real theta     = compute_theta(z);
               real p         = pressGLL(k,kk);
@@ -374,8 +376,8 @@ namespace custom_modules {
       float4d zmesh("zmesh",ny,nx,nqpoints,nqpoints);
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ny,nx,nqpoints,nqpoints) ,
                                         KOKKOS_LAMBDA (int j, int i, int jj, int ii) {
-        real x           = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-        real y           = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+        real x           = xdom_beg + (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+        real y           = ydom_beg + (j_beg+j+0.5)*dy + qpoints(jj)*dy;
         zmesh(j,i,jj,ii) = modules::TriMesh::max_height(x,y,faces,0);
         if (zmesh(j,i,jj,ii) < 1.e-10) zmesh(j,i,jj,ii) = -1;
       });
@@ -390,8 +392,8 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x         = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y         = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real x         = xdom_beg + (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y         = ydom_beg + (j_beg+j+0.5)*dy + qpoints(jj)*dy;
               real z         = zmid(k)          + qpoints(kk)*dz(k);
               real wt = qweights(kk)*qweights(jj)*qweights(ii);
               dm_immersed_prop(k,j,i) += (z<=zmesh(j,i,jj,ii) ? 1 : 0) * wt;
@@ -434,15 +436,15 @@ namespace custom_modules {
       real r  = p/(R_d*T);
       real sph_r  = zlen/10;
       real sph_x0 = sph_r*4;
-      real sph_y0 = ylen/2;
+      real sph_y0 = ydom_beg + ylen/2;
       real sph_z0 = zlen/2;
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         dm_immersed_prop(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x   = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y   = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real x   = xdom_beg + (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y   = ydom_beg + (j_beg+j+0.5)*dy + qpoints(jj)*dy;
               real z   = zmid(k)          + qpoints(kk)*dz(k);
               real rad = std::sqrt( (x-sph_x0)*(x-sph_x0) + (y-sph_y0)*(y-sph_y0) + (z-sph_z0)*(z-sph_z0) );
               if (rad <= sph_r) {
@@ -917,8 +919,8 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x     = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y     = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real x     = xdom_beg + (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y     = ydom_beg + (j_beg+j+0.5)*dy + qpoints(jj)*dy;
               real z     = zmid(k)          + qpoints(kk)*dz(k);
               real T     = c_T(z);
               real qv    = interp( s_height , s_qv    , z );
@@ -977,5 +979,3 @@ namespace custom_modules {
   }
 
 }
-
-

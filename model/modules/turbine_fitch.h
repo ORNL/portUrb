@@ -76,11 +76,13 @@ namespace modules {
         auto nz    = coupler.get_nz();    // Number of cells in the z-direction
         auto i_beg = coupler.get_i_beg(); // Starting i-index for this MPI task
         auto j_beg = coupler.get_j_beg(); // Starting j-index for this MPI task
+        auto xdom_beg = coupler.get_xdom_beg(); // Beginning of the physical x-domain
+        auto ydom_beg = coupler.get_ydom_beg(); // Beginning of the physical y-domain
         // Determine the extents of this MPI task's domain
-        real dom_x1 = (i_beg+0 )*dx;
-        real dom_x2 = (i_beg+nx)*dx;
-        real dom_y1 = (j_beg+0 )*dy;
-        real dom_y2 = (j_beg+ny)*dy;
+        real dom_x1 = xdom_beg + i_beg*dx;
+        real dom_x2 = xdom_beg + (i_beg+nx)*dx;
+        real dom_y1 = ydom_beg + j_beg*dy;
+        real dom_y2 = ydom_beg + (j_beg+ny)*dy;
         // Determine if this turbine is active on this MPI task
         bool active = base_loc_x >= dom_x1 && base_loc_x < dom_x2 && base_loc_y >= dom_y1 && base_loc_y < dom_y2;
         // Create the turbine and add it to the list
@@ -155,6 +157,8 @@ namespace modules {
       auto dz    = coupler.get_dz   ();  // Grid spacing array in the z-direction (1-D array of size nz)
       auto i_beg = coupler.get_i_beg();  // Starting i-index for this MPI task
       auto j_beg = coupler.get_j_beg();  // Starting j-index for this MPI task
+      auto xdom_beg = coupler.get_xdom_beg();  // Beginning of the physical x-domain
+      auto ydom_beg = coupler.get_ydom_beg();  // Beginning of the physical y-domain
       auto &dm   = coupler.get_data_manager_readwrite();  // Get the DataManager for read/write access
       auto rho_d = dm.get<real const,3>("density_dry"  ); // Get the dry air density field
       auto uvel  = dm.get<real      ,3>("uvel"         ); // Get the u-velocity field
@@ -184,8 +188,8 @@ namespace modules {
           auto ref_power_coef  = turbine.ref_turbine.power_coef  ; // Reference power coefficient lookup table
           auto ref_power       = turbine.ref_turbine.power       ; // Reference power generation lookup table
           // Compute hte horizontal indices of the turbine within the local domain
-          int  i               = std::min(nx-1,std::max(0,(int)std::floor(base_x/dx)-(int)i_beg));
-          int  j               = std::min(ny-1,std::max(0,(int)std::floor(base_y/dy)-(int)j_beg));
+          int  i = std::min(nx-1,std::max(0,(int)std::floor((base_x-xdom_beg)/dx)-(int)i_beg));
+          int  j = std::min(ny-1,std::max(0,(int)std::floor((base_y-ydom_beg)/dy)-(int)j_beg));
           // Accumulate disk-averaged wind velocity components at the turbine plane
           yakl::ScalarLiveOut<real> u_d(0);
           yakl::ScalarLiveOut<real> v_d(0);
@@ -285,5 +289,3 @@ namespace modules {
   };
 
 }
-
-

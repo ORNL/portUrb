@@ -21,6 +21,8 @@ namespace custom_modules {
     auto zmid     = coupler.get_zmid();
     auto xlen     = coupler.get_xlen();
     auto ylen     = coupler.get_ylen();
+    auto xdom_beg    = coupler.get_xdom_beg();
+    auto ydom_beg    = coupler.get_ydom_beg();
     auto i_beg    = coupler.get_i_beg();
     auto j_beg    = coupler.get_j_beg();
     auto nx_glob  = coupler.get_nx_glob();
@@ -165,8 +167,8 @@ namespace custom_modules {
 
     } else if (coupler.get_option<std::string>("init_data") == "supercell") {
 
-      real x0    = xlen / 2;
-      real y0    = ylen / 2;
+      real x0    = xdom_beg + xlen / 2;
+      real y0    = ydom_beg + ylen / 2;
       real z0    = 1500;
       real radx  = 10000;
       real rady  = 10000;
@@ -177,8 +179,8 @@ namespace custom_modules {
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
-              real x    = (i_beg+i+0.5)*dx + qpoints(ii)*dx;
-              real y    = (j_beg+j+0.5)*dy + qpoints(jj)*dy;
+              real x    = xdom_beg + (i_beg+i+0.5)*dx + qpoints(ii)*dx;
+              real y    = ydom_beg + (j_beg+j+0.5)*dy + qpoints(jj)*dy;
               real z    = zmid(k)          + qpoints(kk)*dz(k);
               real xn   = (x-x0)/radx;
               real yn   = (y-y0)/rady;
@@ -196,5 +198,3 @@ namespace custom_modules {
   }
 
 }
-
-

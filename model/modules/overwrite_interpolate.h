@@ -20,6 +20,8 @@ namespace modules {
     auto j_beg  = coupler.get_j_beg();
     auto zmid   = coupler.get_zmid();
     auto zint   = coupler.get_zint();
+    auto xdom_beg  = coupler.get_xdom_beg();
+    auto ydom_beg  = coupler.get_ydom_beg();
     auto dz_h   = dz.createHostCopy();
     auto zint_h = zint.createHostCopy();
     auto &dm    = coupler.get_data_manager_readwrite();
@@ -63,20 +65,22 @@ namespace modules {
     auto zint_f_h = zint_f.createHostCopy();
     auto dx_f = x_f_h(1)-x_f_h(0);
     auto dy_f = y_f_h(1)-y_f_h(0);
+    auto x_beg_f = x_f_h(0)-dx_f/2;
+    auto y_beg_f = y_f_h(0)-dy_f/2;
     realHost1d dz_f_h("dz_f",nz_f);
     for (int i=0; i < nz_f; i++) { dz_f_h(i) = zint_f_h(i+1)-zint_f_h(i); }
     auto dz_f = dz_f_h.createDeviceCopy();
     // Get extents this task needs from the file
-    real x1 = (i_beg   )*dx;
-    real x2 = (i_beg+nx)*dx;
-    real y1 = (j_beg   )*dy;
-    real y2 = (j_beg+ny)*dy;
+    real x1 = xdom_beg + i_beg*dx;
+    real x2 = xdom_beg + (i_beg+nx)*dx;
+    real y1 = ydom_beg + j_beg*dy;
+    real y2 = ydom_beg + (j_beg+ny)*dy;
     real z1 = zint_h(0 );
     real z2 = zint_h(nz);
-    int i1_f = std::max(0          ,(int)std::floor(x1/dx_f)-1);
-    int i2_f = std::min(nx_glob_f-1,(int)std::ceil (x2/dx_f)+1);
-    int j1_f = std::max(0          ,(int)std::floor(y1/dy_f)-1);
-    int j2_f = std::min(ny_glob_f-1,(int)std::ceil (y2/dy_f)+1);
+    int i1_f = std::max(0          ,(int)std::floor((x1-x_beg_f)/dx_f)-1);
+    int i2_f = std::min(nx_glob_f-1,(int)std::ceil ((x2-x_beg_f)/dx_f)+1);
+    int j1_f = std::max(0          ,(int)std::floor((y1-y_beg_f)/dy_f)-1);
+    int j2_f = std::min(ny_glob_f-1,(int)std::ceil ((y2-y_beg_f)/dy_f)+1);
     int nx_f = i2_f - i1_f + 1;
     int ny_f = j2_f - j1_f + 1;
     std::vector<MPI_Offset> start = {(MPI_Offset)0,(MPI_Offset)j1_f,(MPI_Offset)i1_f};
@@ -94,8 +98,10 @@ namespace modules {
     }
     yakl::parallel_for( YAKL_AUTO_LABEL() , yakl::SimpleBounds<4>(varnames.size(),nz,ny,nx) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int i) {
-      int i_f = std::max(0,std::min(nx_f-1,(int) std::round((i_beg+i+0.5)*dx/dx_f-0.5) - i1_f));
-      int j_f = std::max(0,std::min(ny_f-1,(int) std::round((j_beg+j+0.5)*dy/dy_f-0.5) - j1_f));
+      real x = xdom_beg + (i_beg+i+0.5)*dx;
+      real y = ydom_beg + (j_beg+j+0.5)*dy;
+      int i_f = std::max(0,std::min(nx_f-1,(int) std::round((x-x_f(0))/dx_f) - i1_f));
+      int j_f = std::max(0,std::min(ny_f-1,(int) std::round((y-y_f(0))/dy_f) - j1_f));
       int k_f;
       real zdist = std::numeric_limits<real>::max();
       for (int k2=0; k2 < nz_f; k2++) {
@@ -115,5 +121,3 @@ namespace modules {
 
 
 }
-
-

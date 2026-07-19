@@ -255,15 +255,17 @@ namespace modules {
         auto ny        = coupler.get_ny();     // Get the number of y-direction cells
         auto dx        = coupler.get_dx();     // Get the grid spacing in the x-direction
         auto dy        = coupler.get_dy();     // Get the grid spacing in the y-direction
+        auto xdom_beg     = coupler.get_xdom_beg();  // Get the beginning of the physical x-domain
+        auto ydom_beg     = coupler.get_ydom_beg();  // Get the beginning of the physical y-domain
         auto eps_fixed = coupler.get_option<real>("turbine_eps_fixed",-1);
         auto min_eps   = coupler.get_option<real>("turbine_min_eps",2*dx);
         real max_chord = yakl::intrinsics::maxval(ref_turbine.host_foil_chord);
         real max_eps   = eps_fixed > 0 ? eps_fixed : std::max( max_chord/2 , min_eps );
         // bounds of this MPI task's domain
-        real dom_x1  = (i_beg+0 )*dx;
-        real dom_x2  = (i_beg+nx)*dx;
-        real dom_y1  = (j_beg+0 )*dy;
-        real dom_y2  = (j_beg+ny)*dy;
+        real dom_x1  = xdom_beg + i_beg*dx;
+        real dom_x2  = xdom_beg + (i_beg+nx)*dx;
+        real dom_y1  = ydom_beg + j_beg*dy;
+        real dom_y2  = ydom_beg + (j_beg+ny)*dy;
         // Rectangular bounds of this turbine's potential influence
         real turb_x1 = base_loc_x+ref_turbine.overhang-(0.50*ref_turbine.R);
         real turb_x2 = base_loc_x+ref_turbine.overhang+(0.50*ref_turbine.R);
@@ -339,6 +341,8 @@ namespace modules {
       auto nz    = coupler.get_nz();    // Get the number of z-direction cells
       auto dx    = coupler.get_dx();    // Get the grid spacing in the x-direction
       auto dy    = coupler.get_dy();    // Get the grid spacing in the y-direction
+      auto xdom_beg = coupler.get_xdom_beg(); // Get the beginning of the physical x-domain
+      auto ydom_beg = coupler.get_ydom_beg(); // Get the beginning of the physical y-domain
       auto i_beg = coupler.get_i_beg(); // Get the beginning x-direction index for this MPI task
       auto j_beg = coupler.get_j_beg(); // Get the beginning y-direction index for this MPI task
       auto &dm   = coupler.get_data_manager_readwrite();
@@ -399,8 +403,8 @@ namespace modules {
           for (int iturb=0; iturb < turbine_group.turbines.size(); iturb++) {  // Loop over all turbines
             auto &turbine = turbine_group.turbines.at(iturb); // Grab a reference to this turbine for convenience
             // Only write this data from the MPI task that contains the base location
-            if (turbine.base_loc_x >= i_beg*dx && turbine.base_loc_x < (i_beg+nx)*dx &&
-                turbine.base_loc_y >= j_beg*dy && turbine.base_loc_y < (j_beg+ny)*dy ) {
+            if (turbine.base_loc_x >= xdom_beg+i_beg*dx && turbine.base_loc_x < xdom_beg+(i_beg+nx)*dx &&
+                turbine.base_loc_y >= ydom_beg+j_beg*dy && turbine.base_loc_y < ydom_beg+(j_beg+ny)*dy) {
               for (const auto & entry : turbine.traces.entries) {
                 if ( entry.dims_pnts ) {
                   auto data = turbine.traces.get_pnts(entry.name);
@@ -445,6 +449,8 @@ namespace modules {
       auto dz                = coupler.get_dz   ().createHostCopy()(0);  // Get the grid spacing in the z-direction (1-D array of size nz)
       auto i_beg             = coupler.get_i_beg();  // Get the beginning x-direction index for this MPI task
       auto j_beg             = coupler.get_j_beg();  // Get the beginning y-direction index for this MPI task
+      auto xdom_beg             = coupler.get_xdom_beg();  // Get the beginning of the physical x-domain
+      auto ydom_beg             = coupler.get_ydom_beg();  // Get the beginning of the physical y-domain
       auto &dm               = coupler.get_data_manager_readwrite();  // Get the data manager for read/write access
       auto dm_rho_d          = dm.get<real const,3>("density_dry"   );  // Dry density
       auto dm_uvel           = dm.get<real      ,3>("uvel"          );  // u-velocity
@@ -550,8 +556,8 @@ namespace modules {
             real x0     = hub_x + x_tilt;
             real y0     = hub_y + y_tilt;
             real z0     = hub_z + z_tilt;
-            int  i0     = static_cast<int>(std::floor(x0/dx))-i_beg;
-            int  j0     = static_cast<int>(std::floor(y0/dy))-j_beg;
+            int  i0     = static_cast<int>(std::floor((x0-xdom_beg)/dx))-i_beg;
+            int  j0     = static_cast<int>(std::floor((y0-ydom_beg)/dy))-j_beg;
             int  k0     = static_cast<int>(std::floor(z0/dz));
             int  ti     = i0-num_x+ii;
             int  tj     = j0-num_y+jj;
@@ -562,8 +568,8 @@ namespace modules {
               real eps_x = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c  , min_eps );
               real eps_y = eps_fixed > 0 ? eps_fixed : std::max( 0.4*c  , min_eps );
               real eps_z = eps_fixed > 0 ? eps_fixed : std::max( drad*2 , min_eps );
-              real proj  = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
-                                        (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
+              real proj  = int_proj_3d( xdom_beg+(i_beg+ti)*dx-x0 , xdom_beg+(i_beg+ti+1)*dx-x0 ,
+                                        ydom_beg+(j_beg+tj)*dy-y0 , ydom_beg+(j_beg+tj+1)*dy-y0 ,
                                         (      tk)*dz-z0 , (      tk+1)*dz-z0 ,
                                         eps_x , eps_y , eps_z );
               real rho   = dm_rho_d(tk,tj,ti);
@@ -733,8 +739,8 @@ namespace modules {
             real x0     = hub_x + x_tilt;
             real y0     = hub_y + y_tilt;
             real z0     = hub_z + z_tilt;
-            int  i0     = static_cast<int>(std::floor(x0/dx))-i_beg;
-            int  j0     = static_cast<int>(std::floor(y0/dy))-j_beg;
+            int  i0     = static_cast<int>(std::floor((x0-xdom_beg)/dx))-i_beg;
+            int  j0     = static_cast<int>(std::floor((y0-ydom_beg)/dy))-j_beg;
             int  k0     = static_cast<int>(std::floor(z0/dz));
             int  ti     = i0-num_x+ii;
             int  tj     = j0-num_y+jj;
@@ -744,8 +750,8 @@ namespace modules {
               real eps_x   = eps_fixed > 0 ? eps_fixed : std::max( 0.2*c  , min_eps );
               real eps_y   = eps_fixed > 0 ? eps_fixed : std::max( 0.4*c  , min_eps );
               real eps_z   = eps_fixed > 0 ? eps_fixed : std::max( drad*2 , min_eps );
-              real proj    = int_proj_3d( (i_beg+ti)*dx-x0 , (i_beg+ti+1)*dx-x0 ,
-                                          (j_beg+tj)*dy-y0 , (j_beg+tj+1)*dy-y0 ,
+              real proj    = int_proj_3d( xdom_beg+(i_beg+ti)*dx-x0 , xdom_beg+(i_beg+ti+1)*dx-x0 ,
+                                          ydom_beg+(j_beg+tj)*dy-y0 , ydom_beg+(j_beg+tj+1)*dy-y0 ,
                                           (      tk)*dz-z0 , (      tk+1)*dz-z0 ,
                                           eps_x , eps_y , eps_z );
               real F_axial = force_axial(iblade,irad)/inflow_props(ID_RHO,iblade,irad);
@@ -794,8 +800,8 @@ namespace modules {
               for (int kk=0; kk < N; kk++) {
                 for (int jj=0; jj < N; jj++) {
                   for (int ii=0; ii < N; ii++) {
-                    real x   = (i_beg+i)*dx + (ii+0.5)*dx/N;
-                    real y   = (j_beg+j)*dy + (jj+0.5)*dy/N;
+                    real x   = xdom_beg + (i_beg+i)*dx + (ii+0.5)*dx/N;
+                    real y   = ydom_beg + (j_beg+j)*dy + (jj+0.5)*dy/N;
                     real z   = (      k)*dz + (kk+0.5)*dz/N;
                     real xp  = x-bx;
                     real yp  = y-by;
@@ -825,5 +831,3 @@ namespace modules {
   };
 
 }
-
-

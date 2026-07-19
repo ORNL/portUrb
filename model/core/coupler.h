@@ -36,6 +36,12 @@ namespace core {
       size_t      type_hash;  // Hash of the variable type for type checking during output
     };
 
+    real          xdom_beg;      // Beginning of the domain in the x-direction in meters
+    real          xdom_end;      // End of the domain in the x-direction in meters
+    real          ydom_beg;      // Beginning of the domain in the y-direction in meters
+    real          ydom_end;      // End of the domain in the y-direction in meters
+    real          zdom_beg;      // Beginning of the domain in the z-direction in meters
+    real          zdom_end;      // End of the domain in the z-direction in meters
     real          xlen;          // Domain length in the x-direction in meters
     real          ylen;          // Domain length in the y-direction in meters
     real          zlen;          // Domain length in the z-direction in meters
@@ -83,6 +89,12 @@ namespace core {
 
     // Default constructor to initialize values to safe defaults
     Coupler() {
+      this->xdom_beg     = 0;
+      this->xdom_end     = -1;
+      this->ydom_beg     = 0;
+      this->ydom_end     = -1;
+      this->zdom_beg     = 0;
+      this->zdom_end     = -1;
       this->xlen         = -1;
       this->ylen         = -1;
       this->zlen         = -1;
@@ -118,6 +130,12 @@ namespace core {
       dm.finalize();
       options.finalize();
       this->tracers      = std::vector<Tracer>();
+      this->xdom_beg     = 0;
+      this->xdom_end     = -1;
+      this->ydom_beg     = 0;
+      this->ydom_end     = -1;
+      this->zdom_beg     = 0;
+      this->zdom_end     = -1;
       this->xlen         = -1;
       this->ylen         = -1;
       this->zlen         = -1;
@@ -140,6 +158,12 @@ namespace core {
 
     // To replicate a coupler, you should create a new coupler and "clone_into" that coupler
     void clone_into( Coupler &coupler ) const {
+      coupler.xdom_beg           = this->xdom_beg          ;
+      coupler.xdom_end           = this->xdom_end          ;
+      coupler.ydom_beg           = this->ydom_beg          ;
+      coupler.ydom_end           = this->ydom_end          ;
+      coupler.zdom_beg           = this->zdom_beg          ;
+      coupler.zdom_end           = this->zdom_end          ;
       coupler.xlen               = this->xlen              ;
       coupler.ylen               = this->ylen              ;
       coupler.zlen               = this->zlen              ;
@@ -186,6 +210,8 @@ namespace core {
     // nx_glob      : Total global number of cells in the x-direction (summing all MPI Processes)
     // ylen        : Domain length in the y-direction in meters
     // xlen        : Domain length in the x-direction in meters
+    // xdom_beg_in : (optional) Beginning of the physical domain in the x-direction
+    // ydom_beg_in : (optional) Beginning of the physical domain in the y-direction
     // nproc_x_in  : (optional) Manually set the number of MPI processes in the x-direction
     // nproc_y_in  : (optional) Manually set the number of MPI processes in the y-direction
     // px_in       : (optional) Manually set my MPI process ID in the x-direction
@@ -209,7 +235,8 @@ namespace core {
                real1d const & zint                             ,
                size_t ny_glob         , size_t nx_glob         ,
                real   ylen            , real   xlen            ,
-               int    nproc_x_in = -1 , int    nproc_y_in = -1 ,
+               real   xdom_beg_in = 0  , real   ydom_beg_in = 0  ,
+               int    nproc_x_in  = -1 , int    nproc_y_in  = -1 ,
                int    px_in      = -1 , int    py_in      = -1 ,
                int    i_beg_in   = -1 , int    i_end_in   = -1 ,
                int    j_beg_in   = -1 , int    j_end_in   = -1 ) {
@@ -219,9 +246,16 @@ namespace core {
       this->nx_glob  = nx_glob;
       this->ny_glob  = ny_glob;
       this->nz       = zint.size()-1;
+      this->xdom_beg = xdom_beg_in;
+      this->xdom_end = xdom_beg_in + xlen;
+      this->ydom_beg = ydom_beg_in;
+      this->ydom_end = ydom_beg_in + ylen;
+      auto zint_host = zint.createHostCopy();
+      this->zdom_beg = zint_host(0);
+      this->zdom_end = zint_host(nz);
       this->xlen     = xlen;
       this->ylen     = ylen;
-      this->zlen     = zint.createHostCopy()(nz);
+      this->zlen     = this->zdom_end - this->zdom_beg;
       // allocate and compute dz and zmid from zint
       this->dz       = real1d("dz"  ,nz);
       this->zmid     = real1d("zmid",nz);
@@ -340,11 +374,23 @@ namespace core {
     // Get the x-dimension length of the domain in meters
     real                      get_xlen                  () const { return this->xlen                  ; }
 
+    // Get the beginning and end of the x-dimension in meters
+    real                      get_xdom_beg              () const { return this->xdom_beg              ; }
+    real                      get_xdom_end              () const { return this->xdom_end              ; }
+
     // Get the y-dimension length of the domain in meters
     real                      get_ylen                  () const { return this->ylen                  ; }
 
+    // Get the beginning and end of the y-dimension in meters
+    real                      get_ydom_beg              () const { return this->ydom_beg              ; }
+    real                      get_ydom_end              () const { return this->ydom_end              ; }
+
     // Get the z-dimension length of the domain in meters
     real                      get_zlen                  () const { return this->zlen                  ; }
+
+    // Get the beginning and end of the z-dimension in meters
+    real                      get_zdom_beg              () const { return this->zdom_beg              ; }
+    real                      get_zdom_end              () const { return this->zdom_end              ; }
 
     // Get the number of MPI ranks in the communicator
     int                       get_nranks                () const { return this->par_comm.get_size()   ; }
@@ -1038,11 +1084,17 @@ namespace core {
       ////////////////////////////////////////////////////// 
       // Create and write the x-coordinate data to file
       float1d xloc("xloc",nx);
-      yakl::parallel_for( YAKL_AUTO_LABEL() , nx , KOKKOS_LAMBDA (int i) { xloc(i) = (i+i_beg+0.5)*dx; });
+      real xdom_beg = get_xdom_beg();
+      yakl::parallel_for( YAKL_AUTO_LABEL() , nx , KOKKOS_LAMBDA (int i) {
+        xloc(i) = xdom_beg + (i+i_beg+0.5)*dx;
+      });
       nc.write_all( xloc , "x" , {i_beg} );
       // Create and write the y-coordinate data to file
       float1d yloc("yloc",ny);
-      yakl::parallel_for( YAKL_AUTO_LABEL() , ny , KOKKOS_LAMBDA (int j) { yloc(j) = (j+j_beg+0.5)*dy; });
+      real ydom_beg = get_ydom_beg();
+      yakl::parallel_for( YAKL_AUTO_LABEL() , ny , KOKKOS_LAMBDA (int j) {
+        yloc(j) = ydom_beg + (j+j_beg+0.5)*dy;
+      });
       nc.write_all( yloc , "y" , {j_beg} );
       nc.begin_indep_data(); // Begin independent data section for variables that are the same on all processes
       if (is_mainproc()) nc.write( zmid         , "z"            ); // Write z midpoints from main process
@@ -1600,5 +1652,3 @@ namespace core {
   };
 
 }
-
-

@@ -60,18 +60,20 @@ namespace profiles {
   // Creates initial data at a point in space for the rising moist thermal test case
   KOKKOS_INLINE_FUNCTION void thermal(real x, real y, real z, real xlen, real ylen, real grav, real C0, real gamma,
                            real cp, real p0, real R_d, real R_v, real &rho, real &u, real &v, real &w,
-                           real &theta, real &rho_v, real &hr, real &ht) {
+                           real &theta, real &rho_v, real &hr, real &ht, real xdom_beg = 0, real ydom_beg = 0) {
     hydro_const_theta(z,grav,C0,cp,p0,gamma,R_d,hr,ht);
     real rho_d   = hr;
     u            = 0.;
     v            = 0.;
     w            = 0.;
-    real theta_d = ht + sample_ellipse_cosine(2._fp  ,  x,y,z  ,  xlen/2,ylen/2,2000.  ,  2000.,2000.,2000.);
+    real theta_d = ht + sample_ellipse_cosine(2._fp, x, y, z, xdom_beg+xlen/2, ydom_beg+ylen/2, 2000., 2000., 2000.,
+                                              2000.);
     real p_d     = C0 * pow( rho_d*theta_d , gamma );
     real temp    = p_d / rho_d / R_d;
     real sat_pv  = saturation_vapor_pressure(temp);
     real sat_rv  = sat_pv / R_v / temp;
-    rho_v        = sample_ellipse_cosine(0.8_fp  ,  x,y,z  ,  xlen/2,ylen/2,2000.  ,  2000.,2000.,2000.) * sat_rv;
+    rho_v = sample_ellipse_cosine(0.8_fp, x, y, z, xdom_beg+xlen/2, ydom_beg+ylen/2, 2000., 2000., 2000., 2000.) *
+            sat_rv;
     real p       = rho_d * R_d * temp + rho_v * R_v * temp;
     rho          = rho_d + rho_v;
     theta        = std::pow( p / C0 , 1._fp / gamma ) / rho;
@@ -134,5 +136,3 @@ namespace profiles {
 
 }
 }
-
-

@@ -83,11 +83,13 @@ namespace modules {
         auto ny     = coupler.get_ny();     // Get the number of y-direction cells
         auto dx     = coupler.get_dx();     // Get the grid spacing in the x-direction
         auto dy     = coupler.get_dy();     // Get the grid spacing in the y-direction
+        auto xdom_beg  = coupler.get_xdom_beg();  // Get the beginning of the physical x-domain
+        auto ydom_beg  = coupler.get_ydom_beg();  // Get the beginning of the physical y-domain
         // bounds of this MPI task's domain
-        real dom_x1  = (i_beg+0 )*dx;
-        real dom_x2  = (i_beg+nx)*dx;
-        real dom_y1  = (j_beg+0 )*dy;
-        real dom_y2  = (j_beg+ny)*dy;
+        real dom_x1  = xdom_beg + i_beg*dx;
+        real dom_x2  = xdom_beg + (i_beg+nx)*dx;
+        real dom_y1  = ydom_beg + j_beg*dy;
+        real dom_y2  = ydom_beg + (j_beg+ny)*dy;
         // Rectangular bounds of this turbine's potential influence (3 turbine diameters in each direction from tower base)
         real turb_x1 = base_loc_x-6*ref_turbine.blade_radius;
         real turb_x2 = base_loc_x+6*ref_turbine.blade_radius;
@@ -125,6 +127,8 @@ namespace modules {
       auto nz    = coupler.get_nz();    // Get the number of z-direction cells
       auto dx    = coupler.get_dx();    // Get the grid spacing in the x-direction
       auto dy    = coupler.get_dy();    // Get the grid spacing in the y-direction
+      auto xdom_beg = coupler.get_xdom_beg(); // Get the beginning of the physical x-domain
+      auto ydom_beg = coupler.get_ydom_beg(); // Get the beginning of the physical y-domain
       auto i_beg = coupler.get_i_beg(); // Get the beginning x-direction index for this MPI task
       auto j_beg = coupler.get_j_beg(); // Get the beginning y-direction index for this MPI task
       RefTurbine ref_turbine;  // Create a reference turbine and initialize it from file
@@ -154,8 +158,10 @@ namespace modules {
           for (int iturb=0; iturb < turbine_group.turbines.size(); iturb++) {  // Loop over all turbines
             auto &turbine = turbine_group.turbines.at(iturb); // Grab a reference to this turbine for convenience
             // Only write this data from the MPI task that contains the base location
-            if (turbine.active && turbine.base_loc_x >= i_beg*dx && turbine.base_loc_x < (i_beg+nx)*dx &&
-                                  turbine.base_loc_y >= j_beg*dy && turbine.base_loc_y < (j_beg+ny)*dy ) {
+            if (turbine.active && turbine.base_loc_x >= xdom_beg+i_beg*dx &&
+                                  turbine.base_loc_x <  xdom_beg+(i_beg+nx)*dx &&
+                                  turbine.base_loc_y >= ydom_beg+j_beg*dy &&
+                                  turbine.base_loc_y <  ydom_beg+(j_beg+ny)*dy) {
               realHost1d power_arr("power_arr",trace_size);  // Array to hold power trace
               realHost1d yaw_arr  ("yaw_arr"  ,trace_size);  // Array to hold yaw trace
               realHost1d mag_arr  ("mag_arr"  ,trace_size);  // Array to hold inflow wind magnitude trace
@@ -194,6 +200,8 @@ namespace modules {
       auto dz    = coupler.get_dz   ();  // Get the grid spacing in the z-direction (1-D array of size nz)
       auto zint  = coupler.get_zint ();  // Get the z-interface heights (1-D array of size nz+1)
       auto zmid  = coupler.get_zmid ();  // Get the z-midpoint heights (1-D array of size nz)
+      auto xdom_beg = coupler.get_xdom_beg();  // Get the beginning of the physical x-domain
+      auto ydom_beg = coupler.get_ydom_beg();  // Get the beginning of the physical y-domain
       auto i_beg = coupler.get_i_beg();  // Get the beginning x-direction index for this MPI task
       auto j_beg = coupler.get_j_beg();  // Get the beginning y-direction index for this MPI task
       auto &dm   = coupler.get_data_manager_readwrite();  // Get the data manager for read/write access
@@ -247,8 +255,8 @@ namespace modules {
             disk_weight_proj (k,j,i) = 0;
             disk_weight_samp (k,j,i) = 0;
             // Compute midpoint location for this cell
-            float x = (i_beg+i+0.5f)*dx;
-            float y = (j_beg+j+0.5f)*dy;
+            float x = xdom_beg + (i_beg+i+0.5f)*dx;
+            float y = ydom_beg + (j_beg+j+0.5f)*dy;
             float z = zmid(k);
             // Store the u and v velocities within the rotor disk for upstream direction calculation
             if ( z >= hub_height-rad && z <= hub_height+rad &&
@@ -318,8 +326,9 @@ namespace modules {
                 float zp = hub_height + z;
                 // If it's in this task's domain, atomically add to the cell's total shape function sum for projection
                 //     Also, add the average angle for torque application later
-                int ti = static_cast<int>(std::floor(xp/dx))-i_beg; // Compute global i-index this sampling point falls into
-                int tj = static_cast<int>(std::floor(yp/dy))-j_beg; // Compute global j-index this sampling point falls into
+                // Compute the local indices containing this sampling point
+                int ti = static_cast<int>(std::floor((xp-xdom_beg)/dx))-i_beg;
+                int tj = static_cast<int>(std::floor((yp-ydom_beg)/dy))-j_beg;
                 // Locate the vertical index (k) this sampling point falls into
                 int tk = 0;
                 for (int kk=0; kk < nz; kk++) {
@@ -337,8 +346,8 @@ namespace modules {
                 // Now do the same thing for the upwind sampling disk for computing inflow velocity
                 xp += up_x_offset;
                 yp += up_y_offset;
-                ti = static_cast<int>(std::floor(xp/dx))-i_beg;
-                tj = static_cast<int>(std::floor(yp/dy))-j_beg;
+                ti = static_cast<int>(std::floor((xp-xdom_beg)/dx))-i_beg;
+                tj = static_cast<int>(std::floor((yp-ydom_beg)/dy))-j_beg;
                 // tk is the same because only the horizontal location is translated
                 if ( ti >= 0 && ti < nx && tj >= 0 && tj < ny && tk >= 0 && tk < nz) {
                   Kokkos::atomic_add( &disk_weight_samp(tk,tj,ti) , shp );
@@ -525,5 +534,3 @@ namespace modules {
   };
 
 }
-
-
