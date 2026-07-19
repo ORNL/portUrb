@@ -1157,6 +1157,17 @@ namespace modules {
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
           limits_z(1,l,nz,j,i) = limits_z(0,l,nz,j,i);
         });
+      } else if (bc_z2 == "precursor") {
+        auto prec_z2 = dm.get<FLOC const,5>("dycore_edge_ghost_z2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) ,
+                                                KOKKOS_LAMBDA (int l, int j, int i) {
+          if (l != idP) {
+            auto w = limits_z(0,idW,nz,j,i);
+            limits_z(1,l,nz,j,i) = w < 0 ? prec_z2(icycle,istage,l,j,i) : limits_z(0,l,nz,j,i);
+          } else {
+            limits_z(1,l,nz,j,i) = limits_z(0,l,nz,j,i);
+          }
+        });
       } else if (bc_z2 == "periodic") {
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
           limits_z(1,l,nz,j,i) = limits_z(1,l,0 ,j,i);
@@ -1194,6 +1205,11 @@ namespace modules {
             edge_ghost_y2(icycle,istage,l,k,i) = limits_y(1,l,k,ny,i);
           });
         }
+        auto edge_ghost_z2 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_z2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_state+num_tracers+1,ny,nx) ,
+                                                KOKKOS_LAMBDA (int l, int j, int i) {
+          edge_ghost_z2(icycle,istage,l,j,i) = limits_z(1,l,nz,j,i);
+        });
       }
     }
 
@@ -1392,6 +1408,18 @@ namespace modules {
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
           fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
         });
+      } else if (bc_z2 == "precursor") {
+        auto prec_z2 = dm.get<FLOC const,6>("dycore_ghost_z2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+                                                KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          if (l != idP) {
+            auto w = fields(idW,hs+nz-1,hs+j,hs+i);
+            fields(l,hs+nz+kk,hs+j,hs+i) = w < 0 ? prec_z2(icycle,istage,l,kk,j,i) :
+                                                   fields(l,hs+nz-1,hs+j,hs+i);
+          } else {
+            fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
+          }
+        });
       } else if (bc_z2 == "periodic") {
         // Periodic boundary condition at top boundary
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
@@ -1399,7 +1427,8 @@ namespace modules {
           fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+kk,hs+j,hs+i);
         });
       } else {
-        std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_z2 can only be periodic or wall_free_slip";
+        std::cout << __FILE__ << ":" << __LINE__
+                  << ": ERROR: bc_z2 can only be periodic, wall_free_slip, open, or precursor";
         Kokkos::abort("");
       }
 
@@ -1434,6 +1463,11 @@ namespace modules {
             ghost_y2(icycle,istage,l,k,jj,i) = fields(l,hs+k,hs+ny+jj,hs+i);
           });
         }
+        auto ghost_z2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_z2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+                                                KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          ghost_z2(icycle,istage,l,kk,j,i) = fields(l,hs+nz+kk,hs+j,hs+i);
+        });
       }
 
       #ifdef YAKL_AUTO_PROFILE
@@ -1518,6 +1552,10 @@ namespace modules {
       if (px == npx-1) dm_prec.get<FLOC const,5>("dycore_edge_ghost_x2").deep_copy_to(dm_main.get<FLOC,5>("dycore_edge_ghost_x2"));
       if (py == 0    ) dm_prec.get<FLOC const,5>("dycore_edge_ghost_y1").deep_copy_to(dm_main.get<FLOC,5>("dycore_edge_ghost_y1"));
       if (py == npy-1) dm_prec.get<FLOC const,5>("dycore_edge_ghost_y2").deep_copy_to(dm_main.get<FLOC,5>("dycore_edge_ghost_y2"));
+      if (coupler_main.get_option<std::string>("bc_z2") == "precursor") {
+        dm_prec.get<FLOC const,6>("dycore_ghost_z2").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_z2"));
+        dm_prec.get<FLOC const,5>("dycore_edge_ghost_z2").deep_copy_to(dm_main.get<FLOC,5>("dycore_edge_ghost_z2"));
+      }
     }
 
 
@@ -1573,6 +1611,18 @@ namespace modules {
           if (jj==0) edge_ghost_y2(icycle,istage,l,k,i) = col(l,k);
         });
       }
+      if (coupler.get_option<std::string>("bc_z2") == "precursor") {
+        auto ghost_z2      = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_z2"     );
+        auto edge_ghost_z2 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_z2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() ,
+                            SimpleBounds<6>(max_cycles,num_stages,num_state+num_tracers+1,hs,ny,nx) ,
+                            KOKKOS_LAMBDA (int icycle, int istage, int l, int kk, int j, int i) {
+          ghost_z2(icycle,istage,l,kk,j,i) = col(l,nz-1);
+          if (kk == 0) {
+            edge_ghost_z2(icycle,istage,l,j,i) = col(l,nz-1);
+          }
+        });
+      }
     }
 
 
@@ -1626,7 +1676,8 @@ namespace modules {
            coupler.get_option<std::string>("bc_x1") == "precursor" ||
            coupler.get_option<std::string>("bc_x2") == "precursor" ||
            coupler.get_option<std::string>("bc_y1") == "precursor" ||
-           coupler.get_option<std::string>("bc_y2") == "precursor" ) {
+           coupler.get_option<std::string>("bc_y2") == "precursor" ||
+           coupler.get_option<std::string>("bc_z2") == "precursor" ) {
         auto nstage     = coupler.get_option<int>("dycore_num_stages"); // Number of Runge-Kutta stages
         auto max_cycles = coupler.get_option<int>("dycore_max_cycles");
         if (px == 0) { // If we're at the west edge process of the domain
@@ -1645,6 +1696,10 @@ namespace modules {
           dm.register_and_allocate<FLOC>("dycore_ghost_y2"     ,{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
           dm.register_and_allocate<FLOC>("dycore_edge_ghost_y2",{max_cycles,nstage,num_state+num_tracers+1,nz,nx});
         }
+        dm.register_and_allocate<FLOC>("dycore_ghost_z2",
+                                        {max_cycles,nstage,num_state+num_tracers+1,hs,ny,nx});
+        dm.register_and_allocate<FLOC>("dycore_edge_ghost_z2",
+                                        {max_cycles,nstage,num_state+num_tracers+1,ny,nx});
       }
 
       // Compute the metric jacobian (dz/dzeta) where zeta is the k interface index
@@ -2163,4 +2218,3 @@ namespace modules {
   };
 
 }
-

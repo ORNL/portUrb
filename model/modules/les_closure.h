@@ -83,7 +83,8 @@ namespace modules {
           coupler.get_option<std::string>("bc_x1") == "precursor" ||
           coupler.get_option<std::string>("bc_x2") == "precursor" ||
           coupler.get_option<std::string>("bc_y1") == "precursor" ||
-          coupler.get_option<std::string>("bc_y2") == "precursor") {
+          coupler.get_option<std::string>("bc_y2") == "precursor" ||
+          coupler.get_option<std::string>("bc_z2") == "precursor") {
         int num_fields = num_state + num_tracers + 1;
         if (px == 0) {
           dm.register_and_allocate<real>("les_ghost_x1",{num_fields,nz,ny,hs});
@@ -97,6 +98,7 @@ namespace modules {
         if (py == nproc_y-1) {
           dm.register_and_allocate<real>("les_ghost_y2",{num_fields,nz,hs,nx});
         }
+        dm.register_and_allocate<real>("les_ghost_z2",{num_fields,hs,ny,nx});
       }
       // Initialize LES hydrostatic profiles for density and potential temperature using column averages
       dm.register_and_allocate<real>("les_hy_dens_cells" ,{nz+2*hs});
@@ -787,6 +789,16 @@ namespace modules {
         });
       }
 
+      // Apply precursor values to inflow at the top boundary and zero-gradient values to outflow.
+      if (coupler.get_option<std::string>("bc_z2") == "precursor") {
+        auto prec_z2 = dm.get<real const,4>("les_ghost_z2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,hs,ny,nx) ,
+                                                KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          auto w = fields(idW,hs+nz-1,hs+j,hs+i);
+          fields(l,hs+nz+kk,hs+j,hs+i) = w < 0 ? prec_z2(l,kk,j,i) : fields(l,hs+nz-1,hs+j,hs+i);
+        });
+      }
+
       // Apply periodic vertical conditions at the top boundary if desired
       if (coupler.get_option<std::string>("bc_z2") == "periodic") {
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) ,
@@ -832,6 +844,11 @@ namespace modules {
             ghost_y2(l,k,jj,i) = fields(l,hs+k,hs+ny+jj,hs+i);
           });
         }
+        auto ghost_z2 = dm_write.get<real,4>("les_ghost_z2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,hs,ny,nx) ,
+                                                KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          ghost_z2(l,kk,j,i) = fields(l,hs+nz+kk,hs+j,hs+i);
+        });
       }
     }
 
@@ -856,6 +873,9 @@ namespace modules {
       }
       if (py == nproc_y-1) {
         dm_prec.get<real const,4>("les_ghost_y2").deep_copy_to(dm_main.get<real,4>("les_ghost_y2"));
+      }
+      if (coupler_main.get_option<std::string>("bc_z2") == "precursor") {
+        dm_prec.get<real const,4>("les_ghost_z2").deep_copy_to(dm_main.get<real,4>("les_ghost_z2"));
       }
     }
 
