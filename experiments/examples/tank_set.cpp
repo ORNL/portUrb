@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
     yakl::timer_start("main");
 
     real scale = 1./1250.;
-    real dx = 0.15*scale;
+    real dx = 0.30*scale;
     real u0 = 0.5624;
 
     modules::TriMesh mesh;
@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "init_vvel"                          , 0           );
     coupler.set_option<real       >( "cfl"                                , 0.6         );
     coupler.set_option<real       >( "dycore_max_wind"                    , 2           );
-    coupler.set_option<real       >( "dycore_cs"                          , 6           );
+    coupler.set_option<real       >( "dycore_cs"                          , 10          );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false       );
     coupler.set_option<bool       >( "dycore_use_weno_immersed"           , true        );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , false       );

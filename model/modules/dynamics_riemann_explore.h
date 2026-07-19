@@ -1330,7 +1330,7 @@ namespace modules {
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
           });
-        } else if (bc_y1 == "wall_free_slip") {
+        } else if (bc_y2 == "wall_free_slip") {
           // Simple zero-gradient extrapolation for open boundary
           yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
@@ -1386,6 +1386,11 @@ namespace modules {
           } else {
             fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
           }
+        });
+      } else if (bc_z2 == "open") {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+                                                KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
         });
       } else if (bc_z2 == "periodic") {
         // Periodic boundary condition at top boundary

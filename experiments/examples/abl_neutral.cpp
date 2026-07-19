@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     // auto buoy_theta = config["buoy_theta"].as<bool>();
     // auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx         = 2;
+    real dx         = 10;
     real umax       = 15;
     real cfl        = 0.6;
     real cs         = umax*2;
@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
     // bool buoy_theta = true;
     // bool rsst       = true;
 
-    real        sim_time    = 3600*5+1;
+    real        sim_time    = 3600*10+1;
     real        xlen        = 1000;
     real        ylen        = 1000;
     real        zlen        = 1000;
