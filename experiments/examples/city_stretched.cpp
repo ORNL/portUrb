@@ -180,6 +180,7 @@ int main(int argc, char** argv) {
       col_nudge_main.names  = col_nudge_prec.names;
       // Copy the precursor ghost cells to the main ghost cells
       dycore.copy_precursor_ghost_cells( coupler_prec , coupler_main );
+      les_closure.copy_precursor_ghost_cells( coupler_prec , coupler_main );
 
       // Run the main modules using precursor ghost cells / open boundaries
       precursor_sponge( coupler_main , coupler_prec , {"density_dry","temperature"} , 0 , nx_glob/10 , 0 , ny_glob/10 );
@@ -215,4 +216,3 @@ int main(int argc, char** argv) {
   Kokkos::finalize();
   MPI_Finalize();
 }
-

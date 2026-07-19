@@ -240,6 +240,7 @@ int main(int argc, char** argv) {
         col_nudge_main.names  = col_nudge_prec.names;
         
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_main );
+        les_closure.copy_precursor_ghost_cells( coupler_prec , coupler_main );
 
         if (run_main) {
           coupler_main.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,pgu,pgv); } , "pg_forcing" );
@@ -279,4 +280,3 @@ int main(int argc, char** argv) {
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
 }
-

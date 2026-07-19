@@ -74,6 +74,30 @@ namespace modules {
       // After conversion to state, tracers, and TKE, all variables except density have density divided out
       //   e.g., velocity, potential temperature, and dry mixing ratios
       convert_coupler_to_dynamics( coupler , state , tracers , tke );
+      auto num_tracers = tracers.extent(0);
+      auto px          = coupler.get_px();
+      auto py          = coupler.get_py();
+      auto nproc_x     = coupler.get_nproc_x();
+      auto nproc_y     = coupler.get_nproc_y();
+      if (coupler.get_option<bool>("dycore_is_precursor",false) ||
+          coupler.get_option<std::string>("bc_x1") == "precursor" ||
+          coupler.get_option<std::string>("bc_x2") == "precursor" ||
+          coupler.get_option<std::string>("bc_y1") == "precursor" ||
+          coupler.get_option<std::string>("bc_y2") == "precursor") {
+        int num_fields = num_state + num_tracers + 1;
+        if (px == 0) {
+          dm.register_and_allocate<real>("les_ghost_x1",{num_fields,nz,ny,hs});
+        }
+        if (px == nproc_x-1) {
+          dm.register_and_allocate<real>("les_ghost_x2",{num_fields,nz,ny,hs});
+        }
+        if (py == 0) {
+          dm.register_and_allocate<real>("les_ghost_y1",{num_fields,nz,hs,nx});
+        }
+        if (py == nproc_y-1) {
+          dm.register_and_allocate<real>("les_ghost_y2",{num_fields,nz,hs,nx});
+        }
+      }
       // Initialize LES hydrostatic profiles for density and potential temperature using column averages
       dm.register_and_allocate<real>("les_hy_dens_cells" ,{nz+2*hs});
       dm.register_and_allocate<real>("les_hy_theta_cells",{nz+2*hs});
@@ -588,7 +612,7 @@ namespace modules {
     // state   : Input/output state array (with halos)
     // tracers : Input/output tracers array (with halos)
     // tke     : Input/output TKE array (with halos)
-    void halo_bcs( core::Coupler const & coupler ,
+    void halo_bcs( core::Coupler       & coupler ,
                    real4d        const & state   ,
                    real4d        const & tracers ,
                    real3d        const & tke     ) const {
@@ -609,6 +633,11 @@ namespace modules {
       auto enable_gravity = coupler.get_option<bool>("enable_gravity",true); // Enable gravity flag
       auto hy_t           = dm.get<real const,1>("les_hy_theta_cells");      // Hydrostatic theta profile
       if (!enable_gravity) grav = 0;  // Disable gravity effects if the flag is false
+      core::MultiField<real,3> fields;
+      for (int l=0; l < num_state  ; l++) { fields.add_field( state  .slice<3>(l,0,0,0) ); }
+      for (int l=0; l < num_tracers; l++) { fields.add_field( tracers.slice<3>(l,0,0,0) ); }
+      fields.add_field( tke );
+      int num_fields = fields.size();
 
       // If my MPI task is on the west x-direction boundary and the BC is open, copy values from the first interior cell
       //   for a zero-gradient BC
@@ -619,6 +648,14 @@ namespace modules {
           tke(hs+k,hs+j,ii) = tke(hs+k,hs+j,hs+0);
         });
       }
+      if (coupler.get_option<std::string>("bc_x1") == "precursor" && px == 0) {
+        auto prec_x1 = dm.get<real const,4>("les_ghost_x1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+          auto u = fields(idU,hs+k,hs+j,hs);
+          fields(l,hs+k,hs+j,hs-1-ii) = u > 0 ? prec_x1(l,k,j,ii) : fields(l,hs+k,hs+j,hs);
+        });
+      }
 
       // If my MPI task is on the east x-direction boundary and the BC is open, copy values from the last interior cell
       //   for a zero-gradient BC
@@ -627,6 +664,14 @@ namespace modules {
           for (int l=0; l < num_state  ; l++) state  (l,hs+k,hs+j,hs+nx+ii) = state  (l,hs+k,hs+j,hs+nx-1);
           for (int l=0; l < num_tracers; l++) tracers(l,hs+k,hs+j,hs+nx+ii) = tracers(l,hs+k,hs+j,hs+nx-1);
           tke(hs+k,hs+j,hs+nx+ii) = tke(hs+k,hs+j,hs+nx-1);
+        });
+      }
+      if (coupler.get_option<std::string>("bc_x2") == "precursor" && px == nproc_x-1) {
+        auto prec_x2 = dm.get<real const,4>("les_ghost_x2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+          auto u = fields(idU,hs+k,hs+j,hs+nx-1);
+          fields(l,hs+k,hs+j,hs+nx+ii) = u > 0 ? fields(l,hs+k,hs+j,hs+nx-1) : prec_x2(l,k,j,ii);
         });
       }
 
@@ -646,6 +691,14 @@ namespace modules {
           tke(hs+k,jj,hs+i) = tke(hs+k,hs+0,hs+i);
         });
       }
+      if (coupler.get_option<std::string>("bc_y1") == "precursor" && py == 0) {
+        auto prec_y1 = dm.get<real const,4>("les_ghost_y1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,hs,nx) ,
+                                                KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+          auto v = fields(idV,hs+k,hs,hs+i);
+          fields(l,hs+k,hs-1-jj,hs+i) = v > 0 ? prec_y1(l,k,jj,i) : fields(l,hs+k,hs,hs+i);
+        });
+      }
 
       // If my MPI task is on the north y-direction boundary and the BC is open, copy values from the last interior cell
       //   for a zero-gradient BC
@@ -661,6 +714,14 @@ namespace modules {
           for (int l=0; l < num_state  ; l++) state  (l,hs+k,hs+ny+jj,hs+i) = l==idV ? 0 : state  (l,hs+k,hs+ny-1,hs+i);
           for (int l=0; l < num_tracers; l++) tracers(l,hs+k,hs+ny+jj,hs+i) = tracers(l,hs+k,hs+ny-1,hs+i);
           tke(hs+k,hs+ny+jj,hs+i) = tke(hs+k,hs+ny-1,hs+i);
+        });
+      }
+      if (coupler.get_option<std::string>("bc_y2") == "precursor" && py == nproc_y-1) {
+        auto prec_y2 = dm.get<real const,4>("les_ghost_y2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,hs,nx) ,
+                                                KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+          auto v = fields(idV,hs+k,hs+ny-1,hs+i);
+          fields(l,hs+k,hs+ny+jj,hs+i) = v > 0 ? fields(l,hs+k,hs+ny-1,hs+i) : prec_y2(l,k,jj,i);
         });
       }
 
@@ -739,9 +800,65 @@ namespace modules {
           for (int l=0; l < num_tracers; l++) { tracers(l,hs+nz+kk,j,i) = tracers(l,hs+kk,j,i); }
         });
       }
+
+      // Store precursor boundary data for copying to a concurrently forced simulation.
+      if (coupler.get_option<bool>("dycore_is_precursor",false)) {
+        auto &dm_write = coupler.get_data_manager_readwrite();
+        if (px == 0) {
+          auto ghost_x1 = dm_write.get<real,4>("les_ghost_x1");
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,hs) ,
+                                                  KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+            ghost_x1(l,k,j,ii) = fields(l,hs+k,hs+j,hs-1-ii);
+          });
+        }
+        if (px == nproc_x-1) {
+          auto ghost_x2 = dm_write.get<real,4>("les_ghost_x2");
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,hs) ,
+                                                  KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+            ghost_x2(l,k,j,ii) = fields(l,hs+k,hs+j,hs+nx+ii);
+          });
+        }
+        if (py == 0) {
+          auto ghost_y1 = dm_write.get<real,4>("les_ghost_y1");
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,hs,nx) ,
+                                                  KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            ghost_y1(l,k,jj,i) = fields(l,hs+k,hs-1-jj,hs+i);
+          });
+        }
+        if (py == nproc_y-1) {
+          auto ghost_y2 = dm_write.get<real,4>("les_ghost_y2");
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,hs,nx) ,
+                                                  KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            ghost_y2(l,k,jj,i) = fields(l,hs+k,hs+ny+jj,hs+i);
+          });
+        }
+      }
+    }
+
+
+
+    // Copy LES precursor ghost cells from a precursor coupler to a concurrently forced coupler.
+    void copy_precursor_ghost_cells( core::Coupler const & coupler_prec , core::Coupler & coupler_main ) const {
+      int  px       = coupler_main.get_px();
+      int  py       = coupler_main.get_py();
+      int  nproc_x  = coupler_main.get_nproc_x();
+      int  nproc_y  = coupler_main.get_nproc_y();
+      auto &dm_prec = coupler_prec.get_data_manager_readonly();
+      auto &dm_main = coupler_main.get_data_manager_readwrite();
+      if (px == 0) {
+        dm_prec.get<real const,4>("les_ghost_x1").deep_copy_to(dm_main.get<real,4>("les_ghost_x1"));
+      }
+      if (px == nproc_x-1) {
+        dm_prec.get<real const,4>("les_ghost_x2").deep_copy_to(dm_main.get<real,4>("les_ghost_x2"));
+      }
+      if (py == 0) {
+        dm_prec.get<real const,4>("les_ghost_y1").deep_copy_to(dm_main.get<real,4>("les_ghost_y1"));
+      }
+      if (py == nproc_y-1) {
+        dm_prec.get<real const,4>("les_ghost_y2").deep_copy_to(dm_main.get<real,4>("les_ghost_y2"));
+      }
     }
 
   };
 
 }
-

@@ -250,6 +250,7 @@ int main(int argc, char** argv) {
         col_nudge_noturb.column = col_nudge_prec.column.createDeviceCopy();
         col_nudge_noturb.names  = col_nudge_prec.names;
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_noturb );
+        les_closure.copy_precursor_ghost_cells( coupler_prec , coupler_noturb );
 
         {
           precursor_sponge( coupler_noturb , coupler_prec , {"density_dry","temperature"} , nx_glob/20 , nx_glob/20 , 0 , 0 );
@@ -267,6 +268,7 @@ int main(int argc, char** argv) {
         col_nudge_turb.column = col_nudge_prec.column.createDeviceCopy();
         col_nudge_turb.names  = col_nudge_prec.names;
         dycore.copy_precursor_ghost_cells( coupler_prec , coupler_turb );
+        les_closure.copy_precursor_ghost_cells( coupler_prec , coupler_turb );
 
         {
           precursor_sponge( coupler_turb , coupler_prec , {"density_dry","temperature"} , nx_glob/20 , nx_glob/20 , 0 , 0 );
@@ -315,4 +317,3 @@ int main(int argc, char** argv) {
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
 }
-
