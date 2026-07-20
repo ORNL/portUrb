@@ -196,6 +196,58 @@ namespace core {
     }
 
 
+    // Create a "child" coupler that contains a subset of this coupler's domain at integrally higher resolution
+    Coupler create_child_coupler( size_t i_beg_child ,
+                                  size_t i_end_child ,
+                                  size_t j_beg_child ,
+                                  size_t j_end_child ,
+                                  size_t k_beg_child ,
+                                  size_t k_end_child ,
+                                  int refine_x ,
+                                  int refine_y ,
+                                  int refine_z ) const {
+      if (i_beg_child >= i_end_child) {
+        throw std::invalid_argument("Invalid child coupler indices: i_beg_child must be less than i_end_child");
+      }
+      if (j_beg_child >= j_end_child) {
+        throw std::invalid_argument("Invalid child coupler indices: j_beg_child must be less than j_end_child");
+      }
+      if (k_beg_child >= k_end_child) {
+        throw std::invalid_argument("Invalid child coupler indices: k_beg_child must be less than k_end_child");
+      }
+      if (refine_x <= 0) {
+        throw std::invalid_argument("Invalid refinement factor: refine_x must be greater than 0");
+      }
+      if (refine_y <= 0) {
+        throw std::invalid_argument("Invalid refinement factor: refine_y must be greater than 0");
+      }
+      if (refine_z <= 0) {
+        throw std::invalid_argument("Invalid refinement factor: refine_z must be greater than 0");
+      }
+      Coupler child;
+      real    xdom_child_beg = this->get_xdom_beg() +  i_beg_child    * this->get_dx();
+      real    xdom_child_end = this->get_xdom_beg() + (i_end_child+1) * this->get_dx();
+      real    ydom_child_beg = this->get_ydom_beg() +  j_beg_child    * this->get_dy();
+      real    ydom_child_end = this->get_ydom_beg() + (j_end_child+1) * this->get_dy();
+      size_t  nx_glob_child  = (i_end_child - i_beg_child + 1) * refine_x;
+      size_t  ny_glob_child  = (j_end_child - j_beg_child + 1) * refine_y;
+      size_t  nz_child       = (k_end_child - k_beg_child + 1) * refine_z;
+      auto    dz_h           = this->get_dz().createHostCopy();
+      auto    zint_h         = this->get_zint().createHostCopy();
+      auto    zint_child_h   = realHost1d("zint_child_h",nz_child+1);
+      for (size_t k=k_beg_child; k <= k_end_child; k++) {
+        for (int kk=0; kk < refine_z; kk++) {
+          zint_child_h((k-k_beg_child)*refine_z+kk) = zint_h(k) + kk*dz_h(k)/refine_z;
+        }
+      }
+      zint_child_h(nz_child) = zint_h(k_end_child+1);
+      child.init( this->get_parallel_comm() , zint_child_h.createDeviceCopy() , ny_glob_child , nx_glob_child ,
+                  ydom_child_end-ydom_child_beg , xdom_child_end-xdom_child_beg , xdom_child_beg  , ydom_child_beg );
+      this->options.clone_into(child.options);
+      return child;
+    }
+
+
     // Set the parallel communicator for this coupler for MPI operations
     void set_parallel_comm(ParallelComm par_comm) { this->par_comm = par_comm; }
 

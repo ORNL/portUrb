@@ -7,17 +7,15 @@ namespace modules {
   // This class keeps track of time-averaged u, v, w
   struct Time_Averager {
 
-    std::vector<std::string> add_3d_varnames;
-
     // Allocate and initialize time-averaged fields since the last reset
     // Also, register these fields as output variables with the coupler for output and restart
     void init( core::Coupler &coupler , std::vector<std::string> add_3d_varnames = {} ) {
-      this->add_3d_varnames = add_3d_varnames;
       auto nx   = coupler.get_nx();  // Local number of cells in the x-direction
       auto ny   = coupler.get_ny();  // Local number of cells in the y-direction
       auto nz   = coupler.get_nz();  // Number of cells in the z-direction
       auto &dm  = coupler.get_data_manager_readwrite();  // Get DataManager for read/write access
       coupler.set_option<real>("time_averager_etime",0); // Initialize elapsed time time-averaging option to zero
+      coupler.set_option<std::vector<std::string>>("time_averager_add_3d_varnames", add_3d_varnames);
       // Allocate time-averaged fields to the coupler's DataManager, and initialize to zero
       dm.register_and_allocate<real>("avg_u"     ,{nz,ny,nx});    dm.get<real,3>("avg_u"     ) = 0;
       dm.register_and_allocate<real>("avg_v"     ,{nz,ny,nx});    dm.get<real,3>("avg_v"     ) = 0;
@@ -46,7 +44,7 @@ namespace modules {
         coupler.register_output_variable<real>( "avg_vp_wp"  , core::Coupler::DIMS_3D );
         coupler.register_output_variable<real>( "avg_wp_wp"  , core::Coupler::DIMS_3D );
       }
-      for (auto & varname : add_3d_varnames) {
+      for (auto & varname : coupler.get_option<std::vector<std::string>>("time_averager_add_3d_varnames")) {
         dm.register_and_allocate<real>(std::string("avg_")+varname,{nz,ny,nx});
         dm.get<real,3>(std::string("avg_")+varname) = 0;
         coupler.register_output_variable<real>( std::string("avg_")+varname , core::Coupler::DIMS_3D );
@@ -69,7 +67,7 @@ namespace modules {
         dm.get<real,3>("avg_vp_wp") = 0;
         dm.get<real,3>("avg_wp_wp") = 0;
       }
-      for (auto & varname : add_3d_varnames) {
+      for (auto & varname : coupler.get_option<std::vector<std::string>>("time_averager_add_3d_varnames")) {
         dm.get<real,3>(std::string("avg_")+varname) = 0;
       }
     }
@@ -94,7 +92,7 @@ namespace modules {
       real inertia = etime / (etime + dt);  // Compute inertia
       core::MultiField<real      ,3> tavg_fields;
       core::MultiField<real const,3> fields;
-      for (auto & varname : add_3d_varnames) {
+      for (auto & varname : coupler.get_option<std::vector<std::string>>("time_averager_add_3d_varnames")) {
         fields     .add_field( dm.get<real const,3>(                    varname) );
         tavg_fields.add_field( dm.get<real      ,3>(std::string("avg_")+varname) );
       }

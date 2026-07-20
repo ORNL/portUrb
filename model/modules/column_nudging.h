@@ -9,8 +9,6 @@ namespace modules {
 
   class ColumnNudger {
   public:
-    std::vector<std::string> names; // names of fields to nudge
-    real2d column;                  // target column averages for each field (names.size() , nz)
 
     // Set the desired column averages for the specified fields
     // coupler    : Coupler object to access data manager and grid information
@@ -21,13 +19,13 @@ namespace modules {
       int nx   = coupler.get_nx();
       int ny   = coupler.get_ny();
       int nz   = coupler.get_nz();
-      names = names_in;
-      column = real2d("column",names.size(),nz);      // Allocate average column array
-      auto &dm = coupler.get_data_manager_readonly();
+      coupler.set_option<std::vector<std::string>>("column_nudger_names", names_in);
+      auto &dm = coupler.get_data_manager_readwrite();
       // Accumulate desired fields for column averaging
       core::MultiField<real const,3> state;
-      for (int i=0; i < names.size(); i++) { state.add_field( dm.get<real const,3>(names.at(i)) ); }
-      column = get_column_average( coupler , state ); // Compute column averages
+      for (int i=0; i < names_in.size(); i++) { state.add_field( dm.get<real const,3>(names_in.at(i)) ); }
+      dm.register_and_allocate<real>("column_nudger_column",{(int)names_in.size(),nz});
+      get_column_average( coupler , state ).deep_copy_to(dm.get<real,2>("column_nudger_column")); // Compute column averages
     }
 
 
@@ -46,9 +44,10 @@ namespace modules {
       auto immersed = dm.get<real const,3>("immersed_proportion"); // Proportion of cell that is immersed
       // Accumulate desired fields for column averaging for current state
       core::MultiField<real,3> state;
+      auto names = coupler.get_option<std::vector<std::string>>("column_nudger_names");
       for (int i=0; i < names.size(); i++) { state.add_field( dm.get<real,3>(names.at(i)) ); }
       auto state_col_avg = get_column_average( coupler , state ); // Compute current column averages
-      YAKL_SCOPE( column , this->column ); // Capture target column averages into local scope
+      auto column = dm.get<real const,2>("column_nudger_column");
       // Nudge desired fields toward target column averages if not immersed
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -77,8 +76,9 @@ namespace modules {
       auto immersed = dm.get<real const,3>("immersed_proportion"); // Proportion of cell that is immersed
       // Accumulate desired fields for column averaging for current state
       core::MultiField<real,3> state;
+      auto names = coupler.get_option<std::vector<std::string>>("column_nudger_names");
       for (int i=0; i < names.size(); i++) { state.add_field( dm.get<real,3>(names.at(i)) ); }
-      YAKL_SCOPE( column , this->column ); // Capture target column averages into local scope
+      auto column = dm.get<real const,2>("column_nudger_column");
       // Nudge desired fields toward target column averages if not immersed
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -101,6 +101,7 @@ namespace modules {
       int nx      = coupler.get_nx(); // Local number of cells in x-direction for this MPI rank
       int ny      = coupler.get_ny(); // Local number of cells in y-direction for this MPI rank
       int nz      = coupler.get_nz(); // Number of cells in z-direction
+      auto names = coupler.get_option<std::vector<std::string>>("column_nudger_names");
       real2d column_loc("column_loc",names.size(),nz); // Allocate column average array
       // Compute local column sums (avoiding atomics for reproducibility)
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(names.size(),nz) ,

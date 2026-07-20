@@ -632,18 +632,12 @@ namespace modules {
       // Perform periodic halo exchange in the horizontal, and implement vertical no-slip solid wall boundary conditions
       #ifdef YAKL_AUTO_PROFILE
       coupler.get_parallel_comm().barrier();
-      yakl::timer_start("dycore_halo_exchange_x");
+      yakl::timer_start("dycore_halo_exchange");
       #endif
-      if (ord > 1) coupler.halo_exchange_x( fields_loc , hs ); // Halo exchange in x-direction
+      if (ord > 1) coupler.halo_exchange( fields_loc , hs );  // Do a horizontal halo exchange on all fields assuming periodic boundaries
       #ifdef YAKL_AUTO_PROFILE
       coupler.get_parallel_comm().barrier();
-      yakl::timer_stop("dycore_halo_exchange_x");
-      yakl::timer_start("dycore_halo_exchange_y");
-      #endif
-      if (ord > 1) coupler.halo_exchange_y( fields_loc , hs ); // Halo exchange in y-direction
-      #ifdef YAKL_AUTO_PROFILE
-      coupler.get_parallel_comm().barrier();
-      yakl::timer_stop("dycore_halo_exchange_y");
+      yakl::timer_stop("dycore_halo_exchange");
       #endif
       // Set all boundary conditions. istage and icycle are needed for proper halo exchanges between
       //  precursor and forced simulations
@@ -1037,21 +1031,21 @@ namespace modules {
         if (bc_x1 == "periodic") { // Already handled in halo_exchange
         } else if (bc_x1 == "open") {
           // Simple zero-gradient extrapolation for open boundary
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0);
+            fields(l,k,j,hs-1-ii) = fields(l,k,j,hs+0);
           });
         } else if (bc_x1 == "precursor") {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
           // For outflow boundaries, use zero-gradient extrapolation
           auto prec_x1 = dm.get<FLOC const,6>("dycore_ghost_x1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int j, int ii) {
             if (l!=idP) {
-              auto u = fields(idU,hs+k,hs+j,hs);
-              fields(l,hs+k,hs+j,hs-1-ii) = u > 0 ? prec_x1(icycle,istage,l,k,j,ii) : fields(l,hs+k,hs+j,hs+0);
+              auto u = fields(idU,k,j,hs);
+              fields(l,k,j,hs-1-ii) = u > 0 ? prec_x1(icycle,istage,l,k,j,ii) : fields(l,k,j,hs+0);
             } else {
-              fields(l,hs+k,hs+j,hs-1-ii) = fields(l,hs+k,hs+j,hs+0);
+              fields(l,k,j,hs-1-ii) = fields(l,k,j,hs+0);
             }
           });
         } else {
@@ -1064,21 +1058,21 @@ namespace modules {
         if (bc_x2 == "periodic") { // Already handled in halo_exchange
         } else if (bc_x2 == "open") {
           // Simple zero-gradient extrapolation for open boundary
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs) ,
                                             KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-                  fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
+                  fields(l,k,j,hs+nx+ii) = fields(l,k,j,hs+nx-1);
           });
         } else if (bc_x2 == "precursor") {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
           // For outflow boundaries, use zero-gradient extrapolation
           auto prec_x2 = dm.get<FLOC const,6>("dycore_ghost_x2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int j, int ii) {
             if (l!=idP) {
-              auto u = fields(idU,hs+k,hs+j,hs+nx-1);
-              fields(l,hs+k,hs+j,hs+nx+ii) = u > 0 ? fields(l,hs+k,hs+j,hs+nx-1) : prec_x2(icycle,istage,l,k,j,ii);
+              auto u = fields(idU,k,j,hs+nx-1);
+              fields(l,k,j,hs+nx+ii) = u > 0 ? fields(l,k,j,hs+nx-1) : prec_x2(icycle,istage,l,k,j,ii);
             } else {
-              fields(l,hs+k,hs+j,hs+nx+ii) = fields(l,hs+k,hs+j,hs+nx-1);
+              fields(l,k,j,hs+nx+ii) = fields(l,k,j,hs+nx-1);
             }
           });
         } else {
@@ -1091,28 +1085,28 @@ namespace modules {
         if (bc_y1 == "periodic") { // Already handled in halo_exchange
         } else if (bc_y1 == "open") {
           // Simple zero-gradient extrapolation for open boundary
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i);
+            fields(l,k,hs-1-jj,i) = fields(l,k,hs+0,i);
           });
         } else if (bc_y1 == "wall_free_slip") {
           // Simple zero-gradient extrapolation for open boundary
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            if (l == idV) { fields(l,hs+k,hs-1-jj,hs+i) = 0; }
-            else          { fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i); }
+            if (l == idV) { fields(l,k,hs-1-jj,i) = 0; }
+            else          { fields(l,k,hs-1-jj,i) = fields(l,k,hs+0,i); }
           });
         } else if (bc_y1 == "precursor") {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
           // For outflow boundaries, use zero-gradient extrapolation
           auto prec_y1 = dm.get<FLOC const,6>("dycore_ghost_y1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             if (l!=idP) {
-              auto v = fields(idV,hs+k,hs,hs+i);
-              fields(l,hs+k,hs-1-jj,hs+i) = v > 0 ? prec_y1(icycle,istage,l,k,jj,i) : fields(l,hs+k,hs+0,hs+i);
+              auto v = fields(idV,k,hs,i);
+              fields(l,k,hs-1-jj,i) = v > 0 ? prec_y1(icycle,istage,l,k,jj,i) : fields(l,k,hs+0,i);
             } else {
-              fields(l,hs+k,hs-1-jj,hs+i) = fields(l,hs+k,hs+0,hs+i);
+              fields(l,k,hs-1-jj,i) = fields(l,k,hs+0,i);
             }
           });
         } else {
@@ -1125,28 +1119,28 @@ namespace modules {
         if (bc_y2 == "periodic") { // Already handled in halo_exchange
         } else if (bc_y2 == "open") {
           // Simple zero-gradient extrapolation for open boundary
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
+            fields(l,k,hs+ny+jj,i) = fields(l,k,hs+ny-1,i);
           });
         } else if (bc_y2 == "wall_free_slip") {
           // Simple zero-gradient extrapolation for open boundary
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            if (l == idV) { fields(l,hs+k,hs+ny+jj,hs+i) = 0; }
-            else          { fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i); }
+            if (l == idV) { fields(l,k,hs+ny+jj,i) = 0; }
+            else          { fields(l,k,hs+ny+jj,i) = fields(l,k,hs+ny-1,i); }
           });
         } else if (bc_y2 == "precursor") {
           // For inflow boundaries, use precursor data in ghost cells except for pressure field
           // For outflow boundaries, use zero-gradient extrapolation
           auto prec_y2 = dm.get<FLOC const,6>("dycore_ghost_y2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
             if (l!=idP) {
-              auto v = fields(idV,hs+k,hs+ny-1,hs+i);
-              fields(l,hs+k,hs+ny+jj,hs+i) = v > 0 ? fields(l,hs+k,hs+ny-1,hs+i) : prec_y2(icycle,istage,l,k,jj,i);
+              auto v = fields(idV,k,hs+ny-1,i);
+              fields(l,k,hs+ny+jj,i) = v > 0 ? fields(l,k,hs+ny-1,i) : prec_y2(icycle,istage,l,k,jj,i);
             } else {
-              fields(l,hs+k,hs+ny+jj,hs+i) = fields(l,hs+k,hs+ny-1,hs+i);
+              fields(l,k,hs+ny+jj,i) = fields(l,k,hs+ny-1,i);
             }
           });
         } else {
@@ -1157,19 +1151,19 @@ namespace modules {
 
       if (bc_z1 == "wall_free_slip") {
         // Free-slip wall boundary condition at bottom boundary
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
           if (l == idW) {
-            fields(l,kk,hs+j,hs+i) = 0;
+            fields(l,kk,j,i) = 0;
           } else {
-            fields(l,hs-1-kk,hs+j,hs+i) = fields(l,hs+0,hs+j,hs+i);
+            fields(l,hs-1-kk,j,i) = fields(l,hs+0,j,i);
           }
         });
       } else if (bc_z1 == "periodic") {
         // Periodic boundary condition at bottom boundary
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
-          fields(l,kk,hs+j,hs+i) = fields(l,nz+kk,hs+j,hs+i);
+          fields(l,kk,j,i) = fields(l,nz+kk,j,i);
         });
       } else {
         std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_z1 can only be periodic or wall_free_slip";
@@ -1178,36 +1172,36 @@ namespace modules {
 
       if (bc_z2 == "wall_free_slip") {
         // Free-slip wall boundary condition at top boundary
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
           if (l == idW) {
-            fields(l,hs+nz+kk,hs+j,hs+i) = 0;
+            fields(l,hs+nz+kk,j,i) = 0;
           } else {
-            fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
+            fields(l,hs+nz+kk,j,i) = fields(l,hs+nz-1,j,i);
           }
         });
       } else if (bc_z2 == "open") {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
-          fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
+          fields(l,hs+nz+kk,j,i) = fields(l,hs+nz-1,j,i);
         });
       } else if (bc_z2 == "precursor") {
         auto prec_z2 = dm.get<FLOC const,6>("dycore_ghost_z2");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
           if (l != idP) {
-            auto w = fields(idW,hs+nz-1,hs+j,hs+i);
-            fields(l,hs+nz+kk,hs+j,hs+i) = w < 0 ? prec_z2(icycle,istage,l,kk,j,i) :
-                                                   fields(l,hs+nz-1,hs+j,hs+i);
+            auto w = fields(idW,hs+nz-1,j,i);
+            fields(l,hs+nz+kk,j,i) = w < 0 ? prec_z2(icycle,istage,l,kk,j,i) :
+                                             fields(l,hs+nz-1,j,i);
           } else {
-            fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+nz-1,hs+j,hs+i);
+            fields(l,hs+nz+kk,j,i) = fields(l,hs+nz-1,j,i);
           }
         });
       } else if (bc_z2 == "periodic") {
         // Periodic boundary condition at top boundary
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
-          fields(l,hs+nz+kk,hs+j,hs+i) = fields(l,hs+kk,hs+j,hs+i);
+          fields(l,hs+nz+kk,j,i) = fields(l,hs+kk,j,i);
         });
       } else {
         std::cout << __FILE__ << ":" << __LINE__
@@ -1220,36 +1214,36 @@ namespace modules {
       if (coupler.get_option<bool>("coupler_is_precursor",false)) {
         if (px == 0) {
           auto ghost_x1 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            ghost_x1(icycle,istage,l,k,j,ii) = fields(l,hs+k,hs+j,hs-1-ii);
+            ghost_x1(icycle,istage,l,k,j,ii) = fields(l,k,j,hs-1-ii);
           });
         }
         if (px == nproc_x-1) {
           auto ghost_x2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            ghost_x2(icycle,istage,l,k,j,ii) = fields(l,hs+k,hs+j,hs+nx+ii);
+            ghost_x2(icycle,istage,l,k,j,ii) = fields(l,k,j,hs+nx+ii);
           });
         }
         if (py == 0) {
           auto ghost_y1 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            ghost_y1(icycle,istage,l,k,jj,i) = fields(l,hs+k,hs-1-jj,hs+i);
+            ghost_y1(icycle,istage,l,k,jj,i) = fields(l,k,hs-1-jj,i);
           });
         }
         if (py == nproc_y-1) {
           auto ghost_y2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            ghost_y2(icycle,istage,l,k,jj,i) = fields(l,hs+k,hs+ny+jj,hs+i);
+            ghost_y2(icycle,istage,l,k,jj,i) = fields(l,k,hs+ny+jj,i);
           });
         }
         auto ghost_z2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_z2");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
-          ghost_z2(icycle,istage,l,kk,j,i) = fields(l,hs+nz+kk,hs+j,hs+i);
+          ghost_z2(icycle,istage,l,kk,j,i) = fields(l,hs+nz+kk,j,i);
         });
       }
 
@@ -1447,18 +1441,18 @@ namespace modules {
         auto nstage     = coupler.get_option<int>("dycore_num_stages"); // Number of Runge-Kutta stages
         auto max_cycles = coupler.get_option<int>("dycore_max_cycles");
         if (px == 0) { // If we're at the west edge process of the domain
-          dm.register_and_allocate<FLOC>("dycore_ghost_x1",{max_cycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+          dm.register_and_allocate<FLOC>("dycore_ghost_x1",{max_cycles,nstage,num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs});
         }
         if (px == nproc_x-1) { // If we're at the east edge process of the domain
-          dm.register_and_allocate<FLOC>("dycore_ghost_x2",{max_cycles,nstage,num_state+num_tracers+1,nz,ny,hs});
+          dm.register_and_allocate<FLOC>("dycore_ghost_x2",{max_cycles,nstage,num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs});
         }
         if (py == 0) { // If we're at the south edge process of the domain
-          dm.register_and_allocate<FLOC>("dycore_ghost_y1",{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+          dm.register_and_allocate<FLOC>("dycore_ghost_y1",{max_cycles,nstage,num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs});
         }
         if (py == nproc_y-1) { // If we're at the north edge process of the domain
-          dm.register_and_allocate<FLOC>("dycore_ghost_y2",{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
+          dm.register_and_allocate<FLOC>("dycore_ghost_y2",{max_cycles,nstage,num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs});
         }
-        dm.register_and_allocate<FLOC>("dycore_ghost_z2",{max_cycles,nstage,num_state+num_tracers+1,hs,ny,nx});
+        dm.register_and_allocate<FLOC>("dycore_ghost_z2",{max_cycles,nstage,num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs});
       }
 
       // Compute the metric jacobian (dz/dzeta) where zeta is the k interface index

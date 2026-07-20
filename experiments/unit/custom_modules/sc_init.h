@@ -447,10 +447,14 @@ namespace custom_modules {
     auto imm_prop  = dm.get<real,3>("immersed_proportion_halos");
     auto imm_rough = dm.get<real,3>("immersed_roughness_halos" );
     auto sfc_rough = dm.get<real,2>("surface_roughness_halos"  );
-    bool wall_y1 = coupler.get_option<std::string>("bc_y1") == "wall_free_slip";
-    bool wall_y2 = coupler.get_option<std::string>("bc_y2") == "wall_free_slip";
+    bool wall_y1 = coupler.get_option<std::string>("bc_y1") == "wall_free_slip" &&
+                   (  coupler.get_option<std::string>("init_data") == "tank_set" );
+    bool wall_y2 = coupler.get_option<std::string>("bc_y2") == "wall_free_slip" &&
+                   (  coupler.get_option<std::string>("init_data") == "tank_set" );
     bool wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
-    bool wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
+    bool wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip" &&
+                   ( coupler.get_option<std::string>("init_data") == "channel" ||
+                     coupler.get_option<std::string>("init_data") == "tank_set" );
     yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
       imm_prop (      kk,j,i) = wall_z1 ? 1 : 0;
       imm_rough(      kk,j,i) = wall_z1 ? sfc_rough(j,i) : 0;
