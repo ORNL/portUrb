@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
     time_averager.init        ( coupler );
     col_nudge    .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
-    modules::overwrite_interpolate( coupler , "ABL_neutral-dx_5_00000010.nc" , {"uvel","vvel","wvel","TKE"} );
+    // modules::overwrite_interpolate( coupler , "ABL_neutral-dx_5_00000010.nc" , {"uvel","vvel","wvel","TKE"} );
 
     real etime = coupler.get_option<real>("elapsed_time");
     core::Counter output_counter( out_freq    , etime );

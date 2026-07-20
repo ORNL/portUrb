@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
       coupler_main.clone_into(coupler_prec);
       /////////////////////////////////////////////////////////////////////////
 
-      coupler_prec.set_option<bool>("dycore_is_precursor",true);
+      coupler_prec.set_option<bool>("coupler_is_precursor",true);
       coupler_prec.set_option<std::string>("bc_x1","periodic");
       coupler_prec.set_option<std::string>("bc_x2","periodic");
       coupler_prec.set_option<std::string>("bc_y1","periodic");

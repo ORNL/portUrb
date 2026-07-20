@@ -1217,7 +1217,7 @@ namespace modules {
 
       // If this is a precursor simualtion forcing another coupler object, then store the ghost cells
       //  into the coupler object for use by the other coupler object
-      if (coupler.get_option<bool>("dycore_is_precursor",false)) {
+      if (coupler.get_option<bool>("coupler_is_precursor",false)) {
         if (px == 0) {
           auto ghost_x1 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x1");
           yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz,ny,hs) ,
@@ -1438,7 +1438,7 @@ namespace modules {
       //  the horizontal directions.
       // The array that is halo exchanged has 5 state variables (num_state), all tracers (num_tracers),
       //  and a pressure variable, so num_state+num_tracers+1.
-      if ( coupler.get_option<bool>("dycore_is_precursor",false)   ||
+      if ( coupler.get_option<bool>("coupler_is_precursor",false)   ||
            coupler.get_option<std::string>("bc_x1") == "precursor" ||
            coupler.get_option<std::string>("bc_x2") == "precursor" ||
            coupler.get_option<std::string>("bc_y1") == "precursor" ||

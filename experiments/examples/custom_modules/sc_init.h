@@ -968,14 +968,28 @@ namespace custom_modules {
     auto imm_prop  = dm.get<real,3>("immersed_proportion_halos");
     auto imm_rough = dm.get<real,3>("immersed_roughness_halos" );
     auto sfc_rough = dm.get<real,2>("surface_roughness_halos"  );
-    auto top_fric  = coupler.get_option<std::string>("init_data") == "channel" ||
-                     coupler.get_option<std::string>("init_data") == "tank_set";
+    bool wall_y1 = coupler.get_option<std::string>("bc_y1") == "wall_free_slip";
+    bool wall_y2 = coupler.get_option<std::string>("bc_y2") == "wall_free_slip";
+    bool wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
+    bool wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
     yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
-      imm_prop (      kk,j,i) = 1;
-      imm_rough(      kk,j,i) = sfc_rough(j,i);
-      imm_prop (hs+nz+kk,j,i) = top_fric ? 1 : 0;
-      imm_rough(hs+nz+kk,j,i) = sfc_rough(j,i);
+      imm_prop (      kk,j,i) = wall_z1 ? 1 : 0;
+      imm_rough(      kk,j,i) = wall_z1 ? sfc_rough(j,i) : 0;
+      imm_prop (hs+nz+kk,j,i) = wall_z2 ? 1 : 0;
+      imm_rough(hs+nz+kk,j,i) = wall_z2 ? sfc_rough(j,i) : 0;
     });
+    if (coupler.get_py() == 0 && wall_y1) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2*hs,hs,nx+2*hs) , KOKKOS_LAMBDA (int k, int jj, int i) {
+        imm_prop (k,jj,i) = wall_y1 ? 1 : 0;
+        imm_rough(k,jj,i) = wall_y1 ? roughness : 0;
+      });
+    }
+    if (coupler.get_py() == coupler.get_nproc_y()-1 && wall_y2) {
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2*hs,hs,nx+2*hs) , KOKKOS_LAMBDA (int k, int jj, int i) {
+        imm_prop (k,hs+ny+jj,i) = wall_y2 ? 1 : 0;
+        imm_rough(k,hs+ny+jj,i) = wall_y2 ? roughness : 0;
+      });
+    }
   }
 
 }

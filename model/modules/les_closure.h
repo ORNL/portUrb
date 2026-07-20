@@ -79,7 +79,7 @@ namespace modules {
       auto py          = coupler.get_py();
       auto nproc_x     = coupler.get_nproc_x();
       auto nproc_y     = coupler.get_nproc_y();
-      if (coupler.get_option<bool>("dycore_is_precursor",false) ||
+      if (coupler.get_option<bool>("coupler_is_precursor",false) ||
           coupler.get_option<std::string>("bc_x1") == "precursor" ||
           coupler.get_option<std::string>("bc_x2") == "precursor" ||
           coupler.get_option<std::string>("bc_y1") == "precursor" ||
@@ -87,18 +87,18 @@ namespace modules {
           coupler.get_option<std::string>("bc_z2") == "precursor") {
         int num_fields = num_state + num_tracers + 1;
         if (px == 0) {
-          dm.register_and_allocate<real>("les_ghost_x1",{num_fields,nz,ny,hs});
+          dm.register_and_allocate<real>("les_ghost_x1",{num_fields,nz+2*hs,ny+2*hs,hs});
         }
         if (px == nproc_x-1) {
-          dm.register_and_allocate<real>("les_ghost_x2",{num_fields,nz,ny,hs});
+          dm.register_and_allocate<real>("les_ghost_x2",{num_fields,nz+2*hs,ny+2*hs,hs});
         }
         if (py == 0) {
-          dm.register_and_allocate<real>("les_ghost_y1",{num_fields,nz,hs,nx});
+          dm.register_and_allocate<real>("les_ghost_y1",{num_fields,nz+2*hs,hs,nx+2*hs});
         }
         if (py == nproc_y-1) {
-          dm.register_and_allocate<real>("les_ghost_y2",{num_fields,nz,hs,nx});
+          dm.register_and_allocate<real>("les_ghost_y2",{num_fields,nz+2*hs,hs,nx+2*hs});
         }
-        dm.register_and_allocate<real>("les_ghost_z2",{num_fields,hs,ny,nx});
+        dm.register_and_allocate<real>("les_ghost_z2",{num_fields,hs,ny+2*hs,nx+2*hs});
       }
       // Initialize LES hydrostatic profiles for density and potential temperature using column averages
       dm.register_and_allocate<real>("les_hy_dens_cells" ,{nz+2*hs});
@@ -643,87 +643,87 @@ namespace modules {
 
       // If my MPI task is on the west x-direction boundary and the BC is open, copy values from the first interior cell
       //   for a zero-gradient BC
-      if (coupler.get_option<std::string>("bc_x1") == "open" && coupler.get_px() == 0                      ) {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,hs) , KOKKOS_LAMBDA (int k, int j, int ii) {
-          for (int l=0; l < num_state  ; l++) state  (l,hs+k,hs+j,ii) = state  (l,hs+k,hs+j,hs+0);
-          for (int l=0; l < num_tracers; l++) tracers(l,hs+k,hs+j,ii) = tracers(l,hs+k,hs+j,hs+0);
-          tke(hs+k,hs+j,ii) = tke(hs+k,hs+j,hs+0);
+      if (coupler.get_option<std::string>("bc_x1") == "open" && px == 0                      ) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2*hs,ny+2*hs,hs) , KOKKOS_LAMBDA (int k, int j, int ii) {
+          for (int l=0; l < num_state  ; l++) state  (l,k,j,ii) = state  (l,k,j,hs+0);
+          for (int l=0; l < num_tracers; l++) tracers(l,k,j,ii) = tracers(l,k,j,hs+0);
+          tke(k,j,ii) = tke(k,j,hs+0);
         });
       }
       if (coupler.get_option<std::string>("bc_x1") == "precursor" && px == 0) {
         auto prec_x1 = dm.get<real const,4>("les_ghost_x1");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,hs) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
                                                 KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-          auto u = fields(idU,hs+k,hs+j,hs);
-          fields(l,hs+k,hs+j,hs-1-ii) = u > 0 ? prec_x1(l,k,j,ii) : fields(l,hs+k,hs+j,hs);
+          auto u = fields(idU,k,j,hs);
+          fields(l,k,j,hs-1-ii) = u > 0 ? prec_x1(l,k,j,ii) : fields(l,k,j,hs);
         });
       }
 
       // If my MPI task is on the east x-direction boundary and the BC is open, copy values from the last interior cell
       //   for a zero-gradient BC
-      if (coupler.get_option<std::string>("bc_x2") == "open" && coupler.get_px() == coupler.get_nproc_x()-1) {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,hs) , KOKKOS_LAMBDA (int k, int j, int ii) {
-          for (int l=0; l < num_state  ; l++) state  (l,hs+k,hs+j,hs+nx+ii) = state  (l,hs+k,hs+j,hs+nx-1);
-          for (int l=0; l < num_tracers; l++) tracers(l,hs+k,hs+j,hs+nx+ii) = tracers(l,hs+k,hs+j,hs+nx-1);
-          tke(hs+k,hs+j,hs+nx+ii) = tke(hs+k,hs+j,hs+nx-1);
+      if (coupler.get_option<std::string>("bc_x2") == "open" && px == nproc_x-1) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2*hs,ny+2*hs,hs) , KOKKOS_LAMBDA (int k, int j, int ii) {
+          for (int l=0; l < num_state  ; l++) state  (l,k,j,hs+nx+ii) = state  (l,k,j,hs+nx-1);
+          for (int l=0; l < num_tracers; l++) tracers(l,k,j,hs+nx+ii) = tracers(l,k,j,hs+nx-1);
+          tke(k,j,hs+nx+ii) = tke(k,j,hs+nx-1);
         });
       }
       if (coupler.get_option<std::string>("bc_x2") == "precursor" && px == nproc_x-1) {
         auto prec_x2 = dm.get<real const,4>("les_ghost_x2");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,hs) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
                                                 KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-          auto u = fields(idU,hs+k,hs+j,hs+nx-1);
-          fields(l,hs+k,hs+j,hs+nx+ii) = u > 0 ? fields(l,hs+k,hs+j,hs+nx-1) : prec_x2(l,k,j,ii);
+          auto u = fields(idU,k,j,hs+nx-1);
+          fields(l,k,j,hs+nx+ii) = u > 0 ? fields(l,k,j,hs+nx-1) : prec_x2(l,k,j,ii);
         });
       }
 
       // If my MPI task is on the south y-direction boundary and the BC is open, copy values from the first interior cell
       //   for a zero-gradient BC
-      if (coupler.get_option<std::string>("bc_y1") == "open" && coupler.get_py() == 0                      ) {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,hs,nx) , KOKKOS_LAMBDA (int k, int jj, int i) {
-          for (int l=0; l < num_state  ; l++) state  (l,hs+k,jj,hs+i) = state  (l,hs+k,hs+0,hs+i);
-          for (int l=0; l < num_tracers; l++) tracers(l,hs+k,jj,hs+i) = tracers(l,hs+k,hs+0,hs+i);
-          tke(hs+k,jj,hs+i) = tke(hs+k,hs+0,hs+i);
+      if (coupler.get_option<std::string>("bc_y1") == "open" && py == 0                      ) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2*hs,hs,nx+2*hs) , KOKKOS_LAMBDA (int k, int jj, int i) {
+          for (int l=0; l < num_state  ; l++) state  (l,k,jj,i) = state  (l,k,hs+0,i);
+          for (int l=0; l < num_tracers; l++) tracers(l,k,jj,i) = tracers(l,k,hs+0,i);
+          tke(k,jj,i) = tke(k,hs+0,i);
         });
       }
-      if (coupler.get_option<std::string>("bc_y1") == "wall_free_slip" && coupler.get_py() == 0                      ) {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,hs,nx) , KOKKOS_LAMBDA (int k, int jj, int i) {
-          for (int l=0; l < num_state  ; l++) state  (l,hs+k,jj,hs+i) = l==idV ? 0 : state  (l,hs+k,hs+0,hs+i);
-          for (int l=0; l < num_tracers; l++) tracers(l,hs+k,jj,hs+i) = tracers(l,hs+k,hs+0,hs+i);
-          tke(hs+k,jj,hs+i) = tke(hs+k,hs+0,hs+i);
+      if (coupler.get_option<std::string>("bc_y1") == "wall_free_slip" && py == 0                      ) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2*hs,hs,nx+2*hs) , KOKKOS_LAMBDA (int k, int jj, int i) {
+          for (int l=0; l < num_state  ; l++) state  (l,k,jj,i) = l==idV ? 0 : state  (l,k,hs+0,i);
+          for (int l=0; l < num_tracers; l++) tracers(l,k,jj,i) = tracers(l,k,hs+0,i);
+          tke(k,jj,i) = tke(k,hs+0,i);
         });
       }
       if (coupler.get_option<std::string>("bc_y1") == "precursor" && py == 0) {
         auto prec_y1 = dm.get<real const,4>("les_ghost_y1");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,hs,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-          auto v = fields(idV,hs+k,hs,hs+i);
-          fields(l,hs+k,hs-1-jj,hs+i) = v > 0 ? prec_y1(l,k,jj,i) : fields(l,hs+k,hs,hs+i);
+          auto v = fields(idV,k,hs,i);
+          fields(l,k,hs-1-jj,i) = v > 0 ? prec_y1(l,k,jj,i) : fields(l,k,hs,i);
         });
       }
 
       // If my MPI task is on the north y-direction boundary and the BC is open, copy values from the last interior cell
       //   for a zero-gradient BC
-      if (coupler.get_option<std::string>("bc_y2") == "open" && coupler.get_py() == coupler.get_nproc_y()-1) {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,hs,nx) , KOKKOS_LAMBDA (int k, int jj, int i) {
-          for (int l=0; l < num_state  ; l++) state  (l,hs+k,hs+ny+jj,hs+i) = state  (l,hs+k,hs+ny-1,hs+i);
-          for (int l=0; l < num_tracers; l++) tracers(l,hs+k,hs+ny+jj,hs+i) = tracers(l,hs+k,hs+ny-1,hs+i);
-          tke(hs+k,hs+ny+jj,hs+i) = tke(hs+k,hs+ny-1,hs+i);
+      if (coupler.get_option<std::string>("bc_y2") == "open" && py == nproc_y-1) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2*hs,hs,nx+2*hs) , KOKKOS_LAMBDA (int k, int jj, int i) {
+          for (int l=0; l < num_state  ; l++) state  (l,k,hs+ny+jj,i) = state  (l,k,hs+ny-1,i);
+          for (int l=0; l < num_tracers; l++) tracers(l,k,hs+ny+jj,i) = tracers(l,k,hs+ny-1,i);
+          tke(k,hs+ny+jj,i) = tke(k,hs+ny-1,i);
         });
       }
-      if (coupler.get_option<std::string>("bc_y2") == "wall_free_slip" && coupler.get_py() == coupler.get_nproc_y()-1) {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,hs,nx) , KOKKOS_LAMBDA (int k, int jj, int i) {
-          for (int l=0; l < num_state  ; l++) state  (l,hs+k,hs+ny+jj,hs+i) = l==idV ? 0 : state  (l,hs+k,hs+ny-1,hs+i);
-          for (int l=0; l < num_tracers; l++) tracers(l,hs+k,hs+ny+jj,hs+i) = tracers(l,hs+k,hs+ny-1,hs+i);
-          tke(hs+k,hs+ny+jj,hs+i) = tke(hs+k,hs+ny-1,hs+i);
+      if (coupler.get_option<std::string>("bc_y2") == "wall_free_slip" && py == nproc_y-1) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2*hs,hs,nx+2*hs) , KOKKOS_LAMBDA (int k, int jj, int i) {
+          for (int l=0; l < num_state  ; l++) state  (l,k,hs+ny+jj,i) = l==idV ? 0 : state  (l,k,hs+ny-1,i);
+          for (int l=0; l < num_tracers; l++) tracers(l,k,hs+ny+jj,i) = tracers(l,k,hs+ny-1,i);
+          tke(k,hs+ny+jj,i) = tke(k,hs+ny-1,i);
         });
       }
       if (coupler.get_option<std::string>("bc_y2") == "precursor" && py == nproc_y-1) {
         auto prec_y2 = dm.get<real const,4>("les_ghost_y2");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,hs,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-          auto v = fields(idV,hs+k,hs+ny-1,hs+i);
-          fields(l,hs+k,hs+ny+jj,hs+i) = v > 0 ? fields(l,hs+k,hs+ny-1,hs+i) : prec_y2(l,k,jj,i);
+          auto v = fields(idV,k,hs+ny-1,i);
+          fields(l,k,hs+ny+jj,i) = v > 0 ? fields(l,k,hs+ny-1,i) : prec_y2(l,k,jj,i);
         });
       }
 
@@ -792,10 +792,10 @@ namespace modules {
       // Apply precursor values to inflow at the top boundary and zero-gradient values to outflow.
       if (coupler.get_option<std::string>("bc_z2") == "precursor") {
         auto prec_z2 = dm.get<real const,4>("les_ghost_z2");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,hs,ny,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,hs,ny+2*hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
-          auto w = fields(idW,hs+nz-1,hs+j,hs+i);
-          fields(l,hs+nz+kk,hs+j,hs+i) = w < 0 ? prec_z2(l,kk,j,i) : fields(l,hs+nz-1,hs+j,hs+i);
+          auto w = fields(idW,hs+nz-1,j,i);
+          fields(l,hs+nz+kk,j,i) = w < 0 ? prec_z2(l,kk,j,i) : fields(l,hs+nz-1,j,i);
         });
       }
 
@@ -814,40 +814,40 @@ namespace modules {
       }
 
       // Store precursor boundary data for copying to a concurrently forced simulation.
-      if (coupler.get_option<bool>("dycore_is_precursor",false)) {
+      if (coupler.get_option<bool>("coupler_is_precursor",false)) {
         auto &dm_write = coupler.get_data_manager_readwrite();
         if (px == 0) {
           auto ghost_x1 = dm_write.get<real,4>("les_ghost_x1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,hs) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            ghost_x1(l,k,j,ii) = fields(l,hs+k,hs+j,hs-1-ii);
+            ghost_x1(l,k,j,ii) = fields(l,k,j,hs-1-ii);
           });
         }
         if (px == nproc_x-1) {
           auto ghost_x2 = dm_write.get<real,4>("les_ghost_x2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,hs) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int j, int ii) {
-            ghost_x2(l,k,j,ii) = fields(l,hs+k,hs+j,hs+nx+ii);
+            ghost_x2(l,k,j,ii) = fields(l,k,j,hs+nx+ii);
           });
         }
         if (py == 0) {
           auto ghost_y1 = dm_write.get<real,4>("les_ghost_y1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            ghost_y1(l,k,jj,i) = fields(l,hs+k,hs-1-jj,hs+i);
+            ghost_y1(l,k,jj,i) = fields(l,k,hs-1-jj,i);
           });
         }
         if (py == nproc_y-1) {
           auto ghost_y2 = dm_write.get<real,4>("les_ghost_y2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,hs,nx) ,
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
                                                   KOKKOS_LAMBDA (int l, int k, int jj, int i) {
-            ghost_y2(l,k,jj,i) = fields(l,hs+k,hs+ny+jj,hs+i);
+            ghost_y2(l,k,jj,i) = fields(l,k,hs+ny+jj,i);
           });
         }
         auto ghost_z2 = dm_write.get<real,4>("les_ghost_z2");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,hs,ny,nx) ,
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,hs,ny+2*hs,nx+2*hs) ,
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
-          ghost_z2(l,kk,j,i) = fields(l,hs+nz+kk,hs+j,hs+i);
+          ghost_z2(l,kk,j,i) = fields(l,hs+nz+kk,j,i);
         });
       }
     }

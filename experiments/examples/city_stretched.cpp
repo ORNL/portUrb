@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
     custom_modules::sc_init( coupler_main );
 
     // Set the boundary conditions on the precursor simulation
-    coupler_prec.set_option<bool>("dycore_is_precursor",true);
+    coupler_prec.set_option<bool>("coupler_is_precursor",true);
     coupler_prec.set_option<std::string>("bc_x1","periodic");
     coupler_prec.set_option<std::string>("bc_x2","periodic");
     coupler_prec.set_option<std::string>("bc_y1","periodic");
