@@ -108,6 +108,10 @@ namespace modules {
       auto value_at = KOKKOS_LAMBDA (int l, int k_child, real z, real y, real x) -> real {
         real value = nested_triquadratic(parent_fields,l,z,y,x);
         if (l == idT) { value -= hy_theta(k_child); }
+        // TKE must remain nonnegative. The quadratic interpolant is not monotone and can undershoot
+        // zero near a boundary even when every parent value is nonnegative. Negative halo TKE is
+        // subsequently passed to sqrt() and pow(K,1.5) in apply(), producing NaNs.
+        if (l == num_fields-1) { value = std::max(0._fp,value); }
         return value;
       };
 
