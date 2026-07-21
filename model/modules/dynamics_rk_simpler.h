@@ -37,6 +37,238 @@ namespace modules {
     typedef float FLOC; // Use single precision locally
 
 
+    // Evaluate a tensor-product quadratic interpolant on the parent cell centers.
+    KOKKOS_INLINE_FUNCTION static FLOC nested_triquadratic( yakl::Array<FLOC ****> const &parent_fields ,
+                                                            int l , real z , real y , real x ) {
+      int const nx = parent_fields.extent(3);
+      int const ny = parent_fields.extent(2);
+      int const nz = parent_fields.extent(1);
+      int const ic = std::max(1,std::min(nx-2,static_cast<int>(std::floor(x+0.5))));
+      int const jc = std::max(1,std::min(ny-2,static_cast<int>(std::floor(y+0.5))));
+      int const kc = std::max(1,std::min(nz-2,static_cast<int>(std::floor(z+0.5))));
+      real const tx = x-ic;
+      real const ty = y-jc;
+      real const tz = z-kc;
+      real wx[3] = {0.5*tx*(tx-1),1-tx*tx,0.5*tx*(tx+1)};
+      real wy[3] = {0.5*ty*(ty-1),1-ty*ty,0.5*ty*(ty+1)};
+      real wz[3] = {0.5*tz*(tz-1),1-tz*tz,0.5*tz*(tz+1)};
+      FLOC value = 0;
+      for (int kk=0; kk < 3; kk++) {
+        for (int jj=0; jj < 3; jj++) {
+          for (int ii=0; ii < 3; ii++) {
+            value += wz[kk]*wy[jj]*wx[ii]*parent_fields(l,kc+kk-1,jc+jj-1,ic+ii-1);
+          }
+        }
+      }
+      return value;
+    }
+
+
+
+    // Project one parent state onto every nested child boundary. The leading array dimension stores the
+    // parent state before (0) and after (1) its time step, allowing the child to interpolate in time.
+    void interpolate_nested_bcs( core::Coupler &parent , core::Coupler &child , bool prior , real etime ) const {
+      using yakl::SimpleBounds;
+      int const nx_parent  = parent.get_nx();
+      int const ny_parent  = parent.get_ny();
+      int const nz_parent  = parent.get_nz();
+      int const nx_glob    = parent.get_nx_glob();
+      int const ny_glob    = parent.get_ny_glob();
+      int const i_beg      = parent.get_i_beg();
+      int const j_beg      = parent.get_j_beg();
+      int const nx         = child.get_nx();
+      int const ny         = child.get_ny();
+      int const nz         = child.get_nz();
+      int const child_ibeg = child.get_i_beg();
+      int const child_jbeg = child.get_j_beg();
+      int const num_tracers = parent.get_num_tracers();
+      int const num_fields  = num_state+num_tracers+1;
+      int const ri = child.get_option<int>("coupler_refine_x");
+      int const rj = child.get_option<int>("coupler_refine_y");
+      int const rk = child.get_option<int>("coupler_refine_z");
+      int const pi = child.get_option<size_t>("coupler_parent_i_beg");
+      int const pj = child.get_option<size_t>("coupler_parent_j_beg");
+      int const pk = child.get_option<size_t>("coupler_parent_k_beg");
+      int const time_index = prior ? 0 : 1;
+      auto &parent_dm = parent.get_data_manager_readwrite();
+      auto rho        = parent_dm.get<real,3>("density_dry");
+      auto uvel       = parent_dm.get<real,3>("uvel"       );
+      auto vvel       = parent_dm.get<real,3>("vvel"       );
+      auto wvel       = parent_dm.get<real,3>("wvel"       );
+      auto temp       = parent_dm.get<real,3>("temperature");
+      auto tracer_names = parent.get_tracer_names();
+      core::MultiField<real,3> tracers;
+      for (int tr=0; tr < num_tracers; tr++) {
+        tracers.add_field(parent_dm.get<real,3>(tracer_names.at(tr)));
+      }
+      real const R_d   = parent.get_option<real>("R_d"    );
+      real const gamma = parent.get_option<real>("gamma_d");
+      real const C0    = parent.get_option<real>("C0"     );
+
+      // Assemble a replicated parent state. This keeps all MPI communication outside interpolation kernels and
+      // permits child boundary ranks to sample parent cells owned by any rank.
+      yakl::Array<FLOC ****> parent_fields("dycore_nested_parent_fields",num_fields,nz_parent,ny_glob,nx_glob);
+      parent_fields = 0;
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz_parent,ny_parent,nx_parent) ,
+                                              KOKKOS_LAMBDA (int k, int j, int i) {
+        real const dens  = rho(k,j,i);
+        real const theta = std::pow(dens*R_d*temp(k,j,i)/C0,1._fp/gamma)/dens;
+        parent_fields(idR,k,j_beg+j,i_beg+i) = dens;
+        parent_fields(idU,k,j_beg+j,i_beg+i) = uvel(k,j,i);
+        parent_fields(idV,k,j_beg+j,i_beg+i) = vvel(k,j,i);
+        parent_fields(idW,k,j_beg+j,i_beg+i) = wvel(k,j,i);
+        parent_fields(idT,k,j_beg+j,i_beg+i) = theta;
+        parent_fields(idP,k,j_beg+j,i_beg+i) = C0*std::pow(dens*theta,gamma);
+        for (int tr=0; tr < num_tracers; tr++) {
+          parent_fields(num_state+1+tr,k,j_beg+j,i_beg+i) = tracers(tr,k,j,i)/dens;
+        }
+      });
+      parent.get_parallel_comm().all_reduce(parent_fields,MPI_SUM).deep_copy_to(parent_fields);
+
+      auto &child_dm = child.get_data_manager_readwrite();
+      auto hy_dens   = child_dm.get<real const,1>("hy_dens_cells"    );
+      auto hy_theta  = child_dm.get<real const,1>("hy_theta_cells"   );
+      auto hy_press  = child_dm.get<real const,1>("hy_pressure_cells");
+      bool const rsst = child.get_option<bool>("dycore_rsst",false) ||
+                        child.get_option<real>("dycore_cs",350) != 350;
+      FLOC const cs = child.get_option<real>("dycore_cs",350);
+
+      // Convert the interpolated full thermodynamic variables to the child's perturbation representation.
+      auto store_value = KOKKOS_LAMBDA (int l, int k_child, real z, real y, real x) -> FLOC {
+        FLOC value = nested_triquadratic(parent_fields,l,z,y,x);
+        if (l == idR) { value -= hy_dens(k_child); }
+        if (l == idT) { value -= hy_theta(k_child); }
+        if (l == idP) {
+          FLOC dens = nested_triquadratic(parent_fields,idR,z,y,x);
+          value = rsst ? cs*cs*(dens-hy_dens(k_child)) : value-hy_press(k_child);
+        }
+        return value;
+      };
+
+      if (child.get_px() == 0 && child.get_option<std::string>("bc_x1") == "nested") {
+        auto bc = child_dm.get<FLOC,5>("dycore_nested_x_1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+          real x = pi + (child_ibeg-1-ii+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg+j-hs+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (k-hs+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,k,j,ii) = store_value(l,k,z,y,x);
+        });
+      }
+      if (child.get_px() == child.get_nproc_x()-1 && child.get_option<std::string>("bc_x2") == "nested") {
+        auto bc = child_dm.get<FLOC,5>("dycore_nested_x_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+          real x = pi + (child_ibeg+nx+ii+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg+j-hs+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (k-hs+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,k,j,ii) = store_value(l,k,z,y,x);
+        });
+      }
+      if (child.get_py() == 0 && child.get_option<std::string>("bc_y1") == "nested") {
+        auto bc = child_dm.get<FLOC,5>("dycore_nested_y_1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+          real x = pi + (child_ibeg+i-hs+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg-1-jj+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (k-hs+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,k,jj,i) = store_value(l,k,z,y,x);
+        });
+      }
+      if (child.get_py() == child.get_nproc_y()-1 && child.get_option<std::string>("bc_y2") == "nested") {
+        auto bc = child_dm.get<FLOC,5>("dycore_nested_y_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+          real x = pi + (child_ibeg+i-hs+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg+ny+jj+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (k-hs+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,k,jj,i) = store_value(l,k,z,y,x);
+        });
+      }
+      if (child.get_option<std::string>("bc_z2") == "nested") {
+        auto bc = child_dm.get<FLOC,5>("dycore_nested_z_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,hs,ny+2*hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          real x = pi + (child_ibeg+i-hs+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg+j-hs+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (nz+kk+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,kk,j,i) = store_value(l,hs+nz+kk,z,y,x);
+        });
+      }
+      child.set_option<real>(prior ? "dycore_nested_etime_prior" : "dycore_nested_etime_final",etime);
+    }
+
+
+
+    // Restrict the completed child solution back onto its parent footprint by averaging each integral block of
+    // fine cells. Reflux corrections at the perimeter are intentionally deferred.
+    void overwrite_parent_volume( core::Coupler &parent , core::Coupler &child ) const {
+      using yakl::SimpleBounds;
+      int const nx_child = child.get_nx();
+      int const ny_child = child.get_ny();
+      int const nz_child = child.get_nz();
+      int const nx_glob  = child.get_nx_glob();
+      int const ny_glob  = child.get_ny_glob();
+      int const ci_beg   = child.get_i_beg();
+      int const cj_beg   = child.get_j_beg();
+      int const nx       = parent.get_nx();
+      int const ny       = parent.get_ny();
+      int const nz       = parent.get_nz();
+      int const i_beg    = parent.get_i_beg();
+      int const j_beg    = parent.get_j_beg();
+      int const ri       = child.get_option<int>("coupler_refine_x");
+      int const rj       = child.get_option<int>("coupler_refine_y");
+      int const rk       = child.get_option<int>("coupler_refine_z");
+      int const pi       = child.get_option<size_t>("coupler_parent_i_beg");
+      int const pj       = child.get_option<size_t>("coupler_parent_j_beg");
+      int const pk       = child.get_option<size_t>("coupler_parent_k_beg");
+      int const pi_end   = child.get_option<size_t>("coupler_parent_i_end");
+      int const pj_end   = child.get_option<size_t>("coupler_parent_j_end");
+      int const pk_end   = child.get_option<size_t>("coupler_parent_k_end");
+      auto tracer_names  = parent.get_tracer_names();
+      int const num_fields = 5+tracer_names.size();
+      auto &child_dm  = child.get_data_manager_readwrite();
+      auto &parent_dm = parent.get_data_manager_readwrite();
+      core::MultiField<real,3> child_fields;
+      core::MultiField<real,3> parent_fields;
+      for (auto const &name : {std::string("density_dry"),std::string("uvel"),std::string("vvel"),
+                               std::string("wvel"),std::string("temperature")}) {
+        child_fields.add_field(child_dm.get<real,3>(name));
+        parent_fields.add_field(parent_dm.get<real,3>(name));
+      }
+      for (auto const &name : tracer_names) {
+        child_fields.add_field(child_dm.get<real,3>(name));
+        parent_fields.add_field(parent_dm.get<real,3>(name));
+      }
+
+      // Replication avoids assumptions about whether parent and child MPI subdomains overlap physically.
+      real4d child_global("nested_child_global",num_fields,nz_child,ny_glob,nx_glob);
+      child_global = 0;
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz_child,ny_child,nx_child) ,
+                                              KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        child_global(l,k,cj_beg+j,ci_beg+i) = child_fields(l,k,j,i);
+      });
+      child.get_parallel_comm().all_reduce(child_global,MPI_SUM).deep_copy_to(child_global);
+      real const reciprocal_count = 1._fp/(ri*rj*rk);
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz,ny,nx) ,
+                                              KOKKOS_LAMBDA (int l, int k, int j, int i) {
+        int const gi = i_beg+i;
+        int const gj = j_beg+j;
+        if (gi >= pi && gi <= pi_end && gj >= pj && gj <= pj_end && k >= pk && k <= pk_end) {
+          real value = 0;
+          for (int kk=0; kk < rk; kk++) {
+            for (int jj=0; jj < rj; jj++) {
+              for (int ii=0; ii < ri; ii++) {
+                value += child_global(l,(k-pk)*rk+kk,(gj-pj)*rj+jj,(gi-pi)*ri+ii);
+              }
+            }
+          }
+          parent_fields(l,k,j,i) = value*reciprocal_count;
+        }
+      });
+    }
+
+
 
     // Compute total mass of dry air and total mass of virtual potential temperature in the domain
     //  for verification purposes
@@ -135,6 +367,7 @@ namespace modules {
       real dt_dyn = compute_time_step( coupler );        // Compute maximum stable dynamical core time step
       int ncycles = (int) std::ceil( dt_phys / dt_dyn ); // Determine number of sub-cycles needed for stability
       dt_dyn = dt_phys / ncycles;                        // Make sure individual sub-step time steps are equal
+      coupler.set_option<real>("dycore_cycle_dt",dt_dyn); // Used to timestamp nested BCs at each RK stage
 
       // auto mass1 = compute_mass( coupler , state );
       // Get the desired time stepper from the coupler options and perform the sub-cycled time stepping
@@ -195,7 +428,7 @@ namespace modules {
 
       // Stage 1
       // Compute time derivatives of the state and tracers using a time steyp of dt/3
-      compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/3,0,icycle);
+      compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/3,0,icycle,0._fp   );
       // Apply tendencies for the first stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -209,7 +442,7 @@ namespace modules {
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/2
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,1,icycle);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,1,icycle,1._fp/3);
       // Apply tendencies for the second stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -223,7 +456,7 @@ namespace modules {
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt/1
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,2,icycle);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,2,icycle,1._fp/2);
       // Apply tendencies for the third stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -284,7 +517,7 @@ namespace modules {
 
       // Stage 1
       // Compute time derivatives of the state and tracers using a time steyp of dt/4
-      compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/4,0,icycle);
+      compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/4,0,icycle,0._fp   );
       // Apply tendencies for the first stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -298,7 +531,7 @@ namespace modules {
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/3
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/3,1,icycle);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/3,1,icycle,1._fp/4);
       // Apply tendencies for the second stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -312,7 +545,7 @@ namespace modules {
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt/2
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,2,icycle);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,2,icycle,1._fp/3);
       // Apply tendencies for the third stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -326,7 +559,7 @@ namespace modules {
 
       // Stage 4
       // Compute time derivatives of the state and tracers using a time step of dt/1
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,3,icycle);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,3,icycle,1._fp/2);
       // Apply tendencies for the fourth stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -387,7 +620,7 @@ namespace modules {
 
       // Stage 1
       // Compute time derivatives of the state and tracers using a time steyp of dt
-      compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn,0,icycle);
+      compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn,0,icycle,0._fp);
       // Apply tendencies for the first stage for state and tracers
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -401,7 +634,7 @@ namespace modules {
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/4
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/4.,1,icycle);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/4.,1,icycle,1._fp);
       // Apply tendencies for the second stage for state and tracers
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -419,7 +652,7 @@ namespace modules {
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt*2/3
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn*2./3.,2,icycle);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn*2./3.,2,icycle,0.5_fp);
       // Apply tendencies for the third stage for state and tracers
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -560,7 +793,8 @@ namespace modules {
                              real4d        const & tracers_tend ,
                              real                  dt           ,
                              int                   istage       ,
-                             int                   icycle       ) const {
+                             int                   icycle       ,
+                             real                  stage_time   ) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("compute_tendencies");
       #endif
@@ -641,7 +875,7 @@ namespace modules {
       #endif
       // Set all boundary conditions. istage and icycle are needed for proper halo exchanges between
       //  precursor and forced simulations
-      halo_boundary_conditions( coupler , fields_loc , istage , icycle );
+      halo_boundary_conditions( coupler , fields_loc , istage , icycle , stage_time );
 
       // Storage for cell-edge fluxes in each direction
       yakl::Array<FLOC ****> flux_x("flux_x",num_state+num_tracers,nz,ny,nx+1);
@@ -1002,7 +1236,8 @@ namespace modules {
     void halo_boundary_conditions( core::Coupler & coupler               ,
                                    yakl::Array<FLOC ****> const & fields ,
                                    int istage                            ,
-                                   int icycle                            ) const {
+                                   int icycle                            ,
+                                   real stage_time                      ) const {
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("halo_boundary_conditions");
       #endif
@@ -1022,6 +1257,16 @@ namespace modules {
       auto nproc_y      = coupler.get_nproc_y();               // Number of MPI ranks in y-direction
       auto num_tracers  = coupler.get_num_tracers();           // Number of tracer fields
       auto &dm          = coupler.get_data_manager_readonly(); // Get data manager as read-only
+      real nested_alpha = 0;
+      if (coupler.get_option<bool>("coupler_is_nested",false)) {
+        real const etime_prior = coupler.get_option<real>("dycore_nested_etime_prior");
+        real const etime_final = coupler.get_option<real>("dycore_nested_etime_final");
+        real const etime_stage = coupler.get_option<real>("elapsed_time") +
+                                 (icycle+stage_time)*coupler.get_option<real>("dycore_cycle_dt");
+        if (etime_final > etime_prior) {
+          nested_alpha = std::max(0._fp,std::min(1._fp,(etime_stage-etime_prior)/(etime_final-etime_prior)));
+        }
+      }
 
       // The halo exchange called before this has already handled periodic BCs
       // If this is a precursor-forced simulation, the ghost cells must have been copied to this coupler object
@@ -1047,6 +1292,13 @@ namespace modules {
             } else {
               fields(l,k,j,hs-1-ii) = fields(l,k,j,hs+0);
             }
+          });
+        } else if (bc_x1 == "nested") {
+          auto nested = dm.get<FLOC const,5>("dycore_nested_x_1");
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs) ,
+                                                  KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+            fields(l,k,j,hs-1-ii) = l == idP ? fields(l,k,j,hs) :
+                                      (1-nested_alpha)*nested(0,l,k,j,ii) + nested_alpha*nested(1,l,k,j,ii);
           });
         } else {
           std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x1 can only be periodic or open";
@@ -1074,6 +1326,13 @@ namespace modules {
             } else {
               fields(l,k,j,hs+nx+ii) = fields(l,k,j,hs+nx-1);
             }
+          });
+        } else if (bc_x2 == "nested") {
+          auto nested = dm.get<FLOC const,5>("dycore_nested_x_2");
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,ny+2*hs,hs) ,
+                                                  KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+            fields(l,k,j,hs+nx+ii) = l == idP ? fields(l,k,j,hs+nx-1) :
+                                      (1-nested_alpha)*nested(0,l,k,j,ii) + nested_alpha*nested(1,l,k,j,ii);
           });
         } else {
           std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_x2 can only be periodic or open";
@@ -1109,6 +1368,13 @@ namespace modules {
               fields(l,k,hs-1-jj,i) = fields(l,k,hs+0,i);
             }
           });
+        } else if (bc_y1 == "nested") {
+          auto nested = dm.get<FLOC const,5>("dycore_nested_y_1");
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
+                                                  KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            fields(l,k,hs-1-jj,i) = l == idP ? fields(l,k,hs,i) :
+                                      (1-nested_alpha)*nested(0,l,k,jj,i) + nested_alpha*nested(1,l,k,jj,i);
+          });
         } else {
           std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y1 can only be periodic, wall_free_slip, or open";
           Kokkos::abort("");
@@ -1142,6 +1408,13 @@ namespace modules {
             } else {
               fields(l,k,hs+ny+jj,i) = fields(l,k,hs+ny-1,i);
             }
+          });
+        } else if (bc_y2 == "nested") {
+          auto nested = dm.get<FLOC const,5>("dycore_nested_y_2");
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs) ,
+                                                  KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+            fields(l,k,hs+ny+jj,i) = l == idP ? fields(l,k,hs+ny-1,i) :
+                                      (1-nested_alpha)*nested(0,l,k,jj,i) + nested_alpha*nested(1,l,k,jj,i);
           });
         } else {
           std::cout << __FILE__ << ":" << __LINE__ << ": ERROR: bc_y2 can only be periodic, wall_free_slip, or open";
@@ -1196,6 +1469,13 @@ namespace modules {
           } else {
             fields(l,hs+nz+kk,j,i) = fields(l,hs+nz-1,j,i);
           }
+        });
+      } else if (bc_z2 == "nested") {
+        auto nested = dm.get<FLOC const,5>("dycore_nested_z_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          fields(l,hs+nz+kk,j,i) = l == idP ? fields(l,hs+nz-1,j,i) :
+                                     (1-nested_alpha)*nested(0,l,kk,j,i) + nested_alpha*nested(1,l,kk,j,i);
         });
       } else if (bc_z2 == "periodic") {
         // Periodic boundary condition at top boundary
@@ -1453,6 +1733,26 @@ namespace modules {
           dm.register_and_allocate<FLOC>("dycore_ghost_y2",{max_cycles,nstage,num_state+num_tracers+1,nz+2*hs,hs,nx+2*hs});
         }
         dm.register_and_allocate<FLOC>("dycore_ghost_z2",{max_cycles,nstage,num_state+num_tracers+1,hs,ny+2*hs,nx+2*hs});
+      }
+
+      // Nested boundaries retain two parent projections: immediately before and after the parent time step.
+      // Unlike precursor storage, these arrays do not need cycle or stage dimensions because time interpolation
+      // is performed from the physical elapsed time of each child RK stage.
+      int const num_fields = num_state+num_tracers+1;
+      if (coupler.get_option<std::string>("bc_x1") == "nested" && px == 0) {
+        dm.register_and_allocate<FLOC>("dycore_nested_x_1",{2,num_fields,nz+2*hs,ny+2*hs,hs});
+      }
+      if (coupler.get_option<std::string>("bc_x2") == "nested" && px == nproc_x-1) {
+        dm.register_and_allocate<FLOC>("dycore_nested_x_2",{2,num_fields,nz+2*hs,ny+2*hs,hs});
+      }
+      if (coupler.get_option<std::string>("bc_y1") == "nested" && py == 0) {
+        dm.register_and_allocate<FLOC>("dycore_nested_y_1",{2,num_fields,nz+2*hs,hs,nx+2*hs});
+      }
+      if (coupler.get_option<std::string>("bc_y2") == "nested" && py == nproc_y-1) {
+        dm.register_and_allocate<FLOC>("dycore_nested_y_2",{2,num_fields,nz+2*hs,hs,nx+2*hs});
+      }
+      if (coupler.get_option<std::string>("bc_z2") == "nested") {
+        dm.register_and_allocate<FLOC>("dycore_nested_z_2",{2,num_fields,hs,ny+2*hs,nx+2*hs});
       }
 
       // Compute the metric jacobian (dz/dzeta) where zeta is the k interface index

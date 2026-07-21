@@ -244,6 +244,18 @@ namespace core {
       child.init( this->get_parallel_comm() , zint_child_h.createDeviceCopy() , ny_glob_child , nx_glob_child ,
                   ydom_child_end-ydom_child_beg , xdom_child_end-xdom_child_beg , xdom_child_beg  , ydom_child_beg );
       this->options.clone_into(child.options);
+      // Retain the exact integral parent-to-child mapping. Nesting modules use these values instead of
+      // reconstructing index relationships from floating-point physical coordinates.
+      child.set_option<size_t>("coupler_parent_i_beg",i_beg_child);
+      child.set_option<size_t>("coupler_parent_i_end",i_end_child);
+      child.set_option<size_t>("coupler_parent_j_beg",j_beg_child);
+      child.set_option<size_t>("coupler_parent_j_end",j_end_child);
+      child.set_option<size_t>("coupler_parent_k_beg",k_beg_child);
+      child.set_option<size_t>("coupler_parent_k_end",k_end_child);
+      child.set_option<int   >("coupler_refine_x"    ,refine_x   );
+      child.set_option<int   >("coupler_refine_y"    ,refine_y   );
+      child.set_option<int   >("coupler_refine_z"    ,refine_z   );
+      child.set_option<bool  >("coupler_is_nested"   ,true       );
       return child;
     }
 

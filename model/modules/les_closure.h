@@ -17,6 +17,154 @@ namespace modules {
     int static constexpr idT = 4;  // ID for rho*theta in state array
 
 
+    // Tensor-product quadratic interpolation on parent cell centers.
+    KOKKOS_INLINE_FUNCTION static real nested_triquadratic( real4d const &parent_fields ,
+                                                            int l , real z , real y , real x ) {
+      int const nx = parent_fields.extent(3);
+      int const ny = parent_fields.extent(2);
+      int const nz = parent_fields.extent(1);
+      int const ic = std::max(1,std::min(nx-2,static_cast<int>(std::floor(x+0.5))));
+      int const jc = std::max(1,std::min(ny-2,static_cast<int>(std::floor(y+0.5))));
+      int const kc = std::max(1,std::min(nz-2,static_cast<int>(std::floor(z+0.5))));
+      real const tx = x-ic;
+      real const ty = y-jc;
+      real const tz = z-kc;
+      real wx[3] = {0.5*tx*(tx-1),1-tx*tx,0.5*tx*(tx+1)};
+      real wy[3] = {0.5*ty*(ty-1),1-ty*ty,0.5*ty*(ty+1)};
+      real wz[3] = {0.5*tz*(tz-1),1-tz*tz,0.5*tz*(tz+1)};
+      real value = 0;
+      for (int kk=0; kk < 3; kk++) {
+        for (int jj=0; jj < 3; jj++) {
+          for (int ii=0; ii < 3; ii++) {
+            value += wz[kk]*wy[jj]*wx[ii]*parent_fields(l,kc+kk-1,jc+jj-1,ic+ii-1);
+          }
+        }
+      }
+      return value;
+    }
+
+
+
+    // Project parent LES variables to the child boundaries for one endpoint of a parent time step.
+    void interpolate_nested_bcs( core::Coupler &parent , core::Coupler &child , bool prior , real etime ) const {
+      using yakl::SimpleBounds;
+      int const nx_parent   = parent.get_nx();
+      int const ny_parent   = parent.get_ny();
+      int const nz_parent   = parent.get_nz();
+      int const nx_glob     = parent.get_nx_glob();
+      int const ny_glob     = parent.get_ny_glob();
+      int const i_beg       = parent.get_i_beg();
+      int const j_beg       = parent.get_j_beg();
+      int const nx          = child.get_nx();
+      int const ny          = child.get_ny();
+      int const nz          = child.get_nz();
+      int const child_ibeg  = child.get_i_beg();
+      int const child_jbeg  = child.get_j_beg();
+      int const ri          = child.get_option<int>("coupler_refine_x");
+      int const rj          = child.get_option<int>("coupler_refine_y");
+      int const rk          = child.get_option<int>("coupler_refine_z");
+      int const pi          = child.get_option<size_t>("coupler_parent_i_beg");
+      int const pj          = child.get_option<size_t>("coupler_parent_j_beg");
+      int const pk          = child.get_option<size_t>("coupler_parent_k_beg");
+      int const time_index  = prior ? 0 : 1;
+      auto &parent_dm       = parent.get_data_manager_readwrite();
+      auto rho              = parent_dm.get<real,3>("density_dry");
+      auto uvel             = parent_dm.get<real,3>("uvel"       );
+      auto vvel             = parent_dm.get<real,3>("vvel"       );
+      auto wvel             = parent_dm.get<real,3>("wvel"       );
+      auto temp             = parent_dm.get<real,3>("temperature");
+      auto tke              = parent_dm.get<real,3>("TKE"        );
+      auto tracer_names     = parent.get_tracer_names();
+      core::MultiField<real,3> tracers;
+      for (int tr=0; tr < tracer_names.size(); tr++) {
+        std::string desc;
+        bool found, positive, adds_mass, diffuse;
+        parent.get_tracer_info(tracer_names.at(tr),desc,found,positive,adds_mass,diffuse);
+        if (diffuse) { tracers.add_field(parent_dm.get<real,3>(tracer_names.at(tr))); }
+      }
+      int const num_tracers = tracers.size();
+      int const num_fields  = num_state+num_tracers+1;
+      real const R_d        = parent.get_option<real>("R_d"    );
+      real const gamma      = parent.get_option<real>("gamma_d");
+      real const C0         = parent.get_option<real>("C0"     );
+      real4d parent_fields("les_nested_parent_fields",num_fields,nz_parent,ny_glob,nx_glob);
+      parent_fields = 0;
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz_parent,ny_parent,nx_parent) ,
+                                              KOKKOS_LAMBDA (int k, int j, int i) {
+        real const dens = rho(k,j,i);
+        parent_fields(idR,k,j_beg+j,i_beg+i) = dens;
+        parent_fields(idU,k,j_beg+j,i_beg+i) = uvel(k,j,i);
+        parent_fields(idV,k,j_beg+j,i_beg+i) = vvel(k,j,i);
+        parent_fields(idW,k,j_beg+j,i_beg+i) = wvel(k,j,i);
+        parent_fields(idT,k,j_beg+j,i_beg+i) = std::pow(dens*R_d*temp(k,j,i)/C0,1._fp/gamma)/dens;
+        for (int tr=0; tr < num_tracers; tr++) {
+          parent_fields(num_state+tr,k,j_beg+j,i_beg+i) = tracers(tr,k,j,i)/dens;
+        }
+        parent_fields(num_fields-1,k,j_beg+j,i_beg+i) = tke(k,j,i)/dens;
+      });
+      parent.get_parallel_comm().all_reduce(parent_fields,MPI_SUM).deep_copy_to(parent_fields);
+      auto &child_dm = child.get_data_manager_readwrite();
+      auto hy_theta  = child_dm.get<real const,1>("les_hy_theta_cells");
+      auto value_at = KOKKOS_LAMBDA (int l, int k_child, real z, real y, real x) -> real {
+        real value = nested_triquadratic(parent_fields,l,z,y,x);
+        if (l == idT) { value -= hy_theta(k_child); }
+        return value;
+      };
+
+      if (child.get_px() == 0 && child.get_option<std::string>("bc_x1") == "nested") {
+        auto bc = child_dm.get<real,5>("les_nested_x_1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+          real x = pi + (child_ibeg-1-ii+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg+j-hs+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (k-hs+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,k,j,ii) = value_at(l,k,z,y,x);
+        });
+      }
+      if (child.get_px() == child.get_nproc_x()-1 && child.get_option<std::string>("bc_x2") == "nested") {
+        auto bc = child_dm.get<real,5>("les_nested_x_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+          real x = pi + (child_ibeg+nx+ii+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg+j-hs+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (k-hs+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,k,j,ii) = value_at(l,k,z,y,x);
+        });
+      }
+      if (child.get_py() == 0 && child.get_option<std::string>("bc_y1") == "nested") {
+        auto bc = child_dm.get<real,5>("les_nested_y_1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+          real x = pi + (child_ibeg+i-hs+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg-1-jj+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (k-hs+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,k,jj,i) = value_at(l,k,z,y,x);
+        });
+      }
+      if (child.get_py() == child.get_nproc_y()-1 && child.get_option<std::string>("bc_y2") == "nested") {
+        auto bc = child_dm.get<real,5>("les_nested_y_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+          real x = pi + (child_ibeg+i-hs+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg+ny+jj+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (k-hs+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,k,jj,i) = value_at(l,k,z,y,x);
+        });
+      }
+      if (child.get_option<std::string>("bc_z2") == "nested") {
+        auto bc = child_dm.get<real,5>("les_nested_z_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,hs,ny+2*hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          real x = pi + (child_ibeg+i-hs+0.5_fp)/ri - 0.5_fp;
+          real y = pj + (child_jbeg+j-hs+0.5_fp)/rj - 0.5_fp;
+          real z = pk + (nz+kk+0.5_fp)/rk - 0.5_fp;
+          bc(time_index,l,kk,j,i) = value_at(l,hs+nz+kk,z,y,x);
+        });
+      }
+      child.set_option<real>(prior ? "les_nested_etime_prior" : "les_nested_etime_final",etime);
+    }
+
+
     // Compute total mass of r and t fields for verification purposes
     // If mult_r is true, then t field is mass-weighted (i.e., rho*theta)
     // coupler : Coupler object
@@ -99,6 +247,22 @@ namespace modules {
           dm.register_and_allocate<real>("les_ghost_y2",{num_fields,nz+2*hs,hs,nx+2*hs});
         }
         dm.register_and_allocate<real>("les_ghost_z2",{num_fields,hs,ny+2*hs,nx+2*hs});
+      }
+      int const num_fields = num_state+num_tracers+1;
+      if (coupler.get_option<std::string>("bc_x1") == "nested" && px == 0) {
+        dm.register_and_allocate<real>("les_nested_x_1",{2,num_fields,nz+2*hs,ny+2*hs,hs});
+      }
+      if (coupler.get_option<std::string>("bc_x2") == "nested" && px == nproc_x-1) {
+        dm.register_and_allocate<real>("les_nested_x_2",{2,num_fields,nz+2*hs,ny+2*hs,hs});
+      }
+      if (coupler.get_option<std::string>("bc_y1") == "nested" && py == 0) {
+        dm.register_and_allocate<real>("les_nested_y_1",{2,num_fields,nz+2*hs,hs,nx+2*hs});
+      }
+      if (coupler.get_option<std::string>("bc_y2") == "nested" && py == nproc_y-1) {
+        dm.register_and_allocate<real>("les_nested_y_2",{2,num_fields,nz+2*hs,hs,nx+2*hs});
+      }
+      if (coupler.get_option<std::string>("bc_z2") == "nested") {
+        dm.register_and_allocate<real>("les_nested_z_2",{2,num_fields,hs,ny+2*hs,nx+2*hs});
       }
       // Initialize LES hydrostatic profiles for density and potential temperature using column averages
       dm.register_and_allocate<real>("les_hy_dens_cells" ,{nz+2*hs});
@@ -640,6 +804,15 @@ namespace modules {
       for (int l=0; l < num_tracers; l++) { fields.add_field( tracers.slice<3>(l,0,0,0) ); }
       fields.add_field( tke );
       int num_fields = fields.size();
+      real nested_alpha = 0;
+      if (coupler.get_option<bool>("coupler_is_nested",false)) {
+        real const etime_prior = coupler.get_option<real>("les_nested_etime_prior");
+        real const etime_final = coupler.get_option<real>("les_nested_etime_final");
+        real const etime       = coupler.get_option<real>("elapsed_time");
+        if (etime_final > etime_prior) {
+          nested_alpha = std::max(0._fp,std::min(1._fp,(etime-etime_prior)/(etime_final-etime_prior)));
+        }
+      }
 
       // If my MPI task is on the west x-direction boundary and the BC is open, copy values from the first interior cell
       //   for a zero-gradient BC
@@ -658,6 +831,13 @@ namespace modules {
           fields(l,k,j,hs-1-ii) = u > 0 ? prec_x1(l,k,j,ii) : fields(l,k,j,hs);
         });
       }
+      if (coupler.get_option<std::string>("bc_x1") == "nested" && px == 0) {
+        auto nested = dm.get<real const,5>("les_nested_x_1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+          fields(l,k,j,hs-1-ii) = (1-nested_alpha)*nested(0,l,k,j,ii) + nested_alpha*nested(1,l,k,j,ii);
+        });
+      }
 
       // If my MPI task is on the east x-direction boundary and the BC is open, copy values from the last interior cell
       //   for a zero-gradient BC
@@ -674,6 +854,13 @@ namespace modules {
                                                 KOKKOS_LAMBDA (int l, int k, int j, int ii) {
           auto u = fields(idU,k,j,hs+nx-1);
           fields(l,k,j,hs+nx+ii) = u > 0 ? fields(l,k,j,hs+nx-1) : prec_x2(l,k,j,ii);
+        });
+      }
+      if (coupler.get_option<std::string>("bc_x2") == "nested" && px == nproc_x-1) {
+        auto nested = dm.get<real const,5>("les_nested_x_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,ny+2*hs,hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int j, int ii) {
+          fields(l,k,j,hs+nx+ii) = (1-nested_alpha)*nested(0,l,k,j,ii) + nested_alpha*nested(1,l,k,j,ii);
         });
       }
 
@@ -701,6 +888,13 @@ namespace modules {
           fields(l,k,hs-1-jj,i) = v > 0 ? prec_y1(l,k,jj,i) : fields(l,k,hs,i);
         });
       }
+      if (coupler.get_option<std::string>("bc_y1") == "nested" && py == 0) {
+        auto nested = dm.get<real const,5>("les_nested_y_1");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+          fields(l,k,hs-1-jj,i) = (1-nested_alpha)*nested(0,l,k,jj,i) + nested_alpha*nested(1,l,k,jj,i);
+        });
+      }
 
       // If my MPI task is on the north y-direction boundary and the BC is open, copy values from the last interior cell
       //   for a zero-gradient BC
@@ -724,6 +918,13 @@ namespace modules {
                                                 KOKKOS_LAMBDA (int l, int k, int jj, int i) {
           auto v = fields(idV,k,hs+ny-1,i);
           fields(l,k,hs+ny+jj,i) = v > 0 ? fields(l,k,hs+ny-1,i) : prec_y2(l,k,jj,i);
+        });
+      }
+      if (coupler.get_option<std::string>("bc_y2") == "nested" && py == nproc_y-1) {
+        auto nested = dm.get<real const,5>("les_nested_y_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,nz+2*hs,hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int k, int jj, int i) {
+          fields(l,k,hs+ny+jj,i) = (1-nested_alpha)*nested(0,l,k,jj,i) + nested_alpha*nested(1,l,k,jj,i);
         });
       }
 
@@ -796,6 +997,13 @@ namespace modules {
                                                 KOKKOS_LAMBDA (int l, int kk, int j, int i) {
           auto w = fields(idW,hs+nz-1,j,i);
           fields(l,hs+nz+kk,j,i) = w < 0 ? prec_z2(l,kk,j,i) : fields(l,hs+nz-1,j,i);
+        });
+      }
+      if (coupler.get_option<std::string>("bc_z2") == "nested") {
+        auto nested = dm.get<real const,5>("les_nested_z_2");
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_fields,hs,ny+2*hs,nx+2*hs) ,
+                                                KOKKOS_LAMBDA (int l, int kk, int j, int i) {
+          fields(l,hs+nz+kk,j,i) = (1-nested_alpha)*nested(0,l,kk,j,i) + nested_alpha*nested(1,l,kk,j,i);
         });
       }
 

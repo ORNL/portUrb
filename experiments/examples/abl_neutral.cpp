@@ -9,7 +9,7 @@
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
 #include "overwrite_interpolate.h"
-#include "column_nudging.h"
+// #include "column_nudging.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     // auto buoy_theta = config["buoy_theta"].as<bool>();
     // auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx         = 10;
+    real dx         = 20;
     real umax       = 15;
     real cfl        = 0.6;
     real cs         = umax*2;
@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
     modules::SurfaceFlux                          sfc_flux;
     modules::Time_Averager                        time_averager;
     modules::LES_Closure                          les_closure;
-    modules::ColumnNudger                         col_nudge;
+    // modules::ColumnNudger                         col_nudge;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
     dycore       .init        ( coupler );
     sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler );
-    col_nudge    .set_column  ( coupler );
+    // col_nudge    .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
     // modules::overwrite_interpolate( coupler , "ABL_neutral-dx_5_00000010.nc" , {"uvel","vvel","wvel","TKE"} );
 
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         coupler.track_max_wind();
         coupler.run_module( [&] (Coupler &c) { modules::geostrophic_wind_forcing_indiv(c,dt,lat_g,u_g,v_g); } , "geostrophic_forcing" );
-        coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column              (c,dt,1800);          } , "column_nudging"      );
+        // coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column              (c,dt,1800);          } , "column_nudging"      );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step                       (c,dt);               } , "dycore"              );
         coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w                (c,dt,1000,0.05);     } , "sponge"              );
         coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                         (c,dt);               } , "surface_fluxes"      );
