@@ -64,6 +64,7 @@ int main(int argc, char** argv) {
     level1.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5         );
     level1.set_option<bool       >( "surface_flux_predict_z0h"           , false          );
     level1.set_option<bool       >( "surface_flux_prescribe_wpthetap"    , false          );
+    level1.set_option<int        >( "dycore_max_cycles"                  , dyn_cycle+1    );
 
     level1.init( core::ParallelComm(MPI_COMM_WORLD) ,
                  level1.generate_levels_equal(nz,zlen) ,
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
                                                         k_child_beg , k_child_end , 2 , 2 , 2 );
     level2.set_option<std::string>("out_prefix"  ,level2_prefix       );
     level2.set_option<std::string>("restart_file",level2_restart_file);
+    level2.set_option<int        >("dycore_max_cycles",dyn_cycle+1      );
 
     modules::Dynamics_Euler_Stratified_WenoFV dycore;
     modules::SurfaceFlux                      sfc_flux;
@@ -136,55 +138,44 @@ int main(int argc, char** argv) {
       level2.write_output_file(level2_prefix);
     }
 
-    real parent_dt = dtphys_in;
+    real dt = dtphys_in;
     Kokkos::fence();
     while (parent_etime < sim_time) {
-      if (dtphys_in <= 0.) { parent_dt = dycore.compute_time_step(level1)*dyn_cycle; }
-      if (parent_etime + parent_dt > sim_time) { parent_dt = sim_time-parent_etime; }
+      // The fine grid controls a single physics step shared by both levels. Passing the child to the parent dycore
+      // also forces matching internal cycle sizes and captures one child halo set at every cycle and RK stage.
+      if (dtphys_in <= 0.) {
+        dt = std::min(dycore.compute_time_step(level1),dycore.compute_time_step(level2))*dyn_cycle;
+      }
+      if (parent_etime + dt > sim_time) { dt = sim_time-parent_etime; }
 
-      // Preserve the complete pre-step state for the prior endpoint of both boundary projections.
-      core::Coupler level1_prior;
-      level1.clone_into(level1_prior);
-      dycore.interpolate_nested_bcs(level1_prior,level2,true,parent_etime);
-      les_closure.interpolate_nested_bcs(level1_prior,level2,true,parent_etime);
-
-      // Advance the parent once at its stable physics step.
+      // Advance the parent first so it can populate the stage-resolved child boundary storage.
       level1.track_max_wind();
-      level1.run_module( [&] (core::Coupler &c) { modules::geostrophic_wind_forcing_indiv(c,parent_dt,lat_g,u_g,v_g); },
+      level1.run_module( [&] (core::Coupler &c) { modules::geostrophic_wind_forcing_indiv(c,dt,lat_g,u_g,v_g); },
                          "geostrophic_forcing" );
-      level1.run_module( [&] (core::Coupler &c) { dycore.time_step(c,parent_dt);                           }, "dycore"         );
-      level1.run_module( [&] (core::Coupler &c) { modules::sponge_layer_w(c,parent_dt,1000,0.05);          }, "sponge"         );
-      level1.run_module( [&] (core::Coupler &c) { sfc_flux.apply(c,parent_dt);                             }, "surface_fluxes" );
-      level1.run_module( [&] (core::Coupler &c) { les_closure.apply(c,parent_dt);                          }, "les_closure"    );
-      level1.run_module( [&] (core::Coupler &c) { time_averager.accumulate(c,parent_dt);                   }, "time_averager"  );
-      parent_etime += parent_dt;
+      level1.run_module( [&] (core::Coupler &c) { dycore.time_step(c,dt,&level2);                           }, "dycore"         );
+      level1.run_module( [&] (core::Coupler &c) { modules::sponge_layer_w(c,dt,1000,0.05);                 }, "sponge"         );
+      level1.run_module( [&] (core::Coupler &c) { sfc_flux.apply(c,dt);                                    }, "surface_fluxes" );
+      level1.run_module( [&] (core::Coupler &c) { les_closure.apply(c,dt,&level2);                         }, "les_closure"    );
+      level1.run_module( [&] (core::Coupler &c) { time_averager.accumulate(c,dt);                          }, "time_averager"  );
+      parent_etime += dt;
       level1.set_option<real>("elapsed_time",parent_etime);
 
-      // Store the future endpoint only after every parent module has completed.
-      dycore.interpolate_nested_bcs(level1,level2,false,parent_etime);
-      les_closure.interpolate_nested_bcs(level1,level2,false,parent_etime);
-
-      // Subcycle the child with an integral number of equal steps so it lands exactly on the parent time.
-      real const child_dt_max = dtphys_in > 0 ? dtphys_in : dycore.compute_time_step(level2)*dyn_cycle;
-      int const child_cycles  = std::ceil(parent_dt/child_dt_max);
-      real const child_dt     = parent_dt/child_cycles;
-      for (int cycle=0; cycle < child_cycles; cycle++) {
-        level2.set_option<real>("elapsed_time",child_etime);
-        level2.track_max_wind();
-        level2.run_module( [&] (core::Coupler &c) { modules::geostrophic_wind_forcing_indiv(c,child_dt,lat_g,u_g,v_g); },
-                           "geostrophic_forcing" );
-        level2.run_module( [&] (core::Coupler &c) { dycore.time_step(c,child_dt);                         }, "dycore"         );
-        child_etime += child_dt;
-        level2.set_option<real>("elapsed_time",child_etime);
-        level2.run_module( [&] (core::Coupler &c) { sfc_flux.apply(c,child_dt);                           }, "surface_fluxes" );
-        level2.run_module( [&] (core::Coupler &c) { les_closure.apply(c,child_dt);                        }, "les_closure"    );
-        level2.run_module( [&] (core::Coupler &c) { time_averager.accumulate(c,child_dt);                 }, "time_averager"  );
-      }
+      // Replay the matching parent cycle and RK-stage halos while advancing the child over the identical step.
+      level2.set_option<real>("elapsed_time",child_etime);
+      level2.track_max_wind();
+      level2.run_module( [&] (core::Coupler &c) { modules::geostrophic_wind_forcing_indiv(c,dt,lat_g,u_g,v_g); },
+                         "geostrophic_forcing" );
+      level2.run_module( [&] (core::Coupler &c) { dycore.time_step(c,dt);                                 }, "dycore"         );
+      level2.run_module( [&] (core::Coupler &c) { sfc_flux.apply(c,dt);                                   }, "surface_fluxes" );
+      level2.run_module( [&] (core::Coupler &c) { les_closure.apply(c,dt);                                }, "les_closure"    );
+      level2.run_module( [&] (core::Coupler &c) { time_averager.accumulate(c,dt);                         }, "time_averager"  );
+      child_etime += dt;
+      level2.set_option<real>("elapsed_time",child_etime);
 
       // Feed the fine-grid solution back to the covered parent cells; refluxing is intentionally omitted.
       dycore.overwrite_parent_volume(level1,level2);
 
-      if (inform_freq >= 0. && inform_counter.update_and_check(parent_dt)) {
+      if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
         if (level1.is_mainproc()) {
           std::cout << "Parent MaxWind [" << level1.get_option<real>("coupler_max_wind") << "] , ";
         }
@@ -195,7 +186,7 @@ int main(int argc, char** argv) {
         level2.inform_user();
         inform_counter.reset();
       }
-      if (out_freq >= 0. && output_counter.update_and_check(parent_dt)) {
+      if (out_freq >= 0. && output_counter.update_and_check(dt)) {
         level1.write_output_file(level1_prefix,true);
         level2.write_output_file(level2_prefix,true);
         time_averager.reset(level1);
