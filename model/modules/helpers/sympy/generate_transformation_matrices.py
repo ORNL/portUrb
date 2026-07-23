@@ -52,7 +52,7 @@ def my_cxxcode(expr, *, result_name="rslt", vector_name="v", real_type="real",i0
 
 print("\n#pragma once")
 
-Nmax = 9
+Nmax = 10
 prec = 17
 
 print("\nnamespace TransformMatrices {")
@@ -144,6 +144,21 @@ for N in range(1,Nmax+1,2) :
   print(f"  template <class F> KOKKOS_INLINE_FUNCTION real sampR(yakl::SArray<F,{N}> const & s) "+"{")
   print("    return ",end="")
   print(my_cxxcode(R,result_name='',vector_name='s'),end=";\n")
+  print("  }")
+
+print("\n")
+print("  ///////////////////////")
+print("  // edge_val, edge_hvder")
+print("  ///////////////////////")
+for N in range(2,Nmax+1,2) :
+  val,hvder = tr.gen_edge_centered(N)
+  print(f"  template <class F> KOKKOS_INLINE_FUNCTION real edge_val(yakl::SArray<F,{N}> const & s) "+"{")
+  print("    return ",end="")
+  print(my_cxxcode(val.n(prec),result_name='',vector_name='s'),end=";\n")
+  print("  }")
+  print(f"  template <class F> KOKKOS_INLINE_FUNCTION real edge_hvder(yakl::SArray<F,{N}> const & s) "+"{")
+  print("    return ",end="")
+  print(my_cxxcode(hvder.n(prec),result_name='',vector_name='s'),end=";\n")
   print("  }")
 
 print("}\n")

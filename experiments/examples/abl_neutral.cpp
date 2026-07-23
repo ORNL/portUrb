@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_riemann_explore.h"
+#include "dynamics_rk_fast.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     // auto buoy_theta = config["buoy_theta"].as<bool>();
     // auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx         = 10;
+    real dx         = 20;
     real umax       = 15;
     real cfl        = 0.6;
     real cs         = umax*2;
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
     time_averager.init        ( coupler );
     col_nudge    .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
-    modules::overwrite_interpolate( coupler , "ABL_neutral-dx_5_00000010.nc" , {"uvel","vvel","wvel","TKE"} );
+    // modules::overwrite_interpolate( coupler , "ABL_neutral-dx_5_00000010.nc" , {"uvel","vvel","wvel","TKE"} );
 
     real etime = coupler.get_option<real>("elapsed_time");
     core::Counter output_counter( out_freq    , etime );

@@ -48,6 +48,18 @@ def gen_coefs_to_gll(N,NQ) :
 
 def gen_gll_to_coefs(N) :
   return gen_coefs_to_gll(N,N).inv()
+
+
+def gen_edge_centered(N) :
+  x      = sp.symbols('x')
+  hs     = N//2
+  coefs  = gen_coefs(N,'a')
+  p      = gen_poly(coefs)
+  constr = sp.Matrix([ sp.integrate(p,(x,i,i+1)) for i in range(-hs,hs) ])
+  Ainv   = constr.jacobian(coefs).inv()
+  vals   = gen_coefs(N,'s')
+  p      = gen_poly(Ainv*vals)
+  return p.subs(x,0) , sp.diff(p,x,N-1).subs(x,0)
   
 
 def gen_weno(N) :
