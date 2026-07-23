@@ -5,23 +5,15 @@
 #include "coupler.h"
 #include "MultipleFields.h"
 #include "TransformMatrices.h"
-#include "WenoLimiter.h"
 #include <sstream>
 
 namespace modules {
 
-  // This class simplements an A-grid (collocated) cell-centered Finite-Volume method with an upwind Riemann
-  // solver at cell edges, high-order-accurate reconstruction, Weighted Essentially Non-Oscillatory (WENO) limiting,
-  // and Strong Stability Preserving Runge-Kutta time stepping.
-  // The dycore prognoses full density, u-, v-, and w-momenta, and mass-weighted virtual potential temperature
-  // This dynamical core supports immersed boundaries, including partially immersed cells. Immersed
-  // boundaries will have no-slip wall BC's, and surface fluxes are applied in a separate module to model friction
-  // based on a prescribed roughness length with Monin-Obukhov thoery.
 
   struct Dynamics_Euler_Stratified_WenoFV {
     // Order of accuracy (numerical convergence rate for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
-      int static constexpr ord = 4;
+      int static constexpr ord = 8;
     #else
       int static constexpr ord = PORTURB_ORD;
     #endif
@@ -566,7 +558,7 @@ namespace modules {
       real r_dy = 1./dy; // reciprocal of grid spacing
       real fcor = 2*7.2921e-5*std::sin(latitude/180*M_PI);  // For coriolis: 2*Omega*sin(latitude)
 
-      real constexpr imm_th = 0.5;
+      FLOC constexpr imm_th = 0.5;
 
       FLOC cs = coupler.get_option<real>("dycore_cs",350);  // Speed of sound
 
@@ -584,15 +576,15 @@ namespace modules {
         // Perturbation pressure if RSST is not used
         if (!rsst) fields_loc(idP,hs+k,hs+j,hs+i) = C0*std::pow(state(idT,k,j,i),gamma) - hy_pressure_cells(hs+k);
         real r_r = 1._fp / state(idR,k,j,i); // Reciprocal of density
-        fields_loc(idR,hs+k,hs+j,hs+i) = state(idR,k,j,i);
+        fields_loc(idR,hs+k,hs+j,hs+i) = state(idR,k,j,i) - hy_dens_cells(hs+k);
         // Load in state and tracers as specific quantities
-        for (int l=1; l < num_state  ; l++) { fields_loc(            l,hs+k,hs+j,hs+i) = state  (l,k,j,i)*r_r; }
+        for (int l=1; l < num_state  ; l++) {
+          if (l == idT) { fields_loc(l,hs+k,hs+j,hs+i) = state(l,k,j,i)*r_r - hy_theta_cells(hs+k); }
+          else          { fields_loc(l,hs+k,hs+j,hs+i) = state(l,k,j,i)*r_r; }
+        }
         for (int l=0; l < num_tracers; l++) { fields_loc(num_state+1+l,hs+k,hs+j,hs+i) = tracers(l,k,j,i)*r_r; }
-        // Remove hydrostasis from density and potential temperature
-        fields_loc(idR,hs+k,hs+j,hs+i) -= hy_dens_cells (hs+k);
-        fields_loc(idT,hs+k,hs+j,hs+i) -= hy_theta_cells(hs+k);
         // Perturbation pressure if RSST is used
-        if (rsst) { fields_loc(idP,hs+k,hs+j,hs+i) = cs*cs*fields_loc(idR,hs+k,hs+j,hs+i); }
+        if (rsst) { fields_loc(idP,hs+k,hs+j,hs+i) = cs*cs*(state(idR,k,j,i) - hy_dens_cells(hs+k)); }
       });
 
       // Perform periodic halo exchange in the horizontal, and implement vertical no-slip solid wall boundary conditions
@@ -628,13 +620,10 @@ namespace modules {
       auto wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
       auto wall_y1 = coupler.get_option<std::string>("bc_y1") == "wall_free_slip";
       auto wall_y2 = coupler.get_option<std::string>("bc_y2") == "wall_free_slip";
-      typedef WenoLimiter<FLOC,ord> Limiter; // Declare the WENO limiter
-      auto use_weno = coupler.get_option<bool>("dycore_use_weno",true); // Whether to use WENO limiter
-      auto imm_weno = coupler.get_option<bool>("dycore_use_weno_immersed",false); // Whether to use WENO limiter
 
-      real hvbeta = 0.02;
-      real hvcoef = dt*dx/std::pow(2.0,(double)(ord));
-      if ((ord/2)%1==1) hvcoef *= -1;
+      FLOC hvbeta = 0.01;
+      FLOC hvcoef = hvbeta/dt/std::pow(2.0,(double)(ord));
+      if ((ord/2)%2==1) hvcoef *= -1;
 
       // Interpolate needed quantities at cell edges in the x, y, and z directions
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nfields,nz,ny,nx+1) ,
@@ -643,44 +632,33 @@ namespace modules {
         for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(l,hs+k,hs+j,i+ii); }
         val_x(l,k,j,i) = TransformMatrices::edge_val(s);
         if (l != idP) {
-          for (int ii = 0; ii < ord; ii++) {
-            s(ii) = fields_loc(l,hs+k,hs+j,i+ii);
-            if (l == idR) s(ii) += hy_dens_cells(hs+k);
-            if (l == idT) s(ii) += hy_theta_cells(hs+k);
-            if (l != idR) s(ii) *= hy_dens_cells(hs+k);
-          }
-          flux_x(l,k,j,i) = hvcoef * TransformMatrices::edge_hvder(s);
+          flux_x(l,k,j,i) = hvcoef*dx*TransformMatrices::edge_hvder(s);
+          if (l != idR) flux_x(l,k,j,i) *= hy_dens_cells(hs+k);
         }
       });
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nfields,nz,ny+1,nx) ,
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         SArray<FLOC,ord> s;        // Stencil values
         for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(l,hs+k,j+jj,hs+i); }
-        if (l != idP) {
         val_y(l,k,j,i) = TransformMatrices::edge_val(s);
-          for (int jj = 0; jj < ord; jj++) {
-            s(jj) = fields_loc(l,hs+k,j+jj,hs+i);
-            if (l == idR) s(jj) += hy_dens_cells(hs+k);
-            if (l == idT) s(jj) += hy_theta_cells(hs+k);
-            if (l != idR) s(jj) *= hy_dens_cells(hs+k);
-          }
-          flux_y(l,k,j,i) = hvcoef * TransformMatrices::edge_hvder(s);
+        if (l != idP) {
+          flux_y(l,k,j,i) = hvcoef*dy*TransformMatrices::edge_hvder(s);
+          if (l != idR) flux_y(l,k,j,i) *= hy_dens_cells(hs+k);
+          if (j==0  && wall_y1) flux_y(l,k,j,i) = 0;
+          if (j==ny && wall_y2) flux_y(l,k,j,i) = 0;
         }
       });
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nfields,nz+1,ny,nx) ,
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
         SArray<FLOC,ord> s;         // Stencil values
         for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(l,k+kk,hs+j,hs+i); }
         val_z(l,k,j,i) = TransformMatrices::edge_val(s);
         if (l != idP) {
-          for (int kk = 0; kk < ord; kk++) {
-            s(kk) = fields_loc(l,k+kk,hs+j,hs+i);
-            if (l == idR) s(kk) += hy_dens_cells(k+kk);
-            if (l == idT) s(kk) += hy_theta_cells(k+kk);
-            if (l != idR) s(kk) *= hy_dens_cells(k+kk);
-          }
-          flux_z(l,k,j,i) = hvcoef * TransformMatrices::edge_hvder(s);
+          real dzloc = 0.5*(dz(std::max(0,k-1)) + dz(std::min(nz-1,k)));
+          flux_z(l,k,j,i) = hvcoef*dzloc*TransformMatrices::edge_hvder(s);
+          if (l != idR) flux_z(l,k,j,i) *= hy_dens_edges(k);
+          if (k==0  && wall_z1) flux_z(l,k,j,i) = 0;
+          if (k==nz && wall_z2) flux_z(l,k,j,i) = 0;
         }
       });
       // Construct fluxes from interpolated values
@@ -708,7 +686,7 @@ namespace modules {
         FLOC th = val_y(idT,k,j,i) + hy_theta_cells(hs+k);
         FLOC p  = val_y(idP,k,j,i);
         if (j==0  && wall_y1) v = 0;
-        if (j==nz && wall_y2) v = 0;
+        if (j==ny && wall_y2) v = 0;
         flux_y(idR,k,j,i) += r*v;
         flux_y(idU,k,j,i) += r*v*u;
         flux_y(idV,k,j,i) += r*v*v+p;
@@ -770,9 +748,9 @@ namespace modules {
         }
         if (l < num_tracers) {
           // Compute tendencies as the flux divergence
-          tracers_tend(l,k,j,i) = -( flux_x(num_state+l,k,j,i+1) - flux_x(num_state+l,k,j,i) ) * r_dx
-                                  -( flux_y(num_state+l,k,j+1,i) - flux_y(num_state+l,k,j,i) ) * r_dy 
-                                  -( flux_z(num_state+l,k+1,j,i) - flux_z(num_state+l,k,j,i) ) / dz(k);
+          tracers_tend(l,k,j,i) = -( flux_x(num_state+1+l,k,j,i+1) - flux_x(num_state+1+l,k,j,i) ) * r_dx
+                                  -( flux_y(num_state+1+l,k,j+1,i) - flux_y(num_state+1+l,k,j,i) ) * r_dy 
+                                  -( flux_z(num_state+1+l,k+1,j,i) - flux_z(num_state+1+l,k,j,i) ) / dz(k);
         }
       });
 
