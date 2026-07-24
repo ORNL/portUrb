@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_rk_fast.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -15,11 +15,14 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
-    YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
-    if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
-    auto cs         = config["cs"        ].as<real>();
-    auto buoy_theta = config["buoy_theta"].as<bool>();
-    auto rsst       = config["rsst"      ].as<bool>();
+    // YAML::Node config = YAML::LoadFile( std::string(argv[1]) );
+    // if ( !config ) { endrun("ERROR: Invalid abl_neutral input file"); }
+    // auto cs         = config["cs"        ].as<real>();
+    // auto buoy_theta = config["buoy_theta"].as<bool>();
+    // auto rsst       = config["rsst"      ].as<bool>();
+    real cs = 50;
+    real buoy_theta = true;
+    real rsst = true;
 
     real usfc = 1;
 

@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     // auto buoy_theta = config["buoy_theta"].as<bool>();
     // auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx         = 10;
+    real dx         = 5;
     real umax       = 15;
     real cfl        = 0.6;
     real cs         = umax*2;
@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , buoy_theta    );
     coupler.set_option<real       >( "dycore_cs"                          , cs            );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false         );
-    coupler.set_option<bool       >( "dycore_use_weno_immersed"           , true          );
+    coupler.set_option<bool       >( "dycore_use_weno_immersed"           , false         );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false         );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false         );
     coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5        );

@@ -474,26 +474,32 @@ namespace modules {
 
 
 
-    // // TODO: Make this work with even order stencils
-    // // Once you encounter an immersed boundary, set zero derivative boundary conditions from there out in that direction
-    // // stencil  : Stencil array to modify
-    // // immersed : Boolean array indicating which points are immersed
-    // template <class FP, int ORD>
-    // KOKKOS_INLINE_FUNCTION static void modify_stencil_immersed_der0( SArray<FP  ,ORD>       & stencil  ,
-    //                                                                  SArray<bool,ORD> const & immersed ) {
-    //   int constexpr hs = (ORD-1)/2; // Halo size for odd order stencils; needs modification for even order stencils
-    //   // Don't modify the stencils of immersed cells
-    //   if (! immersed(hs)) {
-    //     // Move out from the center of the stencil. once you encounter a boundary, enforce zero derivative,
-    //     //     which is essentially replication of the last in-domain value
-    //     for (int i2=hs+1; i2<ORD; i2++) {
-    //       if (immersed(i2)) { for (int i3=i2; i3<ORD; i3++) { stencil(i3) = stencil(i2-1); }; break; }
-    //     }
-    //     for (int i2=hs-1; i2>=0 ; i2--) {
-    //       if (immersed(i2)) { for (int i3=i2; i3>=0 ; i3--) { stencil(i3) = stencil(i2+1); }; break; }
-    //     }
-    //   }
-    // }
+    template <class FP, int ORD>
+    KOKKOS_INLINE_FUNCTION static void modify_stencil_immersed_der0( SArray<FP,   ORD>       & stencil,
+                                                                     SArray<bool, ORD> const & immersed) {
+      static_assert(ORD >= 2, "Stencil must contain at least two points");
+      static_assert(ORD%2 == 0, "Edge-centered stencil order must be even");
+      constexpr int hs = ORD / 2;
+      // If both cells adjacent to the edge are immersed, there is no
+      // immediately available in-domain value from which to extend.
+      if (immersed(hs - 1) && immersed(hs))   return;
+      // Extend the last in-domain value to the right.
+      for (int i2 = hs; i2 < ORD; i2++) {
+        if (immersed(i2)) {
+          FP const boundary_value = stencil(i2-1);
+          for (int i3 = i2; i3 < ORD; i3++) { stencil(i3) = boundary_value; }
+          break;
+        }
+      }
+      // Extend the last in-domain value to the left.
+      for (int i2 = hs - 1; i2 >= 0; i2--) {
+        if (immersed(i2)) {
+          FP const boundary_value = stencil(i2+1);
+          for (int i3 = i2; i3 >= 0; i3--) { stencil(i3) = boundary_value; }
+          break;
+        }
+      }
+    }
 
 
 
@@ -541,17 +547,13 @@ namespace modules {
       auto latitude          = coupler.get_option<real>("latitude",0); // For coriolis
       auto &dm               = coupler.get_data_manager_readonly();    // Grab read-only data manager
       auto immersed_prop     = dm.get<real const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion
-      auto any_immersed2     = dm.get<bool const,3>("dycore_any_immersed2" ); // Are any immersed in 3-D halo within 2 cells?
-      auto any_immersed4     = dm.get<bool const,3>("dycore_any_immersed4" ); // Are any immersed in 3-D halo within 4 cells?
-      auto any_immersed6     = dm.get<bool const,3>("dycore_any_immersed6" ); // Are any immersed in 3-D halo within 6 cells?
-      auto any_immersed8     = dm.get<bool const,3>("dycore_any_immersed8" ); // Are any immersed in 3-D halo within 8 cells?
-      auto any_immersed10    = dm.get<bool const,3>("dycore_any_immersed10"); // Are any immersed in 3-D halo within 10 cells?
+      auto immersed_dist     = dm.get<real const,3>("dycore_immersed_distance" ); // Are any immersed in 3-D halo within 2 cells?
       auto hy_dens_cells     = dm.get<real const,1>("hy_dens_cells"        ); // Hydrostatic density in cells with halos
       auto hy_theta_cells    = dm.get<real const,1>("hy_theta_cells"       ); // Hydrostatic potential temperature in cells with halos
       auto hy_theta_edges    = dm.get<real const,1>("hy_theta_edges"       ); // Hydrostatic potential temperature at edges (no halos)
       auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells"    ); // Hydrostatic pressure in cells with halos
       auto hy_dens_edges     = dm.get<real const,1>("hy_dens_edges"        ); // Hydrostatic density in cells with halos
-      auto metjac_edges      = dm.get<real const,2>("dycore_metjac_edges"  ); // Vertical metric jacobian at edges
+      auto metjac_edges      = dm.get<real const,1>("dycore_metjac_edges"  ); // Vertical metric jacobian at edges
       // Compute matrices to convert polynomial coefficients to 2 GLL points and stencil values to 2 GLL points
       // These matrices will be in column-row format. That performed better than row-column format in performance tests
       real r_dx = 1./dx; // reciprocal of grid spacing
@@ -625,14 +627,26 @@ namespace modules {
       FLOC hvcoef = hvbeta/dt/std::pow(2.0,(double)(ord));
       if ((ord/2)%2==1) hvcoef *= -1;
 
+      FLOC immbeta_amp = 10;
+      FLOC immbeta_pow = 1;
+
       // Interpolate needed quantities at cell edges in the x, y, and z directions
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nfields,nz,ny,nx+1) ,
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         SArray<FLOC,ord> s;        // Stencil values
         for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(l,hs+k,hs+j,i+ii); }
+        SArray<bool,ord> imm;        // Stencil values for immersed boundary
+        for (int ii = 0; ii < ord; ii++) { imm(ii) = immersed_prop(hs+k,hs+j,i+ii) > imm_th; }
+        if (l==idV || l==idW || l==idP) modify_stencil_immersed_der0( s , imm);
         val_x(l,k,j,i) = TransformMatrices::edge_val(s);
         if (l != idP) {
-          flux_x(l,k,j,i) = hvcoef*dx*TransformMatrices::edge_hvder(s);
+          FLOC hvcoefloc = hvcoef;
+          FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(k,j,std::min(nx-1,i)), immersed_dist(k,j,std::max(0,i-1)) ) );
+          if (imm_dist <= 12) {
+            FLOC mult = 2.*imm_dist*imm_dist*imm_dist/1331. - 39.*imm_dist*imm_dist/1331. + 72.*imm_dist/1331. + 1296./1331.;
+            hvcoefloc *= 1 + immbeta_amp*std::pow( std::max(FLOC(0),mult) , immbeta_pow );
+          }
+          flux_x(l,k,j,i) = hvcoefloc*dx*TransformMatrices::edge_hvder(s);
           if (l != idR) flux_x(l,k,j,i) *= hy_dens_cells(hs+k);
         }
       });
@@ -640,9 +654,18 @@ namespace modules {
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         SArray<FLOC,ord> s;        // Stencil values
         for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(l,hs+k,j+jj,hs+i); }
+        SArray<bool,ord> imm;        // Stencil values for immersed boundary
+        for (int jj = 0; jj < ord; jj++) { imm(jj) = immersed_prop(hs+k,j+jj,hs+i) > imm_th; }
+        if (l==idU || l==idW || l==idP) modify_stencil_immersed_der0( s , imm);
         val_y(l,k,j,i) = TransformMatrices::edge_val(s);
         if (l != idP) {
-          flux_y(l,k,j,i) = hvcoef*dy*TransformMatrices::edge_hvder(s);
+          FLOC hvcoefloc = hvcoef;
+          FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(k,std::min(ny-1,j),i), immersed_dist(k,std::max(0,j-1),i) ) );
+          if (imm_dist <= 12) {
+            FLOC mult = 2.*imm_dist*imm_dist*imm_dist/1331. - 39.*imm_dist*imm_dist/1331. + 72.*imm_dist/1331. + 1296./1331.;
+            hvcoefloc *= 1 + immbeta_amp*std::pow( std::max(FLOC(0),mult) , immbeta_pow );
+          }
+          flux_y(l,k,j,i) = hvcoefloc*dy*TransformMatrices::edge_hvder(s);
           if (l != idR) flux_y(l,k,j,i) *= hy_dens_cells(hs+k);
           if (j==0  && wall_y1) flux_y(l,k,j,i) = 0;
           if (j==ny && wall_y2) flux_y(l,k,j,i) = 0;
@@ -652,14 +675,24 @@ namespace modules {
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
         SArray<FLOC,ord> s;         // Stencil values
         for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(l,k+kk,hs+j,hs+i); }
-        val_z(l,k,j,i) = TransformMatrices::edge_val(s);
+        SArray<bool,ord> imm;        // Stencil values for immersed boundary
+        for (int kk = 0; kk < ord; kk++) { imm(kk) = immersed_prop(k+kk,hs+j,hs+i) > imm_th; }
+        if (l==idU || l==idV || l==idP) modify_stencil_immersed_der0( s , imm);
         if (l != idP) {
+          FLOC hvcoefloc = hvcoef;
+          FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(std::min(nz-1,k),j,i), immersed_dist(std::max(0,k-1),j,i) ) );
+          if (imm_dist <= 12) {
+            FLOC mult = 2.*imm_dist*imm_dist*imm_dist/1331. - 39.*imm_dist*imm_dist/1331. + 72.*imm_dist/1331. + 1296./1331.;
+            hvcoefloc *= 1 + immbeta_amp*std::pow( std::max(FLOC(0),mult) , immbeta_pow );
+          }
           real dzloc = 0.5*(dz(std::max(0,k-1)) + dz(std::min(nz-1,k)));
-          flux_z(l,k,j,i) = hvcoef*dzloc*TransformMatrices::edge_hvder(s);
+          flux_z(l,k,j,i) = hvcoefloc*dzloc*TransformMatrices::edge_hvder(s);
           if (l != idR) flux_z(l,k,j,i) *= hy_dens_edges(k);
           if (k==0  && wall_z1) flux_z(l,k,j,i) = 0;
           if (k==nz && wall_z2) flux_z(l,k,j,i) = 0;
         }
+        for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k+kk))); }
+        val_z(l,k,j,i) = TransformMatrices::edge_val(s) / metjac_edges(k);
       });
       // Construct fluxes from interpolated values
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) ,
@@ -1194,31 +1227,30 @@ namespace modules {
       }
 
       // Compute the metric jacobian (dz/dzeta) where zeta is the k interface index
-      //
-      // # Sagemath code
-      // def coefs_1d(N,N0,lab) :
-      //     return vector([ var(lab+'%s'%i) for i in range(N0,N0+N) ])
-      // def poly_1d(N,coefs,x) :
-      //     return sum( vector([ coefs[i]*x^i for i in range(N) ]) )
-      // N      = 6
-      // coefs  = coefs_1d(N,0,'a')
-      // p      = poly_1d(N,coefs,x)
-      // constr = vector([ p.subs(x=i-N/2+1) for i in range(N) ])
-      // p      = poly_1d(N,jacobian(constr,coefs)^-1*coefs_1d(N,0,'s'),x)
-      // print( vector([ i-N/2+1 for i in range(N) ]) )
-      // print( 60*p.diff(x).subs(x=0) )
-      // print( 60*p.diff(x).subs(x=1) )
-      //
-      dm.register_and_allocate<real>("dycore_metjac_edges",{nz+2,2});
-      auto metjac_edges = dm.get<real,2>("dycore_metjac_edges");
-      yakl::parallel_for( YAKL_AUTO_LABEL() , nz+2 , KOKKOS_LAMBDA (int k_in) {
-        int k = k_in-1;
-        SArray<real,6> s;
-        s(0) = -dz(std::max(0,k-1))-dz(std::max(0,k-2));
-        for (int kk=1; kk < 6; kk++) { s(kk) = s(kk-1) + dz(std::max(0,std::min(nz-1,k-3+kk))); }
-        for (int kk=0; kk < 6; kk++) { s(kk) /= dz(std::max(0,std::min(nz-1,k))); }
-        metjac_edges(k+1,0) = ( 3*s(0)-30*s(1)-20*s(2)+60*s(3)-15*s(4)+2*s(5))/60.;
-        metjac_edges(k+1,1) = (-2*s(0)+15*s(1)-60*s(2)+20*s(3)+30*s(4)-3*s(5))/60.;
+      // import sympy as sp
+      // def gen_coefs(N,lab,i0=0) :
+      //   return sp.Matrix(sp.symbols(f"{lab}{i0+0}:{i0+N}"))
+      // def gen_poly(coefs) :
+      //   x = sp.symbols('x')
+      //   return sum([ coefs[i]*x**i for i in range(len(coefs)) ])
+      // N      = 7
+      // x      = sp.symbols('x')
+      // hs     = N//2
+      // coefs  = gen_coefs(N,'a')
+      // p      = gen_poly(coefs)
+      // constr = sp.Matrix([ p.subs(x,i) for i in range(-hs,hs+1) ])
+      // Ainv   = constr.jacobian(coefs).inv()
+      // vals   = gen_coefs(N,'v')
+      // p      = gen_poly(Ainv*vals)
+      // dp     = p.diff(x,1)
+      // print(dp.subs(x,0))
+      dm.register_and_allocate<real>("dycore_metjac_edges",{nz+1});
+      auto metjac_edges = dm.get<real,1>("dycore_metjac_edges");
+      yakl::parallel_for( YAKL_AUTO_LABEL() , nz+1 , KOKKOS_LAMBDA (int k) {
+        SArray<real,7> s;
+        s(0) = -dz(std::max(0,k-1))-dz(std::max(0,k-2))-dz(std::max(0,k-3));
+        for (int kk=1; kk < 7; kk++) { s(kk) = s(kk-1) + dz(std::max(0,std::min(nz-1,k-4+kk))); }
+        metjac_edges(k) = -s(0)/60 + 3*s(1)/20 - 3*s(2)/4 + 3*s(4)/4 - 3*s(5)/20 + s(6)/60;
       });
 
       coupler.set_option<int>("dycore_hs",hs); // Let other modules know the dycore halo size
@@ -1343,9 +1375,10 @@ namespace modules {
           // For each of these, when determining if there are immersed cells nearby, the top and bottom solid
           //  wall boundaries are not considered immersed.
           {
-            int hsnew = 2;
-            dm.register_and_allocate<bool>("dycore_any_immersed2",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed2");
+            int hsnew = 12;
+            dm.register_and_allocate<real>("dycore_immersed_distance",{nz,ny,nx});
+            coupler.register_output_variable<real>( "dycore_immersed_distance" , core::Coupler::DIMS_3D );
+            auto immersed_distance = dm.get<real,3>("dycore_immersed_distance");
             auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
             yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
                                               KOKKOS_LAMBDA (int kk, int j, int i) {
@@ -1353,95 +1386,13 @@ namespace modules {
               fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
             });
             yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
-                  }
-                }
-              }
-            });
-          }
-          {
-            int hsnew = 4;
-            dm.register_and_allocate<bool>("dycore_any_immersed4",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed4");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
-                  }
-                }
-              }
-            });
-          }
-          {
-            int hsnew = 6;
-            dm.register_and_allocate<bool>("dycore_any_immersed6",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed6");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
-                  }
-                }
-              }
-            });
-          }
-          {
-            int hsnew = 8;
-            dm.register_and_allocate<bool>("dycore_any_immersed8",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed8");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
-                  }
-                }
-              }
-            });
-          }
-          {
-            int hsnew = 10;
-            dm.register_and_allocate<bool>("dycore_any_immersed10",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed10");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
+              immersed_distance(k,j,i) = 1000;
+              for (int hsloc = 12; hsloc >= 1; hsloc--) {
+                for (int kk=-hsloc; kk <= hsloc; kk++) {
+                  for (int jj=-hsloc; jj <= hsloc; jj++) {
+                    for (int ii=-hsloc; ii <= hsloc; ii++) {
+                      if (fields_halos_larger(0,hsnew+k+kk,hsnew+j+jj,hsnew+i+ii) > 0) immersed_distance(k,j,i) = hsloc;
+                    }
                   }
                 }
               }
