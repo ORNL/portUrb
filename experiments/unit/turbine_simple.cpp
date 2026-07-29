@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_cell_centered.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
 #include "les_closure.h"

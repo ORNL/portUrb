@@ -1227,6 +1227,74 @@ namespace modules {
 
 
 
+    // Refresh the dycore immersed-proportion field from the coupler and populate all halo cells.
+    void create_immersed_proportion_halos(core::Coupler &coupler) const {
+      using yakl::SimpleBounds;
+      auto nz     = coupler.get_nz();
+      auto ny     = coupler.get_ny();
+      auto nx     = coupler.get_nx();
+      auto &dm    = coupler.get_data_manager_readwrite();
+      auto wall_B = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
+      auto wall_T = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
+
+      if (! dm.entry_exists("dycore_immersed_proportion_halos")) {
+        dm.register_and_allocate<real>("dycore_immersed_proportion_halos",{nz+2*hs,ny+2*hs,nx+2*hs});
+      }
+
+      auto immersed_prop       = dm.get<real const,3>("immersed_proportion");
+      auto immersed_prop_halos = dm.get<real,3>("dycore_immersed_proportion_halos");
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) ,
+                                              KOKKOS_LAMBDA (int k, int j, int i) {
+        immersed_prop_halos(hs+k,hs+j,hs+i) = immersed_prop(k,j,i);
+      });
+
+      // Exchanging x before y propagates the physical-domain values into the horizontal corner halos.
+      core::MultiField<real,3> fields_halos;
+      fields_halos.add_field( immersed_prop_halos );
+      coupler.halo_exchange( fields_halos , hs );
+
+      // Vertical boundaries span the full horizontal allocation so their corner and edge halos are also initialized.
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) ,
+                                              KOKKOS_LAMBDA (int kk, int j, int i) {
+        immersed_prop_halos(      kk,j,i) = wall_B ? 1 : 0;
+        immersed_prop_halos(hs+nz+kk,j,i) = wall_T ? 1 : 0;
+      });
+
+      // Compute the Chebyshev distance to the nearest immersed cell within 12 cells.
+      if (! dm.entry_exists("dycore_immersed_distance")) {
+        dm.register_and_allocate<real>("dycore_immersed_distance",{nz,ny,nx});
+        coupler.register_output_variable<real>("dycore_immersed_distance",core::Coupler::DIMS_3D);
+      }
+      int constexpr hsnew = 12;
+      auto immersed_prop_copy = immersed_prop.createDeviceCopy();
+      core::MultiField<real,3> fields;
+      fields.add_field( immersed_prop_copy );
+      auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
+                                              KOKKOS_LAMBDA (int kk, int j, int i) {
+        fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
+        fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
+      });
+      auto immersed_distance = dm.get<real,3>("dycore_immersed_distance");
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) ,
+                                              KOKKOS_LAMBDA (int k, int j, int i) {
+        real distance = 1000;
+        for (int kk=-hsnew; kk <= hsnew; kk++) {
+          for (int jj=-hsnew; jj <= hsnew; jj++) {
+            for (int ii=-hsnew; ii <= hsnew; ii++) {
+              if (fields_halos_larger(0,hsnew+k+kk,hsnew+j+jj,hsnew+i+ii) > 0) {
+                int distance_loc = std::max(std::abs(kk),std::max(std::abs(jj),std::abs(ii)));
+                distance = std::min(distance,static_cast<real>(std::max(1,distance_loc)));
+              }
+            }
+          }
+        }
+        immersed_distance(k,j,i) = distance;
+      });
+    }
+
+
+
     // Initialize the class data as well as the state and tracers arrays and convert them back into the coupler state
     // coupler : reference to the coupler object
     // Make sure that all tracers are registered in the coupler before calling this function
@@ -1437,65 +1505,6 @@ namespace modules {
         }
       });
 
-      // Create immersed-proportion halos and the distance to the nearest immersed cell
-      auto create_immersed_proportion_halos = [] (core::Coupler &coupler) {
-        using yakl::SimpleBounds;;
-        auto nz     = coupler.get_nz  (); // Number of cells in z-direction (not including halos)
-        auto ny     = coupler.get_ny  (); // Number of cells in y-direction (not including halos)
-        auto nx     = coupler.get_nx  (); // Number of cells in x-direction (not including halos)
-        auto &dm    = coupler.get_data_manager_readwrite(); // Get data manager as read-write
-        auto wall_B = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
-        auto wall_T = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
-        if (!dm.entry_exists("dycore_immersed_proportion_halos")) {
-          // Get the immersed_proportion field from the coupler data manager that is initialized before
-          //  calling this module's init function
-          auto immersed_prop = dm.get<real const,3>("immersed_proportion").createDeviceCopy();
-          // Create MultiField of just one field to hold the immersed proportion for halo creation and exchange
-          core::MultiField<real,3> fields;
-          fields.add_field( immersed_prop  );
-          // Create and exchange halos (vertical is not set after calling this function)
-          auto fields_halos = coupler.create_and_exchange_halos( fields , hs );
-          // Create and populate dycore_immersed_proportion_halos in the coupler data manager
-          dm.register_and_allocate<real>("dycore_immersed_proportion_halos",{nz+2*hs,ny+2*hs,nx+2*hs});
-          // Fill in the dycore's top and bottom halos with 1's to indicate fully immersed
-          // This does not affect the immersed_proportion DataManager array since we are assigning to a different array
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
-            fields_halos(0,      kk,j,i) = wall_B ? 1 : 0;
-            fields_halos(0,hs+nz+kk,j,i) = wall_T ? 1 : 0;
-          });
-          // Copy the field with halos into the coupler data manager array
-          fields_halos.get_field(0).deep_copy_to( dm.get<real,3>("dycore_immersed_proportion_halos") );
-
-          // Compute the Chebyshev distance to the nearest immersed cell within 12 cells.
-          {
-            int constexpr hsnew = 12;
-            dm.register_and_allocate<real>("dycore_immersed_distance",{nz,ny,nx});
-            coupler.register_output_variable<real>("dycore_immersed_distance",core::Coupler::DIMS_3D);
-            auto immersed_distance = dm.get<real,3>("dycore_immersed_distance");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              real distance = 1000;
-              for (int kk=-hsnew; kk <= hsnew; kk++) {
-                for (int jj=-hsnew; jj <= hsnew; jj++) {
-                  for (int ii=-hsnew; ii <= hsnew; ii++) {
-                    if (fields_halos_larger(0,hsnew+k+kk,hsnew+j+jj,hsnew+i+ii) > 0) {
-                      int distance_loc = std::max(std::abs(kk),std::max(std::abs(jj),std::abs(ii)));
-                      distance = std::min(distance,static_cast<real>(std::max(1,distance_loc)));
-                    }
-                  }
-                }
-              }
-              immersed_distance(k,j,i) = distance;
-            });
-          }
-        }
-      };
-
       // This lambda function is to interpolate hydrostatic profiles from cell centers to edges
       //  (linear for theta, and log-linear for rho and pressure)
       auto compute_hydrostasis_edges = [] (core::Coupler &coupler) {
@@ -1607,23 +1616,12 @@ namespace modules {
       // Register a restart module to read in hydrostatic profiles from file
       // coupler : reference to the coupler object
       // nc      : reference to the SimplePNetCDF object for reading restart data (opened)
-      coupler.register_overwrite_with_restart_module( [=] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
-        auto nz  = coupler.get_nz();
-        auto ny  = coupler.get_ny();
-        auto nx  = coupler.get_nx();
+      coupler.register_overwrite_with_restart_module( [=, this] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
         auto &dm = coupler.get_data_manager_readwrite();
         nc.read_all(dm.get<real,1>("hy_dens_cells"    ),"hy_dens_cells"    ,{0});
         nc.read_all(dm.get<real,1>("hy_theta_cells"   ),"hy_theta_cells"   ,{0});
         nc.read_all(dm.get<real,1>("hy_pressure_cells"),"hy_pressure_cells",{0});
-        auto immersed_prop       = dm.get<real const,3>("immersed_proportion");
-        auto immersed_prop_halos = dm.get<real,3>("dycore_immersed_proportion_halos");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , yakl::SimpleBounds<3>(nz,ny,nx) ,
-                                                KOKKOS_LAMBDA (int k, int j, int i) {
-          immersed_prop_halos(hs+k,hs+j,hs+i) = immersed_prop(k,j,i);
-        });
-        core::MultiField<real,3> fields;
-        fields.add_field( immersed_prop_halos );
-        coupler.halo_exchange( fields , hs );
+        create_immersed_proportion_halos( coupler );
         compute_hydrostasis_edges       ( coupler );
       } );
       #ifdef YAKL_AUTO_PROFILE
@@ -1770,3 +1768,4 @@ namespace modules {
   };
 
 }
+

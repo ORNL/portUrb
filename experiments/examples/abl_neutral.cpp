@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_fast.h"
+#include "dynamics_edge_centered.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
