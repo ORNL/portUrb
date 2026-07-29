@@ -43,7 +43,7 @@ struct turbine_BEM {
   realHost1d foil_len  ;
   realHost1d foil_twist;
   realHost1d foil_chord;
-  realHost1d foil_id   ;
+  intHost1d  foil_id   ;
   MultiField foil_alpha;
   MultiField foil_clift;
   MultiField foil_cdrag;
@@ -77,7 +77,7 @@ struct turbine_BEM {
     foil_len   = realHost1d("foil_len"  ,nseg);
     foil_twist = realHost1d("foil_twist",nseg);
     foil_chord = realHost1d("foil_chord",nseg);
-    foil_id    = realHost1d("foil_id"   ,nseg);
+    foil_id    = intHost1d ("foil_id"   ,nseg);
     for (int iseg=0; iseg < nseg ; iseg++) {
       foil_mid  (iseg) = std::get<0>(foil_summary.at(iseg));
       foil_twist(iseg) = std::get<1>(foil_summary.at(iseg))/180.*M_PI;
