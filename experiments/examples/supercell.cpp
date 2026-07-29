@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
                   coupler.generate_levels_equal(nz,zlen) ,
                   ny_glob , nx_glob , ylen , xlen );
 
-    modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+    modules::Dynamics_Euler_Stratified  dycore;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::Microphysics_Morrison             micro;

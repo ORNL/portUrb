@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
                   coupler.generate_levels_const_high(zlen,20,500,40) ,
                   ny_glob , nx_glob , ylen , xlen );
 
-    modules::Dynamics_Euler_Stratified_WenoFV     dycore;
+    modules::Dynamics_Euler_Stratified     dycore;
     modules::SurfaceFlux                          sfc_flux;
     modules::Time_Averager                        time_averager;
     modules::LES_Closure                          les_closure;

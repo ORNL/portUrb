@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
     Kokkos::fence();
     if (coupler_main.is_mainproc()) std::cout << mesh;
 
-    modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+    modules::Dynamics_Euler_Stratified  dycore;
     modules::SurfaceFlux                       sfc_flux;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
