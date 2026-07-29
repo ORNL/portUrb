@@ -37,6 +37,46 @@ namespace modules {
     typedef float FLOC; // Use single precision locally
 
 
+    // Increase precursor ghost-cell storage when the current sub-cycle exceeds its capacity
+    void ensure_dycore_max_cycles(core::Coupler &coupler, int icycle) const {
+      auto max_cycles = coupler.get_option<int>("dycore_max_cycles");
+      if (icycle < max_cycles) return;
+
+      using yakl::SimpleBounds;
+      auto &dm         = coupler.get_data_manager_readwrite();
+      auto new_cycles  = icycle+1;
+      auto num_stages  = coupler.get_option<int>("dycore_num_stages");
+      auto num_tracers = coupler.get_num_tracers();
+      auto nx          = coupler.get_nx();
+      auto ny          = coupler.get_ny();
+      auto nz          = coupler.get_nz();
+
+      auto resize = [&](std::string const & name, std::vector<int> dims) {
+        if (! dm.entry_exists(name)) return;
+        auto old_arr    = dm.get_collapsed<FLOC const>(name);
+        auto old_size   = old_arr.extent(0);
+        auto cycle_size = old_size / max_cycles;
+        yakl::Array<FLOC *,yakl::DeviceSpace> saved(name+"_saved",old_size);
+        old_arr.deep_copy_to(saved);
+        Kokkos::fence();
+        dm.unregister_and_deallocate(name);
+        dims.at(0) = new_cycles;
+        dm.register_and_allocate<FLOC>(name,dims);
+        auto new_arr = dm.get_collapsed<FLOC>(name);
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<1>(new_arr.extent(0)) , KOKKOS_LAMBDA (int i) {
+          new_arr(i) = saved(i < old_size ? i : i % cycle_size);
+        });
+        Kokkos::fence();
+      };
+
+      resize("dycore_ghost_x1",{max_cycles,num_stages,num_state+num_tracers+1,nz,ny,hs});
+      resize("dycore_ghost_x2",{max_cycles,num_stages,num_state+num_tracers+1,nz,ny,hs});
+      resize("dycore_ghost_y1",{max_cycles,num_stages,num_state+num_tracers+1,nz,hs,nx});
+      resize("dycore_ghost_y2",{max_cycles,num_stages,num_state+num_tracers+1,nz,hs,nx});
+      coupler.set_option("dycore_max_cycles",new_cycles);
+    }
+
+
 
     // Compute total mass of dry air and total mass of virtual potential temperature in the domain
     //  for verification purposes
@@ -141,6 +181,7 @@ namespace modules {
       // Must pass the icycle number to the time stepper for proper ghost cell exchanges with precursor simulations
       auto time_stepper = coupler.get_option<std::string>("dycore_time_stepper","ssprk3");
       for (int icycle = 0; icycle < ncycles; icycle++) {
+        ensure_dycore_max_cycles(coupler,icycle);
         if      (time_stepper == "linrk3") { time_step_rk3   (coupler,state,tracers,dt_dyn,icycle); }
         else if (time_stepper == "linrk4") { time_step_rk4   (coupler,state,tracers,dt_dyn,icycle); }
         else if (time_stepper == "ssprk3") { time_step_ssprk3(coupler,state,tracers,dt_dyn,icycle); }
@@ -1303,6 +1344,7 @@ namespace modules {
     // coupler_prec : reference to the precursor coupler object
     // coupler_main : reference to the main coupler object
     void copy_precursor_ghost_cells( core::Coupler const & coupler_prec , core::Coupler & coupler_main ) {
+      ensure_dycore_max_cycles(coupler_main,coupler_prec.get_option<int>("dycore_max_cycles")-1);
       int  px          = coupler_main.get_px();       // MPI rank in x-direction
       int  py          = coupler_main.get_py();       // MPI rank in y-direction
       int  npx         = coupler_main.get_nproc_x();  // Number of MPI ranks in x-direction
@@ -1400,6 +1442,7 @@ namespace modules {
       else if (time_stepper == "linrk3") { coupler.set_option("dycore_num_stages",3);    }
       else if (time_stepper == "linrk4") { coupler.set_option("dycore_num_stages",4);    }
       else                               { Kokkos::abort("Invalid dycore_time_stepper"); }
+      coupler.set_option("dycore_max_cycles",4);
 
       // If the current coupler object is a precursor for another simulation, or the current coupler is using
       //  precursor BC's, then allocate ghost cell storage for exchanging data between the precursor and forced
@@ -1946,4 +1989,3 @@ namespace modules {
   };
 
 }
-
