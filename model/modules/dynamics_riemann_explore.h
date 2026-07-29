@@ -597,6 +597,58 @@ namespace modules {
       }
     }
 
+    // Compute the AUSM+-up mass and pressure fluxes. The pressure arguments are perturbation pressures so that
+    // a resting hydrostatic background produces no numerical flux.
+    KOKKOS_INLINE_FUNCTION static void ausm_up_plus( FLOC   r_L          , FLOC   r_R          ,
+                                                     FLOC   un_L         , FLOC   un_R         ,
+                                                     FLOC   vel_sq_L     , FLOC   vel_sq_R     ,
+                                                     FLOC   p_L          , FLOC   p_R          ,
+                                                     FLOC   cs           , FLOC   mach_cut     ,
+                                                     FLOC & mass_flux    , FLOC & pressure_flux ) {
+      FLOC constexpr beta  = 1._fp / 8;
+      FLOC constexpr K_p   = 0.25_fp;
+      FLOC constexpr K_u   = 0.75_fp;
+      FLOC constexpr sigma = 1._fp;
+      FLOC const M_L       = un_L / cs;
+      FLOC const M_R       = un_R / cs;
+      FLOC const mach_sq   = (vel_sq_L + vel_sq_R) / (2 * cs * cs);
+      FLOC const M_0       = std::sqrt(std::min(FLOC(1),std::max(mach_sq,mach_cut*mach_cut)));
+      FLOC const f_a       = M_0 * (2 - M_0);
+      FLOC const alpha     = 3._fp / 16 * (-4 + 5 * f_a * f_a);
+      FLOC const abs_M_L   = std::abs(M_L);
+      FLOC const abs_M_R   = std::abs(M_R);
+      FLOC M4_plus;
+      FLOC P5_plus;
+      if (abs_M_L >= 1) {
+        M4_plus = 0.5_fp * (M_L + abs_M_L);
+        P5_plus = 0.5_fp * (M_L + abs_M_L) / M_L;
+      } else {
+        FLOC const M2_plus  =  0.25_fp * (M_L + 1) * (M_L + 1);
+        FLOC const M2_minus = -0.25_fp * (M_L - 1) * (M_L - 1);
+        M4_plus = M2_plus * (1 - 16 * beta * M2_minus);
+        P5_plus = M2_plus * (2 - M_L - 16 * alpha * M_L * M2_minus);
+      }
+      FLOC M4_minus;
+      FLOC P5_minus;
+      if (abs_M_R >= 1) {
+        M4_minus = 0.5_fp * (M_R - abs_M_R);
+        P5_minus = 0.5_fp * (M_R - abs_M_R) / M_R;
+      } else {
+        FLOC const M2_plus  =  0.25_fp * (M_R + 1) * (M_R + 1);
+        FLOC const M2_minus = -0.25_fp * (M_R - 1) * (M_R - 1);
+        M4_minus = M2_minus * (1 + 16 * beta * M2_plus);
+        P5_minus = M2_minus * (-2 - M_R + 16 * alpha * M_R * M2_plus);
+      }
+      FLOC const r_face    = 0.5_fp * (r_L + r_R);
+      FLOC const M_face    = M4_plus + M4_minus -
+                             K_p / f_a * std::max(FLOC(1) - sigma * mach_sq,FLOC(0)) * (p_R - p_L) /
+                             (r_face * cs * cs);
+      FLOC const r_upwind  = M_face > 0 ? r_L : r_R;
+      mass_flux            = cs * M_face * r_upwind;
+      pressure_flux        = P5_plus * p_L + P5_minus * p_R -
+                             K_u * P5_plus * P5_minus * (r_L + r_R) * f_a * cs * (un_R - un_L);
+    }
+
 
 
     int static constexpr idP = 5; // Index of pressure in total array of num_state+1+num_tracers in compute_tendencies
@@ -840,7 +892,9 @@ namespace modules {
       //////////////////////////////////////////////////////////////////////////////////////////////
       // COMPUTE FLUXES
       //////////////////////////////////////////////////////////////////////////////////////////////
-      if (coupler.get_option<std::string>("dycore_riemann","upwind") == "llf") {
+      if (coupler.get_option<std::string>("dycore_riemann","upwind") == "ausm_up_plus") {
+        FLOC const mach_cut = coupler.get_option<real>("dycore_ausm_mach_cut",0.01);
+        if (mach_cut <= 0 || mach_cut > 1) endrun("ERROR: dycore_ausm_mach_cut must be in (0,1]");
 
         yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
           FLOC r_L = limits_x(0,idR,k,j,i) + hy_dens_cells (hs+k);    FLOC r_R = limits_x(1,idR,k,j,i) + hy_dens_cells (hs+k);
@@ -849,22 +903,24 @@ namespace modules {
           FLOC w_L = limits_x(0,idW,k,j,i);                           FLOC w_R = limits_x(1,idW,k,j,i);
           FLOC t_L = limits_x(0,idT,k,j,i) + hy_theta_cells(hs+k);    FLOC t_R = limits_x(1,idT,k,j,i) + hy_theta_cells(hs+k);
           FLOC p_L = limits_x(0,idP,k,j,i);                           FLOC p_R = limits_x(1,idP,k,j,i);
-          FLOC ru = (r_L*u_L + r_R*u_R)/2;
-          FLOC r  = (r_L + r_R)/2;
-          FLOC u  = (u_L + u_R)/2;
-          FLOC v  = (v_L + v_R)/2;
-          FLOC w  = (w_L + w_R)/2;
-          FLOC t  = (t_L + t_R)/2;
-          FLOC p  = (p_L + p_R)/2;
-          flux_x(idR,k,j,i) = ru     - (std::abs(u)+cs)*(r_R-r_L)/2        ;
-          flux_x(idU,k,j,i) = ru*u+p - (std::abs(u)+cs)*(r_R*u_R-r_L*u_L)/2;
-          flux_x(idV,k,j,i) = ru*v   - (std::abs(u)+cs)*(r_R*v_R-r_L*v_L)/2;
-          flux_x(idW,k,j,i) = ru*w   - (std::abs(u)+cs)*(r_R*w_R-r_L*w_L)/2;
-          flux_x(idT,k,j,i) = ru*t   - (std::abs(u)+cs)*(r_R*t_R-r_L*t_L)/2;
+          FLOC ru;
+          FLOC p;
+          ausm_up_plus(r_L,r_R,u_L,u_R,u_L*u_L+v_L*v_L+w_L*w_L,u_R*u_R+v_R*v_R+w_R*w_R,
+                       p_L,p_R,cs,mach_cut,ru,p);
+          FLOC u = ru > 0 ? u_L : u_R;
+          FLOC v = ru > 0 ? v_L : v_R;
+          FLOC w = ru > 0 ? w_L : w_R;
+          FLOC t = ru > 0 ? t_L : t_R;
+          flux_x(idR,k,j,i) = ru;
+          flux_x(idU,k,j,i) = ru*u + p;
+          flux_x(idV,k,j,i) = ru*v;
+          flux_x(idW,k,j,i) = ru*w;
+          flux_x(idT,k,j,i) = ru*t;
           for (int l=0; l < num_tracers; l++) {
-            FLOC t_L = limits_x(0,num_state+1+l,k,j,i);    FLOC t_R = limits_x(1,num_state+1+l,k,j,i);
-            FLOC t = (t_L + t_R)/2;
-            flux_x(num_state+1+l,k,j,i) = ru*t - (std::abs(u)+cs)*(r_R*t_R-r_L*t_L)/2;
+            FLOC t_L = limits_x(0,num_state+1+l,k,j,i);
+            FLOC t_R = limits_x(1,num_state+1+l,k,j,i);
+            FLOC t   = ru > 0 ? t_L : t_R;
+            flux_x(num_state+1+l,k,j,i) = ru*t;
           }
         });
         yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -874,22 +930,24 @@ namespace modules {
           FLOC w_L = limits_y(0,idW,k,j,i);                           FLOC w_R = limits_y(1,idW,k,j,i);
           FLOC t_L = limits_y(0,idT,k,j,i) + hy_theta_cells(hs+k);    FLOC t_R = limits_y(1,idT,k,j,i) + hy_theta_cells(hs+k);
           FLOC p_L = limits_y(0,idP,k,j,i);                           FLOC p_R = limits_y(1,idP,k,j,i);
-          FLOC rv = (r_L*v_L + r_R*v_R)/2;
-          FLOC r  = (r_L + r_R)/2;
-          FLOC u  = (u_L + u_R)/2;
-          FLOC v  = (v_L + v_R)/2;
-          FLOC w  = (w_L + w_R)/2;
-          FLOC t  = (t_L + t_R)/2;
-          FLOC p  = (p_L + p_R)/2;
-          flux_y(idR,k,j,i) = rv     - (std::abs(v)+cs)*(r_R-r_L)/2        ;
-          flux_y(idU,k,j,i) = rv*u   - (std::abs(v)+cs)*(r_R*u_R-r_L*u_L)/2;
-          flux_y(idV,k,j,i) = rv*v+p - (std::abs(v)+cs)*(r_R*v_R-r_L*v_L)/2;
-          flux_y(idW,k,j,i) = rv*w   - (std::abs(v)+cs)*(r_R*w_R-r_L*w_L)/2;
-          flux_y(idT,k,j,i) = rv*t   - (std::abs(v)+cs)*(r_R*t_R-r_L*t_L)/2;
+          FLOC rv;
+          FLOC p;
+          ausm_up_plus(r_L,r_R,v_L,v_R,u_L*u_L+v_L*v_L+w_L*w_L,u_R*u_R+v_R*v_R+w_R*w_R,
+                       p_L,p_R,cs,mach_cut,rv,p);
+          FLOC u = rv > 0 ? u_L : u_R;
+          FLOC v = rv > 0 ? v_L : v_R;
+          FLOC w = rv > 0 ? w_L : w_R;
+          FLOC t = rv > 0 ? t_L : t_R;
+          flux_y(idR,k,j,i) = rv;
+          flux_y(idU,k,j,i) = rv*u;
+          flux_y(idV,k,j,i) = rv*v + p;
+          flux_y(idW,k,j,i) = rv*w;
+          flux_y(idT,k,j,i) = rv*t;
           for (int l=0; l < num_tracers; l++) {
-            FLOC t_L = limits_y(0,num_state+1+l,k,j,i);    FLOC t_R = limits_y(1,num_state+1+l,k,j,i);
-            FLOC t = (t_L + t_R)/2;
-            flux_y(num_state+1+l,k,j,i) = rv*t - (std::abs(v)+cs)*(r_R*t_R-r_L*t_L)/2;
+            FLOC t_L = limits_y(0,num_state+1+l,k,j,i);
+            FLOC t_R = limits_y(1,num_state+1+l,k,j,i);
+            FLOC t   = rv > 0 ? t_L : t_R;
+            flux_y(num_state+1+l,k,j,i) = rv*t;
           }
         });
         yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -899,22 +957,24 @@ namespace modules {
           FLOC w_L = limits_z(0,idW,k,j,i);                        FLOC w_R = limits_z(1,idW,k,j,i);
           FLOC t_L = limits_z(0,idT,k,j,i) + hy_theta_edges(k);    FLOC t_R = limits_z(1,idT,k,j,i) + hy_theta_edges(k);
           FLOC p_L = limits_z(0,idP,k,j,i);                        FLOC p_R = limits_z(1,idP,k,j,i);
-          FLOC rw = (r_L*w_L + r_R*w_R)/2;
-          FLOC r  = (r_L + r_R)/2;
-          FLOC u  = (u_L + u_R)/2;
-          FLOC v  = (v_L + v_R)/2;
-          FLOC w  = (w_L + w_R)/2;
-          FLOC t  = (t_L + t_R)/2;
-          FLOC p  = (p_L + p_R)/2;
-          flux_z(idR,k,j,i) = rw     - (std::abs(w)+cs)*(r_R-r_L)/2        ;
-          flux_z(idU,k,j,i) = rw*u   - (std::abs(w)+cs)*(r_R*u_R-r_L*u_L)/2;
-          flux_z(idV,k,j,i) = rw*v   - (std::abs(w)+cs)*(r_R*v_R-r_L*v_L)/2;
-          flux_z(idW,k,j,i) = rw*w+p - (std::abs(w)+cs)*(r_R*w_R-r_L*w_L)/2;
-          flux_z(idT,k,j,i) = rw*t   - (std::abs(w)+cs)*(r_R*t_R-r_L*t_L)/2;
+          FLOC rw;
+          FLOC p;
+          ausm_up_plus(r_L,r_R,w_L,w_R,u_L*u_L+v_L*v_L+w_L*w_L,u_R*u_R+v_R*v_R+w_R*w_R,
+                       p_L,p_R,cs,mach_cut,rw,p);
+          FLOC u = rw > 0 ? u_L : u_R;
+          FLOC v = rw > 0 ? v_L : v_R;
+          FLOC w = rw > 0 ? w_L : w_R;
+          FLOC t = rw > 0 ? t_L : t_R;
+          flux_z(idR,k,j,i) = rw;
+          flux_z(idU,k,j,i) = rw*u;
+          flux_z(idV,k,j,i) = rw*v;
+          flux_z(idW,k,j,i) = rw*w + p;
+          flux_z(idT,k,j,i) = rw*t;
           for (int l=0; l < num_tracers; l++) {
-            FLOC t_L = limits_z(0,num_state+1+l,k,j,i);    FLOC t_R = limits_z(1,num_state+1+l,k,j,i);
-            FLOC t = (t_L + t_R)/2;
-            flux_z(num_state+1+l,k,j,i) = rw*t - (std::abs(w)+cs)*(r_R*t_R-r_L*t_L)/2;
+            FLOC t_L = limits_z(0,num_state+1+l,k,j,i);
+            FLOC t_R = limits_z(1,num_state+1+l,k,j,i);
+            FLOC t   = rw > 0 ? t_L : t_R;
+            flux_z(num_state+1+l,k,j,i) = rw*t;
           }
         });
 
