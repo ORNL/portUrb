@@ -1,32 +1,8 @@
-
-#include "main_header.h"
-#include <random>
+#include "Betti_simplified.h"
 
 namespace modules {
 
-  struct Floating_motions_betti {
-    int    static constexpr nfreq  = 400;      // Number of frequency intervals to sum over in PM spectrum
-    real   static constexpr dt_max = 0.01;     // Maximum timestep for RK4 integration (s)
-    size_t static constexpr rand_pool_size = 1024*100; // Size of random phase pool
-    SArray<real,6>          state;             // Current state vector
-                                               // state(0): surge (x) position
-                                               // state(1): surge velocity
-                                               // state(2): heave (y) position
-                                               // state(3): heave velocity
-                                               // state(4): pitch angular position
-                                               // state(5): pitch angular velocity    
-    real                    etime;             // Current elapsed time
-    std::vector<real>       rand_pool;         // Pool of random phases for PM spectrum
-    int                     rand_pool_counter; // Offset into random phase pool
-    real                    shaft_tilt;        // Shaft tilt angle in degrees
-
-
-    // Assume arr is ordered lowest to highest. Return index of arr(index) nearest to "val"
-    // If two values are equally close, return the lower index
-    // arr : 1D array of reals
-    // val : value to find nearest to
-    // returns : index of arr nearest to val
-    int nearest_index(realHost1d const & arr, real val) {
+int Floating_motions_betti::nearest_index(realHost1d const & arr, real val) {
       int  ind      = 0;
       real min_diff = std::abs(arr(0)-val);
       for (int i=1; i < arr.size(); i++) {
@@ -36,10 +12,7 @@ namespace modules {
       return ind;
     }
 
-
-    // Initialize the Betti floating motions module
-    // shaft_tilt : Shaft tilt angle in degrees (default 0)
-    void init(real shaft_tilt = 0) {
+void Floating_motions_betti::init(real shaft_tilt ) {
       // Initialize state positions and velocities to zero
       this->state(0)  = 0;
       this->state(1)  = 0;
@@ -57,30 +30,8 @@ namespace modules {
       this->shaft_tilt = shaft_tilt;
     }
 
-
-    // Computes Pierson Moskowitz spectrum outputs
-    // wind_19_5m: average wind velocity at 19.5m (m/s)
-    // zeta      : "the x component to evaluate"
-    // eta       : "the y component to evaluate .Note: the coordinate system here is different
-    //                from the Betti model. The downward is negative in this case"
-    // t         : the time to evaluate (s)
-    // N         : The number of frequency intervals to use
-    // returns  : Tuple of [wave_eta,v_x,v_y,a_x,a_y]
-    // wave_eta : Wave elevation (m)
-    // v_x      : x-direction wave velocity
-    // v_y      : y-direction wave velocity
-    // a_x      : x-direction wave acceleration
-    // a_y      : y-direction wave acceleration
-    // N = 400 does the job well enough
-    // Fully develped oceans have essentially random wave phases at different frequencies. This spectrum empirically
-    //   provides significant wave heights and pitch, roll, surge, heave, sway patterns. This approximates local wind
-    //   waves and not long term swells from larger systems.
-    // The random phases are precomputed and stored in rand_pool to avoid recomputing them each time this function
-    //   is called.
-    // Returns a tuple of five reals: (wave elevation, wave x-velocity, wave y-velocity, 
-    //                                 wave x-acceleration, wave y-acceleration)
-    std::tuple<real,real,real,real,real>
-    pierson_moskowitz_spectrum( real wind_19_5m , real zeta , real eta , real t , int N) {
+std::tuple<real,real,real,real,real>
+    Floating_motions_betti::pierson_moskowitz_spectrum( real wind_19_5m , real zeta , real eta , real t , int N) {
       real constexpr g       = 9.81;      // gravity acceleration
       real constexpr alpha   = 0.0081;    // Phillip's constant
       real constexpr start_f = 0.1;       // starting frequency
@@ -116,16 +67,8 @@ namespace modules {
       return std::make_tuple( sum_wave_eta , sum_v_x , sum_v_y , sum_a_x , sum_a_y );
     }
 
-
-    // Compute the structure dynamics given the current state and environmental inputs
-    // x_1          : Current state vector
-    // t            : Current time (s)
-    // turbine_wind : Average wind speed at turbine hub height (m/s)
-    // wind_19_5m   : Average wind speed at 19.5m (m/s)
-    // Ct           : Thrust coefficient of the wind turbine
-    // returns : Tuple of (state derivative vector, surge force, heave force)
-    std::tuple<SArray<real,6>,real,real>
-    structure( SArray<real,6> const & x_1 , real t , real turbine_wind , real wind_19_5m , real Ct ) {
+std::tuple<SArray<real,6>,real,real>
+    Floating_motions_betti::structure( SArray<real,6> const & x_1 , real t , real turbine_wind , real wind_19_5m , real Ct ) {
       real constexpr g       = 9.80665 ;         // (m/s^2)  gravity acceleration
       real constexpr rho_w   = 1025    ;         // (kg/m^3) water density
       real constexpr M_N     = 240000  ;         // (kg)     Mass of nacelle
@@ -170,7 +113,7 @@ namespace modules {
       real eta    = x_1(2);                                     // heave (y) position
       real v_eta  = x_1(3);                                     // heave velocity
       real alpha  = x_1(4);                                     // pitch position
-      real omega  = x_1(5);                                     // pitch velocity    
+      real omega  = x_1(5);                                     // pitch velocity
       real M_X   = M_S + m_x + M_N + M_P;                       // effective mass in x direction
       real M_Y   = M_S + m_y + M_N + M_P;                       // effective mass in y direction
       real d_N   = std::sqrt(d_Nh*d_Nh + d_Nv*d_Nv);            // distance from BS to BN
@@ -243,13 +186,13 @@ namespace modules {
       // Tie rod contributions to forces and moment
       real Qt_zeta    = f_1*std::sin(theta_1) - f_2*std::sin(theta_2) - f_3*std::sin(theta_3);
       real Qt_eta     = f_1*std::cos(theta_1) + f_2*std::cos(theta_2) + f_3*std::cos(theta_3) + 4*lambda_tir*l_0;
-      real Qt_alpha   = ( f_1*(l_a*std::cos(theta_1 + alpha) - d_t*std::sin(theta_1 + alpha)) - 
+      real Qt_alpha   = ( f_1*(l_a*std::cos(theta_1 + alpha) - d_t*std::sin(theta_1 + alpha)) -
                           f_2*(l_a*std::cos(theta_2 - alpha) - d_t*std::sin(theta_2 - alpha)) +
                           f_3* d_t*std::sin(theta_3 - alpha) +
                            lambda_tir*l_0*(l_a*cos_alpha - d_t*sin_alpha) -
                            lambda_tir*l_0*(l_a*cos_alpha + d_t*sin_alpha) -
                          2*lambda_tir*l_0*                       d_t*sin_alpha  );
-                     
+
       // Wind Force
       real v_in      = turbine_wind + v_zeta + d_P*omega*cos_alpha; // effective wind speed at rotor
       real FA        = 0.5*rho*A*Ct*v_in*v_in;                      // rotor thrust force
@@ -323,24 +266,14 @@ namespace modules {
       return std::make_tuple( deriv , v_in , avegQ_t );
     }
 
-
-    // Compute the state derivatives for RK4 integration
-    // x           : Current state vector
-    // t           : Current time (s)
-    // turbine_wind: Average wind speed at turbine hub height (m/s)
-    // wind_19_5m  : Average wind speed at 19.5m (m/s)
-    // Ct          : Thrust coefficient of the wind turbine
-    // returns : state derivative vector after forward integration step
-    // This is for all intents and purposes a wrapper around the structure function
-    SArray<real,6>
-    Betti_tend( SArray<real,6> const & x , real t , real turbine_wind , real wind_19_5m , real Ct ) {
+SArray<real,6>
+    Floating_motions_betti::Betti_tend( SArray<real,6> const & x , real t , real turbine_wind , real wind_19_5m , real Ct ) {
       // Get the state derivatives from the structure function
       auto [dx1dt,v_in,Q_t] = structure( x , t , turbine_wind , wind_19_5m , Ct);
       return dx1dt;
     }
 
-
-    std::array<real,7> time_step( real dt , real turbine_wind , real wind_19_5m , real Ct ) {
+std::array<real,7> Floating_motions_betti::time_step( real dt , real turbine_wind , real wind_19_5m , real Ct ) {
       using yakl::componentwise::operator+; // enable componentwise '+' for yakl::SArray
       using yakl::componentwise::operator*; // enable componentwise '*' for yakl::SArray
       using yakl::componentwise::operator/; // enable componentwise '/' for yakl::SArray
@@ -366,13 +299,9 @@ namespace modules {
       ret.at(2) = state(2); // heave (y) position
       ret.at(3) = state(3); // heave velocity
       ret.at(4) = state(4); // pitch position
-      ret.at(5) = state(5); // pitch velocity    
+      ret.at(5) = state(5); // pitch velocity
       ret.at(6) = wind / niter; // average effective wind speed perturbation at rotor over the full time step
       return ret;
     }
 
-  };
-
-}
-
-
+} // namespace modules

@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
                   ny_glob , nx_glob , ylen , xlen );
 
     // They dynamical core "dycore" integrates the Euler equations and performans transport of tracers
-    modules::Dynamics_Euler_Stratified  dycore;
+    modules::EulerCellCentered  dycore;
     modules::LES_Closure                       les_closure;
     modules::TurbineActuatorDisc               turbines;
     modules::EdgeSponge                        edge_sponge;

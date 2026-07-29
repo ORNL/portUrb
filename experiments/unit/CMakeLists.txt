@@ -12,8 +12,12 @@ endif()
 
 add_subdirectory(${PORTURB_HOME}/model model)
 
-add_library(custom_modules INTERFACE)
-target_include_directories(custom_modules INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/custom_modules)
+add_library(custom_modules STATIC
+            custom_modules/sc_init.cpp
+            custom_modules/sc_perturb.cpp)
+target_compile_options(custom_modules PRIVATE ${PORTURB_CXX_FLAGS})
+target_include_directories(custom_modules PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/custom_modules)
+target_link_libraries(custom_modules PUBLIC model)
 
 set(mylibs modules custom_modules model "${PORTURB_LINK_FLAGS}")
 
@@ -34,4 +38,3 @@ process_target(supercell_morr2mom)
 process_target(toy_bem)
 process_target(turbine_neutral_ensemble)
 process_target(turbine_simple)
-
