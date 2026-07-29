@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
                   coupler.generate_levels_const_high(zlen,250,5000,500) ,
                   ny_glob , nx_glob , ylen , xlen );
 
-    modules::EulerCellCentered  dycore;
+    modules::Dynamics_Euler_Stratified  dycore;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
     modules::Microphysics_Kessler              micro;

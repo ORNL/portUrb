@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
                   coupler.generate_levels_equal(nz,zlen) ,
                   ny_glob , nx_glob , ylen , xlen );
 
-    modules::EulerCellCentered     dycore;
+    modules::Dynamics_Euler_Stratified     dycore;
     modules::SurfaceFlux                          sfc_flux;
     modules::Time_Averager                        time_averager;
     modules::LES_Closure                          les_closure;

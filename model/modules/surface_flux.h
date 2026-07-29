@@ -19,7 +19,80 @@ namespace modules {
 
 
 
-    void init( core::Coupler & coupler );
+    void init( core::Coupler & coupler ) {
+      using yakl::SimpleBounds;
+      auto nx           = coupler.get_nx();  // Get local number of grid points in x-direction
+      auto ny           = coupler.get_ny();  // Get local number of grid points in y-direction
+      auto nz           = coupler.get_nz();  // Get number of grid points in z-direction
+      auto num_tracers  = coupler.get_num_tracers();
+      auto tracer_names = coupler.get_tracer_names();
+      auto &dm          = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
+      int  idTKE = -1;
+      for (int tr=0; tr < tracer_names.size(); tr++) { if (tracer_names.at(tr) == "TKE") { idTKE = tr; break; } }
+      coupler.set_option<int>("surface_flux_idTKE",idTKE);
+      real4d state  ("state"  ,num_state  ,nz,ny,nx);
+      real4d tracers("tracers",num_tracers,nz,ny,nx);
+      convert_coupler_to_dynamics( coupler , state , tracers );
+      dm.register_and_allocate<real>("surface_flux_sfc_ustar",{ny,nx});
+      coupler.register_output_variable<real>("surface_flux_sfc_ustar",core::Coupler::DIMS_SURFACE);
+      dm.register_and_allocate<real>("surface_flux_sfc_thstar",{ny,nx});
+      coupler.register_output_variable<real>("surface_flux_sfc_thstar",core::Coupler::DIMS_SURFACE);
+      dm.register_and_allocate<real>("surface_flux_sfc_buoy_flux",{ny,nx});
+      coupler.register_output_variable<real>("surface_flux_sfc_buoy_flux",core::Coupler::DIMS_SURFACE);
+      dm.get<real,2>("surface_flux_sfc_ustar") = 0;
+      dm.get<real,2>("surface_flux_sfc_thstar") = 0;
+      dm.get<real,2>("surface_flux_sfc_buoy_flux") = 0;
+      dm.register_and_allocate<real>("surface_flux_imm_theta",{nz+2*hs,ny+2*hs,nx+2*hs});
+      auto imm_theta = dm.get<real,3>("surface_flux_imm_theta");
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        imm_theta(hs+k,hs+j,hs+i) = state(idT,k,j,i);
+      });
+      core::MultiField<real,3> fields;
+      fields.add_field(imm_theta);
+      coupler.halo_exchange( fields , hs );
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int j, int i) {
+        imm_theta(0    ,j,i) = imm_theta(1      ,j,i);
+        imm_theta(hs+nz,j,i) = imm_theta(hs+nz-1,j,i);
+      });
+      coupler.register_write_output_module( [=] (core::Coupler &coupler , yakl::SimplePNetCDF &nc) {
+        using yakl::SimpleBounds;
+        auto nz        = coupler.get_nz();
+        auto ny        = coupler.get_ny();
+        auto nx        = coupler.get_nx();
+        auto i_beg     = coupler.get_i_beg();
+        auto j_beg     = coupler.get_j_beg();
+        auto &dm       = coupler.get_data_manager_readonly(); // Get reference to the data manager (read/write)
+        auto imm_theta = dm.get<real const,3>("surface_flux_imm_theta");
+        nc.redef();
+        if (! nc.dim_exists("nzp2")) nc.create_dim( "zp2" , nz+2 );
+        nc.create_var<real>( "surface_flux_imm_theta" , {"zp2","y","x"} );
+        nc.enddef();
+        real3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          imm_theta_loc(k,j,i) = imm_theta(k,hs+j,hs+i);
+        });
+        std::vector<MPI_Offset> start = {(MPI_Offset)0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
+        nc.write_all( imm_theta_loc , "surface_flux_imm_theta" , start );
+      });
+      coupler.register_overwrite_with_restart_module( [=] (core::Coupler &coupler , yakl::SimplePNetCDF &nc) {
+        auto nz        = coupler.get_nz();
+        auto ny        = coupler.get_ny();
+        auto nx        = coupler.get_nx();
+        auto i_beg     = coupler.get_i_beg();
+        auto j_beg     = coupler.get_j_beg();
+        auto &dm       = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
+        auto imm_theta = dm.get<real,3>("surface_flux_imm_theta");
+        real3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
+        std::vector<MPI_Offset> start = {(MPI_Offset)0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
+        nc.read_all( imm_theta_loc , "surface_flux_imm_theta" , start );
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+          imm_theta(k,hs+j,hs+i) = imm_theta_loc(k,j,i);
+        });
+        core::MultiField<real,3> fields;
+        fields.add_field(imm_theta);
+        coupler.halo_exchange( fields , hs );
+      });
+    }
     
 
 
@@ -28,7 +101,194 @@ namespace modules {
     // coupler : Coupler object containing the data manager and options
     // dt      : Timestep size in seconds
     void apply( core::Coupler &coupler   ,
-                real dt                  );
+                real dt                  ) {
+      using yakl::SimpleBounds;
+      auto nx          = coupler.get_nx();  // Get local number of grid points in x-direction
+      auto ny          = coupler.get_ny();  // Get local number of grid points in y-direction
+      auto nz          = coupler.get_nz();  // Get number of grid points in z-direction
+      auto dx          = coupler.get_dx();  // Get grid spacing in x-direction
+      auto dy          = coupler.get_dy();  // Get grid spacing in y-direction
+      auto dz          = coupler.get_dz();  // Get grid spacing in z-direction
+      auto num_tracers = coupler.get_num_tracers();
+      auto p0          = coupler.get_option<real>("p0");       // Reference pressure in Pa
+      auto R_d         = coupler.get_option<real>("R_d");      // Gas constant for dry air in J/(kg·K)
+      auto cp_d        = coupler.get_option<real>("cp_d");     // Specific heat at constant pressure for dry air in J/(kg·K)
+      auto grav        = coupler.get_option<real>("grav");
+      auto idTKE       = coupler.get_option<int >("surface_flux_idTKE");
+      auto &dm         = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
+      auto imm_prop    = dm.get<real const,3>("immersed_proportion_halos"); // Get immersed boundary proportion array
+      auto imm_rough   = dm.get<real const,3>("immersed_roughness_halos" ); // Get immersed boundary roughness array
+      auto imm_theta   = dm.get<real const,3>("surface_flux_imm_theta"   );
+      auto sfc_ustar   = dm.get<real      ,2>("surface_flux_sfc_ustar");
+      auto sfc_thstar  = dm.get<real      ,2>("surface_flux_sfc_thstar");
+      auto sfc_bflux   = dm.get<real      ,2>("surface_flux_sfc_buoy_flux");
+      auto force_theta = coupler.get_option<bool>("surface_flux_force_theta"          ,false );
+      auto stab_corr   = coupler.get_option<bool>("surface_flux_stability_corrections",false );
+      auto nu          = coupler.get_option<real>("surface_flux_kinematic_viscosity"  ,1.5e-5);
+      auto use_z0h     = coupler.get_option<bool>("surface_flux_predict_z0h"          ,true  );
+      auto presc_wpthp = coupler.get_option<bool>("surface_flux_prescribe_wpthetap"   ,false );
+      auto sfc_wpthp   = coupler.get_option<real>("surface_flux_sfc_wpthetap"         ,0     );
+      auto presc_ustar = coupler.get_option<bool>("surface_flux_use_fixed_ustar"      ,false );
+      auto ustar_val   = coupler.get_option<real>("surface_flux_fixed_ustar"          ,0.01  );
+      real4d state  ("state"  ,num_state  ,nz,ny,nx);
+      real4d tracers("tracers",num_tracers,nz,ny,nx);
+      convert_coupler_to_dynamics( coupler , state , tracers );
+
+      real vk   = 0.40;   // von karman constant
+      real Czil = 0.1;
+      real Ctke = 0; // 0.25;
+
+      // Allocate arrays to hold surface flux tendencies
+      real3d tend_u  ("tend_u"  ,nz,ny,nx);
+      real3d tend_v  ("tend_v"  ,nz,ny,nx);
+      real3d tend_w  ("tend_w"  ,nz,ny,nx);
+      real3d tend_th ("tend_th" ,nz,ny,nx);
+      real3d tend_tke("tend_tke",nz,ny,nx);
+
+      // Compute surface flux tendencies using Monin-Obukhov similarity theory
+      // This applies surface friction to neighboring cells if they are the surface or if they are
+      //   immersed. 
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        real u  = state(idU,k,j,i);  // u-velocity at this grid point
+        real v  = state(idV,k,j,i);  // v-velocity at this grid point
+        real w  = state(idW,k,j,i);  // w-velocity at this grid point
+        real th = state(idT,k,j,i);  // Potential temperature at this grid point
+        // Initialize tendencies to zero prior to accumulation
+        tend_u  (k,j,i) = 0;
+        tend_v  (k,j,i) = 0;
+        tend_w  (k,j,i) = 0;
+        tend_th (k,j,i) = 0;
+        tend_tke(k,j,i) = 0;
+        int indk, indj, indi;  // These indices will index into neighboring cells
+
+        // West neighbor
+        indk = hs+k;  indj = hs+j;  indi = hs+i-1;
+        if (imm_prop(indk,indj,indi) > 0) {
+          // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
+          //   and adjacent transverse velocity magnitude
+          real z0        = imm_rough(indk,indj,indi);
+          real mag       = std::max( std::sqrt(v*v+w*w) , 1.e-10 );
+          real ustar     = presc_ustar ? ustar_val : vk*mag/std::log((dx/2+z0)/z0);
+          tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dx;
+          tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dx;
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dx;
+          if (force_theta) {
+            real th0        = imm_theta(indk,indj,indi);
+            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+            real thstar     = vk*(th-th0)/std::log((dx/2+z0h)/z0h);
+            tend_th(k,j,i) += -ustar*thstar/dx;
+          }
+        }
+
+        // East neighbor
+        indk = hs+k;  indj = hs+j;  indi = hs+i+1;
+        if (imm_prop(indk,indj,indi) > 0) {
+          // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
+          //   and adjacent transverse velocity magnitude
+          real z0        = imm_rough(indk,indj,indi);
+          real mag       = std::max( std::sqrt(v*v+w*w) , 1.e-10 );
+          real ustar     = presc_ustar ? ustar_val : vk*mag/std::log((dx/2+z0)/z0);
+          tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dx;
+          tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dx;
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dx;
+          if (force_theta) {
+            real th0        = imm_theta(indk,indj,indi);
+            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+            real thstar     = vk*(th-th0)/std::log((dx/2+z0h)/z0h);
+            tend_th(k,j,i) += -ustar*thstar/dx;
+          }
+        }
+
+        // South neighbor
+        indk = hs+k;  indj = hs+j-1;  indi = hs+i;
+        if (imm_prop(indk,indj,indi) > 0) {
+          // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
+          //   and adjacent transverse velocity magnitude
+          real z0        = imm_rough(indk,indj,indi);
+          real mag       = std::max( std::sqrt(u*u+w*w) , 1.e-10 );
+          real ustar     = presc_ustar ? ustar_val : vk*mag/std::log((dy/2+z0)/z0);
+          tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dy;
+          tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dy;
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dy;
+          if (force_theta) {
+            real th0        = imm_theta(indk,indj,indi);
+            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+            real thstar     = vk*(th-th0)/std::log((dy/2+z0h)/z0h);
+            tend_th(k,j,i) += -ustar*thstar/dy;
+          }
+        }
+
+        // North neighbor
+        indk = hs+k;  indj = hs+j+1;  indi = hs+i;
+        if (imm_prop(indk,indj,indi) > 0) {
+          // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
+          //   and adjacent transverse velocity magnitude
+          real z0        = imm_rough(indk,indj,indi);
+          real mag       = std::max( std::sqrt(u*u+w*w) , 1.e-10 );
+          real ustar     = presc_ustar ? ustar_val : vk*mag/std::log((dy/2+z0)/z0);
+          tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dy;
+          tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dy;
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dy;
+          if (force_theta) {
+            real th0        = imm_theta(indk,indj,indi);
+            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+            real thstar     = vk*(th-th0)/std::log((dy/2+z0h)/z0h);
+            tend_th(k,j,i) += -ustar*thstar/dy;
+          }
+        }
+
+        // Bottom neighbor
+        indk = hs+k-1;  indj = hs+j;  indi = hs+i;
+        if (imm_prop(indk,indj,indi) > 0) {
+          // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
+          //   and adjacent transverse velocity magnitude
+          real z0     = imm_rough(indk,indj,indi);
+          real mag    = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
+          real ustar  = presc_ustar ? ustar_val : vk*mag/std::log((dz(k)/2+z0)/z0);
+          real th0    = imm_theta(indk,indj,indi);
+          real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+          real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
+          if (stab_corr) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),use_z0h,presc_wpthp,sfc_wpthp,ustar,thstar);
+          tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
+          tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dz(k);
+          if (force_theta || presc_wpthp) tend_th(k,j,i) += -ustar*thstar/dz(k);
+          if (k == 0) {
+            sfc_ustar (j,i) = ustar;
+            sfc_thstar(j,i) = thstar;
+            sfc_bflux (j,i) = grav/th0*ustar*thstar;
+          }
+        }
+        
+        // Top neighbor
+        indk = hs+k+1;  indj = hs+j;  indi = hs+i;
+        if (imm_prop(indk,indj,indi) > 0) {
+          // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
+          //   and adjacent transverse velocity magnitude
+          real z0     = imm_rough(indk,indj,indi);
+          real mag    = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
+          real ustar  = presc_ustar ? ustar_val : vk*mag/std::log((dz(k)/2+z0)/z0);
+          real th0    = imm_theta(indk,indj,indi);
+          real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+          real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
+          tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
+          tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
+          if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dz(k);
+          if (force_theta) tend_th(k,j,i) += -ustar*thstar/dz(k);
+        }
+      });
+
+      // Apply the accumulated tendencies to the state variables
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        state(idU,k,j,i) += dt*tend_u (k,j,i);
+        state(idV,k,j,i) += dt*tend_v (k,j,i);
+        state(idW,k,j,i) += dt*tend_w (k,j,i);
+        state(idT,k,j,i) += dt*tend_th(k,j,i);
+        if (idTKE >= 0) tracers(idTKE,k,j,i) += dt*state(idR,k,j,i)*tend_tke(k,j,i);
+      });
+
+      convert_dynamics_to_coupler( coupler , state , tracers );
+    }
 
 
 
@@ -98,7 +358,16 @@ namespace modules {
 
 
 
-    void change_surface_theta( core::Coupler & coupler , real dt , real rate );
+    void change_surface_theta( core::Coupler & coupler , real dt , real rate ) {
+      using yakl::SimpleBounds;
+      int  nx           = coupler.get_nx();  // Get the number of grid points in the x-direction
+      int  ny           = coupler.get_ny();  // Get the number of grid points in the y-direction
+      auto &dm          = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
+      auto imm_theta    = dm.get<real,3>("surface_flux_imm_theta");
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int j, int i) {
+        imm_theta(0,j,i) += dt*rate;
+      });
+    }
 
 
 
@@ -108,7 +377,51 @@ namespace modules {
     // tracers : dynamics tracers array
     void convert_dynamics_to_coupler( core::Coupler &coupler ,
                                       realConst4d    state   ,
-                                      realConst4d    tracers ) const;
+                                      realConst4d    tracers ) const {
+      using yakl::SimpleBounds;
+      auto  nx          = coupler.get_nx();                     // Number of cells in x-direction (not including halos)
+      auto  ny          = coupler.get_ny();                     // Number of cells in y-direction (not including halos)
+      auto  nz          = coupler.get_nz();                     // Number of cells in z-direction (not including halos)
+      auto  R_d         = coupler.get_option<real>("R_d"    );  // Gas constant for dry air
+      auto  R_v         = coupler.get_option<real>("R_v"    );  // Gas constant for water vapor
+      auto  gamma       = coupler.get_option<real>("gamma_d");  // Ratio of specific heats for dry air
+      auto  C0          = coupler.get_option<real>("C0"     );  // p = C0 * (rho*theta)^gamma
+      auto  idWV        = coupler.get_option<int >("idWV"   );  // Tracer index for water vapor
+      auto  num_tracers = coupler.get_num_tracers();            // Number of tracers
+      auto  &dm         = coupler.get_data_manager_readwrite(); // Get data manager as read-write
+      auto  dm_rho_d    = dm.get<real,3>("density_dry");        // Get coupler dry density array
+      auto  dm_uvel     = dm.get<real,3>("uvel"       );        // Get coupler u-velocity array
+      auto  dm_vvel     = dm.get<real,3>("vvel"       );        // Get coupler v-velocity array
+      auto  dm_wvel     = dm.get<real,3>("wvel"       );        // Get coupler w-velocity array
+      auto  dm_temp     = dm.get<real,3>("temperature");        // Get coupler temperature array
+      // Get array that determines whether each tracer adds to the mass of the air mixture
+      auto  tracer_adds_mass = dm.get<bool const,1>("tracer_adds_mass");
+      // Accrue the tracer fields from the coupler data manager
+      core::MultiField<real,3> dm_tracers;
+      auto tracer_names = coupler.get_tracer_names();
+      for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real,3>(tracer_names.at(tr)) ); }
+      // Loop over all grid cells to compute dry density, velocities, temperature, and store in coupler arrays
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        real rho   = state(idR,k,j,i);              // Total density
+        real u     = state(idU,k,j,i);              // u-velocity
+        real v     = state(idV,k,j,i);              // v-velocity
+        real w     = state(idW,k,j,i);              // w-velocity
+        real theta = state(idT,k,j,i);              // Potential temperature
+        real press = C0 * pow( rho*theta , gamma ); // Full pressure
+        real rho_v = tracers(idWV,k,j,i);           // Water vapor density
+        real rho_d = rho;                           // Dry air density starting value
+        // Subtract mass-adding tracers from total density to get dry air density
+        for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho_d -= tracers(tr,k,j,i); }
+        // Use equation of state to compute temperature from pressure, dry density, and water vapor density
+        real temp = press / ( rho_d * R_d + rho_v * R_v );
+        dm_uvel (k,j,i) = u;      // Store u-velocity in coupler array
+        dm_vvel (k,j,i) = v;      // Store v-velocity in coupler array
+        dm_wvel (k,j,i) = w;      // Store w-velocity in coupler array
+        dm_temp (k,j,i) = temp;   // Store temperature in coupler array
+        // Store tracer densities in coupler arrays
+        for (int tr=0; tr < num_tracers; tr++) { dm_tracers(tr,k,j,i) = tracers(tr,k,j,i); }
+      });
+    }
 
 
 
@@ -118,7 +431,52 @@ namespace modules {
     // tracers : dynamics tracers array
     void convert_coupler_to_dynamics( core::Coupler const &coupler ,
                                       real4d              &state   ,
-                                      real4d              &tracers ) const;
+                                      real4d              &tracers ) const {
+      using yakl::SimpleBounds;
+      auto  nx          = coupler.get_nx();                    // Number of cells in x-direction (not including halos)
+      auto  ny          = coupler.get_ny();                    // Number of cells in y-direction (not including halos)
+      auto  nz          = coupler.get_nz();                    // Number of cells in z-direction (not including halos)
+      auto  R_d         = coupler.get_option<real>("R_d"    ); // Gas constant for dry air
+      auto  R_v         = coupler.get_option<real>("R_v"    ); // Gas constant for water vapor
+      auto  gamma       = coupler.get_option<real>("gamma_d"); // Ratio of specific heats for dry air
+      auto  C0          = coupler.get_option<real>("C0"     ); // p = C0 * (rho*theta)^gamma
+      auto  idWV        = coupler.get_option<int >("idWV"   ); // Tracer index for water vapor
+      auto  num_tracers = coupler.get_num_tracers();           // Number of tracers
+      auto  &dm         = coupler.get_data_manager_readonly(); // Get data manager as read-only
+      auto  dm_rho_d    = dm.get<real const,3>("density_dry"); // Get coupler dry density array
+      auto  dm_uvel     = dm.get<real const,3>("uvel"       ); // Get coupler u-velocity array
+      auto  dm_vvel     = dm.get<real const,3>("vvel"       ); // Get coupler v-velocity array
+      auto  dm_wvel     = dm.get<real const,3>("wvel"       ); // Get coupler w-velocity array
+      auto  dm_temp     = dm.get<real const,3>("temperature"); // Get coupler temperature array
+      // Get array that determines whether each tracer adds to the mass of the air mixture
+      auto  tracer_adds_mass = dm.get<bool const,1>("tracer_adds_mass");
+      // Accrue the tracer fields from the coupler data manager
+      core::MultiField<real const,3> dm_tracers;
+      auto tracer_names = coupler.get_tracer_names(); // Get the tracer names
+      for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real const,3>(tracer_names.at(tr)) ); }
+      // Loop over all grid cells to compute dynamics state and tracers arrays from coupler data
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        real rho_d = dm_rho_d(k,j,i);                         // Dry air density
+        real u     = dm_uvel (k,j,i);                         // u-velocity
+        real v     = dm_vvel (k,j,i);                         // v-velocity
+        real w     = dm_wvel (k,j,i);                         // w-velocity
+        real temp  = dm_temp (k,j,i);                         // Temperature
+        real rho_v = dm_tracers(idWV,k,j,i);                  // Water vapor density
+        real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
+        real rho = rho_d;                                     // Total density starting value
+        // Add mass-adding tracers to dry density to get total density
+        for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho += dm_tracers(tr,k,j,i); }
+        // Compute potential temperature from pressure and total density
+        real theta = pow( press/C0 , 1._fp / gamma ) / rho;
+        state(idR,k,j,i) = rho;   // Store total density in dynamics state array
+        state(idU,k,j,i) = u;     // Store momentum in dynamics state array
+        state(idV,k,j,i) = v;     // Store momentum in dynamics state array
+        state(idW,k,j,i) = w;     // Store momentum in dynamics state array
+        state(idT,k,j,i) = theta; // Store total potential temperature in dynamics state array
+        // Store tracer densities in dynamics tracers array
+        for (int tr=0; tr < num_tracers; tr++) { tracers(tr,k,j,i) = dm_tracers(tr,k,j,i); }
+      });
+    }
 
   };
 

@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
       Kokkos::fence();
       if (coupler.is_mainproc()) std::cout << mesh;
 
-      modules::EulerCellCentered  dycore;
+      modules::Dynamics_Euler_Stratified  dycore;
       modules::SurfaceFlux                       sfc_flux;
       modules::Time_Averager                     time_averager;
       modules::LES_Closure                       les_closure;

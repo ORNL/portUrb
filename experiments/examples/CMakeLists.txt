@@ -12,13 +12,8 @@ endif()
 
 add_subdirectory(${PORTURB_HOME}/model model)
 
-add_library(custom_modules STATIC
-            custom_modules/sc_init.cpp
-            custom_modules/sc_perturb.cpp
-            custom_modules/tank_tracer_injection.cpp)
-target_compile_options(custom_modules PRIVATE ${PORTURB_CXX_FLAGS})
-target_include_directories(custom_modules PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/custom_modules)
-target_link_libraries(custom_modules PUBLIC model)
+add_library(custom_modules INTERFACE)
+target_include_directories(custom_modules INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/custom_modules)
 
 set(mylibs modules custom_modules model "${PORTURB_LINK_FLAGS}")
 
@@ -46,3 +41,4 @@ process_target(supercell)
 process_target(tank_set)
 process_target(turbine_les_generate)
 process_target(turbine_simplest)
+
