@@ -3,6 +3,7 @@
 #include "dynamics_cell_centered.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
+#include "integration_test.h"
 #include "les_closure.h"
 #include "turbine_actuator_disc.h"
 #include "edge_sponge.h"
@@ -17,7 +18,7 @@ int main(int argc, char** argv) {
     // This holds all of the model's variables, dimension sizes, and options
     core::Coupler coupler;
 
-    real dx = 10;
+    real dx = 30;
     coupler.set_option<bool>("turbine_orig_C_T",true);
 
     std::string turbine_file = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
@@ -25,7 +26,7 @@ int main(int argc, char** argv) {
     if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
     real D = config["blade_radius"].as<real>()*2;
 
-    real        sim_time     = 601;
+    real        sim_time     = 30;
     real        xlen         = D*15;
     real        ylen         = D*3;
     real        zlen         = D*3;
@@ -34,7 +35,7 @@ int main(int argc, char** argv) {
     int         nz           = std::ceil(zlen/dx);    zlen = nz      * dx;
     real        dtphys_in    = 0;
     std::string init_data    = "constant";
-    real        out_freq     = 600;
+    real        out_freq     = sim_time + 1;
     real        inform_freq  = 10;
     std::string out_prefix   = "turbine_simple";
     bool        is_restart   = false;
@@ -140,10 +141,12 @@ int main(int argc, char** argv) {
       }
     } // End main simulation loop
 
+    coupler.write_output_file(out_prefix, true);
+    custom_modules::check_turbine_simple_solution(coupler, out_prefix);
+
     yakl::timer_stop("main");
   }
   yakl::finalize();
   Kokkos::finalize();
   MPI_Finalize();
 }
-

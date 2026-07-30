@@ -3,6 +3,8 @@ project(portUrb)
 
 set(CMAKE_CXX_STANDARD 20)
 
+enable_testing()
+
 enable_language(Fortran)
 enable_language(CXX)
 enable_language(C)
@@ -21,6 +23,7 @@ macro(process_target target_name)
   add_executable(${target_name} ${target_name}.cpp)
   target_compile_options(${target_name} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:${PORTURB_CXX_FLAGS}>)
   target_link_libraries(${target_name} ${mylibs})
+  add_test(NAME ${target_name} COMMAND ${target_name})
 endmacro()
 
 process_target(abl_convective)
@@ -34,4 +37,3 @@ process_target(supercell_morr2mom)
 process_target(toy_bem)
 process_target(turbine_neutral_ensemble)
 process_target(turbine_simple)
-

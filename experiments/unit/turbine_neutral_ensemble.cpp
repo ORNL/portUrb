@@ -4,6 +4,7 @@
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
+#include "integration_test.h"
 #include "les_closure.h"
 #include "windmill_actuators_yaw.h"
 #include "surface_flux.h"
@@ -48,13 +49,13 @@ int main(int argc, char** argv) {
         ensembler.append_coupler_string(coupler,"ensemble_stdout",std::string("wind-")+std::to_string(wind));
         ensembler.append_coupler_string(coupler,"out_prefix"     ,std::string("wind-")+std::to_string(wind));
       };
-      ensembler.register_dimension( 2 , func_nranks , func_coupler );
+      ensembler.register_dimension( 1 , func_nranks , func_coupler );
     }
     // coupler_main.set_option<real>("hub_height_wind_mag",11);
 
     int ntasks;
     MPI_Comm_size(MPI_COMM_WORLD,&ntasks);
-    auto par_comm = ensembler.create_coupler_comm( coupler_main , ntasks/2 , MPI_COMM_WORLD );
+    auto par_comm = ensembler.create_coupler_comm( coupler_main , ntasks , MPI_COMM_WORLD );
     coupler_main.set_parallel_comm( par_comm );
 
     auto orig_cout_buf = std::cout.rdbuf();
@@ -66,7 +67,7 @@ int main(int argc, char** argv) {
     // core::ParallelComm par_comm(MPI_COMM_WORLD);
     // coupler_main.set_option<real>("hub_height_wind_mag",12);
 
-    real dx = 20;
+    real dx = 60;
 
     if (par_comm.valid()) {
       yakl::timer_start("main");
@@ -74,7 +75,7 @@ int main(int argc, char** argv) {
       if (coupler_main.is_mainproc()) std::cout << "Ensemble memeber using an initial hub wind speed of ["
                                                 << coupler_main.get_option<real>("hub_height_wind_mag")
                                                 << "] m/s" << std::endl;
-      real        sim_time          = 901;
+      real        sim_time          = 30;
       real        xlen              = 30*D;
       real        ylen              = 10*D;
       real        zlen              = 800;
@@ -84,7 +85,7 @@ int main(int argc, char** argv) {
       real        dtphys_in         = 0.;  // Dycore determined time step size
       int         dyn_cycle         = 4;
       std::string init_data         = "ABL_neutral2";
-      real        out_freq          = 900;
+      real        out_freq          = sim_time + 1;
       real        inform_freq       = 10;
       std::string out_prefix        = coupler_main.get_option<std::string>("out_prefix");
       std::string out_prefix_prec   = out_prefix+std::string("_precursor");
@@ -268,6 +269,13 @@ int main(int argc, char** argv) {
           output_counter.reset();
         }
       } // End main simulation loop
+      if (run_main) {
+        coupler_main.write_output_file(out_prefix, true);
+        custom_modules::check_turbine_ensemble_solution(coupler_main, out_prefix, hub_wind, true);
+      }
+      coupler_prec.write_output_file(out_prefix_prec, true);
+      custom_modules::check_turbine_ensemble_solution(coupler_prec, out_prefix_prec, hub_wind, false);
+
       yakl::timer_stop("main");
     } // if (par_comm.valid()) 
 
@@ -279,4 +287,3 @@ int main(int argc, char** argv) {
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
 }
-

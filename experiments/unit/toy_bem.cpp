@@ -536,6 +536,43 @@ int main(int argc, char** argv) {
                     out_pitch , out_omega , out_dT_dr , out_dQ_dr , out_thrust , out_torque , out_power ,
                     out_C_T , out_C_P , out_C_Q , out_phi_r , out_alpha_r , out_Cn_r , out_Ct_r , out_a_r , out_ap_r );
 
+    bool physically_valid = true;
+    int  physical_checks  = 0;
+    auto check_range = [&](auto const & field, std::string const & name, real lower, real upper) {
+      physical_checks++;
+      real minimum = std::numeric_limits<real>::max();
+      real maximum = std::numeric_limits<real>::lowest();
+      for (size_t i = 0; i < field.size(); i++) {
+        real const value = field.data()[i];
+        minimum = std::min(minimum, value);
+        maximum = std::max(maximum, value);
+      }
+      if (!std::isfinite(minimum) || !std::isfinite(maximum) || minimum < lower || maximum > upper) {
+        physically_valid = false;
+        std::cerr << "toy_bem: " << name << " range = [" << minimum << ", " << maximum
+                  << "] is outside [" << lower << ", " << upper << "]" << std::endl;
+      }
+    };
+    check_range(out_pitch , "pitch"                       , 0   , M_PI / 2);
+    check_range(out_omega , "angular velocity"            , 0   , 10);
+    check_range(out_thrust, "thrust"                      , 0   , std::numeric_limits<real>::max());
+    check_range(out_torque, "torque"                      , 0   , std::numeric_limits<real>::max());
+    check_range(out_power , "power"                       , 0   , max_power * 1.001);
+    check_range(out_C_T   , "thrust coefficient"          , 0   , 2);
+    check_range(out_C_P   , "power coefficient"           , 0   , 16._fp / 27._fp);
+    check_range(out_C_Q   , "torque coefficient"          , 0   , 1);
+    check_range(out_a_r   , "axial induction factor"      , -0.5, 0.95);
+    check_range(out_ap_r  , "tangential induction factor" , -0.5, 0.5);
+    real const peak_power = yakl::intrinsics::maxval(out_power);
+    physical_checks++;
+    if (peak_power < 0.9 * max_power) {
+      physically_valid = false;
+      std::cerr << "toy_bem: peak power = " << peak_power
+                << " is below 90% of the rated-power target " << max_power << std::endl;
+    }
+    if (!physically_valid) endrun("BEM integration test produced a physically implausible solution");
+    std::cout << "toy_bem: PASS (" << physical_checks << " final-state physical checks)" << std::endl;
+
     realHost1d segment("segment",nrad);
     for (int i=0; i < nrad; i++) { segment(i) = bem.R_hub + (bem.R-bem.R_hub) * (i+0.5) / nrad; }
     yakl::SimpleNetCDF nc;
@@ -565,4 +602,3 @@ int main(int argc, char** argv) {
   Kokkos::finalize();
   MPI_Finalize();
 }
-

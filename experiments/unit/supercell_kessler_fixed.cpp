@@ -4,6 +4,7 @@
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
+#include "integration_test.h"
 #include "les_closure.h"
 #include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
@@ -17,17 +18,17 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real        sim_time      = 7201;
+    real        sim_time      = 30;
     real        xlen          = 100000;
     real        ylen          = 100000;
     real        zlen          = 20000;
-    int         nx_glob       = 200;
-    int         ny_glob       = 200;
+    int         nx_glob       = 32;
+    int         ny_glob       = 32;
     int         nz            = 40;
     std::string out_prefix    = "supercell_kessler_fixed";
     real        dtphys_in     = 0;
     int         dyn_cycle     = 1;
-    real        out_freq      = 7200;
+    real        out_freq      = sim_time + 1;
     real        inform_freq   = 10;
     bool        is_restart    = false;
     std::string restart_file  = "";
@@ -121,10 +122,12 @@ int main(int argc, char** argv) {
       }
     } // End main simulation loop
 
+    coupler.write_output_file(out_prefix, true);
+    custom_modules::check_kessler_solution(coupler, out_prefix);
+
     yakl::timer_stop("main");
   }
   yakl::finalize();
   Kokkos::finalize();
   MPI_Finalize();
 }
-
