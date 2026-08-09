@@ -745,11 +745,10 @@ namespace modules {
         // Load the stencil for momentum with the cell to the left of the edge as the center cell
         for (int ii = 0; ii < ord; ii++) { s(ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*
                                                     fields_loc(idU,hs+k,hs+j,i+ii); }
-        modify_stencil_immersed_der0( s , immersed );
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC ru_L = 0;
         if (use_weno || (imm_weno && immersed_dist(k,j,std::min(nx-1,i)) <= 6)) {
-          Limiter::value_based(s,dummy,ru_L,false,false);
+          Limiter::value_based(s,dummy,ru_L,immersed(hsm1-1),immersed(hsm1+1));
         }
         else                                                               { ru_L = TransformMatrices::sampR(s); }
 
@@ -765,11 +764,10 @@ namespace modules {
         // Load the stencil for momentum with the cell to the right of the edge as the center cell
         for (int ii = 0; ii < ord; ii++) { s(ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*
                                                     fields_loc(idU,hs+k,hs+j,i+ii+1); }
-        modify_stencil_immersed_der0( s , immersed );
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC ru_R = 0;
         if (use_weno || (imm_weno && immersed_dist(k,j,std::min(nx-1,i)) <= 6)) {
-          Limiter::value_based(s,ru_R,dummy,false,false);
+          Limiter::value_based(s,ru_R,dummy,immersed(hsm1-1),immersed(hsm1+1));
         }
         else                                                               { ru_R = TransformMatrices::sampL(s);      }
         bool immersed_L = immersed_prop(hs+k,hs+j,hs+i-1) > imm_th;
@@ -802,11 +800,10 @@ namespace modules {
         // Load the stencil for momentum with the cell left of the edge as the center cell
         for (int jj = 0; jj < ord; jj++) { s(jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*
                                                     fields_loc(idV,hs+k,j+jj,hs+i); }
-        modify_stencil_immersed_der0( s , immersed );
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rv_L;
         if (use_weno || (imm_weno && immersed_dist(k,std::min(ny-1,j),i) <= 6)) {
-          Limiter::value_based(s,dummy,rv_L,false,false);
+          Limiter::value_based(s,dummy,rv_L,immersed(hsm1-1),immersed(hsm1+1));
         }
         else                                                               { rv_L = TransformMatrices::sampR(s);      }
         if (wall_y1 && py == 0         && j == 0 ) rv_L = 0; // Impose wall boundary condition
@@ -824,11 +821,10 @@ namespace modules {
         // Load the stencil for momentum with the cell right of the edge as the center cell
         for (int jj = 0; jj < ord; jj++) { s(jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*
                                                     fields_loc(idV,hs+k,j+jj+1,hs+i); }
-        modify_stencil_immersed_der0( s , immersed );
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rv_R;
         if (use_weno || (imm_weno && immersed_dist(k,std::min(ny-1,j),i) <= 6)) {
-          Limiter::value_based(s,rv_R,dummy,false,false);
+          Limiter::value_based(s,rv_R,dummy,immersed(hsm1-1),immersed(hsm1+1));
         }
         else                                                               { rv_R = TransformMatrices::sampL(s);      }
         bool immersed_L = immersed_prop(hs+k,hs+j-1,hs+i) > imm_th;
@@ -871,14 +867,13 @@ namespace modules {
           s       (kk) = fields_loc(idW,k+kk,hs+j,hs+i);
         }
         modify_stencil_immersed_der0( rho_pert , immersed );
-        modify_stencil_immersed_der0( s        , immersed );
         for (int kk = 0; kk < ord; kk++) { s(kk) *= rho_pert(kk) + hy_dens_cells(k+kk); }
         // Multiply by normalized grid spacing to transform into zeta space
         for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
         // Non-WENO reconstruction of momentum at this edge from the left side
         FLOC rw_L;
         if (use_weno || (imm_weno && immersed_dist(std::min(nz-1,k),j,i) <= 6)) {
-          Limiter::value_based(s,dummy,rw_L,false,false);
+          Limiter::value_based(s,dummy,rw_L,immersed(hsm1-1),immersed(hsm1+1));
         }
         else                                                               { rw_L = TransformMatrices::sampR(s);      }
         rw_L /= metjac_edges(1+k-1,1);  // Divide by metric jacobian at this edge to transform to physical space
@@ -903,14 +898,13 @@ namespace modules {
           s       (kk) = fields_loc(idW,k+kk+1,hs+j,hs+i);
         }
         modify_stencil_immersed_der0( rho_pert , immersed );
-        modify_stencil_immersed_der0( s        , immersed );
         for (int kk = 0; kk < ord; kk++) { s(kk) *= rho_pert(kk) + hy_dens_cells(k+kk+1); }
         // Multiply by normalized grid spacing to transform into zeta space
         for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
         // Non-WENO reconstruction of momentum at this edge from the right side
         FLOC rw_R;
         if (use_weno || (imm_weno && immersed_dist(std::min(nz-1,k),j,i) <= 6)) {
-          Limiter::value_based(s,rw_R,dummy,false,false);
+          Limiter::value_based(s,rw_R,dummy,immersed(hsm1-1),immersed(hsm1+1));
         }
         else                                                               { rw_R = TransformMatrices::sampL(s);      }
         rw_R /= metjac_edges(1+k,0); // Divide by metric jacobian at this edge to transform to physical space
@@ -958,10 +952,10 @@ namespace modules {
           SArray<FLOC,ord> s;
           for (int ii = 0; ii < ord; ii++) { s(ii) = advect_fields(l,hs+k,hs+j,i+ii+ind); }
           // Extend the last fluid value through immersed portions of the stencil
-          modify_stencil_immersed_der0( s , immersed );
+          if (l != idU) modify_stencil_immersed_der0( s , immersed );
           FLOC val_L, val_R;
           if (use_weno || (imm_weno && immersed_dist(k,j,std::min(nx-1,i)) <= 6)) {
-            Limiter::value_based(s,val_L,val_R,false,false);
+            Limiter::value_based(s,val_L,val_R,l == idU && immersed(hsm1-1),l == idU && immersed(hsm1+1));
           } else {
             val_L = TransformMatrices::sampL(s);
             val_R = TransformMatrices::sampR(s);
@@ -987,10 +981,10 @@ namespace modules {
           SArray<FLOC,ord> s;
           for (int jj = 0; jj < ord; jj++) { s(jj) = advect_fields(l,hs+k,j+jj+ind,hs+i); }
           // Extend the last fluid value through immersed portions of the stencil
-          modify_stencil_immersed_der0( s , immersed );
+          if (l != idV) modify_stencil_immersed_der0( s , immersed );
           FLOC val_L, val_R;
           if (use_weno || (imm_weno && immersed_dist(k,std::min(ny-1,j),i) <= 6)) {
-            Limiter::value_based(s,val_L,val_R,false,false);
+            Limiter::value_based(s,val_L,val_R,l == idV && immersed(hsm1-1),l == idV && immersed(hsm1+1));
           } else {
             val_L = TransformMatrices::sampL(s);
             val_R = TransformMatrices::sampR(s);
@@ -1016,13 +1010,13 @@ namespace modules {
           SArray<FLOC,ord> s;
           for (int kk = 0; kk < ord; kk++) { s(kk) = advect_fields(l,k+kk+ind,hs+j,hs+i); }
           // Extend physical values before applying the vertical metric transformation
-          modify_stencil_immersed_der0( s , immersed );
+          if (l != idW) modify_stencil_immersed_der0( s , immersed );
           // Multiply by normalized grid spacing to transform into zeta space
           for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+ind+kk)))/
                                                       dz(std::max(0,std::min(nz-1,k-1 +ind   ))); }
           FLOC val_L, val_R;
           if (use_weno || (imm_weno && immersed_dist(std::min(nz-1,k),j,i) <= 6)) {
-            Limiter::value_based(s,val_L,val_R,false,false);
+            Limiter::value_based(s,val_L,val_R,l == idW && immersed(hsm1-1),l == idW && immersed(hsm1+1));
           } else {
             val_L = TransformMatrices::sampL(s);
             val_R = TransformMatrices::sampR(s);

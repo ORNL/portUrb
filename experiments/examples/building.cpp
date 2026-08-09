@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_cell_centered.h"
+#include "dynamics_edge_centered.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
     real        xlen        = 400;
     real        ylen        = 400;
     real        zlen        = 400;
-    real        sim_time    = xlen/usfc*20+0.1;
+    real        sim_time    = xlen/usfc*1+0.1;
     int         nx_glob     = 100;
     int         ny_glob     = 100;
     int         nz          = 100;

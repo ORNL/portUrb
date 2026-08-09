@@ -685,7 +685,7 @@ namespace modules {
       FLOC hvcoef = hvbeta/dt/std::pow(2.0,(double)(ord));
       if ((ord/2)%2==1) hvcoef *= -1;
 
-      FLOC immbeta_amp = 15;
+      FLOC immbeta_amp = 20;
       FLOC immbeta_pow = 1;
 
       // Interpolate needed quantities at cell edges in the x, y, and z directions
@@ -695,12 +695,12 @@ namespace modules {
         for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(l,hs+k,hs+j,i+ii); }
         SArray<bool,ord> imm;        // Stencil values for immersed boundary
         for (int ii = 0; ii < ord; ii++) { imm(ii) = immersed_prop(hs+k,hs+j,i+ii) > imm_th; }
-        modify_stencil_immersed_der0( s , imm);
+        if (l != idU) modify_stencil_immersed_der0( s , imm);
         val_x(l,k,j,i) = TransformMatrices::edge_val(s);
         if (l != idP) {
           SArray<FLOC,ord> s_hv;
           for (int ii = 0; ii < ord; ii++) { s_hv(ii) = s(ii); }
-          modify_stencil_immersed_der0( s_hv , imm );
+          if (l != idU) modify_stencil_immersed_der0( s_hv , imm );
           FLOC hvcoefloc = hvcoef;
           FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(k,j,std::min(nx-1,i)), immersed_dist(k,j,std::max(0,i-1)) ) );
           if (imm_dist <= 12) {
@@ -717,12 +717,12 @@ namespace modules {
         for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(l,hs+k,j+jj,hs+i); }
         SArray<bool,ord> imm;        // Stencil values for immersed boundary
         for (int jj = 0; jj < ord; jj++) { imm(jj) = immersed_prop(hs+k,j+jj,hs+i) > imm_th; }
-        modify_stencil_immersed_der0( s , imm);
+        if (l != idV) modify_stencil_immersed_der0( s , imm);
         val_y(l,k,j,i) = TransformMatrices::edge_val(s);
         if (l != idP) {
           SArray<FLOC,ord> s_hv;
           for (int jj = 0; jj < ord; jj++) { s_hv(jj) = s(jj); }
-          modify_stencil_immersed_der0( s_hv , imm );
+          if (l != idV) modify_stencil_immersed_der0( s_hv , imm );
           FLOC hvcoefloc = hvcoef;
           FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(k,std::min(ny-1,j),i), immersed_dist(k,std::max(0,j-1),i) ) );
           if (imm_dist <= 12) {
@@ -741,12 +741,12 @@ namespace modules {
         for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(l,k+kk,hs+j,hs+i); }
         SArray<bool,ord> imm;        // Stencil values for immersed boundary
         for (int kk = 0; kk < ord; kk++) { imm(kk) = immersed_prop(k+kk,hs+j,hs+i) > imm_th; }
-        modify_stencil_immersed_der0( s , imm);
+        if (l != idW) modify_stencil_immersed_der0( s , imm);
         if (l != idP) {
           // Hyperviscosity uses physical-space values; metric scaling below applies only to edge interpolation
           SArray<FLOC,ord> s_hv;
           for (int kk = 0; kk < ord; kk++) { s_hv(kk) = s(kk); }
-          modify_stencil_immersed_der0( s_hv , imm );
+          if (l != idW) modify_stencil_immersed_der0( s_hv , imm );
           FLOC hvcoefloc = hvcoef;
           FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(std::min(nz-1,k),j,i), immersed_dist(std::max(0,k-1),j,i) ) );
           if (imm_dist <= 12) {

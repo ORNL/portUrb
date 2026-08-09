@@ -989,7 +989,6 @@ namespace core {
       nc.create_dim( "y"   , get_ny_glob() ); // Create global y dimension
       nc.create_dim( "z"   , nz );            // Create z dimension
       nc.create_dim( "zi"  , nz+1 );          // Create z-interface dimension
-      nc.create_dim( "t"   , 1 );             // Create time dimension, even though it's only one time per file
       std::vector<std::string> dimnames_column  = {"z"};         // define dimension names for column variables
       std::vector<std::string> dimnames_surface = {"y","x"};     // define dimension names for surface variables
       std::vector<std::string> dimnames_3d      = {"z","y","x"}; // define dimension names for 3D variables
@@ -1005,8 +1004,6 @@ namespace core {
       nc.create_var<float>( "vvel"         , dimnames_3d ); // Create v-velocity variable
       nc.create_var<float>( "wvel"         , dimnames_3d ); // Create w-velocity variable
       nc.create_var<float>( "temperature"  , dimnames_3d ); // Create temperature variable
-      nc.create_var<float>( "etime"        , {"t"} );       // Create elapsed time variable
-      nc.create_var<int  >( "file_counter" , {"t"} );       // Create variable to store current file counter
       auto tracer_names = get_tracer_names();
       // Create tracer variables
       for (int tr = 0; tr < num_tracers; tr++) { nc.create_var<float>( tracer_names.at(tr) , dimnames_3d ); }
@@ -1032,6 +1029,8 @@ namespace core {
           else if (hash == get_type_hash<uchar >()) { nc.create_var<uchar >(name,dimnames_3d     ); }
         }
       }
+      nc.writeGlobalAttribute(etime       ,"etime"       ); // Store elapsed time as file metadata
+      nc.writeGlobalAttribute(file_counter,"file_counter"); // Store file counter as file metadata
       nc.enddef(); // End define mode, which means we can now write data to the file
       //////////////////////////////////////////////////////
       // WRITE DATA TO FILE
@@ -1045,10 +1044,10 @@ namespace core {
       yakl::parallel_for( YAKL_AUTO_LABEL() , ny , KOKKOS_LAMBDA (int j) { yloc(j) = (j+j_beg+0.5)*dy; });
       nc.write_all( yloc , "y" , {j_beg} );
       nc.begin_indep_data(); // Begin independent data section for variables that are the same on all processes
-      if (is_mainproc()) nc.write( zmid         , "z"            ); // Write z midpoints from main process
-      if (is_mainproc()) nc.write( zint         , "zi"           ); // Write z interfaces from main process
-      if (is_mainproc()) nc.write( (float)etime , "etime"        ); // Write elapsed time from main process
-      if (is_mainproc()) nc.write( file_counter , "file_counter" ); // Write file counter from main process
+      if (is_mainproc()) {
+        nc.write( zmid.as<float>() , "z"  ); // Write z midpoints from main process
+        nc.write( zint.as<float>() , "zi" ); // Write z interfaces from main process
+      }
       nc.end_indep_data(); // End independent data section so that other processes can write their own data
       auto &dm = get_data_manager_readonly(); // Get a reference to the read-only DataManager
       std::vector<MPI_Offset> start_3d      = {0,j_beg,i_beg}; // Starting indices for 3D variables
@@ -1126,26 +1125,27 @@ namespace core {
       auto tracer_names = get_tracer_names();
       yakl::SimplePNetCDF nc(par_comm.get_mpi_comm()); // Create SimplePNetCDF object with the coupler's MPI communicator
       nc.open( get_option<std::string>("restart_file") , NC_NOWRITE ); // Open the restart file in read-only mode
-      nc.begin_indep_data(); // Begin independent data section
-      real etime;
-      if (is_mainproc()) nc.read( etime        , "etime"        ); // Read elapsed time from main process
-      if (is_mainproc()) nc.read( file_counter , "file_counter" ); // Read file counter from main process
-      nc.end_indep_data(); // End independent data section
-      par_comm.broadcast(file_counter); // Broadcast file counter to all processes
-      par_comm.broadcast(etime       ); // Broadcast elapsed time to all processes
+      real etime = 0;
+      nc.readGlobalAttribute(etime       ,"etime"       ); // Read elapsed time from file metadata
+      nc.readGlobalAttribute(file_counter,"file_counter"); // Read file counter from file metadata
       set_option<real>("elapsed_time",etime); // Update coupler's elapsed time
       std::vector<MPI_Offset> start_3d      = {0,j_beg,i_beg}; // Starting indices for 3D variables
       std::vector<MPI_Offset> start_surface = {  j_beg,i_beg}; // Starting indices for surface variables
       std::vector<MPI_Offset> start_column  = {0            }; // Starting index for column variables
-      nc.read_all(dm.get<real,3>("density_dry"),"density_dry",start_3d); // Read dry density
-      nc.read_all(dm.get<real,3>("uvel"       ),"uvel"       ,start_3d); // Read u-velocity
-      nc.read_all(dm.get<real,3>("vvel"       ),"vvel"       ,start_3d); // Read v-velocity
-      nc.read_all(dm.get<real,3>("wvel"       ),"wvel"       ,start_3d); // Read w-velocity
-      nc.read_all(dm.get<real,3>("temperature"),"temperature",start_3d); // Read temperature
+      auto read_real = [&] (auto const &field, std::string const &name, std::vector<MPI_Offset> const &start) {
+        auto field_float = field.template as<float>();
+        nc.read_all(field_float,name,start);
+        field_float.template as<real>().deep_copy_to(field);
+      };
+      read_real(dm.get<real,3>("density_dry"),"density_dry",start_3d); // Read dry density
+      read_real(dm.get<real,3>("uvel"       ),"uvel"       ,start_3d); // Read u-velocity
+      read_real(dm.get<real,3>("vvel"       ),"vvel"       ,start_3d); // Read v-velocity
+      read_real(dm.get<real,3>("wvel"       ),"wvel"       ,start_3d); // Read w-velocity
+      read_real(dm.get<real,3>("temperature"),"temperature",start_3d); // Read temperature
       // Read tracer variables from file
       for (int i=0; i < tracer_names.size(); i++) {
         if (nc.var_exists(tracer_names.at(i))) {
-          nc.read_all(dm.get<real,3>(tracer_names.at(i)),tracer_names.at(i),start_3d);
+          read_real(dm.get<real,3>(tracer_names.at(i)),tracer_names.at(i),start_3d);
         }
       }
       // Read user-registered output variables from file according to their specified dimensions and type
@@ -1155,17 +1155,17 @@ namespace core {
         auto dims = output_vars.at(ivar).dims;
         if        (dims == DIMS_COLUMN ) {
           if      (hash == get_type_hash<float >()) { nc.read_all(dm.get<float ,1>(name),name,start_column); }
-          else if (hash == get_type_hash<double>()) { nc.read_all(dm.get<double,1>(name),name,start_column); }
+          else if (hash == get_type_hash<double>()) { read_real(dm.get<double,1>(name),name,start_column); }
           else if (hash == get_type_hash<int   >()) { nc.read_all(dm.get<int   ,1>(name),name,start_column); }
           else if (hash == get_type_hash<uchar >()) { nc.read_all(dm.get<uchar ,1>(name),name,start_column); }
         } else if (dims == DIMS_SURFACE) {
           if      (hash == get_type_hash<float >()) { nc.read_all(dm.get<float ,2>(name),name,start_surface); }
-          else if (hash == get_type_hash<double>()) { nc.read_all(dm.get<double,2>(name),name,start_surface); }
+          else if (hash == get_type_hash<double>()) { read_real(dm.get<double,2>(name),name,start_surface); }
           else if (hash == get_type_hash<int   >()) { nc.read_all(dm.get<int   ,2>(name),name,start_surface); }
           else if (hash == get_type_hash<uchar >()) { nc.read_all(dm.get<uchar ,2>(name),name,start_surface); }
         } else if (dims == DIMS_3D     ) {
           if      (hash == get_type_hash<float >()) { nc.read_all(dm.get<float ,3>(name),name,start_3d); }
-          else if (hash == get_type_hash<double>()) { nc.read_all(dm.get<double,3>(name),name,start_3d); }
+          else if (hash == get_type_hash<double>()) { read_real(dm.get<double,3>(name),name,start_3d); }
           else if (hash == get_type_hash<int   >()) { nc.read_all(dm.get<int   ,3>(name),name,start_3d); }
           else if (hash == get_type_hash<uchar >()) { nc.read_all(dm.get<uchar ,3>(name),name,start_3d); }
         }
@@ -1600,5 +1600,3 @@ namespace core {
   };
 
 }
-
-
