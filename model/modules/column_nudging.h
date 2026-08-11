@@ -44,6 +44,7 @@ namespace modules {
       int nz   = coupler.get_nz();
       auto &dm = coupler.get_data_manager_readwrite();
       auto immersed = dm.get<real const,3>("immersed_proportion"); // Proportion of cell that is immersed
+      auto imm_th = coupler.get_option<real>("immersed_proportion_threshold",0.5); // Get the threshold for immersed proportion
       // Accumulate desired fields for column averaging for current state
       core::MultiField<real,3> state;
       for (int i=0; i < names.size(); i++) { state.add_field( dm.get<real,3>(names.at(i)) ); }
@@ -52,7 +53,7 @@ namespace modules {
       // Nudge desired fields toward target column averages if not immersed
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        if (immersed(k,j,i) == 0) {
+        if (immersed(k,j,i) <= imm_th) {
           state(l,k,j,i) += dt * ( column(l,k) - state_col_avg(l,k) ) / time_scale;
         }
       });
@@ -75,6 +76,7 @@ namespace modules {
       int nz   = coupler.get_nz();
       auto &dm = coupler.get_data_manager_readwrite();
       auto immersed = dm.get<real const,3>("immersed_proportion"); // Proportion of cell that is immersed
+      auto imm_th = coupler.get_option<real>("immersed_proportion_threshold",0.5); // Get the threshold for immersed proportion
       // Accumulate desired fields for column averaging for current state
       core::MultiField<real,3> state;
       for (int i=0; i < names.size(); i++) { state.add_field( dm.get<real,3>(names.at(i)) ); }
@@ -82,7 +84,7 @@ namespace modules {
       // Nudge desired fields toward target column averages if not immersed
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(names.size(),nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        if (immersed(k,j,i) == 0) {
+        if (immersed(k,j,i) <= imm_th) {
           state(l,k,j,i) += dt * ( column(l,k) - state(l,k,j,i) ) / time_scale;
         }
       });
