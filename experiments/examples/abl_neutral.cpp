@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_riemann_explore.h"
+#include "dynamics_edge_centered.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     // auto buoy_theta = config["buoy_theta"].as<bool>();
     // auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx         = 10;
+    real dx         = 5;
     real umax       = 15;
     real cfl        = 0.6;
     real cs         = umax*2;
@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , buoy_theta    );
     coupler.set_option<real       >( "dycore_cs"                          , cs            );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false         );
-    coupler.set_option<bool       >( "dycore_use_weno_immersed"           , true          );
+    coupler.set_option<bool       >( "dycore_use_weno_immersed"           , false         );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false         );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false         );
     coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5        );
@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
                   coupler.generate_levels_equal(nz,zlen) ,
                   ny_glob , nx_glob , ylen , xlen );
 
-    modules::Dynamics_Euler_Stratified_WenoFV     dycore;
+    modules::Dynamics_Euler_Stratified     dycore;
     modules::SurfaceFlux                          sfc_flux;
     modules::Time_Averager                        time_averager;
     modules::LES_Closure                          les_closure;
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
     time_averager.init        ( coupler );
     col_nudge    .set_column  ( coupler );
     custom_modules::sc_perturb( coupler );
-    modules::overwrite_interpolate( coupler , "ABL_neutral-dx_5_00000010.nc" , {"uvel","vvel","wvel","TKE"} );
+    // modules::overwrite_interpolate( coupler , "ABL_neutral-dx_5_00000010.nc" , {"uvel","vvel","wvel","TKE"} );
 
     real etime = coupler.get_option<real>("elapsed_time");
     core::Counter output_counter( out_freq    , etime );
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         coupler.track_max_wind();
         coupler.run_module( [&] (Coupler &c) { modules::geostrophic_wind_forcing_indiv(c,dt,lat_g,u_g,v_g); } , "geostrophic_forcing" );
-        coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column              (c,dt,1800);          } , "column_nudging"      );
+        // coupler.run_module( [&] (Coupler &c) { col_nudge.nudge_to_column              (c,dt,1800);          } , "column_nudging"      );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step                       (c,dt);               } , "dycore"              );
         coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w                (c,dt,1000,0.05);     } , "sponge"              );
         coupler.run_module( [&] (Coupler &c) { sfc_flux.apply                         (c,dt);               } , "surface_fluxes"      );

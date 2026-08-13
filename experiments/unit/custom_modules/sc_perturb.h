@@ -57,32 +57,32 @@ namespace custom_modules {
     } else if (coupler.get_option<std::string>("init_data") == "ABL_convective") {
 
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
+        yakl::Random rand(0,k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
-        if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
+        if (z <= 400) dm_temp(k,j,i) += rand.gen_uniform<real>(-0.25,0.25);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_stable") {
 
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
+        yakl::Random rand(0,k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
-        if (z <= 50) dm_temp(k,j,i) += rand.genFP<real>(-0.10,0.10);
+        if (z <= 50) dm_temp(k,j,i) += rand.gen_uniform<real>(-0.10,0.10);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
 
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
+        yakl::Random rand(0,k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
-        if (z <= 400) dm_temp(k,j,i) += rand.genFP<real>(-0.25,0.25);
+        if (z <= 400) dm_temp(k,j,i) += rand.gen_uniform<real>(-0.25,0.25);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral2") {
 
       auto wind = coupler.get_option<real>("hub_height_wind_mag");
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
+        yakl::Random rand(0,k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real x = (i_beg+i+0.5)*dx;
         real y = (j_beg+j+0.5)*dy;
         real z = zmid(k);
@@ -94,7 +94,7 @@ namespace custom_modules {
         real delv = 0.1*wind;
         dm_uvel(k,j,i) += delu*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(uper*2*M_PI*y/ylen);
         dm_vvel(k,j,i) += delv*std::exp(0.5)*std::exp(-0.5*zl*zl)*zl*std::cos(vper*2*M_PI*x/xlen);
-        if (z <= ztop)  dm_temp(k,j,i) += rand.genFP<real>(-1,1);
+        if (z <= ztop)  dm_temp(k,j,i) += rand.gen_uniform<real>(-1,1);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "supercell") {
@@ -130,5 +130,4 @@ namespace custom_modules {
   }
 
 }
-
 

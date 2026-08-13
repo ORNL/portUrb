@@ -64,7 +64,7 @@ namespace modules {
         auto &dm       = coupler.get_data_manager_readonly(); // Get reference to the data manager (read/write)
         auto imm_theta = dm.get<real const,3>("surface_flux_imm_theta");
         nc.redef();
-        if (! nc.dim_exists("nzp2")) nc.create_dim( "zp2" , nz+2 );
+        if (! nc.dim_exists("zp2")) nc.create_dim( "zp2" , nz+2 );
         nc.create_var<real>( "surface_flux_imm_theta" , {"zp2","y","x"} );
         nc.enddef();
         real3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
@@ -130,6 +130,7 @@ namespace modules {
       auto sfc_wpthp   = coupler.get_option<real>("surface_flux_sfc_wpthetap"         ,0     );
       auto presc_ustar = coupler.get_option<bool>("surface_flux_use_fixed_ustar"      ,false );
       auto ustar_val   = coupler.get_option<real>("surface_flux_fixed_ustar"          ,0.01  );
+      auto imm_th      = coupler.get_option<real>("immersed_threshold"                ,0.5   );
       real4d state  ("state"  ,num_state  ,nz,ny,nx);
       real4d tracers("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
@@ -159,11 +160,12 @@ namespace modules {
         tend_w  (k,j,i) = 0;
         tend_th (k,j,i) = 0;
         tend_tke(k,j,i) = 0;
+        if (imm_prop(hs+k,hs+j,hs+i) > imm_th) return;
         int indk, indj, indi;  // These indices will index into neighboring cells
 
         // West neighbor
         indk = hs+k;  indj = hs+j;  indi = hs+i-1;
-        if (imm_prop(indk,indj,indi) > 0) {
+        if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
           real z0        = imm_rough(indk,indj,indi);
@@ -182,7 +184,7 @@ namespace modules {
 
         // East neighbor
         indk = hs+k;  indj = hs+j;  indi = hs+i+1;
-        if (imm_prop(indk,indj,indi) > 0) {
+        if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
           real z0        = imm_rough(indk,indj,indi);
@@ -201,7 +203,7 @@ namespace modules {
 
         // South neighbor
         indk = hs+k;  indj = hs+j-1;  indi = hs+i;
-        if (imm_prop(indk,indj,indi) > 0) {
+        if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
           real z0        = imm_rough(indk,indj,indi);
@@ -220,7 +222,7 @@ namespace modules {
 
         // North neighbor
         indk = hs+k;  indj = hs+j+1;  indi = hs+i;
-        if (imm_prop(indk,indj,indi) > 0) {
+        if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
           real z0        = imm_rough(indk,indj,indi);
@@ -239,7 +241,7 @@ namespace modules {
 
         // Bottom neighbor
         indk = hs+k-1;  indj = hs+j;  indi = hs+i;
-        if (imm_prop(indk,indj,indi) > 0) {
+        if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
           real z0     = imm_rough(indk,indj,indi);
@@ -248,21 +250,24 @@ namespace modules {
           real th0    = imm_theta(indk,indj,indi);
           real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
           real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
-          if (stab_corr) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),use_z0h,presc_wpthp,sfc_wpthp,ustar,thstar);
+          if (presc_wpthp) thstar = -sfc_wpthp/std::max(ustar,1e-10);
+          if (stab_corr) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),use_z0h,presc_ustar,
+                                              presc_wpthp,sfc_wpthp,ustar,thstar);
+          real wpthp = presc_wpthp ? sfc_wpthp : (force_theta ? -ustar*thstar : 0);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
           if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dz(k);
-          if (force_theta || presc_wpthp) tend_th(k,j,i) += -ustar*thstar/dz(k);
+          tend_th(k,j,i) += wpthp/dz(k);
           if (k == 0) {
             sfc_ustar (j,i) = ustar;
             sfc_thstar(j,i) = thstar;
-            sfc_bflux (j,i) = grav/th0*ustar*thstar;
+            sfc_bflux (j,i) = grav/th0*wpthp;
           }
         }
         
         // Top neighbor
         indk = hs+k+1;  indj = hs+j;  indi = hs+i;
-        if (imm_prop(indk,indj,indi) > 0) {
+        if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
           real z0     = imm_rough(indk,indj,indi);
@@ -294,7 +299,7 @@ namespace modules {
 
     KOKKOS_INLINE_FUNCTION static void stability_correction( real vk , real mag , real z0 , real th , real th0 ,
                                                              real grav , real Czil , real nu , real dzloc ,
-                                                             bool use_z0h , bool presc_wpthp , real sfc_wpthp ,
+                                                             bool use_z0h , bool presc_ustar , bool presc_wpthp , real sfc_wpthp ,
                                                              real & ustar , real & thstar ) {
       using std::sqrt;
       using std::log;
@@ -349,7 +354,7 @@ namespace modules {
           real xh = sqrt(sqrt(1-gamma_h*zeta));
           psi_h_2 = 2*log((1+xh*xh)/2);
         }
-        ustar  = vk*mag     /std::max(1.e-3,log((dzloc/2+z0 )/z0 ) - psi_m_1 + psi_m_2);
+        if (! presc_ustar) ustar = vk*mag/std::max(1.e-3,log((dzloc/2+z0)/z0) - psi_m_1 + psi_m_2);
         thstar = vk*(th-th0)/std::max(1.e-3,log((dzloc/2+z0h)/z0h) - psi_h_1 + psi_h_2);
         if (presc_wpthp) thstar = -sfc_wpthp/std::max(ustar,1e-10);
         if (std::abs(ustar-ustar_prev) <= tol && std::abs(thstar-thstar_prev) <= tol) break;
@@ -481,4 +486,3 @@ namespace modules {
   };
 
 }
-

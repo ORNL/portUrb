@@ -14,18 +14,20 @@ namespace modules {
   // solver at cell edges, high-order-accurate reconstruction, Weighted Essentially Non-Oscillatory (WENO) limiting,
   // and Strong Stability Preserving Runge-Kutta time stepping.
   // The dycore prognoses full density, u-, v-, and w-momenta, and mass-weighted virtual potential temperature
-  // This dynamical core supports immersed boundaries, including partially immersed cells. Immersed
+  // This dynamical core supports immersed boundaries. Immersed
   // boundaries will have no-slip wall BC's, and surface fluxes are applied in a separate module to model friction
   // based on a prescribed roughness length with Monin-Obukhov thoery.
 
-  struct Dynamics_Euler_Stratified_WenoFV {
+  struct Dynamics_Euler_Stratified {
     // Order of accuracy (numerical convergence rate for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
       int static constexpr ord = 9;
     #else
       int static constexpr ord = PORTURB_ORD;
     #endif
-    int static constexpr hs  = (ord-1)/2; // Number of halo cells ("hs" == "halo size")
+    static_assert(ord == 3 || ord == 5 || ord == 7 || ord == 9,
+                  "dynamics_rk_simpler requires ord to be 3, 5, 7, or 9");
+    int static constexpr hs  = (ord+1)/2; // Number of halo cells ("hs" == "halo size")
     int static constexpr num_state = 5;   // Number of state variables
     // IDs for the variables in the state vector
     int  static constexpr idR = 0;  // Density
@@ -37,24 +39,66 @@ namespace modules {
     typedef float FLOC; // Use single precision locally
 
 
+    // Increase precursor ghost-cell storage when the current sub-cycle exceeds its capacity
+    void ensure_dycore_max_cycles(core::Coupler &coupler, int icycle) const {
+      auto max_cycles = coupler.get_option<int>("dycore_max_cycles");
+      if (icycle < max_cycles) return;
 
-    // Compute total mass of dry air and total mass of virtual potential temperature in the domain
+      using yakl::SimpleBounds;
+      auto &dm         = coupler.get_data_manager_readwrite();
+      auto new_cycles  = icycle+1;
+      auto num_stages  = coupler.get_option<int>("dycore_num_stages");
+      auto num_tracers = coupler.get_num_tracers();
+      auto nx          = coupler.get_nx();
+      auto ny          = coupler.get_ny();
+      auto nz          = coupler.get_nz();
+
+      auto resize = [&](std::string const & name, std::vector<int> dims) {
+        if (! dm.entry_exists(name)) return;
+        auto old_arr    = dm.get_collapsed<FLOC const>(name);
+        auto old_size   = old_arr.extent(0);
+        auto cycle_size = old_size / max_cycles;
+        yakl::Array<FLOC *,yakl::DeviceSpace> saved(name+"_saved",old_size);
+        old_arr.deep_copy_to(saved);
+        Kokkos::fence();
+        dm.unregister_and_deallocate(name);
+        dims.at(0) = new_cycles;
+        dm.register_and_allocate<FLOC>(name,dims);
+        auto new_arr = dm.get_collapsed<FLOC>(name);
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<1>(new_arr.extent(0)) , KOKKOS_LAMBDA (int i) {
+          new_arr(i) = saved(i < old_size ? i : i % cycle_size);
+        });
+        Kokkos::fence();
+      };
+
+      resize("dycore_ghost_x1",{max_cycles,num_stages,num_state+num_tracers+1,nz,ny,hs});
+      resize("dycore_ghost_x2",{max_cycles,num_stages,num_state+num_tracers+1,nz,ny,hs});
+      resize("dycore_ghost_y1",{max_cycles,num_stages,num_state+num_tracers+1,nz,hs,nx});
+      resize("dycore_ghost_y2",{max_cycles,num_stages,num_state+num_tracers+1,nz,hs,nx});
+      coupler.set_option("dycore_max_cycles",new_cycles);
+    }
+
+
+
+    // Compute total mass of density and total mass of virtual potential temperature in the domain
     //  for verification purposes
     // coupler : Coupler instance
     // state   : State array from the dynamical core
-    // Returns a tuple of summed dry air mass and virtual potential temperature mass
+    // Returns a tuple of summed density mass and virtual potential temperature mass
     std::tuple<real,real> compute_mass( core::Coupler & coupler , real4d const & state ) const {
       using yakl::SimpleBounds;
       auto nx = coupler.get_nx();
       auto ny = coupler.get_ny();
       auto nz = coupler.get_nz();
+      auto dx = coupler.get_dx(); // grid spacing in x-direction
+      auto dy = coupler.get_dy(); // grid spacing in y-direction
       auto dz = coupler.get_dz(); // 1D array of vertical cell grid spacing
       real3d r("r",nz,ny,nx); // Array for local mass
       real3d t("t",nz,ny,nx); // Array for local virtual potential temperature mass
       // Accumulate local mass
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j , int i) {
-        r(k,j,i) = state(idR,k,j,i)*dz(k);
-        t(k,j,i) = state(idT,k,j,i)*dz(k);
+        r(k,j,i) = state(idR,k,j,i)*dx*dy*dz(k);
+        t(k,j,i) = state(idT,k,j,i)*dx*dy*dz(k);
       });
       // Reduce the global mass across all MPI ranks
       real rmass = coupler.get_parallel_comm().all_reduce( yakl::intrinsics::sum(r) , MPI_SUM );
@@ -120,6 +164,9 @@ namespace modules {
     // Advances the solution in the coupler's data manager state and tracer arrays by dt_phys
     // Uses sub-cycling with stable dynamical core time steps as needed
     void time_step(core::Coupler &coupler, real dt_phys) const {
+      if (dt_phys <= 0) {
+        endrun("ERROR: dynamics time_step requires dt_phys > 0");
+      }
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_start("time_step");
       #endif
@@ -141,9 +188,11 @@ namespace modules {
       // Must pass the icycle number to the time stepper for proper ghost cell exchanges with precursor simulations
       auto time_stepper = coupler.get_option<std::string>("dycore_time_stepper","ssprk3");
       for (int icycle = 0; icycle < ncycles; icycle++) {
+        ensure_dycore_max_cycles(coupler,icycle);
         if      (time_stepper == "linrk3") { time_step_rk3   (coupler,state,tracers,dt_dyn,icycle); }
         else if (time_stepper == "linrk4") { time_step_rk4   (coupler,state,tracers,dt_dyn,icycle); }
         else if (time_stepper == "ssprk3") { time_step_ssprk3(coupler,state,tracers,dt_dyn,icycle); }
+        else                               { throw std::runtime_error(std::string("ERROR: Unknown time stepper: ") + time_stepper); }
       }
       // auto mass2 = compute_mass( coupler , state );
       // if (coupler.is_mainproc()) std::cout << "Mass change: "
@@ -206,6 +255,7 @@ namespace modules {
           tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/3 * tracers_tend(l,k,j,i);
         }
       });
+      enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/2
@@ -220,6 +270,7 @@ namespace modules {
           tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/2 * tracers_tend(l,k,j,i);
         }
       });
+      enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt/1
@@ -295,6 +346,7 @@ namespace modules {
           tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/4 * tracers_tend(l,k,j,i);
         }
       });
+      enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/3
@@ -309,6 +361,7 @@ namespace modules {
           tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/3 * tracers_tend(l,k,j,i);
         }
       });
+      enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt/2
@@ -323,6 +376,7 @@ namespace modules {
           tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn/2 * tracers_tend(l,k,j,i);
         }
       });
+      enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       // Stage 4
       // Compute time derivatives of the state and tracers using a time step of dt/1
@@ -398,6 +452,7 @@ namespace modules {
           tracers_tmp(l,k,j,i) = tracers(l,k,j,i) + dt_dyn * tracers_tend(l,k,j,i);
         }
       });
+      enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/4
@@ -416,6 +471,7 @@ namespace modules {
                                  (1._fp/4._fp) * dt_dyn * tracers_tend(l,k,j,i);
         }
       });
+      enforce_immersed_boundaries( coupler , state_tmp , tracers_tmp );
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt*2/3
@@ -462,7 +518,7 @@ namespace modules {
       auto nx              = coupler.get_nx();                             // Number of cells in x-direction (excluding halos)
       auto ny              = coupler.get_ny();                             // Number of cells in y-direction (excluding halos)
       auto nz              = coupler.get_nz();                             // Number of cells in z-direction (excluding halos)
-      auto immersed_power  = coupler.get_option<real>("immersed_power",5); // Power for immersed boundary relaxation
+      auto immersed_thresh = coupler.get_option<real>("immersed_threshold",0.5); // Threshold for immersed cells
       auto &dm             = coupler.get_data_manager_readonly();          // Get data manager for read-only access
       auto hy_dens_cells   = dm.get<real const,1>("hy_dens_cells" );       // Hydrostatic density
       auto hy_theta_cells  = dm.get<real const,1>("hy_theta_cells");       // Hydrostatic potential temperature
@@ -470,7 +526,7 @@ namespace modules {
       auto tracer_positive = dm.get<bool const,1>("tracer_positive");      // Whether each tracer is positive definite
 
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        real mult = std::pow( immersed_prop(hs+k,hs+j,hs+i) , immersed_power ); // Pre-compute multiplier
+        real mult = immersed_prop(hs+k,hs+j,hs+i) > immersed_thresh ? 1 : 0;
         // TODO: Find a way to calculate drag in here
         // Density
         {
@@ -583,28 +639,24 @@ namespace modules {
       auto latitude          = coupler.get_option<real>("latitude",0); // For coriolis
       auto &dm               = coupler.get_data_manager_readonly();    // Grab read-only data manager
       auto immersed_prop     = dm.get<real const,3>("dycore_immersed_proportion_halos"); // Immersed Proportion
-      auto any_immersed2     = dm.get<bool const,3>("dycore_any_immersed2" ); // Are any immersed in 3-D halo within 2 cells?
-      auto any_immersed4     = dm.get<bool const,3>("dycore_any_immersed4" ); // Are any immersed in 3-D halo within 4 cells?
-      auto any_immersed6     = dm.get<bool const,3>("dycore_any_immersed6" ); // Are any immersed in 3-D halo within 6 cells?
-      auto any_immersed8     = dm.get<bool const,3>("dycore_any_immersed8" ); // Are any immersed in 3-D halo within 8 cells?
-      auto any_immersed10    = dm.get<bool const,3>("dycore_any_immersed10"); // Are any immersed in 3-D halo within 10 cells?
+      auto immersed_dist     = dm.get<real const,3>("dycore_immersed_distance"); // Distance to the nearest immersed cell
       auto hy_dens_cells     = dm.get<real const,1>("hy_dens_cells"        ); // Hydrostatic density in cells with halos
       auto hy_theta_cells    = dm.get<real const,1>("hy_theta_cells"       ); // Hydrostatic potential temperature in cells with halos
+      auto hy_theta_edges    = dm.get<real const,1>("hy_theta_edges"       ); // Hydrostatic potential temperature at edges (no halos)
       auto hy_pressure_cells = dm.get<real const,1>("hy_pressure_cells"    ); // Hydrostatic pressure in cells with halos
       auto hy_dens_edges     = dm.get<real const,1>("hy_dens_edges"        ); // Hydrostatic density in cells with halos
-      auto hy_theta_edges    = dm.get<real const,1>("hy_theta_edges"       ); // Hydrostatic potential temperature at edges (no halos)
       auto metjac_edges      = dm.get<real const,2>("dycore_metjac_edges"  ); // Vertical metric jacobian at edges
-      auto tracer_adds_mass  = dm.get<bool const,1>("tracer_adds_mass" );
-      auto &neigh            = coupler.get_neighbor_rankid_matrix();
       // Compute matrices to convert polynomial coefficients to 2 GLL points and stencil values to 2 GLL points
       // These matrices will be in column-row format. That performed better than row-column format in performance tests
       real r_dx = 1./dx; // reciprocal of grid spacing
       real r_dy = 1./dy; // reciprocal of grid spacing
       real fcor = 2*7.2921e-5*std::sin(latitude/180*M_PI);  // For coriolis: 2*Omega*sin(latitude)
 
-      real constexpr imm_th = 0.5;
+      auto imm_th = coupler.get_option<real>("immersed_threshold",0.5);
 
       FLOC cs = coupler.get_option<real>("dycore_cs",350);  // Speed of sound
+
+      int constexpr hsm1 = hs-1; // Halo size minus one
 
       // The main working array that holds all prognostic variables plus pressure
       yakl::Array<FLOC ****> fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs);
@@ -650,9 +702,9 @@ namespace modules {
       halo_boundary_conditions( coupler , fields_loc , istage , icycle );
 
       // Storage for cell-edge fluxes in each direction
-      yakl::Array<FLOC *****> limits_x("limits_x",2,num_state+1+num_tracers,nz,ny,nx+1);
-      yakl::Array<FLOC *****> limits_y("limits_y",2,num_state+1+num_tracers,nz,ny+1,nx);
-      yakl::Array<FLOC *****> limits_z("limits_z",2,num_state+1+num_tracers,nz+1,ny,nx);
+      yakl::Array<FLOC ****> flux_x("flux_x",num_state+num_tracers,nz,ny,nx+1);
+      yakl::Array<FLOC ****> flux_y("flux_y",num_state+num_tracers,nz,ny+1,nx);
+      yakl::Array<FLOC ****> flux_z("flux_z",num_state+num_tracers,nz+1,ny,nx);
 
       // Storage for cell-edge pressure in each direction
       yakl::Array<FLOC ***> p_x("p_x",nz,ny,nx+1);
@@ -677,277 +729,307 @@ namespace modules {
       // COMPUTE UPWIND CELL_EDGE PRESSURE AND MOMENTUM (ACOUSTIC UPWINDING)
       /////////////////////////////////////////////////////////////////////////////////////////
       // Reconstruct upwind cell-edge pressure and momentum in x-direction
-      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) ,
-                                                        KOKKOS_LAMBDA (int k, int j, int i) {
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
+        SArray<FLOC,ord> s;        // Stencil values
+        
+        // Load the stencils for cell immersion and pressure with the cell to the left of the edge as the center cell
         for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii) > imm_th; }
-        for (int l=0; l < num_state+1+num_tracers; l++) {
-          SArray<FLOC,ord> s;        // Stencil values
-          for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(l,hs+k,hs+j,i+ii); }
-          bool immL = immersed(hs-1);
-          bool immR = immersed(hs+1);
-          if (l == idV || l == idW || l == idP) {
-            modify_stencil_immersed_der0( s , immersed );
-            immL = false;
-            immR = false;
-          }
-          if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
-            Limiter::value_based(s,limits_x(1,l,k,j,i  ),
-                                   limits_x(0,l,k,j,i+1),immL,immR);
-          } else {
-            limits_x(1,l,k,j,i  ) = TransformMatrices::sampL(s);
-            limits_x(0,l,k,j,i+1) = TransformMatrices::sampR(s);
-          }
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii); }
+        // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
+        modify_stencil_immersed_der0( s , immersed );
+        FLOC p_L, dummy;  // To hold left pressure and dummy right pressure
+        if (use_weno || (imm_weno && immersed_dist(k,j,std::min(nx-1,i)) <= 6)) { Limiter::value_based(s,dummy,p_L,false,false); }
+        else                                                               { p_L = TransformMatrices::sampR(s); }
+
+        // Load the stencil for momentum with the cell to the left of the edge as the center cell
+        for (int ii = 0; ii < ord; ii++) { s(ii) = (fields_loc(idR,hs+k,hs+j,i+ii)+hy_dens_cells(hs+k))*
+                                                    fields_loc(idU,hs+k,hs+j,i+ii); }
+        // Non-WENO reconstruction of momentum at this edge from the left side
+        FLOC ru_L = 0;
+        if (use_weno || (imm_weno && immersed_dist(k,j,std::min(nx-1,i)) <= 6)) {
+          Limiter::value_based(s,dummy,ru_L,immersed(hsm1-1),immersed(hsm1+1));
         }
+        else                                                               { ru_L = TransformMatrices::sampR(s); }
+
+        // Load the stencils for cell immersion and pressure with the cell to the right of the edge as the center cell
+        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop (hs+k,hs+j,i+ii+1) > imm_th; }
+        for (int ii = 0; ii < ord; ii++) { s       (ii) = fields_loc(idP,hs+k,hs+j,i+ii+1); }
+        // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
+        modify_stencil_immersed_der0( s , immersed );
+        FLOC p_R; // To hold right pressure
+        if (use_weno || (imm_weno && immersed_dist(k,j,std::min(nx-1,i)) <= 6)) { Limiter::value_based(s,p_R,dummy,false,false); }
+        else                                                               { p_R = TransformMatrices::sampL(s);      }
+
+        // Load the stencil for momentum with the cell to the right of the edge as the center cell
+        for (int ii = 0; ii < ord; ii++) { s(ii) = (fields_loc(idR,hs+k,hs+j,i+ii+1)+hy_dens_cells(hs+k))*
+                                                    fields_loc(idU,hs+k,hs+j,i+ii+1); }
+        // Non-WENO reconstruction of momentum at this edge from the right side
+        FLOC ru_R = 0;
+        if (use_weno || (imm_weno && immersed_dist(k,j,std::min(nx-1,i)) <= 6)) {
+          Limiter::value_based(s,ru_R,dummy,immersed(hsm1-1),immersed(hsm1+1));
+        }
+        else                                                               { ru_R = TransformMatrices::sampL(s);      }
+        bool immersed_L = immersed_prop(hs+k,hs+j,hs+i-1) > imm_th;
+        bool immersed_R = immersed_prop(hs+k,hs+j,hs+i  ) > imm_th;
+        if (immersed_L || immersed_R) {
+          ru_L = 0;
+          ru_R = 0;
+          if      (immersed_L && ! immersed_R) p_L = p_R;
+          else if (immersed_R && ! immersed_L) p_R = p_L;
+        }
+        // Compute the upwind state of pressure and momentum at this edge
+        p_x (k,j,i) = 0.5f*(p_L  + p_R  - cs*(ru_R-ru_L)   );
+        ru_x(k,j,i) = 0.5f*(ru_L + ru_R -    (p_R -p_L )/cs);
       });
-      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) ,
-                                                        KOKKOS_LAMBDA (int k, int j, int i) {
+
+      // Reconstruct upwind cell-edge pressure and momentum in y-direction
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
+        SArray<FLOC,ord> s;         // Stencil values
+
+        // Load the stencils for cell immersion and pressure with the cell left of the edge as the center cell
         for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj,hs+i) > imm_th; }
-        for (int l=0; l < num_state+1+num_tracers; l++) {
-          SArray<FLOC,ord> s;        // Stencil values
-          for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(l,hs+k,j+jj,hs+i); }
-          bool immL = immersed(hs-1);
-          bool immR = immersed(hs+1);
-          if (l == idU || l == idW || l == idP) {
-            modify_stencil_immersed_der0( s , immersed );
-            immL = false;
-            immR = false;
-          }
-          if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
-            Limiter::value_based(s,limits_y(1,l,k,j  ,i),
-                                   limits_y(0,l,k,j+1,i),immL,immR);
-          } else {
-            limits_y(1,l,k,j  ,i) = TransformMatrices::sampL(s);
-            limits_y(0,l,k,j+1,i) = TransformMatrices::sampR(s);
-          }
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj,hs+i); }
+        // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
+        modify_stencil_immersed_der0( s , immersed );
+        FLOC p_L, dummy; // To hold left pressure and dummy right pressure
+        if (use_weno || (imm_weno && immersed_dist(k,std::min(ny-1,j),i) <= 6)) { Limiter::value_based(s,dummy,p_L,false,false); }
+        else                                                               { p_L = TransformMatrices::sampR(s);      }
+
+        // Load the stencil for momentum with the cell left of the edge as the center cell
+        for (int jj = 0; jj < ord; jj++) { s(jj) = (fields_loc(idR,hs+k,j+jj,hs+i)+hy_dens_cells(hs+k))*
+                                                    fields_loc(idV,hs+k,j+jj,hs+i); }
+        // Non-WENO reconstruction of momentum at this edge from the left side
+        FLOC rv_L;
+        if (use_weno || (imm_weno && immersed_dist(k,std::min(ny-1,j),i) <= 6)) {
+          Limiter::value_based(s,dummy,rv_L,immersed(hsm1-1),immersed(hsm1+1));
         }
+        else                                                               { rv_L = TransformMatrices::sampR(s);      }
+        if (wall_y1 && py == 0         && j == 0 ) rv_L = 0; // Impose wall boundary condition
+        if (wall_y2 && py == nproc_y-1 && j == ny) rv_L = 0; // Impose wall boundary condition
+
+        // Load the stencils for cell immersion and pressure with the cell right of the edge as the center cell
+        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop (hs+k,j+jj+1,hs+i) > imm_th; }
+        for (int jj = 0; jj < ord; jj++) { s       (jj) = fields_loc(idP,hs+k,j+jj+1,hs+i); }
+        // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
+        modify_stencil_immersed_der0( s , immersed );
+        FLOC p_R; // To hold right pressure
+        if (use_weno || (imm_weno && immersed_dist(k,std::min(ny-1,j),i) <= 6)) { Limiter::value_based(s,p_R,dummy,false,false); }
+        else                                                               { p_R = TransformMatrices::sampL(s);      }
+
+        // Load the stencil for momentum with the cell right of the edge as the center cell
+        for (int jj = 0; jj < ord; jj++) { s(jj) = (fields_loc(idR,hs+k,j+jj+1,hs+i)+hy_dens_cells(hs+k))*
+                                                    fields_loc(idV,hs+k,j+jj+1,hs+i); }
+        // Non-WENO reconstruction of momentum at this edge from the right side
+        FLOC rv_R;
+        if (use_weno || (imm_weno && immersed_dist(k,std::min(ny-1,j),i) <= 6)) {
+          Limiter::value_based(s,rv_R,dummy,immersed(hsm1-1),immersed(hsm1+1));
+        }
+        else                                                               { rv_R = TransformMatrices::sampL(s);      }
+        bool immersed_L = immersed_prop(hs+k,hs+j-1,hs+i) > imm_th;
+        bool immersed_R = immersed_prop(hs+k,hs+j  ,hs+i) > imm_th;
+        if (immersed_L || immersed_R) {
+          rv_L = 0;
+          rv_R = 0;
+          if      (immersed_L && ! immersed_R) p_L = p_R;
+          else if (immersed_R && ! immersed_L) p_R = p_L;
+        }
+        if (wall_y1 && py == 0         && j == 0 ) rv_R = 0; // Impose wall boundary condition
+        if (wall_y2 && py == nproc_y-1 && j == ny) rv_R = 0; // Impose wall boundary condition
+        // Compute the upwind state of pressure and momentum at this edge
+        p_y (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rv_R-rv_L)   );
+        rv_y(k,j,i) = 0.5f*(rv_L + rv_R -    (p_R -p_L )/cs);
+        if (wall_y1 && py == 0         && j == 0 ) rv_y(k,j,i) = 0; // Impose wall boundary condition
+        if (wall_y2 && py == nproc_y-1 && j == ny) rv_y(k,j,i) = 0; // Impose wall boundary condition
       });
-      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) ,
-                                                        KOKKOS_LAMBDA (int k, int j, int i) {
+
+      // Reconstruct upwind cell-edge pressure and momentum in z-direction
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
         SArray<bool,ord> immersed; // Whether a stencil cell is immersed
+        SArray<FLOC,ord> s;         // Stencil values
+        SArray<FLOC,ord> rho_pert;  // Density perturbation stencil used to construct momentum
+
+        // Load the stencils for cell immersion and pressure with the cell left of the edge as the center cell
         for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk,hs+j,hs+i) > imm_th; }
-        for (int l=0; l < num_state+1+num_tracers; l++) {
-          SArray<FLOC,ord> s;        // Stencil values
-          for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(l,k+kk,hs+j,hs+i); }
-          bool immL = immersed(hs-1);
-          bool immR = immersed(hs+1);
-          if (l == idU || l == idV || l == idP) {
-            modify_stencil_immersed_der0( s , immersed );
-            immL = false;
-            immR = false;
-          }
-          // Multiply by normalized grid spacing to transform into zeta space
-          for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+kk)))/
-                                                      dz(std::max(0,std::min(nz-1,k      ))); }
-          if (use_weno || (imm_weno && any_immersed6(k,j,i))) {
-            Limiter::value_based(s,limits_z(1,l,k  ,j,i),
-                                   limits_z(0,l,k+1,j,i),immL,immR);
-          } else {
-            limits_z(1,l,k  ,j,i) = TransformMatrices::sampL(s);
-            limits_z(0,l,k+1,j,i) = TransformMatrices::sampR(s);
-          }
-          // Divide by metric jacobian at this edge to transform to physical space
-          limits_z(1,l,k  ,j,i) = TransformMatrices::sampL(s) / metjac_edges(k  ,1);
-          limits_z(0,l,k+1,j,i) = TransformMatrices::sampR(s) / metjac_edges(k+1,0);
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk,hs+j,hs+i); }
+        // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
+        modify_stencil_immersed_der0( s , immersed );
+        for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
+        FLOC p_L, dummy; // To hold left pressure and dummy right pressure
+        if (use_weno || (imm_weno && immersed_dist(std::min(nz-1,k),j,i) <= 6)) { Limiter::value_based(s,dummy,p_L,false,false); }
+        else                                                               { p_L = TransformMatrices::sampR(s);      }
+        p_L /= metjac_edges(1+k-1,1);
+
+        // Extend primitive values before constructing momentum so vertical hydrostatic density is retained
+        for (int kk = 0; kk < ord; kk++) {
+          rho_pert(kk) = fields_loc(idR,k+kk,hs+j,hs+i);
+          s       (kk) = fields_loc(idW,k+kk,hs+j,hs+i);
         }
-      });
+        modify_stencil_immersed_der0( rho_pert , immersed );
+        for (int kk = 0; kk < ord; kk++) { s(kk) *= rho_pert(kk) + hy_dens_cells(k+kk); }
+        // Multiply by normalized grid spacing to transform into zeta space
+        for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1-1+kk)))/dz(std::max(0,k-1)); }
+        // Non-WENO reconstruction of momentum at this edge from the left side
+        FLOC rw_L;
+        if (use_weno || (imm_weno && immersed_dist(std::min(nz-1,k),j,i) <= 6)) {
+          Limiter::value_based(s,dummy,rw_L,immersed(hsm1-1),immersed(hsm1+1));
+        }
+        else                                                               { rw_L = TransformMatrices::sampR(s);      }
+        rw_L /= metjac_edges(1+k-1,1);  // Divide by metric jacobian at this edge to transform to physical space
+        if (wall_z1 && k == 0 ) rw_L = 0; // Impose wall boundary condition
+        if (wall_z2 && k == nz) rw_L = 0; // Impose wall boundary condition
 
+        // Load the stencils for cell immersion and pressure with the cell right of the edge as the center cell
+        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop (k+kk+1,hs+j,hs+i) > imm_th; }
+        for (int kk = 0; kk < ord; kk++) { s       (kk) = fields_loc(idP,k+kk+1,hs+j,hs+i); }
+        // Upon encountering an immersed boundary, set zero derivative boundary conditions from there out in that direction
+        modify_stencil_immersed_der0( s , immersed );
+        // Multiply by normalized grid spacing to transform into zeta space
+        for (int kk = 0; kk < ord; kk++) { s       (kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
+        FLOC p_R; // To hold right pressure
+        if (use_weno || (imm_weno && immersed_dist(std::min(nz-1,k),j,i) <= 6)) { Limiter::value_based(s,p_R,dummy,false,false); }
+        else                                                               { p_R = TransformMatrices::sampL(s);      }
+        p_R /= metjac_edges(1+k,0); // Divide by metric jacobian at this edge to transform to physical space
 
-      int npack = num_state+1+num_tracers;
-      yakl::Array<FLOC ***> edge_send_buf_W("edge_send_buf_W",npack,nz,ny);
-      yakl::Array<FLOC ***> edge_send_buf_E("edge_send_buf_E",npack,nz,ny);
-      yakl::Array<FLOC ***> edge_recv_buf_W("edge_recv_buf_W",npack,nz,ny);
-      yakl::Array<FLOC ***> edge_recv_buf_E("edge_recv_buf_E",npack,nz,ny);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,ny) , KOKKOS_LAMBDA (int v, int k, int j) {
-        edge_send_buf_W(v,k,j) = limits_x(1,v,k,j,0 );
-        edge_send_buf_E(v,k,j) = limits_x(0,v,k,j,nx);
+        // Extend primitive values before constructing momentum so vertical hydrostatic density is retained
+        for (int kk = 0; kk < ord; kk++) {
+          rho_pert(kk) = fields_loc(idR,k+kk+1,hs+j,hs+i);
+          s       (kk) = fields_loc(idW,k+kk+1,hs+j,hs+i);
+        }
+        modify_stencil_immersed_der0( rho_pert , immersed );
+        for (int kk = 0; kk < ord; kk++) { s(kk) *= rho_pert(kk) + hy_dens_cells(k+kk+1); }
+        // Multiply by normalized grid spacing to transform into zeta space
+        for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hsm1+kk)))/dz(std::min(nz-1,k)); }
+        // Non-WENO reconstruction of momentum at this edge from the right side
+        FLOC rw_R;
+        if (use_weno || (imm_weno && immersed_dist(std::min(nz-1,k),j,i) <= 6)) {
+          Limiter::value_based(s,rw_R,dummy,immersed(hsm1-1),immersed(hsm1+1));
+        }
+        else                                                               { rw_R = TransformMatrices::sampL(s);      }
+        rw_R /= metjac_edges(1+k,0); // Divide by metric jacobian at this edge to transform to physical space
+        bool immersed_L = immersed_prop(hs+k-1,hs+j,hs+i) > imm_th;
+        bool immersed_R = immersed_prop(hs+k  ,hs+j,hs+i) > imm_th;
+        if (immersed_L || immersed_R) {
+          rw_L = 0;
+          rw_R = 0;
+          if      (immersed_L && ! immersed_R) p_L = p_R;
+          else if (immersed_R && ! immersed_L) p_R = p_L;
+        }
+        if (wall_z1 && k == 0 ) rw_R = 0; // Impose wall boundary condition
+        if (wall_z2 && k == nz) rw_R = 0; // Impose wall boundary condition
+        // Compute the upwind state of pressure and momentum at this edge
+        p_z (k,j,i) = 0.5f*(p_L  + p_R  - cs*(rw_R-rw_L)   );
+        rw_z(k,j,i) = 0.5f*(rw_L + rw_R -    (p_R -p_L )/cs);
+        if (wall_z1 && k == 0 ) rw_z(k,j,i) = 0; // Impose wall boundary condition
+        if (wall_z2 && k == nz) rw_z(k,j,i) = 0; // Impose wall boundary condition
       });
-      coupler.get_parallel_comm().send_receive<FLOC,3>( { {edge_recv_buf_W,neigh(1,0),4} , {edge_recv_buf_E,neigh(1,2),5} } ,
-                                                        { {edge_send_buf_W,neigh(1,0),5} , {edge_send_buf_E,neigh(1,2),4} } );
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,ny) , KOKKOS_LAMBDA (int v, int k, int j) {
-        limits_x(0,v,k,j,0 ) = edge_recv_buf_W(v,k,j);
-        limits_x(1,v,k,j,nx) = edge_recv_buf_E(v,k,j);
-      });
-
-      yakl::Array<FLOC ***> edge_send_buf_S("edge_send_buf_S",npack,nz,nx);
-      yakl::Array<FLOC ***> edge_send_buf_N("edge_send_buf_N",npack,nz,nx);
-      yakl::Array<FLOC ***> edge_recv_buf_S("edge_recv_buf_S",npack,nz,nx);
-      yakl::Array<FLOC ***> edge_recv_buf_N("edge_recv_buf_N",npack,nz,nx);
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,nx) , KOKKOS_LAMBDA (int v, int k, int i) {
-          edge_send_buf_S(v,k,i) = limits_y(1,v,k,0 ,i);
-          edge_send_buf_N(v,k,i) = limits_y(0,v,k,ny,i);
-      });
-      coupler.get_parallel_comm().send_receive<FLOC,3>( { {edge_recv_buf_S,neigh(0,1),6} , {edge_recv_buf_N,neigh(2,1),7} } ,
-                                                        { {edge_send_buf_S,neigh(0,1),7} , {edge_send_buf_N,neigh(2,1),6} } );
-      parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,nx) , KOKKOS_LAMBDA (int v, int k, int i) {
-        limits_y(0,v,k,0 ,i) = edge_recv_buf_S(v,k,i);
-        limits_y(1,v,k,ny,i) = edge_recv_buf_N(v,k,i);
-      });
-
-      edge_boundary_conditions( coupler , limits_x , limits_y , limits_z , istage , icycle );
-
-      auto flux_x = limits_x.slice<4>(0,0,0,0,0);
-      auto flux_y = limits_y.slice<4>(0,0,0,0,0);
-      auto flux_z = limits_z.slice<4>(0,0,0,0,0);
 
       //////////////////////////////////////////////////////////////////////////////////////////////
-      // COMPUTE FLUXES
+      // COMPUTE UPWIND ADVECTED QUANTITIES, AND COMPUTE TOTAL UPWIND FLUXES (ADVECTIVE UPWINDING)
       //////////////////////////////////////////////////////////////////////////////////////////////
-      if (coupler.get_option<std::string>("dycore_riemann","upwind") == "llf") {
 
-        yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
-          FLOC r_L = limits_x(0,idR,k,j,i) + hy_dens_cells (hs+k);    FLOC r_R = limits_x(1,idR,k,j,i) + hy_dens_cells (hs+k);
-          FLOC u_L = limits_x(0,idU,k,j,i);                           FLOC u_R = limits_x(1,idU,k,j,i);
-          FLOC v_L = limits_x(0,idV,k,j,i);                           FLOC v_R = limits_x(1,idV,k,j,i);
-          FLOC w_L = limits_x(0,idW,k,j,i);                           FLOC w_R = limits_x(1,idW,k,j,i);
-          FLOC t_L = limits_x(0,idT,k,j,i) + hy_theta_cells(hs+k);    FLOC t_R = limits_x(1,idT,k,j,i) + hy_theta_cells(hs+k);
-          FLOC p_L = limits_x(0,idP,k,j,i);                           FLOC p_R = limits_x(1,idP,k,j,i);
-          FLOC ru = (r_L*u_L + r_R*u_R)/2;
-          FLOC r  = (r_L + r_R)/2;
-          FLOC u  = (u_L + u_R)/2;
-          FLOC v  = (v_L + v_R)/2;
-          FLOC w  = (w_L + w_R)/2;
-          FLOC t  = (t_L + t_R)/2;
-          FLOC p  = (p_L + p_R)/2;
-          flux_x(idR,k,j,i) = ru     - (std::abs(u)+cs)*(r_R-r_L)/2        ;
-          flux_x(idU,k,j,i) = ru*u+p - (std::abs(u)+cs)*(r_R*u_R-r_L*u_L)/2;
-          flux_x(idV,k,j,i) = ru*v   - (std::abs(u)+cs)*(r_R*v_R-r_L*v_L)/2;
-          flux_x(idW,k,j,i) = ru*w   - (std::abs(u)+cs)*(r_R*w_R-r_L*w_L)/2;
-          flux_x(idT,k,j,i) = ru*t   - (std::abs(u)+cs)*(r_R*t_R-r_L*t_L)/2;
-          for (int l=0; l < num_tracers; l++) {
-            FLOC t_L = limits_x(0,num_state+1+l,k,j,i);    FLOC t_R = limits_x(1,num_state+1+l,k,j,i);
-            FLOC t = (t_L + t_R)/2;
-            flux_x(num_state+1+l,k,j,i) = ru*t - (std::abs(u)+cs)*(r_R*t_R-r_L*t_L)/2;
-          }
-        });
-        yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          FLOC r_L = limits_y(0,idR,k,j,i) + hy_dens_cells (hs+k);    FLOC r_R = limits_y(1,idR,k,j,i) + hy_dens_cells (hs+k);
-          FLOC u_L = limits_y(0,idU,k,j,i);                           FLOC u_R = limits_y(1,idU,k,j,i);
-          FLOC v_L = limits_y(0,idV,k,j,i);                           FLOC v_R = limits_y(1,idV,k,j,i);
-          FLOC w_L = limits_y(0,idW,k,j,i);                           FLOC w_R = limits_y(1,idW,k,j,i);
-          FLOC t_L = limits_y(0,idT,k,j,i) + hy_theta_cells(hs+k);    FLOC t_R = limits_y(1,idT,k,j,i) + hy_theta_cells(hs+k);
-          FLOC p_L = limits_y(0,idP,k,j,i);                           FLOC p_R = limits_y(1,idP,k,j,i);
-          FLOC rv = (r_L*v_L + r_R*v_R)/2;
-          FLOC r  = (r_L + r_R)/2;
-          FLOC u  = (u_L + u_R)/2;
-          FLOC v  = (v_L + v_R)/2;
-          FLOC w  = (w_L + w_R)/2;
-          FLOC t  = (t_L + t_R)/2;
-          FLOC p  = (p_L + p_R)/2;
-          flux_y(idR,k,j,i) = rv     - (std::abs(v)+cs)*(r_R-r_L)/2        ;
-          flux_y(idU,k,j,i) = rv*u   - (std::abs(v)+cs)*(r_R*u_R-r_L*u_L)/2;
-          flux_y(idV,k,j,i) = rv*v+p - (std::abs(v)+cs)*(r_R*v_R-r_L*v_L)/2;
-          flux_y(idW,k,j,i) = rv*w   - (std::abs(v)+cs)*(r_R*w_R-r_L*w_L)/2;
-          flux_y(idT,k,j,i) = rv*t   - (std::abs(v)+cs)*(r_R*t_R-r_L*t_L)/2;
-          for (int l=0; l < num_tracers; l++) {
-            FLOC t_L = limits_y(0,num_state+1+l,k,j,i);    FLOC t_R = limits_y(1,num_state+1+l,k,j,i);
-            FLOC t = (t_L + t_R)/2;
-            flux_y(num_state+1+l,k,j,i) = rv*t - (std::abs(v)+cs)*(r_R*t_R-r_L*t_L)/2;
-          }
-        });
-        yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          FLOC r_L = limits_z(0,idR,k,j,i) + hy_dens_edges (k);    FLOC r_R = limits_z(1,idR,k,j,i) + hy_dens_edges (k);
-          FLOC u_L = limits_z(0,idU,k,j,i);                        FLOC u_R = limits_z(1,idU,k,j,i);
-          FLOC v_L = limits_z(0,idV,k,j,i);                        FLOC v_R = limits_z(1,idV,k,j,i);
-          FLOC w_L = limits_z(0,idW,k,j,i);                        FLOC w_R = limits_z(1,idW,k,j,i);
-          FLOC t_L = limits_z(0,idT,k,j,i) + hy_theta_edges(k);    FLOC t_R = limits_z(1,idT,k,j,i) + hy_theta_edges(k);
-          FLOC p_L = limits_z(0,idP,k,j,i);                        FLOC p_R = limits_z(1,idP,k,j,i);
-          FLOC rw = (r_L*w_L + r_R*w_R)/2;
-          FLOC r  = (r_L + r_R)/2;
-          FLOC u  = (u_L + u_R)/2;
-          FLOC v  = (v_L + v_R)/2;
-          FLOC w  = (w_L + w_R)/2;
-          FLOC t  = (t_L + t_R)/2;
-          FLOC p  = (p_L + p_R)/2;
-          flux_z(idR,k,j,i) = rw     - (std::abs(w)+cs)*(r_R-r_L)/2        ;
-          flux_z(idU,k,j,i) = rw*u   - (std::abs(w)+cs)*(r_R*u_R-r_L*u_L)/2;
-          flux_z(idV,k,j,i) = rw*v   - (std::abs(w)+cs)*(r_R*v_R-r_L*v_L)/2;
-          flux_z(idW,k,j,i) = rw*w+p - (std::abs(w)+cs)*(r_R*w_R-r_L*w_L)/2;
-          flux_z(idT,k,j,i) = rw*t   - (std::abs(w)+cs)*(r_R*t_R-r_L*t_L)/2;
-          for (int l=0; l < num_tracers; l++) {
-            FLOC t_L = limits_z(0,num_state+1+l,k,j,i);    FLOC t_R = limits_z(1,num_state+1+l,k,j,i);
-            FLOC t = (t_L + t_R)/2;
-            flux_z(num_state+1+l,k,j,i) = rw*t - (std::abs(w)+cs)*(r_R*t_R-r_L*t_L)/2;
-          }
-        });
+      // Pressure will not be included in the advected fields, so accure a MultiField without pressure
+      core::MultiField<FLOC,3> advect_fields;
+      advect_fields.add_field( fields_loc.slice<3>(idR,0,0,0) ); // Think of these 0 indices as Fortran's (:,:,:)
+      advect_fields.add_field( fields_loc.slice<3>(idU,0,0,0) );
+      advect_fields.add_field( fields_loc.slice<3>(idV,0,0,0) );
+      advect_fields.add_field( fields_loc.slice<3>(idW,0,0,0) );
+      advect_fields.add_field( fields_loc.slice<3>(idT,0,0,0) );
+      for (int tr=0; tr < num_tracers; tr++) { advect_fields.add_field( fields_loc.slice<3>(num_state+1+tr,0,0,0) ); }
+      int num_fields = advect_fields.get_num_fields(); // This will be num_state+num_tracers
 
-      } else if (coupler.get_option<std::string>("dycore_riemann","upwind") == "upwind") {
+      // Reconstruct cell-edge advectively upwind advected quantities and compute total fluxes in x-direction
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
+        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
+        FLOC ru = ru_x(k,j,i);        // Acoustically upwinded momentum in x-direction
+        if (immersed_prop(hs+k,hs+j,hs+i-1) > imm_th || immersed_prop(hs+k,hs+j,hs+i) > imm_th) ru = 0;
+        int ind = ru > 0 ? 0 : 1;     // Determine index offset based on flow direction
+        // Load the cell immersersion stencil based on upwind offset
+        for (int ii = 0; ii < ord; ii++) { immersed(ii) = immersed_prop(hs+k,hs+j,i+ii+ind) > imm_th; }
+        for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
+          // Gather the stencil values based on upwind offset
+          SArray<FLOC,ord> s;
+          for (int ii = 0; ii < ord; ii++) { s(ii) = advect_fields(l,hs+k,hs+j,i+ii+ind); }
+          // Extend the last fluid value through immersed portions of the stencil
+          if (l != idU) modify_stencil_immersed_der0( s , immersed );
+          FLOC val_L, val_R;
+          if (use_weno || (imm_weno && immersed_dist(k,j,std::min(nx-1,i)) <= 6)) {
+            Limiter::value_based(s,val_L,val_R,l == idU && immersed(hsm1-1),l == idU && immersed(hsm1+1));
+          } else {
+            val_L = TransformMatrices::sampL(s);
+            val_R = TransformMatrices::sampR(s);
+          }
+          FLOC val = ru > 0 ? val_R : val_L;
+          if (l == idT) val += hy_theta_cells(hs+k); // Add hydrostatic potential temperature back in
+          flux_x(l,k,j,i) = ru*val;      // Compute total flux vector for advected fields
+        }
+        flux_x(idR,k,j,i)  = ru;         // Mass flux
+        flux_x(idU,k,j,i) += p_x(k,j,i); // Momentum flux includes pressure
+      });
 
-        yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) , KOKKOS_LAMBDA (int k, int j, int i) {
-          FLOC r_L = limits_x(0,idR,k,j,i) + hy_dens_cells (hs+k);    FLOC r_R = limits_x(1,idR,k,j,i) + hy_dens_cells (hs+k);
-          FLOC u_L = limits_x(0,idU,k,j,i);                           FLOC u_R = limits_x(1,idU,k,j,i);
-          FLOC v_L = limits_x(0,idV,k,j,i);                           FLOC v_R = limits_x(1,idV,k,j,i);
-          FLOC w_L = limits_x(0,idW,k,j,i);                           FLOC w_R = limits_x(1,idW,k,j,i);
-          FLOC t_L = limits_x(0,idT,k,j,i) + hy_theta_cells(hs+k);    FLOC t_R = limits_x(1,idT,k,j,i) + hy_theta_cells(hs+k);
-          FLOC p_L = limits_x(0,idP,k,j,i);                           FLOC p_R = limits_x(1,idP,k,j,i);
-          real p  = (p_R+p_L)/2 - cs*(r_R*u_R-r_L*u_L)/2;
-          real ru = (r_R*u_R+r_L*u_L)/2 - (p_R-p_L)/(2*cs);
-          FLOC u  = ru > 0 ? u_L : u_R;
-          FLOC v  = ru > 0 ? v_L : v_R;
-          FLOC w  = ru > 0 ? w_L : w_R;
-          FLOC t  = ru > 0 ? t_L : t_R;
-          flux_x(idR,k,j,i) = ru    ;
-          flux_x(idU,k,j,i) = ru*u+p;
-          flux_x(idV,k,j,i) = ru*v  ;
-          flux_x(idW,k,j,i) = ru*w  ;
-          flux_x(idT,k,j,i) = ru*t  ;
-          for (int l=0; l < num_tracers; l++) {
-            FLOC t_L = limits_x(0,num_state+1+l,k,j,i);    FLOC t_R = limits_x(1,num_state+1+l,k,j,i);
-            FLOC t  = ru > 0 ? t_L : t_R;
-            flux_x(num_state+1+l,k,j,i) = ru*t;
+      // Reconstruct cell-edge advectively upwind advected quantities and compute total fluxes in y-direction
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
+        FLOC rv = rv_y(k,j,i);        // Acoustically upwinded momentum in y-direction
+        if (immersed_prop(hs+k,hs+j-1,hs+i) > imm_th || immersed_prop(hs+k,hs+j,hs+i) > imm_th) rv = 0;
+        int ind = rv > 0 ? 0 : 1;     // Determine index offset based on flow direction
+        // Load the cell immersion stencil based on upwind offset
+        for (int jj = 0; jj < ord; jj++) { immersed(jj) = immersed_prop(hs+k,j+jj+ind,hs+i) > imm_th; }
+        for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
+          // Gather the stencil values based on upwind offset
+          SArray<FLOC,ord> s;
+          for (int jj = 0; jj < ord; jj++) { s(jj) = advect_fields(l,hs+k,j+jj+ind,hs+i); }
+          // Extend the last fluid value through immersed portions of the stencil
+          if (l != idV) modify_stencil_immersed_der0( s , immersed );
+          FLOC val_L, val_R;
+          if (use_weno || (imm_weno && immersed_dist(k,std::min(ny-1,j),i) <= 6)) {
+            Limiter::value_based(s,val_L,val_R,l == idV && immersed(hsm1-1),l == idV && immersed(hsm1+1));
+          } else {
+            val_L = TransformMatrices::sampL(s);
+            val_R = TransformMatrices::sampR(s);
           }
-        });
-        yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          FLOC r_L = limits_y(0,idR,k,j,i) + hy_dens_cells (hs+k);    FLOC r_R = limits_y(1,idR,k,j,i) + hy_dens_cells (hs+k);
-          FLOC u_L = limits_y(0,idU,k,j,i);                           FLOC u_R = limits_y(1,idU,k,j,i);
-          FLOC v_L = limits_y(0,idV,k,j,i);                           FLOC v_R = limits_y(1,idV,k,j,i);
-          FLOC w_L = limits_y(0,idW,k,j,i);                           FLOC w_R = limits_y(1,idW,k,j,i);
-          FLOC t_L = limits_y(0,idT,k,j,i) + hy_theta_cells(hs+k);    FLOC t_R = limits_y(1,idT,k,j,i) + hy_theta_cells(hs+k);
-          FLOC p_L = limits_y(0,idP,k,j,i);                           FLOC p_R = limits_y(1,idP,k,j,i);
-          real p  = (p_R+p_L)/2 - cs*(r_R*v_R-r_L*v_L)/2;
-          real rv = (r_R*v_R+r_L*v_L)/2 - (p_R-p_L)/(2*cs);
-          FLOC u  = rv > 0 ? u_L : u_R;
-          FLOC v  = rv > 0 ? v_L : v_R;
-          FLOC w  = rv > 0 ? w_L : w_R;
-          FLOC t  = rv > 0 ? t_L : t_R;
-          flux_y(idR,k,j,i) = rv    ;
-          flux_y(idU,k,j,i) = rv*u  ;
-          flux_y(idV,k,j,i) = rv*v+p;
-          flux_y(idW,k,j,i) = rv*w  ;
-          flux_y(idT,k,j,i) = rv*t  ;
-          for (int l=0; l < num_tracers; l++) {
-            FLOC t_L = limits_y(0,num_state+1+l,k,j,i);    FLOC t_R = limits_y(1,num_state+1+l,k,j,i);
-            FLOC t  = rv > 0 ? t_L : t_R;
-            flux_y(num_state+1+l,k,j,i) = rv*t;
-          }
-        });
-        yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          FLOC r_L = limits_z(0,idR,k,j,i) + hy_dens_edges (k);    FLOC r_R = limits_z(1,idR,k,j,i) + hy_dens_edges (k);
-          FLOC u_L = limits_z(0,idU,k,j,i);                        FLOC u_R = limits_z(1,idU,k,j,i);
-          FLOC v_L = limits_z(0,idV,k,j,i);                        FLOC v_R = limits_z(1,idV,k,j,i);
-          FLOC w_L = limits_z(0,idW,k,j,i);                        FLOC w_R = limits_z(1,idW,k,j,i);
-          FLOC t_L = limits_z(0,idT,k,j,i) + hy_theta_edges(k);    FLOC t_R = limits_z(1,idT,k,j,i) + hy_theta_edges(k);
-          FLOC p_L = limits_z(0,idP,k,j,i);                        FLOC p_R = limits_z(1,idP,k,j,i);
-          real p  = (p_R+p_L)/2 - cs*(r_R*w_R-r_L*w_L)/2;
-          real rw = (r_R*w_R+r_L*w_L)/2 - (p_R-p_L)/(2*cs);
-          FLOC u  = rw > 0 ? u_L : u_R;
-          FLOC v  = rw > 0 ? v_L : v_R;
-          FLOC w  = rw > 0 ? w_L : w_R;
-          FLOC t  = rw > 0 ? t_L : t_R;
-          flux_z(idR,k,j,i) = rw    ;
-          flux_z(idU,k,j,i) = rw*u  ;
-          flux_z(idV,k,j,i) = rw*v  ;
-          flux_z(idW,k,j,i) = rw*w+p;
-          flux_z(idT,k,j,i) = rw*t  ;
-          for (int l=0; l < num_tracers; l++) {
-            FLOC t_L = limits_z(0,num_state+1+l,k,j,i);    FLOC t_R = limits_z(1,num_state+1+l,k,j,i);
-            FLOC t  = rw > 0 ? t_L : t_R;
-            flux_z(num_state+1+l,k,j,i) = rw*t;
-          }
-        });
+          FLOC val = rv > 0 ? val_R : val_L; // Choose value based on flow direction
+          if (l == idT) val += hy_theta_cells(hs+k); // Add hydrostatic potential temperature back in
+          flux_y(l,k,j,i) = rv*val;       // Compute total flux vector for advected fields
+        }
+        flux_y(idR,k,j,i)  = rv;          // Mass flux
+        flux_y(idV,k,j,i) += p_y(k,j,i);  // Momentum flux includes pressure
+      });
 
-      }
+      // Reconstruct cell-edge advectively upwind advected quantities and compute total fluxes in z-direction
+      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        SArray<bool,ord> immersed; // Whether a stencil cell is immersed
+        FLOC rw = rw_z(k,j,i);        // Acoustically upwinded momentum in z-direction
+        if (immersed_prop(hs+k-1,hs+j,hs+i) > imm_th || immersed_prop(hs+k,hs+j,hs+i) > imm_th) rw = 0;
+        int ind = rw > 0 ? 0 : 1;     // Determine index offset based on flow direction
+        // Load the cell immersion stencil based on upwind offset
+        for (int kk = 0; kk < ord; kk++) { immersed(kk) = immersed_prop(k+kk+ind,hs+j,hs+i) > imm_th; }
+        for (int l=1; l < num_fields; l++) { // Loop over all advected fields except density
+          // Gather the stencil values based on upwind offset
+          SArray<FLOC,ord> s;
+          for (int kk = 0; kk < ord; kk++) { s(kk) = advect_fields(l,k+kk+ind,hs+j,hs+i); }
+          // Extend physical values before applying the vertical metric transformation
+          if (l != idW) modify_stencil_immersed_der0( s , immersed );
+          // Multiply by normalized grid spacing to transform into zeta space
+          for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+ind+kk)))/
+                                                      dz(std::max(0,std::min(nz-1,k-1 +ind   ))); }
+          FLOC val_L, val_R;
+          if (use_weno || (imm_weno && immersed_dist(std::min(nz-1,k),j,i) <= 6)) {
+            Limiter::value_based(s,val_L,val_R,l == idW && immersed(hsm1-1),l == idW && immersed(hsm1+1));
+          } else {
+            val_L = TransformMatrices::sampL(s);
+            val_R = TransformMatrices::sampR(s);
+          }
+          FLOC val = rw > 0 ? val_R : val_L; // Choose value based on flow direction
+          // Divide by metric jacobian at this edge to transform to physical space
+          val /= rw > 0 ? metjac_edges(1+k-1,1) : metjac_edges(1+k,0);
+          if (l == idT)  val += hy_theta_edges(k); // Add hydrostatic potential temperature back in
+          flux_z(l,k,j,i) = rw*val;       // Compute total flux vector for advected fields
+        }
+        flux_z(idR,k,j,i)  = rw;          // Mass flux
+        flux_z(idW,k,j,i) += p_z(k,j,i);  // Momentum flux includes pressure
+      });
 
       //////////////////////////////////////////////////////////////////////////////////////////////
       // COMPUTE TENDENCIES FROM FLUX DIVERGENCES AND SOURCE TERMS
@@ -985,216 +1067,15 @@ namespace modules {
         }
         if (l < num_tracers) {
           // Compute tendencies as the flux divergence
-          tracers_tend(l,k,j,i) = -( flux_x(num_state+1+l,k,j,i+1) - flux_x(num_state+1+l,k,j,i) ) * r_dx
-                                  -( flux_y(num_state+1+l,k,j+1,i) - flux_y(num_state+1+l,k,j,i) ) * r_dy 
-                                  -( flux_z(num_state+1+l,k+1,j,i) - flux_z(num_state+1+l,k,j,i) ) / dz(k);
+          tracers_tend(l,k,j,i) = -( flux_x(num_state+l,k,j,i+1) - flux_x(num_state+l,k,j,i) ) * r_dx
+                                  -( flux_y(num_state+l,k,j+1,i) - flux_y(num_state+l,k,j,i) ) * r_dy 
+                                  -( flux_z(num_state+l,k+1,j,i) - flux_z(num_state+l,k,j,i) ) / dz(k);
         }
       });
 
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("compute_tendencies");
       #endif
-    }
-
-
-
-    void edge_boundary_conditions( core::Coupler & coupler                ,
-                                   yakl::Array<FLOC *****> const & limits_x ,
-                                   yakl::Array<FLOC *****> const & limits_y ,
-                                   yakl::Array<FLOC *****> const & limits_z ,
-                                   int istage                             ,
-                                   int icycle                             ) const {
-      using yakl::SimpleBounds;
-      auto nx           = coupler.get_nx(); // Local number of cells in x-direction (not including halos)
-      auto ny           = coupler.get_ny(); // Local number of cells in y-direction (not including halos)
-      auto nz           = coupler.get_nz(); // Local number of cells in z-direction (not including halos)
-      auto px           = coupler.get_px(); // MPI rank in x-direction
-      auto py           = coupler.get_py(); // MPI rank in y-direction
-      auto bc_x1        = coupler.get_option<std::string>("bc_x1"); // Boundary condition in west   x direction
-      auto bc_x2        = coupler.get_option<std::string>("bc_x2"); // Boundary condition in east   x direction
-      auto bc_y1        = coupler.get_option<std::string>("bc_y1"); // Boundary condition in south  y direction
-      auto bc_y2        = coupler.get_option<std::string>("bc_y2"); // Boundary condition in north  y direction
-      auto bc_z1        = coupler.get_option<std::string>("bc_z1"); // Boundary condition in bottom z direction
-      auto bc_z2        = coupler.get_option<std::string>("bc_z2"); // Boundary condition in top    z direction
-      auto nproc_x      = coupler.get_nproc_x();               // Number of MPI ranks in x-direction
-      auto nproc_y      = coupler.get_nproc_y();               // Number of MPI ranks in y-direction
-      auto num_tracers  = coupler.get_num_tracers();           // Number of tracer fields
-      auto &dm          = coupler.get_data_manager_readonly(); // Get data manager as read-only
-      int npack = num_state + 1 + num_tracers;
-      if (coupler.get_px() == 0) {
-        if (bc_x1 == "open") {
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,ny) ,
-                                            KOKKOS_LAMBDA (int l, int k, int j) {
-            limits_x(0,l,k,j,0) = limits_x(1,l,k,j,0);
-          });
-        } else if (bc_x1 == "precursor") {
-          // For inflow boundaries, use precursor data in ghost cells except for pressure field
-          // For outflow boundaries, use zero-gradient extrapolation
-          auto prec_x1 = dm.get<FLOC const,5>("dycore_edge_ghost_x1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,ny) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int j) {
-            if (l!=idP) {
-              auto u = limits_x(1,idU,k,j,0);
-              limits_x(0,l,k,j,0) = u > 0 ? prec_x1(icycle,istage,l,k,j) : limits_x(1,l,k,j,0);
-            } else {
-              limits_x(0,l,k,j,0) = limits_x(1,l,k,j,0);
-            }
-          });
-        }
-      }
-
-      if (coupler.get_px() == coupler.get_nproc_x()-1) {
-        if (coupler.get_option<std::string>("bc_x2") == "open") {
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,ny) ,
-                                            KOKKOS_LAMBDA (int l, int k, int j) {
-            limits_x(1,l,k,j,nx) = limits_x(0,l,k,j,nx);
-          });
-        } else if (bc_x2 == "precursor") {
-          // For inflow boundaries, use precursor data in ghost cells except for pressure field
-          // For outflow boundaries, use zero-gradient extrapolation
-          auto prec_x2 = dm.get<FLOC const,5>("dycore_edge_ghost_x2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,ny) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int j) {
-            if (l!=idP) {
-              auto u = limits_x(0,idU,k,j,nx);
-              limits_x(1,l,k,j,nx) = u < 0 ? prec_x2(icycle,istage,l,k,j) : limits_x(0,l,k,j,nx);
-            } else {
-              limits_x(1,l,k,j,nx) = limits_x(0,l,k,j,nx);
-            }
-          });
-        }
-      }
-
-      if (coupler.get_py() == 0) {
-        if (bc_y1 == "open") {
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,nx) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int i) {
-            limits_y(0,l,k,0,i) = limits_y(1,l,k,0,i);
-          });
-        } else if (bc_y1 == "precursor") {
-          // For inflow boundaries, use precursor data in ghost cells except for pressure field
-          // For outflow boundaries, use zero-gradient extrapolation
-          auto prec_y1 = dm.get<FLOC const,5>("dycore_edge_ghost_y1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,nx) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int i) {
-            if (l!=idP) {
-              auto v = limits_y(1,idV,k,0,i);
-              limits_y(0,l,k,0,i) = v > 0 ? prec_y1(icycle,istage,l,k,i) : limits_y(1,l,k,0,i);
-            } else {
-              limits_y(0,l,k,0,i) = limits_y(1,l,k,0,i);
-            }
-          });
-        } else if (bc_y1 == "wall_free_slip") {
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,nx) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int i) {
-            if (l == idV) {
-              limits_y(0,l,k,0,i) = 0;
-              limits_y(1,l,k,0,i) = 0;
-            } else {
-              limits_y(0,l,k,0,i) = limits_y(1,l,k,0,i);
-            }
-          });
-        }
-      }
-
-      if (coupler.get_py() == coupler.get_nproc_y()-1) {
-        if (bc_y2 == "open") {
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,nx) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int i) {
-            limits_y(1,l,k,ny,i) = limits_y(0,l,k,ny,i);
-          });
-        } else if (bc_y2 == "precursor") {
-          // For inflow boundaries, use precursor data in ghost cells except for pressure field
-          // For outflow boundaries, use zero-gradient extrapolation
-          auto prec_y2 = dm.get<FLOC const,5>("dycore_edge_ghost_y2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,nx) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int i) {
-            if (l!=idP) {
-              auto v = limits_y(0,idV,k,ny,i);
-              limits_y(1,l,k,ny,i) = v < 0 ? prec_y2(icycle,istage,l,k,i) : limits_y(0,l,k,ny,i);
-            } else {
-              limits_y(1,l,k,ny,i) = limits_y(0,l,k,ny,i);
-            }
-          });
-        } else if (bc_y2 == "wall_free_slip") {
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,nz,nx) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int i) {
-            if (l == idV) {
-              limits_y(0,l,k,ny,i) = 0;
-              limits_y(1,l,k,ny,i) = 0;
-            } else {
-              limits_y(1,l,k,ny,i) = limits_y(0,l,k,ny,i);
-            }
-          });
-        }
-      }
-
-      if (bc_z1 == "wall_free_slip") {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
-          if (l == idW) {
-            limits_z(0,l,0,j,i) = 0;
-            limits_z(1,l,0,j,i) = 0;
-          } else {
-            limits_z(0,l,0,j,i) = limits_z(1,l,0,j,i);
-          }
-        });
-      } else if (bc_z1 == "periodic") {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
-          limits_z(0,l,0 ,j,i) = limits_z(0,l,nz,j,i);
-        });
-      }
-
-      if (bc_z2 == "wall_free_slip") {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
-          if (l == idW) {
-            limits_z(0,l,nz,j,i) = 0;
-            limits_z(1,l,nz,j,i) = 0;
-          } else {
-            limits_z(1,l,nz,j,i) = limits_z(0,l,nz,j,i);
-          }
-        });
-      } else if (bc_z2 == "open") {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
-          limits_z(1,l,nz,j,i) = limits_z(0,l,nz,j,i);
-        });
-      } else if (bc_z2 == "periodic") {
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(npack,ny,nx) , KOKKOS_LAMBDA (int l, int j, int i) {
-          limits_z(1,l,nz,j,i) = limits_z(1,l,0 ,j,i);
-        });
-      }
-
-      // If this is a precursor simualtion forcing another coupler object, then store the ghost cells
-      //  into the coupler object for use by the other coupler object
-      if (coupler.get_option<bool>("dycore_is_precursor",false)) {
-        if (px == 0) {
-          auto edge_ghost_x1 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_x1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_state+num_tracers+1,nz,ny) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int j) {
-            edge_ghost_x1(icycle,istage,l,k,j) = limits_x(0,l,k,j,0);
-          });
-        }
-        if (px == nproc_x-1) {
-          auto edge_ghost_x2 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_x2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_state+num_tracers+1,nz,ny) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int j) {
-            edge_ghost_x2(icycle,istage,l,k,j) = limits_x(1,l,k,j,nx);
-          });
-        }
-        if (py == 0) {
-          auto edge_ghost_y1 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_y1");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_state+num_tracers+1,nz,nx) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int i) {
-            edge_ghost_y1(icycle,istage,l,k,i) = limits_y(0,l,k,0,i);
-          });
-        }
-        if (py == nproc_y-1) {
-          auto edge_ghost_y2 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_y2");
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_state+num_tracers+1,nz,nx) ,
-                                                  KOKKOS_LAMBDA (int l, int k, int i) {
-            edge_ghost_y2(icycle,istage,l,k,i) = limits_y(1,l,k,ny,i);
-          });
-        }
-      }
     }
 
 
@@ -1503,7 +1384,16 @@ namespace modules {
     // For simulations forced by a concurrent turbulent precursor, copy the ghost cell data from the precursor coupler to the main coupler
     // coupler_prec : reference to the precursor coupler object
     // coupler_main : reference to the main coupler object
-    void copy_precursor_ghost_cells( core::Coupler const & coupler_prec , core::Coupler & coupler_main ) {
+    void copy_precursor_ghost_cells( core::Coupler & coupler_prec , core::Coupler & coupler_main ) {
+      auto const prec_max_cycles = coupler_prec.get_option<int>("dycore_max_cycles");
+      auto const main_max_cycles = coupler_main.get_option<int>("dycore_max_cycles");
+      if (prec_max_cycles != main_max_cycles) {
+        if (prec_max_cycles < main_max_cycles) {
+          ensure_dycore_max_cycles(coupler_prec,main_max_cycles-1);
+        } else {
+          ensure_dycore_max_cycles(coupler_main,prec_max_cycles-1);
+        }
+      }
       int  px          = coupler_main.get_px();       // MPI rank in x-direction
       int  py          = coupler_main.get_py();       // MPI rank in y-direction
       int  npx         = coupler_main.get_nproc_x();  // Number of MPI ranks in x-direction
@@ -1514,10 +1404,6 @@ namespace modules {
       if (px == npx-1) dm_prec.get<FLOC const,6>("dycore_ghost_x2").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_x2"));
       if (py == 0    ) dm_prec.get<FLOC const,6>("dycore_ghost_y1").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_y1"));
       if (py == npy-1) dm_prec.get<FLOC const,6>("dycore_ghost_y2").deep_copy_to(dm_main.get<FLOC,6>("dycore_ghost_y2"));
-      if (px == 0    ) dm_prec.get<FLOC const,5>("dycore_edge_ghost_x1").deep_copy_to(dm_main.get<FLOC,5>("dycore_edge_ghost_x1"));
-      if (px == npx-1) dm_prec.get<FLOC const,5>("dycore_edge_ghost_x2").deep_copy_to(dm_main.get<FLOC,5>("dycore_edge_ghost_x2"));
-      if (py == 0    ) dm_prec.get<FLOC const,5>("dycore_edge_ghost_y1").deep_copy_to(dm_main.get<FLOC,5>("dycore_edge_ghost_y1"));
-      if (py == npy-1) dm_prec.get<FLOC const,5>("dycore_edge_ghost_y2").deep_copy_to(dm_main.get<FLOC,5>("dycore_edge_ghost_y2"));
     }
 
 
@@ -1538,41 +1424,102 @@ namespace modules {
       auto num_stages  = coupler.get_option<int>("dycore_num_stages");
       auto max_cycles  = coupler.get_option<int>("dycore_max_cycles");
       if (px == 0) {
-        auto ghost_x1      = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x1"     );
-        auto edge_ghost_x1 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_x1");
+        auto ghost_x1 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x1");
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(max_cycles,num_stages,num_state+num_tracers+1,nz,ny,hs) ,
                                                 KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int j, int ii) {
           ghost_x1(icycle,istage,l,k,j,ii) = col(l,k);
-          if (ii==0) edge_ghost_x1(icycle,istage,l,k,j) = col(l,k);
         });
       }
       if (px == npx-1) {
-        auto ghost_x2      = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x2"     );
-        auto edge_ghost_x2 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_x2");
+        auto ghost_x2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_x2");
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(max_cycles,num_stages,num_state+num_tracers+1,nz,ny,hs) ,
                                                 KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int j, int ii) {
           ghost_x2(icycle,istage,l,k,j,ii) = col(l,k);
-          if (ii==0) edge_ghost_x2(icycle,istage,l,k,j) = col(l,k);
         });
       }
       if (py == 0) {
-        auto ghost_y1      = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y1"     );
-        auto edge_ghost_y1 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_y1");
+        auto ghost_y1 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y1");
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(max_cycles,num_stages,num_state+num_tracers+1,nz,hs,nx) ,
                                                 KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int jj, int i) {
           ghost_y1(icycle,istage,l,k,jj,i) = col(l,k);
-          if (jj==0) edge_ghost_y1(icycle,istage,l,k,i) = col(l,k);
         });
       }
       if (py == npy-1) {
-        auto ghost_y2      = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y2"     );
-        auto edge_ghost_y2 = coupler.get_data_manager_readwrite().get<FLOC,5>("dycore_edge_ghost_y2");
+        auto ghost_y2 = coupler.get_data_manager_readwrite().get<FLOC,6>("dycore_ghost_y2");
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(max_cycles,num_stages,num_state+num_tracers+1,nz,hs,nx) ,
                                                 KOKKOS_LAMBDA (int icycle, int istage, int l, int k, int jj, int i) {
           ghost_y2(icycle,istage,l,k,jj,i) = col(l,k);
-          if (jj==0) edge_ghost_y2(icycle,istage,l,k,i) = col(l,k);
         });
       }
+    }
+
+
+
+    // Refresh the dycore immersed-proportion field from the coupler and populate all halo cells.
+    void create_immersed_proportion_halos(core::Coupler &coupler) const {
+      using yakl::SimpleBounds;
+      auto nz     = coupler.get_nz();
+      auto ny     = coupler.get_ny();
+      auto nx     = coupler.get_nx();
+      auto &dm    = coupler.get_data_manager_readwrite();
+      auto wall_B = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
+      auto wall_T = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
+      auto immersed_thresh = coupler.get_option<real>("immersed_threshold",0.5);
+
+      if (! dm.entry_exists("dycore_immersed_proportion_halos")) {
+        dm.register_and_allocate<real>("dycore_immersed_proportion_halos",{nz+2*hs,ny+2*hs,nx+2*hs});
+      }
+
+      auto immersed_prop       = dm.get<real const,3>("immersed_proportion");
+      auto immersed_prop_halos = dm.get<real,3>("dycore_immersed_proportion_halos");
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) ,
+                                              KOKKOS_LAMBDA (int k, int j, int i) {
+        immersed_prop_halos(hs+k,hs+j,hs+i) = immersed_prop(k,j,i) > immersed_thresh ? 1 : 0;
+      });
+
+      // Exchanging x before y propagates the physical-domain values into the horizontal corner halos.
+      core::MultiField<real,3> fields_halos;
+      fields_halos.add_field( immersed_prop_halos );
+      coupler.halo_exchange( fields_halos , hs );
+
+      // Vertical boundaries span the full horizontal allocation so their corner and edge halos are also initialized.
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) ,
+                                              KOKKOS_LAMBDA (int kk, int j, int i) {
+        immersed_prop_halos(      kk,j,i) = wall_B ? 1 : 0;
+        immersed_prop_halos(hs+nz+kk,j,i) = wall_T ? 1 : 0;
+      });
+
+      // Compute the Chebyshev distance to the nearest immersed cell within 12 cells.
+      if (! dm.entry_exists("dycore_immersed_distance")) {
+        dm.register_and_allocate<real>("dycore_immersed_distance",{nz,ny,nx});
+        coupler.register_output_variable<real>("dycore_immersed_distance",core::Coupler::DIMS_3D);
+      }
+      int constexpr hsnew = 12;
+      auto immersed_prop_copy = immersed_prop.createDeviceCopy();
+      core::MultiField<real,3> fields;
+      fields.add_field( immersed_prop_copy );
+      auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
+                                              KOKKOS_LAMBDA (int kk, int j, int i) {
+        fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
+        fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
+      });
+      auto immersed_distance = dm.get<real,3>("dycore_immersed_distance");
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) ,
+                                              KOKKOS_LAMBDA (int k, int j, int i) {
+        real distance = 1000;
+        for (int kk=-hsnew; kk <= hsnew; kk++) {
+          for (int jj=-hsnew; jj <= hsnew; jj++) {
+            for (int ii=-hsnew; ii <= hsnew; ii++) {
+              if (fields_halos_larger(0,hsnew+k+kk,hsnew+j+jj,hsnew+i+ii) > immersed_thresh) {
+                int distance_loc = std::max(std::abs(kk),std::max(std::abs(jj),std::abs(ii)));
+                distance = std::min(distance,static_cast<real>(std::max(1,distance_loc)));
+              }
+            }
+          }
+        }
+        immersed_distance(k,j,i) = distance;
+      });
     }
 
 
@@ -1592,6 +1539,7 @@ namespace modules {
       auto ny             = coupler.get_ny();       // Local number of cells in y-direction (not including halos)
       auto nz             = coupler.get_nz();       // Local number of cells in z-direction (not including halos)
       auto dz             = coupler.get_dz();       // Cell thicknesses in z-direction (1-D array of length nz)
+      auto zmid           = coupler.get_zmid();     // Cell-center heights in z-direction
       auto px             = coupler.get_px();       // MPI rank in x-direction
       auto py             = coupler.get_py();       // MPI rank in y-direction
       auto nproc_x        = coupler.get_nproc_x();  // Number of MPI ranks in x-direction
@@ -1613,6 +1561,7 @@ namespace modules {
       else if (time_stepper == "linrk3") { coupler.set_option("dycore_num_stages",3);    }
       else if (time_stepper == "linrk4") { coupler.set_option("dycore_num_stages",4);    }
       else                               { Kokkos::abort("Invalid dycore_time_stepper"); }
+      coupler.set_option("dycore_max_cycles",4);
 
       // If the current coupler object is a precursor for another simulation, or the current coupler is using
       //  precursor BC's, then allocate ghost cell storage for exchanging data between the precursor and forced
@@ -1630,20 +1579,16 @@ namespace modules {
         auto nstage     = coupler.get_option<int>("dycore_num_stages"); // Number of Runge-Kutta stages
         auto max_cycles = coupler.get_option<int>("dycore_max_cycles");
         if (px == 0) { // If we're at the west edge process of the domain
-          dm.register_and_allocate<FLOC>("dycore_ghost_x1"     ,{max_cycles,nstage,num_state+num_tracers+1,nz,ny,hs});
-          dm.register_and_allocate<FLOC>("dycore_edge_ghost_x1",{max_cycles,nstage,num_state+num_tracers+1,nz,ny});
+          dm.register_and_allocate<FLOC>("dycore_ghost_x1",{max_cycles,nstage,num_state+num_tracers+1,nz,ny,hs});
         }
         if (px == nproc_x-1) { // If we're at the east edge process of the domain
-          dm.register_and_allocate<FLOC>("dycore_ghost_x2"     ,{max_cycles,nstage,num_state+num_tracers+1,nz,ny,hs});
-          dm.register_and_allocate<FLOC>("dycore_edge_ghost_x2",{max_cycles,nstage,num_state+num_tracers+1,nz,ny});
+          dm.register_and_allocate<FLOC>("dycore_ghost_x2",{max_cycles,nstage,num_state+num_tracers+1,nz,ny,hs});
         }
         if (py == 0) { // If we're at the south edge process of the domain
-          dm.register_and_allocate<FLOC>("dycore_ghost_y1"     ,{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
-          dm.register_and_allocate<FLOC>("dycore_edge_ghost_y1",{max_cycles,nstage,num_state+num_tracers+1,nz,nx});
+          dm.register_and_allocate<FLOC>("dycore_ghost_y1",{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
         }
         if (py == nproc_y-1) { // If we're at the north edge process of the domain
-          dm.register_and_allocate<FLOC>("dycore_ghost_y2"     ,{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
-          dm.register_and_allocate<FLOC>("dycore_edge_ghost_y2",{max_cycles,nstage,num_state+num_tracers+1,nz,nx});
+          dm.register_and_allocate<FLOC>("dycore_ghost_y2",{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
         }
       }
 
@@ -1736,173 +1681,59 @@ namespace modules {
         t(hs+k) *= r_nx_ny;
         p(hs+k) *= r_nx_ny;
       });
-      // Filling in the halo values using hydrostatic balance
-      yakl::parallel_for( YAKL_AUTO_LABEL() , hs , KOKKOS_LAMBDA (int kk) {
-        {
-          int  k0       = hs;
-          int  k        = k0-1-kk;
-          real rho0     = r(k0);
-          real theta0   = t(k0);
-          real rho0_gm1 = std::pow(rho0  ,gamma-1);
-          real theta0_g = std::pow(theta0,gamma  );
-          r(k) = std::pow( rho0_gm1 + grav*(gamma-1)*dz(0)*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
-          t(k) = theta0-(t(k0+1)-t(k0))*(kk+1);
-          p(k) = C0*std::pow(r(k)*theta0,gamma);
+      // Extend theta with the constant physical gradient from the nearest two interior cell centers.
+      // For q = rho*theta, hydrostatic balance and p = C0*q^gamma give
+      // d(q^(gamma-1))/dz = -grav*(gamma-1)/(gamma*C0*theta).
+      // Integrating 1/theta exactly for linear theta keeps rho, theta, and pressure hydrostatically consistent.
+      if (hs > 0 && nz < 2) {
+        endrun("ERROR: Hydrostatic ghost-cell extension requires nz >= 2");
+      }
+      real const B = grav*(gamma-1)/(gamma*C0);
+      yakl::parallel_for( YAKL_AUTO_LABEL(), hs,
+                          KOKKOS_LAMBDA (int kk) {
+        { // Extend below the first interior cell; boundary ghost cells retain the first-cell thickness.
+          int  const k0         = hs;
+          int  const k          = k0-1-kk;
+          real const theta0     = t(k0);
+          real const q0         = r(k0)*theta0;
+          real const Q0         = std::pow(q0,gamma-1);
+          real const delta_z    = -dz(0)*(kk+1);
+          real const grad_theta = (t(k0+1)-theta0)/(zmid(1)-zmid(0));
+          real const theta_g    = theta0 + grad_theta*delta_z;
+          real const x          = (theta_g-theta0)/theta0;
+          real fac;
+          // log1p(x)/x evaluates the linear-theta integral; use its series near x=0.
+          if (std::abs(x) < 1.e-6_fp) { fac = 1._fp - 0.5_fp*x + x*x/3._fp; }
+          else                        { fac = std::log1p(x)/x;              }
+          real const integral = delta_z/theta0*fac;
+          real const Qg       = Q0 - B*integral;
+          real const qg       = std::pow(Qg,1._fp/(gamma-1));
+          t(k) = theta_g;
+          r(k) = qg/theta_g;
+          p(k) = C0*std::pow(qg,gamma);
         }
-        {
-          int  k0       = hs+nz-1;
-          int  k        = k0+1+kk;
-          real rho0     = r(k0);
-          real theta0   = t(k0);
-          real rho0_gm1 = std::pow(rho0  ,gamma-1);
-          real theta0_g = std::pow(theta0,gamma  );
-          r(k) = std::pow( rho0_gm1 - grav*(gamma-1)*dz(nz-1)*(kk+1)/(gamma*C0*theta0_g) , 1._fp/(gamma-1) );
-          t(k) = theta0+(t(k0)-t(k0-1))*(kk+1);
-          p(k) = C0*std::pow(r(k)*theta0,gamma);
+        { // Extend above the last interior cell; boundary ghost cells retain the last-cell thickness.
+          int  const k0         = hs+nz-1;
+          int  const k          = k0+1+kk;
+          real const theta0     = t(k0);
+          real const q0         = r(k0)*theta0;
+          real const Q0         = std::pow(q0,gamma-1);
+          real const delta_z    = dz(nz-1)*(kk+1);
+          real const grad_theta = (theta0-t(k0-1))/(zmid(nz-1)-zmid(nz-2));
+          real const theta_g    = theta0 + grad_theta*delta_z;
+          real const x          = (theta_g-theta0)/theta0;
+          real fac;
+          // This expression also tends smoothly to delta_z/theta0 for zero theta gradient.
+          if (std::abs(x) < 1.e-6_fp) { fac = 1._fp - 0.5_fp*x + x*x/3._fp; }
+          else                        { fac = std::log1p(x)/x;              }
+          real const integral = delta_z/theta0*fac;
+          real const Qg       = Q0 - B*integral;
+          real const qg       = std::pow(Qg,1._fp/(gamma-1));
+          t(k) = theta_g;
+          r(k) = qg/theta_g;
+          p(k) = C0*std::pow(qg,gamma);
         }
       });
-
-      // This is a lambda function to create immersed proportion halos and any_immersed arrays for use
-      //  by the dynamics module
-      auto create_immersed_proportion_halos = [] (core::Coupler &coupler) {
-        using yakl::SimpleBounds;;
-        auto nz     = coupler.get_nz  (); // Number of cells in z-direction (not including halos)
-        auto ny     = coupler.get_ny  (); // Number of cells in y-direction (not including halos)
-        auto nx     = coupler.get_nx  (); // Number of cells in x-direction (not including halos)
-        auto &dm    = coupler.get_data_manager_readwrite(); // Get data manager as read-write
-        auto wall_B = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
-        auto wall_T = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
-        if (!dm.entry_exists("dycore_immersed_proportion_halos")) {
-          // Get the immersed_proportion field from the coupler data manager that is initialized before
-          //  calling this module's init function
-          auto immersed_prop = dm.get<real const,3>("immersed_proportion").createDeviceCopy();
-          // Create MultiField of just one field to hold the immersed proportion for halo creation and exchange
-          core::MultiField<real,3> fields;
-          fields.add_field( immersed_prop  );
-          // Create and exchange halos (vertical is not set after calling this function)
-          auto fields_halos = coupler.create_and_exchange_halos( fields , hs );
-          // Create and populate dycore_immersed_proportion_halos in the coupler data manager
-          dm.register_and_allocate<real>("dycore_immersed_proportion_halos",{nz+2*hs,ny+2*hs,nx+2*hs});
-          // Fill in the dycore's top and bottom halos with 1's to indicate fully immersed
-          // This does not affect the immersed_proportion DataManager array since we are assigning to a different array
-          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hs,ny+2*hs,nx+2*hs) , KOKKOS_LAMBDA (int kk, int j, int i) {
-            fields_halos(0,      kk,j,i) = wall_B ? 1 : 0;
-            fields_halos(0,hs+nz+kk,j,i) = wall_T ? 1 : 0;
-          });
-          // Copy the field with halos into the coupler data manager array
-          fields_halos.get_field(0).deep_copy_to( dm.get<real,3>("dycore_immersed_proportion_halos") );
-
-          // The code sections below determine whether there is any immersed portion within varying halo sizes
-          //  and store the results in separate arrays in the coupler data manager for use by the dynamics module
-          // For each of these, when determining if there are immersed cells nearby, the top and bottom solid
-          //  wall boundaries are not considered immersed.
-          {
-            int hsnew = 2;
-            dm.register_and_allocate<bool>("dycore_any_immersed2",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed2");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
-                  }
-                }
-              }
-            });
-          }
-          {
-            int hsnew = 4;
-            dm.register_and_allocate<bool>("dycore_any_immersed4",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed4");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
-                  }
-                }
-              }
-            });
-          }
-          {
-            int hsnew = 6;
-            dm.register_and_allocate<bool>("dycore_any_immersed6",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed6");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
-                  }
-                }
-              }
-            });
-          }
-          {
-            int hsnew = 8;
-            dm.register_and_allocate<bool>("dycore_any_immersed8",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed8");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
-                  }
-                }
-              }
-            });
-          }
-          {
-            int hsnew = 10;
-            dm.register_and_allocate<bool>("dycore_any_immersed10",{nz,ny,nx});
-            auto any_immersed = dm.get<bool,3>("dycore_any_immersed10");
-            auto fields_halos_larger = coupler.create_and_exchange_halos( fields , hsnew );
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(hsnew,ny+2*hsnew,nx+2*hsnew) ,
-                                              KOKKOS_LAMBDA (int kk, int j, int i) {
-              fields_halos_larger(0,         kk,j,i) = wall_B ? 1 : 0;
-              fields_halos_larger(0,hsnew+nz+kk,j,i) = wall_T ? 1 : 0;
-            });
-            yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-              any_immersed(k,j,i) = false;
-              for (int kk=0; kk < hsnew*2+1; kk++) {
-                for (int jj=0; jj < hsnew*2+1; jj++) {
-                  for (int ii=0; ii < hsnew*2+1; ii++) {
-                    if (fields_halos_larger(0,k+kk,j+jj,i+ii) > 0) any_immersed(k,j,i) = true;
-                  }
-                }
-              }
-            });
-          }
-        }
-      };
 
       // This lambda function is to interpolate hydrostatic profiles from cell centers to edges
       //  (linear for theta, and log-linear for rho and pressure)
@@ -1952,7 +1783,7 @@ namespace modules {
       };
 
       // Call the two lambda functions created above to set up immersed proportion halos,
-      //  any_immersed arrays, and compute hydrostatic edge values
+      //  immersed-distance data, and compute hydrostatic edge values
       create_immersed_proportion_halos( coupler );
       compute_hydrostasis_edges       ( coupler );
 
@@ -2015,7 +1846,7 @@ namespace modules {
       // Register a restart module to read in hydrostatic profiles from file
       // coupler : reference to the coupler object
       // nc      : reference to the SimplePNetCDF object for reading restart data (opened)
-      coupler.register_overwrite_with_restart_module( [=] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
+      coupler.register_overwrite_with_restart_module( [=, this] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
         auto &dm = coupler.get_data_manager_readwrite();
         nc.read_all(dm.get<real,1>("hy_dens_cells"    ),"hy_dens_cells"    ,{0});
         nc.read_all(dm.get<real,1>("hy_theta_cells"   ),"hy_theta_cells"   ,{0});
@@ -2050,7 +1881,6 @@ namespace modules {
       auto gamma       = coupler.get_option<real>("gamma_d"); // Ratio of specific heats for dry air
       auto C0          = coupler.get_option<real>("C0"     ); // p = C0 * (rho*theta)^gamma
       auto p0          = coupler.get_option<real>("p0"     ); // p0
-      auto idWV        = coupler.get_option<int >("idWV"   ); // Tracer index for water vapor
       auto num_tracers = coupler.get_num_tracers(); // Number of tracers
       auto &dm         = coupler.get_data_manager_readwrite(); // Get data manager as read-write
       auto dm_rho_d          = dm.get<real,3>("density_dry"); // Get coupler dry density array
@@ -2064,6 +1894,9 @@ namespace modules {
       // Accrue the tracer fields from the coupler data manager
       core::MultiField<real,3> dm_tracers;
       auto tracer_names = coupler.get_tracer_names();
+      int idWV = -1;
+      for (int tr=0; tr < num_tracers; tr++) { if (tracer_names.at(tr) == "water_vapor") idWV = tr; }
+      bool rho_v_exists = idWV >= 0;
       for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real,3>(tracer_names.at(tr)) ); }
       // Loop over all grid cells to compute dry density, velocities, temperature, and store in coupler arrays
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -2072,7 +1905,7 @@ namespace modules {
         real v     = state(idV,k,j,i) / rho;  // v-velocity
         real w     = state(idW,k,j,i) / rho;  // w-velocity
         real theta = state(idT,k,j,i) / rho;  // Potential temperature
-        real rho_v = tracers(idWV,k,j,i);     // Water vapor density
+        real rho_v = rho_v_exists ? tracers(idWV,k,j,i) : 0; // Water vapor density
         real rho_d = rho;                     // Dry air density starting value
         // Subtract mass-adding tracers from total density to get dry air density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho_d -= tracers(tr,k,j,i); }
@@ -2115,7 +1948,6 @@ namespace modules {
       auto gamma       = coupler.get_option<real>("gamma_d"); // Ratio of specific heats for dry air
       auto C0          = coupler.get_option<real>("C0"     ); // p = C0 * (rho*theta)^gamma
       auto p0          = coupler.get_option<real>("p0"     ); // p0
-      auto idWV        = coupler.get_option<int >("idWV"   ); // Tracer index for water vapor
       auto num_tracers = coupler.get_num_tracers(); // Number of tracers
       auto &dm         = coupler.get_data_manager_readonly(); // Get data manager as read-only
       auto dm_rho_d         = dm.get<real const,3>("density_dry"); // Get coupler dry density array
@@ -2130,6 +1962,9 @@ namespace modules {
       // Accrue the tracer fields from the coupler data manager
       core::MultiField<real const,3> dm_tracers;
       auto tracer_names = coupler.get_tracer_names(); // Get the tracer names
+      int idWV = -1;
+      for (int tr=0; tr < num_tracers; tr++) { if (tracer_names.at(tr) == "water_vapor") idWV = tr; }
+      bool rho_v_exists = idWV >= 0;
       for (int tr=0; tr < num_tracers; tr++) { dm_tracers.add_field( dm.get<real const,3>(tracer_names.at(tr)) ); }
       // Loop over all grid cells to compute dynamics state and tracers arrays from coupler data
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -2138,7 +1973,7 @@ namespace modules {
         real v     = dm_vvel (k,j,i); // v-velocity
         real w     = dm_wvel (k,j,i); // w-velocity
         real temp  = dm_temp (k,j,i); // Temperature
-        real rho_v = dm_tracers(idWV,k,j,i); // Water vapor density
+        real rho_v = rho_v_exists ? dm_tracers(idWV,k,j,i) : 0; // Water vapor density
         real rho   = rho_d;           // Total density starting value
         // Add mass-adding tracers to dry density to get total density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho += dm_tracers(tr,k,j,i); }
@@ -2163,4 +1998,3 @@ namespace modules {
   };
 
 }
-

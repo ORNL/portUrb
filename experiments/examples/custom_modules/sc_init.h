@@ -176,9 +176,9 @@ namespace custom_modules {
         dm_wvel (k,j,i) = 0;
         dm_temp (k,j,i) = T;
         dm_rho_v(k,j,i) = 0;
-        yakl::Random rand(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
-        if (z <= 400) dm_uvel(k,j,i) += rand.genFP<real>(-0.1,0.1);
-        if (z <= 400) dm_vvel(k,j,i) += rand.genFP<real>(-0.1,0.1);
+        yakl::Random rand(0,k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
+        if (z <= 400) dm_uvel(k,j,i) += rand.gen_uniform<real>(-0.1,0.1);
+        if (z <= 400) dm_vvel(k,j,i) += rand.gen_uniform<real>(-0.1,0.1);
         if ( (x >= 1*h/2 && x <= 3*h/2 && y >= 1*h/2 && y <= 3*h/2 && z <= h) ||  // Cube 1
              (x >= 1*h/2 && x <= 3*h/2 && y >= 5*h/2 && y <= 7*h/2 && z <= h) ||  // Cube 2
              (x >= 5*h/2 && x <= 7*h/2 && y >= 3*h/2 && y <= 5*h/2 && z <= h) ||  // Cube 3
@@ -977,5 +977,4 @@ namespace custom_modules {
   }
 
 }
-
 

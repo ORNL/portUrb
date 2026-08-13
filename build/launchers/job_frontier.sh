@@ -3,7 +3,7 @@
 #SBATCH -J portUrb
 #SBATCH -o %x-%j.out
 #SBATCH -t 2:00:00
-#SBATCH -N 4
+#SBATCH -N 1
 #SBATCH --partition service
 #SBATCH -q develop
 # #SBATCH --partition extended
@@ -13,7 +13,7 @@ num_tasks=`echo "$SLURM_JOB_NUM_NODES*8" | bc`
 cd /lustre/orion/stf006/scratch/imn/portUrb/build
 source machines/frontier/frontier_gpu_O3.env
 
-srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./tank_set
+srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./building
 
 # cat <<EOF > rsst1.yaml
 # cs: 350
@@ -74,4 +74,3 @@ srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./tank_set
 # srun -N 1 -n 8 -c 1 --gpus-per-task=1 --gpu-bind=closest ./abl_stable ./rsst8.yaml 2>&1 | tee abl_stable8.out &
 # 
 # wait
-

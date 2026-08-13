@@ -126,6 +126,30 @@ namespace TransformMatrices {
     w(7) = static_cast<F>(0.082747680780402762);
     w(8) = static_cast<F>(0.013888888888888889);
   }
+  template <class F> KOKKOS_INLINE_FUNCTION void get_gll_points(yakl::SArray<F,10> & p) {
+    p(0) = static_cast<F>(-0.50000000000000000);
+    p(1) = static_cast<F>(-0.45976695408322941);
+    p(2) = static_cast<F>(-0.36938693255275254);
+    p(3) = static_cast<F>(-0.23896247490522225);
+    p(4) = static_cast<F>(-0.082639478833193512);
+    p(5) = static_cast<F>(0.082639478833193512);
+    p(6) = static_cast<F>(0.23896247490522225);
+    p(7) = static_cast<F>(0.36938693255275254);
+    p(8) = static_cast<F>(0.45976695408322941);
+    p(9) = static_cast<F>(0.50000000000000000);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void get_gll_weights(yakl::SArray<F,10> & w) {
+    w(0) = static_cast<F>(0.011111111111111111);
+    w(1) = static_cast<F>(0.066652995425535056);
+    w(2) = static_cast<F>(0.11244467103156323);
+    w(3) = static_cast<F>(0.14602134183984188);
+    w(4) = static_cast<F>(0.16376988059194873);
+    w(5) = static_cast<F>(0.16376988059194873);
+    w(6) = static_cast<F>(0.14602134183984188);
+    w(7) = static_cast<F>(0.11244467103156323);
+    w(8) = static_cast<F>(0.066652995425535056);
+    w(9) = static_cast<F>(0.011111111111111111);
+  }
 
 
   ////////////////
@@ -790,6 +814,108 @@ namespace TransformMatrices {
     m(8,6) = static_cast<F>(-500.50000000000004);
     m(8,7) = static_cast<F>(715.00000000000000);
     m(8,8) = static_cast<F>(1430.0000000000001);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void gll_to_coefs(yakl::SArray<F,10,10> & m) {
+    m(0,0) = static_cast<F>(0.027343750000000020);
+    m(0,1) = static_cast<F>(-0.054687500000000241);
+    m(0,2) = static_cast<F>(-4.8125000000000001);
+    m(0,3) = static_cast<F>(9.6250000000000073);
+    m(0,4) = static_cast<F>(125.12500000000000);
+    m(0,5) = static_cast<F>(-250.25000000000008);
+    m(0,6) = static_cast<F>(-1001.0000000000000);
+    m(0,7) = static_cast<F>(2002.0000000000004);
+    m(0,8) = static_cast<F>(2430.9999999999999);
+    m(0,9) = static_cast<F>(-4862.0000000000007);
+    m(1,0) = static_cast<F>(-0.072831862577668117);
+    m(1,1) = static_cast<F>(0.15841039015710542);
+    m(1,2) = static_cast<F>(12.765190296687043);
+    m(1,3) = static_cast<F>(-27.764479772454960);
+    m(1,4) = static_cast<F>(-324.16407574431937);
+    m(1,5) = static_cast<F>(705.06171195078454);
+    m(1,6) = static_cast<F>(2465.8234716244880);
+    m(1,7) = static_cast<F>(-5363.2029221006439);
+    m(1,8) = static_cast<F>(-5474.9958967569298);
+    m(1,9) = static_cast<F>(11908.197942746921);
+    m(2,0) = static_cast<F>(0.11774358235405715);
+    m(2,1) = static_cast<F>(-0.31875405429303397);
+    m(2,2) = static_cast<F>(-20.330917561820405);
+    m(2,3) = static_cast<F>(55.039623143455225);
+    m(2,4) = static_cast<F>(472.68348833397839);
+    m(2,5) = static_cast<F>(-1279.6432322804870);
+    m(2,6) = static_cast<F>(-3001.3003451955114);
+    m(2,7) = static_cast<F>(8125.0853257157197);
+    m(2,8) = static_cast<F>(5713.3019343122589);
+    m(2,9) = static_cast<F>(-15466.984429657205);
+    m(3,0) = static_cast<F>(-0.20740909365743634);
+    m(3,1) = static_cast<F>(0.86795675237168274);
+    m(3,2) = static_cast<F>(33.701448362149193);
+    m(3,3) = static_cast<F>(-141.03238751404767);
+    m(3,4) = static_cast<F>(-504.93367847677037);
+    m(3,5) = static_cast<F>(2113.0249788258102);
+    m(3,6) = static_cast<F>(2546.7511033623657);
+    m(3,7) = static_cast<F>(-10657.535683677796);
+    m(3,8) = static_cast<F>(-4211.8615250223815);
+    m(3,9) = static_cast<F>(17625.618945790123);
+    m(4,0) = static_cast<F>(0.63515362388104728);
+    m(4,1) = static_cast<F>(-7.6858377236755678);
+    m(4,2) = static_cast<F>(-21.323221097015829);
+    m(4,3) = static_cast<F>(258.02705193792930);
+    m(4,4) = static_cast<F>(231.28926588711134);
+    m(4,5) = static_cast<F>(-2798.7744980091794);
+    m(4,6) = static_cast<F>(-1010.2742297913422);
+    m(4,7) = static_cast<F>(12225.079877749048);
+    m(4,8) = static_cast<F>(1542.5554874670523);
+    m(4,9) = static_cast<F>(-18666.084409615853);
+    m(5,0) = static_cast<F>(0.63515362388104732);
+    m(5,1) = static_cast<F>(7.6858377236755673);
+    m(5,2) = static_cast<F>(-21.323221097015835);
+    m(5,3) = static_cast<F>(-258.02705193792929);
+    m(5,4) = static_cast<F>(231.28926588711144);
+    m(5,5) = static_cast<F>(2798.7744980091793);
+    m(5,6) = static_cast<F>(-1010.2742297913427);
+    m(5,7) = static_cast<F>(-12225.079877749048);
+    m(5,8) = static_cast<F>(1542.5554874670531);
+    m(5,9) = static_cast<F>(18666.084409615852);
+    m(6,0) = static_cast<F>(-0.20740909365743637);
+    m(6,1) = static_cast<F>(-0.86795675237168171);
+    m(6,2) = static_cast<F>(33.701448362149199);
+    m(6,3) = static_cast<F>(141.03238751404764);
+    m(6,4) = static_cast<F>(-504.93367847677047);
+    m(6,5) = static_cast<F>(-2113.0249788258099);
+    m(6,6) = static_cast<F>(2546.7511033623662);
+    m(6,7) = static_cast<F>(10657.535683677795);
+    m(6,8) = static_cast<F>(-4211.8615250223824);
+    m(6,9) = static_cast<F>(-17625.618945790121);
+    m(7,0) = static_cast<F>(0.11774358235405717);
+    m(7,1) = static_cast<F>(0.31875405429303282);
+    m(7,2) = static_cast<F>(-20.330917561820410);
+    m(7,3) = static_cast<F>(-55.039623143455188);
+    m(7,4) = static_cast<F>(472.68348833397847);
+    m(7,5) = static_cast<F>(1279.6432322804866);
+    m(7,6) = static_cast<F>(-3001.3003451955119);
+    m(7,7) = static_cast<F>(-8125.0853257157182);
+    m(7,8) = static_cast<F>(5713.3019343122598);
+    m(7,9) = static_cast<F>(15466.984429657203);
+    m(8,0) = static_cast<F>(-0.072831862577668132);
+    m(8,1) = static_cast<F>(-0.15841039015710449);
+    m(8,2) = static_cast<F>(12.765190296687047);
+    m(8,3) = static_cast<F>(27.764479772454931);
+    m(8,4) = static_cast<F>(-324.16407574431944);
+    m(8,5) = static_cast<F>(-705.06171195078424);
+    m(8,6) = static_cast<F>(2465.8234716244884);
+    m(8,7) = static_cast<F>(5363.2029221006426);
+    m(8,8) = static_cast<F>(-5474.9958967569305);
+    m(8,9) = static_cast<F>(-11908.197942746920);
+    m(9,0) = static_cast<F>(0.027343750000000025);
+    m(9,1) = static_cast<F>(0.054687499999999862);
+    m(9,2) = static_cast<F>(-4.8125000000000016);
+    m(9,3) = static_cast<F>(-9.6249999999999953);
+    m(9,4) = static_cast<F>(125.12500000000002);
+    m(9,5) = static_cast<F>(250.24999999999996);
+    m(9,6) = static_cast<F>(-1001.0000000000001);
+    m(9,7) = static_cast<F>(-2001.9999999999999);
+    m(9,8) = static_cast<F>(2431.0000000000002);
+    m(9,9) = static_cast<F>(4861.9999999999999);
   }
 
 
@@ -1982,6 +2108,564 @@ namespace TransformMatrices {
     m(8,7) = static_cast<F>(0.0016778987525834201);
     m(8,8) = static_cast<F>(0.0039062500000000000);
   }
+  template <class F> KOKKOS_INLINE_FUNCTION void coefs_to_gll(yakl::SArray<F,10,2> & m) {
+    m(0,0) = static_cast<F>(1.0000000000000000);
+    m(0,1) = static_cast<F>(1.0000000000000000);
+    m(1,0) = static_cast<F>(-0.50000000000000000);
+    m(1,1) = static_cast<F>(0.50000000000000000);
+    m(2,0) = static_cast<F>(0.25000000000000000);
+    m(2,1) = static_cast<F>(0.25000000000000000);
+    m(3,0) = static_cast<F>(-0.12500000000000000);
+    m(3,1) = static_cast<F>(0.12500000000000000);
+    m(4,0) = static_cast<F>(0.062500000000000000);
+    m(4,1) = static_cast<F>(0.062500000000000000);
+    m(5,0) = static_cast<F>(-0.031250000000000000);
+    m(5,1) = static_cast<F>(0.031250000000000000);
+    m(6,0) = static_cast<F>(0.015625000000000000);
+    m(6,1) = static_cast<F>(0.015625000000000000);
+    m(7,0) = static_cast<F>(-0.0078125000000000000);
+    m(7,1) = static_cast<F>(0.0078125000000000000);
+    m(8,0) = static_cast<F>(0.0039062500000000000);
+    m(8,1) = static_cast<F>(0.0039062500000000000);
+    m(9,0) = static_cast<F>(-0.0019531250000000000);
+    m(9,1) = static_cast<F>(0.0019531250000000000);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void coefs_to_gll(yakl::SArray<F,10,3> & m) {
+    m(0,0) = static_cast<F>(1.0000000000000000);
+    m(0,1) = static_cast<F>(1.0000000000000000);
+    m(0,2) = static_cast<F>(1.0000000000000000);
+    m(1,0) = static_cast<F>(-0.50000000000000000);
+    m(1,1) = static_cast<F>(0);
+    m(1,2) = static_cast<F>(0.50000000000000000);
+    m(2,0) = static_cast<F>(0.25000000000000000);
+    m(2,1) = static_cast<F>(0);
+    m(2,2) = static_cast<F>(0.25000000000000000);
+    m(3,0) = static_cast<F>(-0.12500000000000000);
+    m(3,1) = static_cast<F>(0);
+    m(3,2) = static_cast<F>(0.12500000000000000);
+    m(4,0) = static_cast<F>(0.062500000000000000);
+    m(4,1) = static_cast<F>(0);
+    m(4,2) = static_cast<F>(0.062500000000000000);
+    m(5,0) = static_cast<F>(-0.031250000000000000);
+    m(5,1) = static_cast<F>(0);
+    m(5,2) = static_cast<F>(0.031250000000000000);
+    m(6,0) = static_cast<F>(0.015625000000000000);
+    m(6,1) = static_cast<F>(0);
+    m(6,2) = static_cast<F>(0.015625000000000000);
+    m(7,0) = static_cast<F>(-0.0078125000000000000);
+    m(7,1) = static_cast<F>(0);
+    m(7,2) = static_cast<F>(0.0078125000000000000);
+    m(8,0) = static_cast<F>(0.0039062500000000000);
+    m(8,1) = static_cast<F>(0);
+    m(8,2) = static_cast<F>(0.0039062500000000000);
+    m(9,0) = static_cast<F>(-0.0019531250000000000);
+    m(9,1) = static_cast<F>(0);
+    m(9,2) = static_cast<F>(0.0019531250000000000);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void coefs_to_gll(yakl::SArray<F,10,4> & m) {
+    m(0,0) = static_cast<F>(1.0000000000000000);
+    m(0,1) = static_cast<F>(1.0000000000000000);
+    m(0,2) = static_cast<F>(1.0000000000000000);
+    m(0,3) = static_cast<F>(1.0000000000000000);
+    m(1,0) = static_cast<F>(-0.50000000000000000);
+    m(1,1) = static_cast<F>(-0.22360679774997897);
+    m(1,2) = static_cast<F>(0.22360679774997897);
+    m(1,3) = static_cast<F>(0.50000000000000000);
+    m(2,0) = static_cast<F>(0.25000000000000000);
+    m(2,1) = static_cast<F>(0.050000000000000000);
+    m(2,2) = static_cast<F>(0.050000000000000000);
+    m(2,3) = static_cast<F>(0.25000000000000000);
+    m(3,0) = static_cast<F>(-0.12500000000000000);
+    m(3,1) = static_cast<F>(-0.011180339887498948);
+    m(3,2) = static_cast<F>(0.011180339887498948);
+    m(3,3) = static_cast<F>(0.12500000000000000);
+    m(4,0) = static_cast<F>(0.062500000000000000);
+    m(4,1) = static_cast<F>(0.0025000000000000000);
+    m(4,2) = static_cast<F>(0.0025000000000000000);
+    m(4,3) = static_cast<F>(0.062500000000000000);
+    m(5,0) = static_cast<F>(-0.031250000000000000);
+    m(5,1) = static_cast<F>(-0.00055901699437494742);
+    m(5,2) = static_cast<F>(0.00055901699437494742);
+    m(5,3) = static_cast<F>(0.031250000000000000);
+    m(6,0) = static_cast<F>(0.015625000000000000);
+    m(6,1) = static_cast<F>(0.00012500000000000000);
+    m(6,2) = static_cast<F>(0.00012500000000000000);
+    m(6,3) = static_cast<F>(0.015625000000000000);
+    m(7,0) = static_cast<F>(-0.0078125000000000000);
+    m(7,1) = static_cast<F>(-0.000027950849718747371);
+    m(7,2) = static_cast<F>(0.000027950849718747371);
+    m(7,3) = static_cast<F>(0.0078125000000000000);
+    m(8,0) = static_cast<F>(0.0039062500000000000);
+    m(8,1) = static_cast<F>(0.0000062500000000000000);
+    m(8,2) = static_cast<F>(0.0000062500000000000000);
+    m(8,3) = static_cast<F>(0.0039062500000000000);
+    m(9,0) = static_cast<F>(-0.0019531250000000000);
+    m(9,1) = static_cast<F>(-0.0000013975424859373686);
+    m(9,2) = static_cast<F>(0.0000013975424859373686);
+    m(9,3) = static_cast<F>(0.0019531250000000000);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void coefs_to_gll(yakl::SArray<F,10,5> & m) {
+    m(0,0) = static_cast<F>(1.0000000000000000);
+    m(0,1) = static_cast<F>(1.0000000000000000);
+    m(0,2) = static_cast<F>(1.0000000000000000);
+    m(0,3) = static_cast<F>(1.0000000000000000);
+    m(0,4) = static_cast<F>(1.0000000000000000);
+    m(1,0) = static_cast<F>(-0.50000000000000000);
+    m(1,1) = static_cast<F>(-0.32732683535398857);
+    m(1,2) = static_cast<F>(0);
+    m(1,3) = static_cast<F>(0.32732683535398857);
+    m(1,4) = static_cast<F>(0.50000000000000000);
+    m(2,0) = static_cast<F>(0.25000000000000000);
+    m(2,1) = static_cast<F>(0.10714285714285714);
+    m(2,2) = static_cast<F>(0);
+    m(2,3) = static_cast<F>(0.10714285714285714);
+    m(2,4) = static_cast<F>(0.25000000000000000);
+    m(3,0) = static_cast<F>(-0.12500000000000000);
+    m(3,1) = static_cast<F>(-0.035070732359355918);
+    m(3,2) = static_cast<F>(0);
+    m(3,3) = static_cast<F>(0.035070732359355918);
+    m(3,4) = static_cast<F>(0.12500000000000000);
+    m(4,0) = static_cast<F>(0.062500000000000000);
+    m(4,1) = static_cast<F>(0.011479591836734694);
+    m(4,2) = static_cast<F>(0);
+    m(4,3) = static_cast<F>(0.011479591836734694);
+    m(4,4) = static_cast<F>(0.062500000000000000);
+    m(5,0) = static_cast<F>(-0.031250000000000000);
+    m(5,1) = static_cast<F>(-0.0037575784670738484);
+    m(5,2) = static_cast<F>(0);
+    m(5,3) = static_cast<F>(0.0037575784670738484);
+    m(5,4) = static_cast<F>(0.031250000000000000);
+    m(6,0) = static_cast<F>(0.015625000000000000);
+    m(6,1) = static_cast<F>(0.0012299562682215743);
+    m(6,2) = static_cast<F>(0);
+    m(6,3) = static_cast<F>(0.0012299562682215743);
+    m(6,4) = static_cast<F>(0.015625000000000000);
+    m(7,0) = static_cast<F>(-0.0078125000000000000);
+    m(7,1) = static_cast<F>(-0.00040259769290076947);
+    m(7,2) = static_cast<F>(0);
+    m(7,3) = static_cast<F>(0.00040259769290076947);
+    m(7,4) = static_cast<F>(0.0078125000000000000);
+    m(8,0) = static_cast<F>(0.0039062500000000000);
+    m(8,1) = static_cast<F>(0.00013178102873802582);
+    m(8,2) = static_cast<F>(0);
+    m(8,3) = static_cast<F>(0.00013178102873802582);
+    m(8,4) = static_cast<F>(0.0039062500000000000);
+    m(9,0) = static_cast<F>(-0.0019531250000000000);
+    m(9,1) = static_cast<F>(-0.000043135467096511015);
+    m(9,2) = static_cast<F>(0);
+    m(9,3) = static_cast<F>(0.000043135467096511015);
+    m(9,4) = static_cast<F>(0.0019531250000000000);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void coefs_to_gll(yakl::SArray<F,10,6> & m) {
+    m(0,0) = static_cast<F>(1.0000000000000000);
+    m(0,1) = static_cast<F>(1.0000000000000000);
+    m(0,2) = static_cast<F>(1.0000000000000000);
+    m(0,3) = static_cast<F>(1.0000000000000000);
+    m(0,4) = static_cast<F>(1.0000000000000000);
+    m(0,5) = static_cast<F>(1.0000000000000000);
+    m(1,0) = static_cast<F>(-0.50000000000000000);
+    m(1,1) = static_cast<F>(-0.38252766196473235);
+    m(1,2) = static_cast<F>(-0.14261575824032255);
+    m(1,3) = static_cast<F>(0.14261575824032255);
+    m(1,4) = static_cast<F>(0.38252766196473235);
+    m(1,5) = static_cast<F>(0.50000000000000000);
+    m(2,0) = static_cast<F>(0.25000000000000000);
+    m(2,1) = static_cast<F>(0.14632741216820454);
+    m(2,2) = static_cast<F>(0.020339254498462129);
+    m(2,3) = static_cast<F>(0.020339254498462129);
+    m(2,4) = static_cast<F>(0.14632741216820454);
+    m(2,5) = static_cast<F>(0.25000000000000000);
+    m(3,0) = static_cast<F>(-0.12500000000000000);
+    m(3,1) = static_cast<F>(-0.055974282858053008);
+    m(3,2) = static_cast<F>(-0.0029006982023410678);
+    m(3,3) = static_cast<F>(0.0029006982023410678);
+    m(3,4) = static_cast<F>(0.055974282858053008);
+    m(3,5) = static_cast<F>(0.12500000000000000);
+    m(4,0) = static_cast<F>(0.062500000000000000);
+    m(4,1) = static_cast<F>(0.021411711551843613);
+    m(4,2) = static_cast<F>(0.00041368527355321194);
+    m(4,3) = static_cast<F>(0.00041368527355321194);
+    m(4,4) = static_cast<F>(0.021411711551843613);
+    m(4,5) = static_cast<F>(0.062500000000000000);
+    m(5,0) = static_cast<F>(-0.031250000000000000);
+    m(5,1) = static_cast<F>(-0.0081905719585899884);
+    m(5,2) = static_cast<F>(-0.000058998038960646574);
+    m(5,3) = static_cast<F>(0.000058998038960646574);
+    m(5,4) = static_cast<F>(0.0081905719585899884);
+    m(5,5) = static_cast<F>(0.031250000000000000);
+    m(6,0) = static_cast<F>(0.015625000000000000);
+    m(6,1) = static_cast<F>(0.0031331203414733268);
+    m(6,2) = static_cast<F>(0.0000084140500610647023);
+    m(6,3) = static_cast<F>(0.0000084140500610647023);
+    m(6,4) = static_cast<F>(0.0031331203414733268);
+    m(6,5) = static_cast<F>(0.015625000000000000);
+    m(7,0) = static_cast<F>(-0.0078125000000000000);
+    m(7,1) = static_cast<F>(-0.0011985051988779355);
+    m(7,2) = static_cast<F>(-0.0000011999761293307748);
+    m(7,3) = static_cast<F>(0.0000011999761293307748);
+    m(7,4) = static_cast<F>(0.0011985051988779355);
+    m(7,5) = static_cast<F>(0.0078125000000000000);
+    m(8,0) = static_cast<F>(0.0039062500000000000);
+    m(8,1) = static_cast<F>(0.00045846139157935324);
+    m(8,2) = static_cast<F>(1.7113550555479580E-7);
+    m(8,3) = static_cast<F>(1.7113550555479580E-7);
+    m(8,4) = static_cast<F>(0.00045846139157935324);
+    m(8,5) = static_cast<F>(0.0039062500000000000);
+    m(9,0) = static_cast<F>(-0.0019531250000000000);
+    m(9,1) = static_cast<F>(-0.00017537416422194762);
+    m(9,2) = static_cast<F>(-2.4406619886538134E-8);
+    m(9,3) = static_cast<F>(2.4406619886538134E-8);
+    m(9,4) = static_cast<F>(0.00017537416422194762);
+    m(9,5) = static_cast<F>(0.0019531250000000000);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void coefs_to_gll(yakl::SArray<F,10,7> & m) {
+    m(0,0) = static_cast<F>(1.0000000000000000);
+    m(0,1) = static_cast<F>(1.0000000000000000);
+    m(0,2) = static_cast<F>(1.0000000000000000);
+    m(0,3) = static_cast<F>(1.0000000000000000);
+    m(0,4) = static_cast<F>(1.0000000000000000);
+    m(0,5) = static_cast<F>(1.0000000000000000);
+    m(0,6) = static_cast<F>(1.0000000000000000);
+    m(1,0) = static_cast<F>(-0.50000000000000000);
+    m(1,1) = static_cast<F>(-0.41511194813928347);
+    m(1,2) = static_cast<F>(-0.23442439673535711);
+    m(1,3) = static_cast<F>(0);
+    m(1,4) = static_cast<F>(0.23442439673535711);
+    m(1,5) = static_cast<F>(0.41511194813928347);
+    m(1,6) = static_cast<F>(0.50000000000000000);
+    m(2,0) = static_cast<F>(0.25000000000000000);
+    m(2,1) = static_cast<F>(0.17231792948799117);
+    m(2,2) = static_cast<F>(0.054954797784736108);
+    m(2,3) = static_cast<F>(0);
+    m(2,4) = static_cast<F>(0.054954797784736108);
+    m(2,5) = static_cast<F>(0.17231792948799117);
+    m(2,6) = static_cast<F>(0.25000000000000000);
+    m(3,0) = static_cast<F>(-0.12500000000000000);
+    m(3,1) = static_cast<F>(-0.071531231409087693);
+    m(3,2) = static_cast<F>(-0.012882745318400301);
+    m(3,3) = static_cast<F>(0);
+    m(3,4) = static_cast<F>(0.012882745318400301);
+    m(3,5) = static_cast<F>(0.071531231409087693);
+    m(3,6) = static_cast<F>(0.12500000000000000);
+    m(4,0) = static_cast<F>(0.062500000000000000);
+    m(4,1) = static_cast<F>(0.029693468823028295);
+    m(4,2) = static_cast<F>(0.0030200297995612366);
+    m(4,3) = static_cast<F>(0);
+    m(4,4) = static_cast<F>(0.0030200297995612366);
+    m(4,5) = static_cast<F>(0.029693468823028295);
+    m(4,6) = static_cast<F>(0.062500000000000000);
+    m(5,0) = static_cast<F>(-0.031250000000000000);
+    m(5,1) = static_cast<F>(-0.012326113690140352);
+    m(5,2) = static_cast<F>(-0.00070796866388494434);
+    m(5,3) = static_cast<F>(0);
+    m(5,4) = static_cast<F>(0.00070796866388494434);
+    m(5,5) = static_cast<F>(0.012326113690140352);
+    m(5,6) = static_cast<F>(0.031250000000000000);
+    m(6,0) = static_cast<F>(0.015625000000000000);
+    m(6,1) = static_cast<F>(0.0051167170669004538);
+    m(6,2) = static_cast<F>(0.00016596512693876488);
+    m(6,3) = static_cast<F>(0);
+    m(6,4) = static_cast<F>(0.00016596512693876488);
+    m(6,5) = static_cast<F>(0.0051167170669004538);
+    m(6,6) = static_cast<F>(0.015625000000000000);
+    m(7,0) = static_cast<F>(-0.0078125000000000000);
+    m(7,1) = static_cast<F>(-0.0021240103897185678);
+    m(7,2) = static_cast<F>(-0.000038906274761726921);
+    m(7,3) = static_cast<F>(0);
+    m(7,4) = static_cast<F>(0.000038906274761726921);
+    m(7,5) = static_cast<F>(0.0021240103897185678);
+    m(7,6) = static_cast<F>(0.0078125000000000000);
+    m(8,0) = static_cast<F>(0.0039062500000000000);
+    m(8,1) = static_cast<F>(0.00088170209074415337);
+    m(8,2) = static_cast<F>(0.0000091205799902378831);
+    m(8,3) = static_cast<F>(0);
+    m(8,4) = static_cast<F>(0.0000091205799902378831);
+    m(8,5) = static_cast<F>(0.00088170209074415337);
+    m(8,6) = static_cast<F>(0.0039062500000000000);
+    m(9,0) = static_cast<F>(-0.0019531250000000000);
+    m(9,1) = static_cast<F>(-0.00036600507256728480);
+    m(9,2) = static_cast<F>(-0.0000021380864620880849);
+    m(9,3) = static_cast<F>(0);
+    m(9,4) = static_cast<F>(0.0000021380864620880849);
+    m(9,5) = static_cast<F>(0.00036600507256728480);
+    m(9,6) = static_cast<F>(0.0019531250000000000);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void coefs_to_gll(yakl::SArray<F,10,8> & m) {
+    m(0,0) = static_cast<F>(1.0000000000000000);
+    m(0,1) = static_cast<F>(1.0000000000000000);
+    m(0,2) = static_cast<F>(1.0000000000000000);
+    m(0,3) = static_cast<F>(1.0000000000000000);
+    m(0,4) = static_cast<F>(1.0000000000000000);
+    m(0,5) = static_cast<F>(1.0000000000000000);
+    m(0,6) = static_cast<F>(1.0000000000000000);
+    m(0,7) = static_cast<F>(1.0000000000000000);
+    m(1,0) = static_cast<F>(-0.50000000000000000);
+    m(1,1) = static_cast<F>(-0.43587007425480331);
+    m(1,2) = static_cast<F>(-0.29585009071657115);
+    m(1,3) = static_cast<F>(-0.10464960895123943);
+    m(1,4) = static_cast<F>(0.10464960895123943);
+    m(1,5) = static_cast<F>(0.29585009071657115);
+    m(1,6) = static_cast<F>(0.43587007425480331);
+    m(1,7) = static_cast<F>(0.50000000000000000);
+    m(2,0) = static_cast<F>(0.25000000000000000);
+    m(2,1) = static_cast<F>(0.18998272163088775);
+    m(2,2) = static_cast<F>(0.087527276177003380);
+    m(2,3) = static_cast<F>(0.010951540653647333);
+    m(2,4) = static_cast<F>(0.010951540653647333);
+    m(2,5) = static_cast<F>(0.087527276177003380);
+    m(2,6) = static_cast<F>(0.18998272163088775);
+    m(2,7) = static_cast<F>(0.25000000000000000);
+    m(3,0) = static_cast<F>(-0.12500000000000000);
+    m(3,1) = static_cast<F>(-0.082807782984384670);
+    m(3,2) = static_cast<F>(-0.025894952597140827);
+    m(3,3) = static_cast<F>(-0.0011460744468177945);
+    m(3,4) = static_cast<F>(0.0011460744468177945);
+    m(3,5) = static_cast<F>(0.025894952597140827);
+    m(3,6) = static_cast<F>(0.082807782984384670);
+    m(3,7) = static_cast<F>(0.12500000000000000);
+    m(4,0) = static_cast<F>(0.062500000000000000);
+    m(4,1) = static_cast<F>(0.036093434518279384);
+    m(4,2) = static_cast<F>(0.0076610240749654233);
+    m(4,3) = static_cast<F>(0.00011993624268849025);
+    m(4,4) = static_cast<F>(0.00011993624268849025);
+    m(4,5) = static_cast<F>(0.0076610240749654233);
+    m(4,6) = static_cast<F>(0.036093434518279384);
+    m(4,7) = static_cast<F>(0.062500000000000000);
+    m(5,0) = static_cast<F>(-0.031250000000000000);
+    m(5,1) = static_cast<F>(-0.015732047983593316);
+    m(5,2) = static_cast<F>(-0.0022665146675603561);
+    m(5,3) = static_cast<F>(-0.000012551280896431454);
+    m(5,4) = static_cast<F>(0.000012551280896431454);
+    m(5,5) = static_cast<F>(0.0022665146675603561);
+    m(5,6) = static_cast<F>(0.015732047983593316);
+    m(5,7) = static_cast<F>(0.031250000000000000);
+    m(6,0) = static_cast<F>(0.015625000000000000);
+    m(6,1) = static_cast<F>(0.0068571289227889472);
+    m(6,2) = static_cast<F>(0.00067054857000817045);
+    m(6,3) = static_cast<F>(0.0000013134866376487136);
+    m(6,4) = static_cast<F>(0.0000013134866376487136);
+    m(6,5) = static_cast<F>(0.00067054857000817045);
+    m(6,6) = static_cast<F>(0.0068571289227889472);
+    m(6,7) = static_cast<F>(0.015625000000000000);
+    m(7,0) = static_cast<F>(-0.0078125000000000000);
+    m(7,1) = static_cast<F>(-0.0029888172927507778);
+    m(7,2) = static_cast<F>(-0.00019838185526678429);
+    m(7,3) = static_cast<F>(-1.3745586299261621E-7);
+    m(7,4) = static_cast<F>(1.3745586299261621E-7);
+    m(7,5) = static_cast<F>(0.00019838185526678429);
+    m(7,6) = static_cast<F>(0.0029888172927507778);
+    m(7,7) = static_cast<F>(0.0078125000000000000);
+    m(8,0) = static_cast<F>(0.0039062500000000000);
+    m(8,1) = static_cast<F>(0.0013027360153253217);
+    m(8,2) = static_cast<F>(0.000058691289877199820);
+    m(8,3) = static_cast<F>(1.4384702310232431E-8);
+    m(8,4) = static_cast<F>(1.4384702310232431E-8);
+    m(8,5) = static_cast<F>(0.000058691289877199820);
+    m(8,6) = static_cast<F>(0.0013027360153253217);
+    m(8,7) = static_cast<F>(0.0039062500000000000);
+    m(9,0) = static_cast<F>(-0.0019531250000000000);
+    m(9,1) = static_cast<F>(-0.00056782364373425456);
+    m(9,2) = static_cast<F>(-0.000017363823434442141);
+    m(9,3) = static_cast<F>(-1.5053534716458143E-9);
+    m(9,4) = static_cast<F>(1.5053534716458143E-9);
+    m(9,5) = static_cast<F>(0.000017363823434442141);
+    m(9,6) = static_cast<F>(0.00056782364373425456);
+    m(9,7) = static_cast<F>(0.0019531250000000000);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void coefs_to_gll(yakl::SArray<F,10,9> & m) {
+    m(0,0) = static_cast<F>(1.0000000000000000);
+    m(0,1) = static_cast<F>(1.0000000000000000);
+    m(0,2) = static_cast<F>(1.0000000000000000);
+    m(0,3) = static_cast<F>(1.0000000000000000);
+    m(0,4) = static_cast<F>(1.0000000000000000);
+    m(0,5) = static_cast<F>(1.0000000000000000);
+    m(0,6) = static_cast<F>(1.0000000000000000);
+    m(0,7) = static_cast<F>(1.0000000000000000);
+    m(0,8) = static_cast<F>(1.0000000000000000);
+    m(1,0) = static_cast<F>(-0.50000000000000000);
+    m(1,1) = static_cast<F>(-0.44987899770573008);
+    m(1,2) = static_cast<F>(-0.33859313975536888);
+    m(1,3) = static_cast<F>(-0.18155873191308908);
+    m(1,4) = static_cast<F>(0);
+    m(1,5) = static_cast<F>(0.18155873191308908);
+    m(1,6) = static_cast<F>(0.33859313975536888);
+    m(1,7) = static_cast<F>(0.44987899770573008);
+    m(1,8) = static_cast<F>(0.50000000000000000);
+    m(2,0) = static_cast<F>(0.25000000000000000);
+    m(2,1) = static_cast<F>(0.20239111257671229);
+    m(2,2) = static_cast<F>(0.11464531428939876);
+    m(2,3) = static_cast<F>(0.032963573133888951);
+    m(2,4) = static_cast<F>(0);
+    m(2,5) = static_cast<F>(0.032963573133888951);
+    m(2,6) = static_cast<F>(0.11464531428939876);
+    m(2,7) = static_cast<F>(0.20239111257671229);
+    m(2,8) = static_cast<F>(0.25000000000000000);
+    m(3,0) = static_cast<F>(-0.12500000000000000);
+    m(3,1) = static_cast<F>(-0.091051510870558906);
+    m(3,2) = static_cast<F>(-0.038818116923488583);
+    m(3,3) = static_cast<F>(-0.0059848245375132497);
+    m(3,4) = static_cast<F>(0);
+    m(3,5) = static_cast<F>(0.0059848245375132497);
+    m(3,6) = static_cast<F>(0.038818116923488583);
+    m(3,7) = static_cast<F>(0.091051510870558906);
+    m(3,8) = static_cast<F>(0.12500000000000000);
+    m(4,0) = static_cast<F>(0.062500000000000000);
+    m(4,1) = static_cast<F>(0.040962162450039427);
+    m(4,2) = static_cast<F>(0.013143548088515019);
+    m(4,3) = static_cast<F>(0.0010865971537532454);
+    m(4,4) = static_cast<F>(0);
+    m(4,5) = static_cast<F>(0.0010865971537532454);
+    m(4,6) = static_cast<F>(0.013143548088515019);
+    m(4,7) = static_cast<F>(0.040962162450039427);
+    m(4,8) = static_cast<F>(0.062500000000000000);
+    m(5,0) = static_cast<F>(-0.031250000000000000);
+    m(5,1) = static_cast<F>(-0.018428016586883030);
+    m(5,2) = static_cast<F>(-0.0044503152148159774);
+    m(5,3) = static_cast<F>(-0.00019728120133581112);
+    m(5,4) = static_cast<F>(0);
+    m(5,5) = static_cast<F>(0.00019728120133581112);
+    m(5,6) = static_cast<F>(0.0044503152148159774);
+    m(5,7) = static_cast<F>(0.018428016586883030);
+    m(5,8) = static_cast<F>(0.031250000000000000);
+    m(6,0) = static_cast<F>(0.015625000000000000);
+    m(6,1) = static_cast<F>(0.0082903776318115066);
+    m(6,2) = static_cast<F>(0.0015068462014856307);
+    m(6,3) = static_cast<F>(0.000035818124744820683);
+    m(6,4) = static_cast<F>(0);
+    m(6,5) = static_cast<F>(0.000035818124744820683);
+    m(6,6) = static_cast<F>(0.0015068462014856307);
+    m(6,7) = static_cast<F>(0.0082903776318115066);
+    m(6,8) = static_cast<F>(0.015625000000000000);
+    m(7,0) = static_cast<F>(-0.0078125000000000000);
+    m(7,1) = static_cast<F>(-0.0037296667796013648);
+    m(7,2) = static_cast<F>(-0.00051020778648947089);
+    m(7,3) = static_cast<F>(-0.0000065030933081744805);
+    m(7,4) = static_cast<F>(0);
+    m(7,5) = static_cast<F>(0.0000065030933081744805);
+    m(7,6) = static_cast<F>(0.00051020778648947089);
+    m(7,7) = static_cast<F>(0.0037296667796013648);
+    m(7,8) = static_cast<F>(0.0078125000000000000);
+    m(8,0) = static_cast<F>(0.0039062500000000000);
+    m(8,1) = static_cast<F>(0.0016778987525834201);
+    m(8,2) = static_cast<F>(0.00017275285635510682);
+    m(8,3) = static_cast<F>(0.0000011806933745446541);
+    m(8,4) = static_cast<F>(0);
+    m(8,5) = static_cast<F>(0.0000011806933745446541);
+    m(8,6) = static_cast<F>(0.00017275285635510682);
+    m(8,7) = static_cast<F>(0.0016778987525834201);
+    m(8,8) = static_cast<F>(0.0039062500000000000);
+    m(9,0) = static_cast<F>(-0.0019531250000000000);
+    m(9,1) = static_cast<F>(-0.00075485140906392380);
+    m(9,2) = static_cast<F>(-0.000058492932034983849);
+    m(9,3) = static_cast<F>(-2.1436519186051333E-7);
+    m(9,4) = static_cast<F>(0);
+    m(9,5) = static_cast<F>(2.1436519186051333E-7);
+    m(9,6) = static_cast<F>(0.000058492932034983849);
+    m(9,7) = static_cast<F>(0.00075485140906392380);
+    m(9,8) = static_cast<F>(0.0019531250000000000);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION void coefs_to_gll(yakl::SArray<F,10,10> & m) {
+    m(0,0) = static_cast<F>(1.0000000000000000);
+    m(0,1) = static_cast<F>(1.0000000000000000);
+    m(0,2) = static_cast<F>(1.0000000000000000);
+    m(0,3) = static_cast<F>(1.0000000000000000);
+    m(0,4) = static_cast<F>(1.0000000000000000);
+    m(0,5) = static_cast<F>(1.0000000000000000);
+    m(0,6) = static_cast<F>(1.0000000000000000);
+    m(0,7) = static_cast<F>(1.0000000000000000);
+    m(0,8) = static_cast<F>(1.0000000000000000);
+    m(0,9) = static_cast<F>(1.0000000000000000);
+    m(1,0) = static_cast<F>(-0.50000000000000000);
+    m(1,1) = static_cast<F>(-0.45976695408322941);
+    m(1,2) = static_cast<F>(-0.36938693255275254);
+    m(1,3) = static_cast<F>(-0.23896247490522225);
+    m(1,4) = static_cast<F>(-0.082639478833193512);
+    m(1,5) = static_cast<F>(0.082639478833193512);
+    m(1,6) = static_cast<F>(0.23896247490522225);
+    m(1,7) = static_cast<F>(0.36938693255275254);
+    m(1,8) = static_cast<F>(0.45976695408322941);
+    m(1,9) = static_cast<F>(0.50000000000000000);
+    m(2,0) = static_cast<F>(0.25000000000000000);
+    m(2,1) = static_cast<F>(0.21138565206697038);
+    m(2,2) = static_cast<F>(0.13644670594073175);
+    m(2,3) = static_cast<F>(0.057103064412828973);
+    m(2,4) = static_cast<F>(0.0068292834618218385);
+    m(2,5) = static_cast<F>(0.0068292834618218385);
+    m(2,6) = static_cast<F>(0.057103064412828973);
+    m(2,7) = static_cast<F>(0.13644670594073175);
+    m(2,8) = static_cast<F>(0.21138565206697038);
+    m(2,9) = static_cast<F>(0.25000000000000000);
+    m(3,0) = static_cast<F>(-0.12500000000000000);
+    m(3,1) = static_cast<F>(-0.097188137387728277);
+    m(3,2) = static_cast<F>(-0.050401630164374339);
+    m(3,3) = static_cast<F>(-0.013645489596761933);
+    m(3,4) = static_cast<F>(-0.00056436842608910434);
+    m(3,5) = static_cast<F>(0.00056436842608910434);
+    m(3,6) = static_cast<F>(0.013645489596761933);
+    m(3,7) = static_cast<F>(0.050401630164374339);
+    m(3,8) = static_cast<F>(0.097188137387728277);
+    m(3,9) = static_cast<F>(0.12500000000000000);
+    m(4,0) = static_cast<F>(0.062500000000000000);
+    m(4,1) = static_cast<F>(0.044683893899778258);
+    m(4,2) = static_cast<F>(0.018617703562076522);
+    m(4,3) = static_cast<F>(0.0032607599653356947);
+    m(4,4) = static_cast<F>(0.000046639112601913275);
+    m(4,5) = static_cast<F>(0.000046639112601913275);
+    m(4,6) = static_cast<F>(0.0032607599653356947);
+    m(4,7) = static_cast<F>(0.018617703562076522);
+    m(4,8) = static_cast<F>(0.044683893899778258);
+    m(4,9) = static_cast<F>(0.062500000000000000);
+    m(5,0) = static_cast<F>(-0.031250000000000000);
+    m(5,1) = static_cast<F>(-0.020544177794879245);
+    m(5,2) = static_cast<F>(-0.0068771364099719008);
+    m(5,3) = static_cast<F>(-0.00077919927138848430);
+    m(5,4) = static_cast<F>(-0.0000038542319586647409);
+    m(5,5) = static_cast<F>(0.0000038542319586647409);
+    m(5,6) = static_cast<F>(0.00077919927138848430);
+    m(5,7) = static_cast<F>(0.0068771364099719008);
+    m(5,8) = static_cast<F>(0.020544177794879245);
+    m(5,9) = static_cast<F>(0.031250000000000000);
+    m(6,0) = static_cast<F>(0.015625000000000000);
+    m(6,1) = static_cast<F>(0.0094455340488959469);
+    m(6,2) = static_cast<F>(0.0025403243232263692);
+    m(6,3) = static_cast<F>(0.00018619938633533814);
+    m(6,4) = static_cast<F>(3.1851172036629283E-7);
+    m(6,5) = static_cast<F>(3.1851172036629283E-7);
+    m(6,6) = static_cast<F>(0.00018619938633533814);
+    m(6,7) = static_cast<F>(0.0025403243232263692);
+    m(6,8) = static_cast<F>(0.0094455340488959469);
+    m(6,9) = static_cast<F>(0.015625000000000000);
+    m(7,0) = static_cast<F>(-0.0078125000000000000);
+    m(7,1) = static_cast<F>(-0.0043427444193503228);
+    m(7,2) = static_cast<F>(-0.00093836260944573559);
+    m(7,3) = static_cast<F>(-0.000044494666184526023);
+    m(7,4) = static_cast<F>(-2.6321642573334307E-8);
+    m(7,5) = static_cast<F>(2.6321642573334307E-8);
+    m(7,6) = static_cast<F>(0.000044494666184526023);
+    m(7,7) = static_cast<F>(0.00093836260944573559);
+    m(7,8) = static_cast<F>(0.0043427444193503228);
+    m(7,9) = static_cast<F>(0.0078125000000000000);
+    m(8,0) = static_cast<F>(0.0039062500000000000);
+    m(8,1) = static_cast<F>(0.0019966503740466406);
+    m(8,2) = static_cast<F>(0.00034661888592535680);
+    m(8,3) = static_cast<F>(0.000010632555551536041);
+    m(8,4) = static_cast<F>(2.1752068242939457E-9);
+    m(8,5) = static_cast<F>(2.1752068242939457E-9);
+    m(8,6) = static_cast<F>(0.000010632555551536041);
+    m(8,7) = static_cast<F>(0.00034661888592535680);
+    m(8,8) = static_cast<F>(0.0019966503740466406);
+    m(8,9) = static_cast<F>(0.0039062500000000000);
+    m(9,0) = static_cast<F>(-0.0019531250000000000);
+    m(9,1) = static_cast<F>(-0.00091799386084456463);
+    m(9,2) = static_cast<F>(-0.00012803648703682000);
+    m(9,3) = static_cast<F>(-0.0000025407817891623126);
+    m(9,4) = static_cast<F>(-1.7975795831405760E-10);
+    m(9,5) = static_cast<F>(1.7975795831405760E-10);
+    m(9,6) = static_cast<F>(0.0000025407817891623126);
+    m(9,7) = static_cast<F>(0.00012803648703682000);
+    m(9,8) = static_cast<F>(0.00091799386084456463);
+    m(9,9) = static_cast<F>(0.0019531250000000000);
+  }
 
 
   ////////////////
@@ -2017,5 +2701,54 @@ namespace TransformMatrices {
   template <class F> KOKKOS_INLINE_FUNCTION real sampR(yakl::SArray<F,9> const & s) {
     return static_cast<real>(0.00158730158730159)*s(0) - static_cast<real>(0.0162698412698413)*s(1) + static_cast<real>(0.0789682539682540)*s(2) - static_cast<real>(0.254365079365079)*s(3) + static_cast<real>(0.745634920634921)*s(4) + static_cast<real>(0.545634920634921)*s(5) - static_cast<real>(0.121031746031746)*s(6) + static_cast<real>(0.0218253968253968)*s(7) - static_cast<real>(0.00198412698412698)*s(8);
   }
-}
 
+
+  ///////////////////////
+  // edge_val, edge_der, edge_hvder
+  ///////////////////////
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,2> const & s) {
+    return static_cast<F>(0.50000000000000000)*s(0) + static_cast<F>(0.50000000000000000)*s(1);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,2> const & s) {
+    return -s(0) + s(1);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,2> const & s) {
+    return -s(0) + s(1);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,4> const & s) {
+    return -static_cast<F>(0.083333333333333333)*s(0) + static_cast<F>(0.58333333333333333)*s(1) + static_cast<F>(0.58333333333333333)*s(2) - static_cast<F>(0.083333333333333333)*s(3);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,4> const & s) {
+    return static_cast<F>(0.083333333333333333)*s(0) - static_cast<F>(1.2500000000000000)*s(1) + static_cast<F>(1.2500000000000000)*s(2) - static_cast<F>(0.083333333333333333)*s(3);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,4> const & s) {
+    return -s(0) + static_cast<F>(3.0000000000000000)*s(1) - static_cast<F>(3.0000000000000000)*s(2) + s(3);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,6> const & s) {
+    return static_cast<F>(0.016666666666666667)*s(0) - static_cast<F>(0.13333333333333333)*s(1) + static_cast<F>(0.61666666666666667)*s(2) + static_cast<F>(0.61666666666666667)*s(3) - static_cast<F>(0.13333333333333333)*s(4) + static_cast<F>(0.016666666666666667)*s(5);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,6> const & s) {
+    return -static_cast<F>(0.011111111111111111)*s(0) + static_cast<F>(0.13888888888888889)*s(1) - static_cast<F>(1.3611111111111111)*s(2) + static_cast<F>(1.3611111111111111)*s(3) - static_cast<F>(0.13888888888888889)*s(4) + static_cast<F>(0.011111111111111111)*s(5);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,6> const & s) {
+    return -s(0) + static_cast<F>(5.0000000000000000)*s(1) - static_cast<F>(10.000000000000000)*s(2) + static_cast<F>(10.000000000000000)*s(3) - static_cast<F>(5.0000000000000000)*s(4) + s(5);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,8> const & s) {
+    return -static_cast<F>(0.0035714285714285714)*s(0) + static_cast<F>(0.034523809523809524)*s(1) - static_cast<F>(0.16547619047619048)*s(2) + static_cast<F>(0.63452380952380952)*s(3) + static_cast<F>(0.63452380952380952)*s(4) - static_cast<F>(0.16547619047619048)*s(5) + static_cast<F>(0.034523809523809524)*s(6) - static_cast<F>(0.0035714285714285714)*s(7);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,8> const & s) {
+    return static_cast<F>(0.0017857142857142857)*s(0) - static_cast<F>(0.023611111111111111)*s(1) + static_cast<F>(0.17638888888888889)*s(2) - static_cast<F>(1.4236111111111111)*s(3) + static_cast<F>(1.4236111111111111)*s(4) - static_cast<F>(0.17638888888888889)*s(5) + static_cast<F>(0.023611111111111111)*s(6) - static_cast<F>(0.0017857142857142857)*s(7);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,8> const & s) {
+    return -s(0) + static_cast<F>(7.0000000000000000)*s(1) - static_cast<F>(21.000000000000000)*s(2) + static_cast<F>(35.000000000000000)*s(3) - static_cast<F>(35.000000000000000)*s(4) + static_cast<F>(21.000000000000000)*s(5) - static_cast<F>(7.0000000000000000)*s(6) + s(7);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,10> const & s) {
+    return static_cast<F>(0.00079365079365079365)*s(0) - static_cast<F>(0.0091269841269841270)*s(1) + static_cast<F>(0.050396825396825397)*s(2) - static_cast<F>(0.18769841269841270)*s(3) + static_cast<F>(0.64563492063492064)*s(4) + static_cast<F>(0.64563492063492064)*s(5) - static_cast<F>(0.18769841269841270)*s(6) + static_cast<F>(0.050396825396825397)*s(7) - static_cast<F>(0.0091269841269841270)*s(8) + static_cast<F>(0.00079365079365079365)*s(9);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,10> const & s) {
+    return -static_cast<F>(0.00031746031746031746)*s(0) + static_cast<F>(0.0046428571428571429)*s(1) - static_cast<F>(0.035039682539682540)*s(2) + static_cast<F>(0.20305555555555556)*s(3) - static_cast<F>(1.4636111111111111)*s(4) + static_cast<F>(1.4636111111111111)*s(5) - static_cast<F>(0.20305555555555556)*s(6) + static_cast<F>(0.035039682539682540)*s(7) - static_cast<F>(0.0046428571428571429)*s(8) + static_cast<F>(0.00031746031746031746)*s(9);
+  }
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,10> const & s) {
+    return -s(0) + static_cast<F>(9.0000000000000000)*s(1) - static_cast<F>(36.000000000000000)*s(2) + static_cast<F>(84.000000000000000)*s(3) - static_cast<F>(126.00000000000000)*s(4) + static_cast<F>(126.00000000000000)*s(5) - static_cast<F>(84.000000000000000)*s(6) + static_cast<F>(36.000000000000000)*s(7) - static_cast<F>(9.0000000000000000)*s(8) + s(9);
+  }
+}

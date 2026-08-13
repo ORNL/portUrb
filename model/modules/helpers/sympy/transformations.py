@@ -48,10 +48,22 @@ def gen_coefs_to_gll(N,NQ) :
 
 def gen_gll_to_coefs(N) :
   return gen_coefs_to_gll(N,N).inv()
+
+
+def gen_edge_centered(N) :
+  x      = sp.symbols('x')
+  hs     = N//2
+  coefs  = gen_coefs(N,'a')
+  p      = gen_poly(coefs)
+  constr = sp.Matrix([ sp.integrate(p,(x,i,i+1)) for i in range(-hs,hs) ])
+  Ainv   = constr.jacobian(coefs).inv()
+  vals   = gen_coefs(N,'s')
+  p      = gen_poly(Ainv*vals)
+  return p.subs(x,0) , sp.diff(p,x).subs(x,0) , sp.diff(p,x,N-1).subs(x,0)
   
 
 def gen_weno(N) :
-  assert N%2==1 , "Polynomial degree must be odd"
+  assert N%2==1 , "Order of accuracy must be odd"
   NL = (N+1)//2
   hs = (N-1)//2  # "halo" size
   edges    = []
@@ -93,9 +105,50 @@ def gen_weno(N) :
   return idl_L,TVlist,L,R,coeflist,TVgen
 
 
+# def gen_weno_edge(N) :
+#   assert N%2==0 , "Order of accuracy must be even"
+#   NL = N//2
+#   NP = N//2+1
+#   hs = N//2
+#   edge_l   = []
+#   TVlist   = []
+#   coeflist = []
+#   for ipL in range(NP) :
+#     coefs     = gen_coefs(NL,'a')
+#     p         = gen_poly(coefs)
+#     x         = sp.symbols('x')
+#     constr    = sp.Matrix([ sp.integrate(p,(x,i,i+1)) for i in range(-hs+ipL,-hs+ipL+NL) ])
+#     Ainv      = constr.jacobian(coefs).inv()
+#     vals      = gen_coefs(NL,'v',ipL)
+#     coefs     = Ainv * vals
+#     coeflist += [coefs.n(17).transpose().tolist()[0]]
+#     p         = gen_poly(coefs)
+#     edge_l   += [sp.Matrix([ p.subs(x,0) ])]
+#     TV        = sum([ (sp.diff(p,x,i)**2).subs(x,0) for i in range(1,NL) ]).expand()
+#     TVlist   += [TV.n(17)]
+#   coefs   = gen_coefs(N,'a')
+#   p       = gen_poly(coefs)
+#   x       = sp.symbols('x')
+#   constr  = sp.Matrix([ sp.integrate(p,(x,i,i+1)) for i in range(-hs,-hs+N) ])
+#   Ainv    = constr.jacobian(coefs).inv()
+#   vals    = gen_coefs(N,'v')
+#   coefs   = Ainv * vals
+#   p       = gen_poly(coefs)
+#   edge_h  = sp.Matrix([ p.subs(x,0) ])
+#   idl     = gen_coefs(NP,'idl')
+#   A       = sp.Matrix([ sum([idl[i]*edge_l[i][0] for i in range(NP)]) ]).jacobian(vals).jacobian(idl)
+#   ATAinv  = (A.transpose()*A).inv()
+#   ATb     = A.transpose()*sp.Matrix([edge_h[0]]).jacobian(vals).transpose()
+#   idl     = (ATAinv*ATb).transpose().tolist()[0]
+#   C       = [edge[0].n(17) for edge in edge_l]
+#   coefs   = gen_coefs(NL,'a')
+#   p       = gen_poly(coefs)
+#   TVgen   = sum([ (sp.diff(p,x,i)**2).subs(x,0) for i in range(1,NL) ])
+#   return idl,TVlist,C,coeflist,TVgen
+
+
 if __name__ == "__main__" :
     s2g = gen_coefs_to_gll(5,2)*gen_sten_to_coefs(5)*gen_coefs(5,'s')
     print(s2g)
     print(s2g[0,:].tolist()[0][0])
     print(s2g[1,:].tolist()[0][0])
-

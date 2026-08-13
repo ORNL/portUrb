@@ -29,6 +29,7 @@ namespace modules {
     auto uvel    = dm.get<real,3>("uvel");  // get u-velocity field
     auto vvel    = dm.get<real,3>("vvel");  // get v-velocity field
     auto imm     = dm.get<real,3>("immersed_proportion");
+    auto imm_th  = coupler.get_option<real>("immersed_proportion_threshold",0.5); // Get the threshold for immersed proportion
     // Find the cell whose midpoint forms the lower bound for interpolation
     int k1_search = -1;
     if (height < dz(0)/2) {
@@ -76,7 +77,7 @@ namespace modules {
     real u_forcing = dt / tau*(u0-u);
     real v_forcing = dt / tau*(v0-v);
     yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      if (imm(k,j,i) == 0) {
+      if (imm(k,j,i) <= imm_th) {
         uvel(k,j,i) += u_forcing;
         vvel(k,j,i) += v_forcing;
       }
@@ -110,10 +111,11 @@ namespace modules {
     auto uvel = dm.get<real,3>("uvel");   // get u-velocity field
     auto vvel = dm.get<real,3>("vvel");   // get v-velocity field
     auto imm     = dm.get<real,3>("immersed_proportion");
+    auto imm_th  = coupler.get_option<real>("immersed_proportion_threshold",0.5); // Get the threshold for immersed proportion
     real u_forcing = dt / tau*(u0-u_in);  // compute u forcing
     real v_forcing = dt / tau*(v0-v_in);  // compute v forcing
     yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      if (imm(k,j,i) == 0) {
+      if (imm(k,j,i) <= imm_th) {
         uvel(k,j,i) += u_forcing;
         vvel(k,j,i) += v_forcing;
       }
@@ -140,9 +142,10 @@ namespace modules {
     auto uvel = dm.get<real,3>("uvel");  // get u-velocity field
     auto vvel = dm.get<real,3>("vvel");  // get v-velocity field
     auto imm  = dm.get<real,3>("immersed_proportion");
+    auto imm_th  = coupler.get_option<real>("immersed_proportion_threshold",0.5); // Get the threshold for immersed proportion
     // Apply the specified wind tendencies uniformly
     yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      if (imm(k,j,i) == 0) {
+      if (imm(k,j,i) <= imm_th) {
         uvel(k,j,i) += dt*utend;
         vvel(k,j,i) += dt*vtend;
       }
@@ -178,6 +181,7 @@ namespace modules {
     auto uvel    = dm.get<real,3>("uvel");  // get u-velocity field
     auto vvel    = dm.get<real,3>("vvel");  // get v-velocity field
     auto imm     = dm.get<real,3>("immersed_proportion");
+    auto imm_th  = coupler.get_option<real>("immersed_proportion_threshold",0.5); // Get the threshold for immersed proportion
     // Find the cell whose midpoint forms the lower bound for interpolation
     int  k1 = 0;
     int  k2 = 0;
@@ -209,7 +213,7 @@ namespace modules {
     real u = uvel_sum / count_sum;
     real v = vvel_sum / count_sum;
     yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      if (imm(k,j,i) == 0) {
+      if (imm(k,j,i) <= imm_th) {
         uvel(k,j,i) += dt/tau*(u0-u);
         if (force_v) vvel(k,j,i) += dt/tau*(v0-v);
       }

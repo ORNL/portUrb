@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_cell_centered.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
 
       // Classes that can work on multiple couplers without issue (no internal state)
       modules::LES_Closure                       les_closure;
-      modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+      modules::Dynamics_Euler_Stratified  dycore;
       modules::SurfaceFlux                       sfc_flux;
       modules::Time_Averager                     time_averager;
       modules::TurbineActuatorDisc               windmills;

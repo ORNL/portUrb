@@ -1,9 +1,10 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_cell_centered.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
+#include "integration_test.h"
 #include "les_closure.h"
 #include "surface_flux.h"
 #include "sponge_layer.h"
@@ -31,15 +32,15 @@ int main(int argc, char** argv) {
     real pad_y1 = 20;
     real pad_y2 = 20;
     real pad_z2 = 100;
-    real dx     = 10;
-    real dy     = 10;
-    real dz     = 10;
+    real dx     = 40;
+    real dy     = 40;
+    real dz     = 40;
 
     modules::TriMesh mesh;
-    mesh.load_file("/ccs/home/imn/nyc2.obj");
+    mesh.load_file("./inputs/nyc2.obj");
     mesh.zero_domain_lo();
 
-    real        sim_time    = 1001;
+    real        sim_time    = 30;
     real        xlen        = std::ceil((mesh.domain_hi.x+pad_x1+pad_x2)/dx)*dx;
     real        ylen        = std::ceil((mesh.domain_hi.y+pad_y1+pad_y2)/dy)*dy;
     real        zlen        = std::ceil((mesh.domain_hi.z       +pad_z2)/dz)*dz;
@@ -48,7 +49,7 @@ int main(int argc, char** argv) {
     int         nz          = zlen/dz;
     real        dtphys_in   = 0;    // Use dycore time step
     int         dyn_cycle   = 10;
-    real        out_freq    = 1000;
+    real        out_freq    = sim_time + 1;
     real        inform_freq = 10;
     std::string out_prefix  = "city_2m";
     bool        is_restart  = false;
@@ -78,7 +79,7 @@ int main(int argc, char** argv) {
     Kokkos::fence();
     if (coupler.is_mainproc()) std::cout << mesh;
 
-    modules::Dynamics_Euler_Stratified_WenoFV  dycore;
+    modules::Dynamics_Euler_Stratified  dycore;
     modules::SurfaceFlux                       sfc_flux;
     modules::Time_Averager                     time_averager;
     modules::LES_Closure                       les_closure;
@@ -152,10 +153,12 @@ int main(int argc, char** argv) {
       }
     } // End main simulation loop
 
+    coupler.write_output_file(out_prefix, true);
+    custom_modules::check_city_solution(coupler, out_prefix);
+
     yakl::timer_stop("main");
   }
   yakl::finalize();
   Kokkos::finalize();
   MPI_Finalize();
 }
-

@@ -38,25 +38,29 @@ namespace modules {
     int hs_f      = (nz_halo_f-nz_f)/2;
     int hs        = (hy_r.size()-nz)/2;
     nc.begin_indep_data();
-    real1d x_f   ("x_f"   ,nx_glob_f);
-    real1d y_f   ("y_f"   ,ny_glob_f);
-    real1d z_f   ("z_f"   ,nz_f     );
-    real1d zint_f("zint_f",nz_f+1   );
+    float1d x_f_float   ("x_f_float"   ,nx_glob_f);
+    float1d y_f_float   ("y_f_float"   ,ny_glob_f);
+    float1d z_f_float   ("z_f_float"   ,nz_f     );
+    float1d zint_f_float("zint_f_float",nz_f+1   );
     real1d hy_r_f("hy_dens_cells"    ,nz_halo_f);
     real1d hy_p_f("hy_pressure_cells",nz_halo_f);
-    if (coupler.is_mainproc()) nc.read(x_f   ,"x" );
-    if (coupler.is_mainproc()) nc.read(y_f   ,"y" );
-    if (coupler.is_mainproc()) nc.read(z_f   ,"z" );
-    if (coupler.is_mainproc()) nc.read(zint_f,"zi");
+    if (coupler.is_mainproc()) nc.read(x_f_float   ,"x" );
+    if (coupler.is_mainproc()) nc.read(y_f_float   ,"y" );
+    if (coupler.is_mainproc()) nc.read(z_f_float   ,"z" );
+    if (coupler.is_mainproc()) nc.read(zint_f_float,"zi");
     if (coupler.is_mainproc()) nc.read(hy_r_f,"hy_dens_cells"    );
     if (coupler.is_mainproc()) nc.read(hy_p_f,"hy_pressure_cells");
-    par_comm.broadcast(x_f   );
-    par_comm.broadcast(y_f   );
-    par_comm.broadcast(z_f   );
-    par_comm.broadcast(zint_f);
+    par_comm.broadcast(x_f_float   );
+    par_comm.broadcast(y_f_float   );
+    par_comm.broadcast(z_f_float   );
+    par_comm.broadcast(zint_f_float);
     par_comm.broadcast(hy_r_f);
     par_comm.broadcast(hy_p_f);
     nc.end_indep_data();
+    auto x_f       = x_f_float   .as<real>();
+    auto y_f       = y_f_float   .as<real>();
+    auto z_f       = z_f_float   .as<real>();
+    auto zint_f    = zint_f_float.as<real>();
     auto x_f_h    = x_f   .createHostCopy();
     auto y_f_h    = y_f   .createHostCopy();
     auto z_f_h    = z_f   .createHostCopy();
@@ -85,8 +89,9 @@ namespace modules {
     int idR = -1;
     int idT = -1;
     for (int i=0; i < varnames.size(); i++) {
-      real3d field(varnames.at(i),nz_f,ny_f,nx_f);
-      nc.read_all(field,varnames.at(i),start);
+      float3d field_float(varnames.at(i),nz_f,ny_f,nx_f);
+      nc.read_all(field_float,varnames.at(i),start);
+      auto field = field_float.as<real>();
       fields_f.add_field(field);
       fields  .add_field(dm.get<real,3>(varnames.at(i)));
       if (varnames.at(i) == "density_dry") idR = i;
@@ -115,5 +120,4 @@ namespace modules {
 
 
 }
-
 

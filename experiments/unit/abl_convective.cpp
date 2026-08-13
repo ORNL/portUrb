@@ -1,9 +1,10 @@
 
 #include "coupler.h"
-#include "dynamics_rk_simpler.h"
+#include "dynamics_cell_centered.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
+#include "integration_test.h"
 #include "les_closure.h"
 #include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
@@ -16,16 +17,16 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real        sim_time    = 3600*2+1;
-    int         nx_glob     = 150;
-    int         ny_glob     = 150;
-    int         nz          = 75;
+    real        sim_time    = 30;
+    int         nx_glob     = 32;
+    int         ny_glob     = 32;
+    int         nz          = 40;
     real        xlen        = 6000;
     real        ylen        = 6000;
     real        zlen        = 3000;
     real        dtphys_in   = 0;    // Use dycore time step
     int         dyn_cycle   = 10;
-    real        out_freq    = 3600*2;
+    real        out_freq    = sim_time + 1;
     real        inform_freq = 100;
     std::string out_prefix  = "ABL_convective";
     bool        is_restart  = false;
@@ -58,7 +59,7 @@ int main(int argc, char** argv) {
                   coupler.generate_levels_equal(nz,zlen) ,
                   ny_glob , nx_glob , ylen , xlen );
 
-    modules::Dynamics_Euler_Stratified_WenoFV     dycore;
+    modules::Dynamics_Euler_Stratified     dycore;
     modules::SurfaceFlux                          sfc_flux;
     modules::Time_Averager                        time_averager;
     modules::LES_Closure                          les_closure;
@@ -130,10 +131,12 @@ int main(int argc, char** argv) {
       }
     } // End main simulation loop
 
+    coupler.write_output_file(out_prefix, true);
+    custom_modules::check_abl_convective_solution(coupler, out_prefix);
+
     yakl::timer_stop("main");
   }
   yakl::finalize();
   Kokkos::finalize();
   MPI_Finalize();
 }
-

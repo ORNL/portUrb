@@ -121,3 +121,61 @@ for N in range(3,Nmax+1,2) :
 
   print("};")
 
+
+
+# print("\ntemplate <class real, int ord> struct WenoLimiterEdgeCentered;")
+# 
+# for N in range(4,11,2) :
+#   assert N%2==0 , "Polynomial degree must be even"
+#   NL = N//2
+#   NP = N//2+1
+#   hs = N//2
+#   # idl_L,TV,L,R,coeflist,TVgen = tr.gen_weno(N)
+#   idl,TV,C,coeflist,TVgen = tr.gen_weno_edge(N)
+#   TVcode  = my_cxxcode(TV,result_name='    real TV',vector_name='v',real_type='real')
+#   Ccode   = my_cxxcode(C ,result_name='    real C' ,vector_name='v',real_type='real')
+#   print(f"\n\ntemplate <class real> struct WenoLimiterEdgeCentered<real,{N}> "+"{")
+#   print(f"  static KOKKOS_INLINE_FUNCTION real value_based(SArray<real,{N}> const & v, bool immL, bool immR) "+"{")
+# 
+#   print(TVcode)
+#   for i in range(NP) : print(f"    TV{i} = std::abs(TV{i});")
+#   print(f"    real r_sm = static_cast<real>(1.)/std::max(static_cast<real>(1.e-20),",end="")
+#   for i in range(NP) : print(f"TV{i}",end=" + " if i<NP-1 else ");\n")
+#   for i in range(NP) : print(f"    TV{i} *= r_sm;")
+# 
+#   if N == 4 :
+#     print(f"    if (v(0)==v(1)) TV0 = std::min(TV1,TV2);")
+#     print(f"    if (v(3)==v(2)) TV2 = std::min(TV0,TV1);")
+#   elif N == 6 :
+#     print(f"    if (v(0)==v(1) && v(0)==v(2)) TV0 = std::min(std::min(TV1,TV2),TV3);")
+#     print(f"    if (v(5)==v(4) && v(5)==v(3)) TV3 = std::min(std::min(TV0,TV1),TV2);")
+#   elif N == 8 :
+#     print(f"    if (v(0)==v(1) && v(0)==v(2) && v(0)==v(3)) TV0 = std::min(std::min(std::min(TV1,TV2),TV3),TV4);")
+#     print(f"    if (v(7)==v(6) && v(7)==v(5) && v(7)==v(4)) TV4 = std::min(std::min(std::min(TV0,TV1),TV2),TV3);")
+#   elif N == 10 :
+#     print(f"    if (v(0)==v(1) && v(0)==v(2) && v(0)==v(3) && v(0)==v(4)) TV0 = std::min(std::min(std::min(std::min(TV1,TV2),TV3),TV4),TV5);")
+#     print(f"    if (v(9)==v(8) && v(9)==v(7) && v(9)==v(6) && v(9)==v(5)) TV5 = std::min(std::min(std::min(std::min(TV0,TV1),TV2),TV3),TV4);")
+# 
+#   print(f"    if (immL) TV{NP-1} = ",end="")
+#   for i in range(NP-1) : print(f"std::max(TV{i},",end="" if i<NP-2 else f"TV{i+1}")
+#   for i in range(NP-1) : print(")",end="" if i<NP-2 else ";\n")
+# 
+#   print(f"    if (immR) TV0 = ",end="")
+#   for i in range(NP-1) : print(f"std::max(TV{i},",end="" if i<NP-2 else f"TV{i+1}")
+#   for i in range(NP-1) : print(")",end="" if i<NP-2 else ";\n")
+# 
+#   for i in range(NP) : print(f"    TV{i} *= TV{i};")
+# 
+#   print("    // Edge")
+#   for i in range(NP) :
+#     print(f"    real w{i} = static_cast<real>({idl[i].n(prec)})/(TV{i}+1.e-20);")
+#   print(f"    r_sm = static_cast<real>(1.)/std::max(static_cast<real>(1.e-20),",end="")
+#   for i in range(NP) : print(f"w{i}",end=" + " if i<NP-1 else ");\n")
+#   for i in range(NP) : print(f"    w{i} *= r_sm;")
+#   print(Ccode)
+#   print("    return ",end="")
+#   for i in range(NP) : print(f"w{i}*C{i}",end=" + " if i<NP-1 else ";\n")
+# 
+#   print("  }")
+# 
+#   print("};")
