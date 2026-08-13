@@ -26,6 +26,15 @@
 // structure of the underlying SPD problem. `apply_A` must be symmetric positive definite
 // for CG to be guaranteed to converge.
 //
+// An optional right_preconditioner has signature
+//
+//     void right_preconditioner(yakl::Array<Scalar *> const & r,
+//                               yakl::Array<Scalar *> const & z, MPI_Comm comm)
+//
+// and computes z=M^{-1}r for a fixed symmetric positive-definite M. Although the callback follows the same
+// input/output convention as a right preconditioner, CG uses the symmetry-preserving preconditioned recurrence based
+// on r.z; it does not form the generally nonsymmetric right-preconditioned operator A*M^{-1}.
+//
 // All vector arithmetic that touches arrays of length x.size() is done with
 // yakl::parallel_for so it runs on the GPU. Wherever an MPI-global reduction (a dot
 // product or norm) is needed, the elementwise terms to be summed are first written into
@@ -79,12 +88,13 @@ struct YaklConjGrad {
   }
 
 
-  template <class ApplyA>
+  template <class ApplyA, class RightPreconditioner = std::nullptr_t>
   Result solve( yakl::Array<Scalar *> const & x       , // initial guess (in) / solution (out)
                 yakl::Array<Scalar *> const & b       , // right hand side
                 ApplyA                        apply_A , // apply_A(x_in,Ax_out,comm) -> Ax_out = A*x_in
                 Options               const & opts    ,
-                MPI_Comm                      comm = MPI_COMM_WORLD ) const {
+                MPI_Comm                      comm = MPI_COMM_WORLD,
+                RightPreconditioner           right_preconditioner = nullptr ) const {
     auto len_loc = x.size();
     int  rank;
     MPI_Comm_rank(comm,&rank);
@@ -96,6 +106,7 @@ struct YaklConjGrad {
     // Residual, search direction, and A*p vectors -- each a separate named array
     // (mirrors the rest of this codebase's style of one array per purpose).
     yakl::Array<Scalar *> r ("cg_r" ,len_loc);
+    yakl::Array<Scalar *> z ("cg_z" ,len_loc);
     yakl::Array<Scalar *> p ("cg_p" ,len_loc);
     yakl::Array<Scalar *> Ap("cg_Ap",len_loc);
 
@@ -109,7 +120,6 @@ struct YaklConjGrad {
     yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int i) {
       Scalar ri = b(i) - Ap(i);
       r(i)     = ri;
-      p(i)     = ri;
       work(i)  = ri*ri;
     });
     Scalar loc0 = yakl::intrinsics::sum(work);
@@ -123,7 +133,6 @@ struct YaklConjGrad {
       yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int i) {
         x(i) = 0;
         r(i) = b(i);
-        p(i) = b(i);
       });
       beta0_sq = bnorm*bnorm;
       beta0 = bnorm;
@@ -134,8 +143,28 @@ struct YaklConjGrad {
 
     result.iters = 0;
     Scalar beta = beta0;
-    Scalar rs_old = beta0_sq;
     bool converged = (beta0 <= threshold);
+
+    auto apply_preconditioner = [&] (yakl::Array<Scalar *> const & input,
+                                     yakl::Array<Scalar *> const & output) {
+      if constexpr (std::is_same_v<std::decay_t<RightPreconditioner>,std::nullptr_t>) {
+        input.deep_copy_to(output);
+      } else {
+        right_preconditioner(input,output,comm);
+      }
+    };
+
+    Scalar rz_old = 0;
+    if (!converged) {
+      apply_preconditioner(r,z);
+      z.deep_copy_to(p);
+      rz_old = dot(r,z,work,comm);
+      if (!std::isfinite(rz_old) || rz_old <= 0) {
+        result.abs_res = beta;
+        result.rel_res = bnorm > 0 ? beta/bnorm : beta;
+        return result;
+      }
+    }
 
     while (!converged && result.iters < opts.max_iters) {
       apply_A(p,Ap,comm); // Ap = A*p
@@ -146,7 +175,7 @@ struct YaklConjGrad {
       bool const breakdown = !std::isfinite(pAp) || pAp <= 0;
       if (breakdown) break;
 
-      Scalar const alpha = rs_old/pAp;
+      Scalar const alpha = rz_old/pAp;
 
       // x += alpha*p ; r -= alpha*Ap ; precompute the squared residual terms in the same
       // kernel that updates the residual so the reduction below is a plain sum.
@@ -170,14 +199,15 @@ struct YaklConjGrad {
       converged = (beta <= threshold);
 
       if (!converged && result.iters < opts.max_iters) {
-        // p = r + (rs_new/rs_old)*p
-        Scalar const gamma = rs_new/rs_old;
+        apply_preconditioner(r,z);
+        Scalar const rz_new = dot(r,z,work,comm);
+        if (!std::isfinite(rz_new) || rz_new <= 0) break;
+        Scalar const gamma = rz_new/rz_old;
         yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int i) {
-          p(i) = r(i) + gamma*p(i);
+          p(i) = z(i) + gamma*p(i);
         });
+        rz_old = rz_new;
       }
-
-      rs_old = rs_new;
     }
 
     // No final re-verification of the residual is performed here: by construction the

@@ -60,6 +60,7 @@ void run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<bool>("dycore_anelastic_projection_diagnostics",true);
   coupler.set_option<bool>("dycore_anelastic_check_linearity",flow == 2 && run_invariance_checks);
   coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",n == 32);
+  coupler.set_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true);
   coupler.set_option<real>("dycore_anelastic_gmres_rel_tol",1.e-4);
   if (flow == 2 || with_immersed) {
     coupler.set_option<int>("dycore_anelastic_gmres_restart",100);
@@ -163,6 +164,8 @@ void run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     if (n == 32) {
       require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_linear_solver") == "CG",
               name + ": compatible operator did not select CG");
+      require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_preconditioner") == "Jacobi",
+              name + ": projection did not use the Jacobi preconditioner");
       real checkerboard = 0;
       if constexpr (yakl::kokkos_debug) {
         real const cg_symmetry = coupler.get_option<real>("dycore_anelastic_last_cg_symmetry_error");
