@@ -91,6 +91,43 @@ struct YaklRestartedGMRES {
   }
 
 
+  // Keep device lambdas outside solve(): NVCC cannot define an extended lambda in a function template when one of
+  // the function's template arguments is itself a function-local lambda type, as is common for solver callbacks.
+  static void form_residual( yakl::Array<real *> const & b    ,
+                             yakl::Array<real *> const & r    ,
+                             yakl::Array<real *> const & work ) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , b.size() , KOKKOS_LAMBDA (int i) {
+      real const value = b(i) - r(i);
+      r(i)              = value;
+      work(i)           = value*value;
+    });
+  }
+
+
+  static void reset_to_zero_guess( yakl::Array<real *> const & x ,
+                                   yakl::Array<real *> const & r ,
+                                   yakl::Array<real *> const & b ) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , x.size() , KOKKOS_LAMBDA (int i) {
+      x(i) = 0;
+      r(i) = b(i);
+    });
+  }
+
+
+  static void scale_vector( yakl::Array<real *> const & vector , real factor ) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , vector.size() , KOKKOS_LAMBDA (int i) {
+      vector(i) *= factor;
+    });
+  }
+
+
+  static void axpy( yakl::Array<real *> const & y , real alpha , yakl::Array<real *> const & x ) {
+    yakl::parallel_for( YAKL_AUTO_LABEL() , y.size() , KOKKOS_LAMBDA (int i) {
+      y(i) += alpha*x(i);
+    });
+  }
+
+
   // An optional convergence_test has signature
   //
   //   bool convergence_test(yakl::Array<real *> const & x, int iters, MPI_Comm comm)
@@ -204,11 +241,7 @@ struct YaklRestartedGMRES {
     // forms the residual so the reduction below is a plain sum.
     auto V0 = V[0];
     apply_operator(x_solver,V0,comm);
-    yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int i) {
-      real r  = b_solver(i) - V0(i);
-      V0(i)   = r;
-      work(i) = r*r;
-    });
+    form_residual(b_solver,V0,work);
     real loc0 = yakl::intrinsics::sum(work);
     real beta0_sq;
     MPI_Allreduce(&loc0,&beta0_sq,1,mpi_real_type(),MPI_SUM,comm);
@@ -217,10 +250,7 @@ struct YaklRestartedGMRES {
     // A stale initial guess can be worse than x=0. In that case, recover the zero-guess residual without another
     // operator application. This makes rolling guesses safe even when the operator, geometry, or forcing changes.
     if (beta0 > bnorm) {
-      yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int i) {
-        x_solver(i) = 0;
-        V0(i) = b_solver(i);
-      });
+      reset_to_zero_guess(x_solver,V0,b_solver);
       beta0 = bnorm;
     }
     real const threshold = std::max(opts.abs_tol, opts.rel_tol*bnorm);
@@ -242,9 +272,7 @@ struct YaklRestartedGMRES {
       sn = 0;
       g  = 0;
       // Normalize the current residual (sitting in V[0]) into the first Krylov vector.
-      yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int i) {
-        V0(i) = V0(i) / beta;
-      });
+      scale_vector(V0,real(1)/beta);
       g(0) = beta;
 
       int j_last = -1;
@@ -266,9 +294,7 @@ struct YaklRestartedGMRES {
             yakl::Array<real *> Vi = V[i];
             real h = dot(Vjp1,Vi,work,comm);
             H(i,j) += h;
-            yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int idx) {
-              Vjp1(idx) -= h*Vi(idx);
-            });
+            axpy(Vjp1,-h,Vi);
           }
         }
 
@@ -276,9 +302,7 @@ struct YaklRestartedGMRES {
         breakdown = H(j+1,j) <= 100*std::numeric_limits<real>::epsilon()*std::max(beta0,real(1));
         if (!breakdown) {
           real const inv = real(1)/H(j+1,j);
-          yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int idx) {
-            Vjp1(idx) *= inv;
-          });
+          scale_vector(Vjp1,inv);
         }
 
         // Apply the previously accumulated Givens rotations to the new column of H.
@@ -316,9 +340,7 @@ struct YaklRestartedGMRES {
           for (int i = 0; i < k_trial; i++) {
             real const yi = y_trial[i];
             yakl::Array<real *> Zi = Z[i];
-            yakl::parallel_for(YAKL_AUTO_LABEL(), len_loc, KOKKOS_LAMBDA (int idx) {
-              x_trial(idx) += yi*Zi(idx);
-            });
+            axpy(x_trial,yi,Zi);
           }
           result.converged_by_custom_test = test_convergence(x_trial,result.iters,comm);
           if (result.converged_by_custom_test) {
@@ -346,20 +368,14 @@ struct YaklRestartedGMRES {
         for (int i=0; i < k; i++) {
           real const yi = y[i];
           yakl::Array<real *> Zi = Z[i];
-          yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int idx) {
-            x_solver(idx) += yi*Zi(idx);
-          });
+          axpy(x_solver,yi,Zi);
         }
       }
 
       // Recompute the true residual after every Krylov update. The recurrence residual can drift from b-A*x for an
       // ill-conditioned system, and an Arnoldi breakdown is convergence only when this recomputed residual is small.
       apply_operator(x_solver,V0,comm);
-      yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int i) {
-        real r  = b_solver(i) - V0(i);
-        V0(i)   = r;
-        work(i) = r*r;
-      });
+      form_residual(b_solver,V0,work);
       real loc = yakl::intrinsics::sum(work);
       real beta_sq;
       MPI_Allreduce(&loc,&beta_sq,1,mpi_real_type(),MPI_SUM,comm);
