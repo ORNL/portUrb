@@ -2706,49 +2706,49 @@ namespace TransformMatrices {
   ///////////////////////
   // edge_val, edge_der, edge_hvder
   ///////////////////////
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_val(yakl::SArray<F,2> const & s) {
-    return static_cast<real>(0.50000000000000000)*s(0) + static_cast<real>(0.50000000000000000)*s(1);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,2> const & s) {
+    return static_cast<F>(0.50000000000000000)*s(0) + static_cast<F>(0.50000000000000000)*s(1);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_der(yakl::SArray<F,2> const & s) {
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,2> const & s) {
     return -s(0) + s(1);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_hvder(yakl::SArray<F,2> const & s) {
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,2> const & s) {
     return -s(0) + s(1);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_val(yakl::SArray<F,4> const & s) {
-    return -static_cast<real>(0.083333333333333333)*s(0) + static_cast<real>(0.58333333333333333)*s(1) + static_cast<real>(0.58333333333333333)*s(2) - static_cast<real>(0.083333333333333333)*s(3);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,4> const & s) {
+    return -static_cast<F>(0.083333333333333333)*s(0) + static_cast<F>(0.58333333333333333)*s(1) + static_cast<F>(0.58333333333333333)*s(2) - static_cast<F>(0.083333333333333333)*s(3);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_der(yakl::SArray<F,4> const & s) {
-    return static_cast<real>(0.083333333333333333)*s(0) - static_cast<real>(1.2500000000000000)*s(1) + static_cast<real>(1.2500000000000000)*s(2) - static_cast<real>(0.083333333333333333)*s(3);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,4> const & s) {
+    return static_cast<F>(0.083333333333333333)*s(0) - static_cast<F>(1.2500000000000000)*s(1) + static_cast<F>(1.2500000000000000)*s(2) - static_cast<F>(0.083333333333333333)*s(3);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_hvder(yakl::SArray<F,4> const & s) {
-    return -s(0) + static_cast<real>(3.0000000000000000)*s(1) - static_cast<real>(3.0000000000000000)*s(2) + s(3);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,4> const & s) {
+    return -s(0) + static_cast<F>(3.0000000000000000)*s(1) - static_cast<F>(3.0000000000000000)*s(2) + s(3);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_val(yakl::SArray<F,6> const & s) {
-    return static_cast<real>(0.016666666666666667)*s(0) - static_cast<real>(0.13333333333333333)*s(1) + static_cast<real>(0.61666666666666667)*s(2) + static_cast<real>(0.61666666666666667)*s(3) - static_cast<real>(0.13333333333333333)*s(4) + static_cast<real>(0.016666666666666667)*s(5);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,6> const & s) {
+    return static_cast<F>(0.016666666666666667)*s(0) - static_cast<F>(0.13333333333333333)*s(1) + static_cast<F>(0.61666666666666667)*s(2) + static_cast<F>(0.61666666666666667)*s(3) - static_cast<F>(0.13333333333333333)*s(4) + static_cast<F>(0.016666666666666667)*s(5);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_der(yakl::SArray<F,6> const & s) {
-    return -static_cast<real>(0.011111111111111111)*s(0) + static_cast<real>(0.13888888888888889)*s(1) - static_cast<real>(1.3611111111111111)*s(2) + static_cast<real>(1.3611111111111111)*s(3) - static_cast<real>(0.13888888888888889)*s(4) + static_cast<real>(0.011111111111111111)*s(5);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,6> const & s) {
+    return -static_cast<F>(0.011111111111111111)*s(0) + static_cast<F>(0.13888888888888889)*s(1) - static_cast<F>(1.3611111111111111)*s(2) + static_cast<F>(1.3611111111111111)*s(3) - static_cast<F>(0.13888888888888889)*s(4) + static_cast<F>(0.011111111111111111)*s(5);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_hvder(yakl::SArray<F,6> const & s) {
-    return -s(0) + static_cast<real>(5.0000000000000000)*s(1) - static_cast<real>(10.000000000000000)*s(2) + static_cast<real>(10.000000000000000)*s(3) - static_cast<real>(5.0000000000000000)*s(4) + s(5);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,6> const & s) {
+    return -s(0) + static_cast<F>(5.0000000000000000)*s(1) - static_cast<F>(10.000000000000000)*s(2) + static_cast<F>(10.000000000000000)*s(3) - static_cast<F>(5.0000000000000000)*s(4) + s(5);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_val(yakl::SArray<F,8> const & s) {
-    return -static_cast<real>(0.0035714285714285714)*s(0) + static_cast<real>(0.034523809523809524)*s(1) - static_cast<real>(0.16547619047619048)*s(2) + static_cast<real>(0.63452380952380952)*s(3) + static_cast<real>(0.63452380952380952)*s(4) - static_cast<real>(0.16547619047619048)*s(5) + static_cast<real>(0.034523809523809524)*s(6) - static_cast<real>(0.0035714285714285714)*s(7);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,8> const & s) {
+    return -static_cast<F>(0.0035714285714285714)*s(0) + static_cast<F>(0.034523809523809524)*s(1) - static_cast<F>(0.16547619047619048)*s(2) + static_cast<F>(0.63452380952380952)*s(3) + static_cast<F>(0.63452380952380952)*s(4) - static_cast<F>(0.16547619047619048)*s(5) + static_cast<F>(0.034523809523809524)*s(6) - static_cast<F>(0.0035714285714285714)*s(7);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_der(yakl::SArray<F,8> const & s) {
-    return static_cast<real>(0.0017857142857142857)*s(0) - static_cast<real>(0.023611111111111111)*s(1) + static_cast<real>(0.17638888888888889)*s(2) - static_cast<real>(1.4236111111111111)*s(3) + static_cast<real>(1.4236111111111111)*s(4) - static_cast<real>(0.17638888888888889)*s(5) + static_cast<real>(0.023611111111111111)*s(6) - static_cast<real>(0.0017857142857142857)*s(7);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,8> const & s) {
+    return static_cast<F>(0.0017857142857142857)*s(0) - static_cast<F>(0.023611111111111111)*s(1) + static_cast<F>(0.17638888888888889)*s(2) - static_cast<F>(1.4236111111111111)*s(3) + static_cast<F>(1.4236111111111111)*s(4) - static_cast<F>(0.17638888888888889)*s(5) + static_cast<F>(0.023611111111111111)*s(6) - static_cast<F>(0.0017857142857142857)*s(7);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_hvder(yakl::SArray<F,8> const & s) {
-    return -s(0) + static_cast<real>(7.0000000000000000)*s(1) - static_cast<real>(21.000000000000000)*s(2) + static_cast<real>(35.000000000000000)*s(3) - static_cast<real>(35.000000000000000)*s(4) + static_cast<real>(21.000000000000000)*s(5) - static_cast<real>(7.0000000000000000)*s(6) + s(7);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,8> const & s) {
+    return -s(0) + static_cast<F>(7.0000000000000000)*s(1) - static_cast<F>(21.000000000000000)*s(2) + static_cast<F>(35.000000000000000)*s(3) - static_cast<F>(35.000000000000000)*s(4) + static_cast<F>(21.000000000000000)*s(5) - static_cast<F>(7.0000000000000000)*s(6) + s(7);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_val(yakl::SArray<F,10> const & s) {
-    return static_cast<real>(0.00079365079365079365)*s(0) - static_cast<real>(0.0091269841269841270)*s(1) + static_cast<real>(0.050396825396825397)*s(2) - static_cast<real>(0.18769841269841270)*s(3) + static_cast<real>(0.64563492063492064)*s(4) + static_cast<real>(0.64563492063492064)*s(5) - static_cast<real>(0.18769841269841270)*s(6) + static_cast<real>(0.050396825396825397)*s(7) - static_cast<real>(0.0091269841269841270)*s(8) + static_cast<real>(0.00079365079365079365)*s(9);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_val(yakl::SArray<F,10> const & s) {
+    return static_cast<F>(0.00079365079365079365)*s(0) - static_cast<F>(0.0091269841269841270)*s(1) + static_cast<F>(0.050396825396825397)*s(2) - static_cast<F>(0.18769841269841270)*s(3) + static_cast<F>(0.64563492063492064)*s(4) + static_cast<F>(0.64563492063492064)*s(5) - static_cast<F>(0.18769841269841270)*s(6) + static_cast<F>(0.050396825396825397)*s(7) - static_cast<F>(0.0091269841269841270)*s(8) + static_cast<F>(0.00079365079365079365)*s(9);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_der(yakl::SArray<F,10> const & s) {
-    return -static_cast<real>(0.00031746031746031746)*s(0) + static_cast<real>(0.0046428571428571429)*s(1) - static_cast<real>(0.035039682539682540)*s(2) + static_cast<real>(0.20305555555555556)*s(3) - static_cast<real>(1.4636111111111111)*s(4) + static_cast<real>(1.4636111111111111)*s(5) - static_cast<real>(0.20305555555555556)*s(6) + static_cast<real>(0.035039682539682540)*s(7) - static_cast<real>(0.0046428571428571429)*s(8) + static_cast<real>(0.00031746031746031746)*s(9);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_der(yakl::SArray<F,10> const & s) {
+    return -static_cast<F>(0.00031746031746031746)*s(0) + static_cast<F>(0.0046428571428571429)*s(1) - static_cast<F>(0.035039682539682540)*s(2) + static_cast<F>(0.20305555555555556)*s(3) - static_cast<F>(1.4636111111111111)*s(4) + static_cast<F>(1.4636111111111111)*s(5) - static_cast<F>(0.20305555555555556)*s(6) + static_cast<F>(0.035039682539682540)*s(7) - static_cast<F>(0.0046428571428571429)*s(8) + static_cast<F>(0.00031746031746031746)*s(9);
   }
-  template <class F> KOKKOS_INLINE_FUNCTION real edge_hvder(yakl::SArray<F,10> const & s) {
-    return -s(0) + static_cast<real>(9.0000000000000000)*s(1) - static_cast<real>(36.000000000000000)*s(2) + static_cast<real>(84.000000000000000)*s(3) - static_cast<real>(126.00000000000000)*s(4) + static_cast<real>(126.00000000000000)*s(5) - static_cast<real>(84.000000000000000)*s(6) + static_cast<real>(36.000000000000000)*s(7) - static_cast<real>(9.0000000000000000)*s(8) + s(9);
+  template <class F> KOKKOS_INLINE_FUNCTION F edge_hvder(yakl::SArray<F,10> const & s) {
+    return -s(0) + static_cast<F>(9.0000000000000000)*s(1) - static_cast<F>(36.000000000000000)*s(2) + static_cast<F>(84.000000000000000)*s(3) - static_cast<F>(126.00000000000000)*s(4) + static_cast<F>(126.00000000000000)*s(5) - static_cast<F>(84.000000000000000)*s(6) + static_cast<F>(36.000000000000000)*s(7) - static_cast<F>(9.0000000000000000)*s(8) + s(9);
   }
 }

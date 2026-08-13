@@ -563,7 +563,9 @@ namespace modules {
 
     // Apply homogeneous, candidate-dependent boundary extensions for a projection matvec.
     // Precursor data are deliberately excluded because fixed data and velocity-sign branches would make A*x affine/nonlinear.
-    void projection_boundary_conditions(core::Coupler const & coupler, real4d const & fields) const {
+    template <class Scalar>
+    void projection_boundary_conditions(core::Coupler const & coupler,
+                                         yakl::Array<Scalar ****> const & fields) const {
       using yakl::SimpleBounds;
       int constexpr idRU = 1;
       int constexpr idRV = 2;
@@ -642,14 +644,16 @@ namespace modules {
 
 
     // One anelastic RK forcing evaluation: pressureless conservative FE advection, theta buoyancy, and projection.
-    void compute_tendencies( core::Coupler       & coupler      ,
-                             real4d        const & state        ,
-                             real4d        const & state_tend   ,
-                             real4d        const & tracers      ,
-                             real4d        const & tracers_tend ,
-                             real                  dt           ,
-                             int                   istage       ,
-                             int                   icycle       ) const {
+    template <class ProjectionScalar = float>
+    void compute_tendencies_impl( core::Coupler       & coupler      ,
+                                  real4d        const & state        ,
+                                  real4d        const & state_tend   ,
+                                  real4d        const & tracers      ,
+                                  real4d        const & tracers_tend ,
+                                  real                  dt           ,
+                                  int                   istage       ,
+                                  int                   icycle       ) const {
+      static_assert(std::is_floating_point_v<ProjectionScalar>);
       using yakl::SimpleBounds;
       if (dt <= 0) endrun("ERROR: anelastic tendency forcing interval must be positive");
 
@@ -683,26 +687,35 @@ namespace modules {
       auto const fluid_mask = dm.get<int const,3>("dycore_anelastic_fluid_mask");
       int const fluid_count = coupler.get_option<int>("dycore_anelastic_fluid_count");
       int const nfields = num_state + 1 + num_tracers;
-      real const r_dx = 1._fp / dx;
-      real const r_dy = 1._fp / dy;
+      FLOC const dt_loc = static_cast<FLOC>(dt);
+      FLOC const dx_loc = static_cast<FLOC>(dx);
+      FLOC const dy_loc = static_cast<FLOC>(dy);
+      FLOC const r_dx_loc = FLOC(1)/dx_loc;
+      FLOC const r_dy_loc = FLOC(1)/dy_loc;
+      ProjectionScalar const dt_proj = static_cast<ProjectionScalar>(dt);
+      ProjectionScalar const dx_proj = static_cast<ProjectionScalar>(dx);
+      ProjectionScalar const dy_proj = static_cast<ProjectionScalar>(dy);
+      ProjectionScalar const r_dx = ProjectionScalar(1)/dx_proj;
+      ProjectionScalar const r_dy = ProjectionScalar(1)/dy_proj;
 
       // The temporary conservative system always starts from fixed hydrostatic density.
-      yakl::Array<FLOC ****> fields("anelastic_adv_fields",nfields,nz+2*hs,ny+2*hs,nx+2*hs);
+      yakl::Array<FLOC ****> fields_loc("anelastic_adv_fields",nfields,nz+2*hs,ny+2*hs,nx+2*hs);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-        real const r_rho_h = 1._fp / rho_h(hs+k);
-        fields(idR,hs+k,hs+j,hs+i) = 0;
-        fields(idU,hs+k,hs+j,hs+i) = state(idU,k,j,i) * r_rho_h;
-        fields(idV,hs+k,hs+j,hs+i) = state(idV,k,j,i) * r_rho_h;
-        fields(idW,hs+k,hs+j,hs+i) = state(idW,k,j,i) * r_rho_h;
-        fields(idT,hs+k,hs+j,hs+i) = state(idT,k,j,i) * r_rho_h - theta_h(hs+k);
-        fields(idP,hs+k,hs+j,hs+i) = 0;
+        FLOC const r_rho_h = FLOC(1)/static_cast<FLOC>(rho_h(hs+k));
+        fields_loc(idR,hs+k,hs+j,hs+i) = 0;
+        fields_loc(idU,hs+k,hs+j,hs+i) = static_cast<FLOC>(state(idU,k,j,i))*r_rho_h;
+        fields_loc(idV,hs+k,hs+j,hs+i) = static_cast<FLOC>(state(idV,k,j,i))*r_rho_h;
+        fields_loc(idW,hs+k,hs+j,hs+i) = static_cast<FLOC>(state(idW,k,j,i))*r_rho_h;
+        fields_loc(idT,hs+k,hs+j,hs+i) = static_cast<FLOC>(state(idT,k,j,i))*r_rho_h -
+                                               static_cast<FLOC>(theta_h(hs+k));
+        fields_loc(idP,hs+k,hs+j,hs+i) = 0;
         for (int tr = 0; tr < num_tracers; tr++) {
-          fields(num_state+1+tr,hs+k,hs+j,hs+i) = tracers(tr,k,j,i) * r_rho_h;
+          fields_loc(num_state+1+tr,hs+k,hs+j,hs+i) = static_cast<FLOC>(tracers(tr,k,j,i))*r_rho_h;
         }
       });
-      if (ord > 1) coupler.halo_exchange_x(fields,hs);
-      if (ord > 1) coupler.halo_exchange_y(fields,hs);
-      halo_boundary_conditions(coupler,fields,istage,icycle);
+      if (ord > 1) coupler.halo_exchange_x(fields_loc,hs);
+      if (ord > 1) coupler.halo_exchange_y(fields_loc,hs);
+      halo_boundary_conditions(coupler,fields_loc,istage,icycle);
 
       yakl::Array<FLOC ****> val_x ("anelastic_adv_val_x" ,nfields,nz,ny,nx+1);
       yakl::Array<FLOC ****> val_y ("anelastic_adv_val_y" ,nfields,nz,ny+1,nx);
@@ -721,7 +734,7 @@ namespace modules {
       auto const nproc_x = coupler.get_nproc_x();
       auto const nproc_y = coupler.get_nproc_y();
       FLOC constexpr hvbeta = 0.01;
-      FLOC hvcoef = hvbeta / dt / std::pow(2._fp,ord);
+      FLOC hvcoef = hvbeta/dt_loc/std::pow(FLOC(2),ord);
       if ((ord/2)%2 == 1) hvcoef *= -1;
       FLOC constexpr immbeta_amp = 20;
 
@@ -730,20 +743,21 @@ namespace modules {
         SArray<FLOC,ord> s;
         SArray<bool,ord> imm;
         for (int ii = 0; ii < ord; ii++) {
-          s(ii)   = fields(l,hs+k,hs+j,i+ii);
+          s(ii)   = fields_loc(l,hs+k,hs+j,i+ii);
           imm(ii) = immersed(hs+k,hs+j,i+ii) > imm_th;
         }
         if (l != idU) modify_stencil_immersed_der0(s,imm);
         val_x(l,k,j,i) = TransformMatrices::edge_val(s);
         if (l != idP) {
           FLOC coef = hvcoef;
-          FLOC const dist = std::min(imm_dist(k,j,std::min(nx-1,i)),imm_dist(k,j,std::max(0,i-1)));
+          FLOC const dist = std::min(static_cast<FLOC>(imm_dist(k,j,std::min(nx-1,i))),
+                                     static_cast<FLOC>(imm_dist(k,j,std::max(0,i-1))));
           if (dist <= 12) {
             FLOC const mult = 2*dist*dist*dist/1331 - 39*dist*dist/1331 + 72*dist/1331 + 1296._fp/1331._fp;
             coef *= 1 + immbeta_amp*std::max(FLOC(0),mult);
           }
-          flux_x(l,k,j,i) = coef*dx*TransformMatrices::edge_hvder(s);
-          if (l != idR) flux_x(l,k,j,i) *= rho_h(hs+k);
+          flux_x(l,k,j,i) = coef*dx_loc*TransformMatrices::edge_hvder(s);
+          if (l != idR) flux_x(l,k,j,i) *= static_cast<FLOC>(rho_h(hs+k));
         }
       });
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<4>(nfields,nz,ny+1,nx),
@@ -751,20 +765,21 @@ namespace modules {
         SArray<FLOC,ord> s;
         SArray<bool,ord> imm;
         for (int jj = 0; jj < ord; jj++) {
-          s(jj)   = fields(l,hs+k,j+jj,hs+i);
+          s(jj)   = fields_loc(l,hs+k,j+jj,hs+i);
           imm(jj) = immersed(hs+k,j+jj,hs+i) > imm_th;
         }
         if (l != idV) modify_stencil_immersed_der0(s,imm);
         val_y(l,k,j,i) = TransformMatrices::edge_val(s);
         if (l != idP) {
           FLOC coef = hvcoef;
-          FLOC const dist = std::min(imm_dist(k,std::min(ny-1,j),i),imm_dist(k,std::max(0,j-1),i));
+          FLOC const dist = std::min(static_cast<FLOC>(imm_dist(k,std::min(ny-1,j),i)),
+                                     static_cast<FLOC>(imm_dist(k,std::max(0,j-1),i)));
           if (dist <= 12) {
             FLOC const mult = 2*dist*dist*dist/1331 - 39*dist*dist/1331 + 72*dist/1331 + 1296._fp/1331._fp;
             coef *= 1 + immbeta_amp*std::max(FLOC(0),mult);
           }
-          flux_y(l,k,j,i) = coef*dy*TransformMatrices::edge_hvder(s);
-          if (l != idR) flux_y(l,k,j,i) *= rho_h(hs+k);
+          flux_y(l,k,j,i) = coef*dy_loc*TransformMatrices::edge_hvder(s);
+          if (l != idR) flux_y(l,k,j,i) *= static_cast<FLOC>(rho_h(hs+k));
           if ((py == 0 && j == 0 && wall_y1) || (py == nproc_y-1 && j == ny && wall_y2)) flux_y(l,k,j,i) = 0;
         }
       });
@@ -773,36 +788,40 @@ namespace modules {
         SArray<FLOC,ord> s;
         SArray<bool,ord> imm;
         for (int kk = 0; kk < ord; kk++) {
-          s(kk)   = fields(l,k+kk,hs+j,hs+i);
+          s(kk)   = fields_loc(l,k+kk,hs+j,hs+i);
           imm(kk) = immersed(k+kk,hs+j,hs+i) > imm_th;
         }
         if (l != idW) modify_stencil_immersed_der0(s,imm);
         if (l != idP) {
           FLOC coef = hvcoef;
-          FLOC const dist = std::min(imm_dist(std::min(nz-1,k),j,i),imm_dist(std::max(0,k-1),j,i));
+          FLOC const dist = std::min(static_cast<FLOC>(imm_dist(std::min(nz-1,k),j,i)),
+                                     static_cast<FLOC>(imm_dist(std::max(0,k-1),j,i)));
           if (dist <= 12) {
             FLOC const mult = 2*dist*dist*dist/1331 - 39*dist*dist/1331 + 72*dist/1331 + 1296._fp/1331._fp;
             coef *= 1 + immbeta_amp*std::max(FLOC(0),mult);
           }
-          real const dzloc = 0.5_fp*(dz(std::max(0,k-1))+dz(std::min(nz-1,k)));
+          FLOC const dzloc = FLOC(0.5)*(static_cast<FLOC>(dz(std::max(0,k-1))) +
+                                        static_cast<FLOC>(dz(std::min(nz-1,k))));
           flux_z(l,k,j,i) = coef*dzloc*TransformMatrices::edge_hvder(s);
-          if (l != idR) flux_z(l,k,j,i) *= rho_h_edge(k);
+          if (l != idR) flux_z(l,k,j,i) *= static_cast<FLOC>(rho_h_edge(k));
           if ((k == 0 && wall_z1) || (k == nz && wall_z2)) flux_z(l,k,j,i) = 0;
         }
-        for (int kk = 0; kk < ord; kk++) s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+kk)));
-        val_z(l,k,j,i) = TransformMatrices::edge_val(s) / metjac_edge(k);
+        for (int kk = 0; kk < ord; kk++) {
+          s(kk) *= static_cast<FLOC>(dz(std::max(0,std::min(nz-1,k-hs+kk))));
+        }
+        val_z(l,k,j,i) = TransformMatrices::edge_val(s)/static_cast<FLOC>(metjac_edge(k));
       });
 
       // Construct each direction's mass flux once, then reuse it for every transported specific quantity.
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx+1), KOKKOS_LAMBDA (int k, int j, int i) {
         FLOC u = val_x(idU,k,j,i);
         if (immersed(hs+k,hs+j,hs+i-1) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) u = 0;
-        FLOC const mass_flux = (val_x(idR,k,j,i)+rho_h(hs+k))*u;
+        FLOC const mass_flux = (val_x(idR,k,j,i)+static_cast<FLOC>(rho_h(hs+k)))*u;
         flux_x(idR,k,j,i) += mass_flux;
         flux_x(idU,k,j,i) += mass_flux*u;
         flux_x(idV,k,j,i) += mass_flux*val_x(idV,k,j,i);
         flux_x(idW,k,j,i) += mass_flux*val_x(idW,k,j,i);
-        flux_x(idT,k,j,i) += mass_flux*(val_x(idT,k,j,i)+theta_h(hs+k));
+        flux_x(idT,k,j,i) += mass_flux*(val_x(idT,k,j,i)+static_cast<FLOC>(theta_h(hs+k)));
         for (int tr = 0; tr < num_tracers; tr++) {
           flux_x(num_state+1+tr,k,j,i) += mass_flux*val_x(num_state+1+tr,k,j,i);
         }
@@ -811,12 +830,12 @@ namespace modules {
         FLOC v = val_y(idV,k,j,i);
         if (immersed(hs+k,hs+j-1,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) v = 0;
         if ((py == 0 && j == 0 && wall_y1) || (py == nproc_y-1 && j == ny && wall_y2)) v = 0;
-        FLOC const mass_flux = (val_y(idR,k,j,i)+rho_h(hs+k))*v;
+        FLOC const mass_flux = (val_y(idR,k,j,i)+static_cast<FLOC>(rho_h(hs+k)))*v;
         flux_y(idR,k,j,i) += mass_flux;
         flux_y(idU,k,j,i) += mass_flux*val_y(idU,k,j,i);
         flux_y(idV,k,j,i) += mass_flux*v;
         flux_y(idW,k,j,i) += mass_flux*val_y(idW,k,j,i);
-        flux_y(idT,k,j,i) += mass_flux*(val_y(idT,k,j,i)+theta_h(hs+k));
+        flux_y(idT,k,j,i) += mass_flux*(val_y(idT,k,j,i)+static_cast<FLOC>(theta_h(hs+k)));
         for (int tr = 0; tr < num_tracers; tr++) {
           flux_y(num_state+1+tr,k,j,i) += mass_flux*val_y(num_state+1+tr,k,j,i);
         }
@@ -825,41 +844,44 @@ namespace modules {
         FLOC w = val_z(idW,k,j,i);
         if (immersed(hs+k-1,hs+j,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) w = 0;
         if ((k == 0 && wall_z1) || (k == nz && wall_z2)) w = 0;
-        FLOC const mass_flux = (val_z(idR,k,j,i)+rho_h_edge(k))*w;
+        FLOC const mass_flux = (val_z(idR,k,j,i)+static_cast<FLOC>(rho_h_edge(k)))*w;
         flux_z(idR,k,j,i) += mass_flux;
         flux_z(idU,k,j,i) += mass_flux*val_z(idU,k,j,i);
         flux_z(idV,k,j,i) += mass_flux*val_z(idV,k,j,i);
         flux_z(idW,k,j,i) += mass_flux*w;
-        flux_z(idT,k,j,i) += mass_flux*(val_z(idT,k,j,i)+theta_h_edge(k));
+        flux_z(idT,k,j,i) += mass_flux*(val_z(idT,k,j,i)+static_cast<FLOC>(theta_h_edge(k)));
         for (int tr = 0; tr < num_tracers; tr++) {
           flux_z(num_state+1+tr,k,j,i) += mass_flux*val_z(num_state+1+tr,k,j,i);
         }
       });
 
-      real4d adv("anelastic_adv_state",num_state,nz,ny,nx);
-      real4d qstar("anelastic_qstar",num_tracers,nz,ny,nx);
-      real4d star("anelastic_star",4,nz,ny,nx);
+      yakl::Array<FLOC ****> adv  ("anelastic_adv_state",num_state,nz,ny,nx);
+      yakl::Array<FLOC ****> qstar("anelastic_qstar",num_tracers,nz,ny,nx);
+      yakl::Array<FLOC ****> star ("anelastic_star",4,nz,ny,nx);
       int3d invalid("anelastic_invalid_density",nz,ny,nx);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
         auto divergence = [&] (int l) {
-          return (flux_x(l,k,j,i+1)-flux_x(l,k,j,i))*r_dx +
-                 (flux_y(l,k,j+1,i)-flux_y(l,k,j,i))*r_dy +
-                 (flux_z(l,k+1,j,i)-flux_z(l,k,j,i))/dz(k);
+          return (flux_x(l,k,j,i+1)-flux_x(l,k,j,i))*r_dx_loc +
+                 (flux_y(l,k,j+1,i)-flux_y(l,k,j,i))*r_dy_loc +
+                 (flux_z(l,k+1,j,i)-flux_z(l,k,j,i))/static_cast<FLOC>(dz(k));
         };
-        adv(idR,k,j,i) = rho_h(hs+k)       - dt*divergence(idR);
-        adv(idU,k,j,i) = state(idU,k,j,i) - dt*divergence(idU);
-        adv(idV,k,j,i) = state(idV,k,j,i) - dt*divergence(idV);
-        adv(idW,k,j,i) = state(idW,k,j,i) - dt*divergence(idW);
-        adv(idT,k,j,i) = state(idT,k,j,i) - dt*divergence(idT);
-        invalid(k,j,i) = !std::isfinite(adv(idR,k,j,i)) || adv(idR,k,j,i) <= std::numeric_limits<real>::min();
-        real const r_rho = invalid(k,j,i) ? 0 : 1._fp/adv(idR,k,j,i);
+        adv(idR,k,j,i) = static_cast<FLOC>(rho_h(hs+k))       - dt_loc*divergence(idR);
+        adv(idU,k,j,i) = static_cast<FLOC>(state(idU,k,j,i)) - dt_loc*divergence(idU);
+        adv(idV,k,j,i) = static_cast<FLOC>(state(idV,k,j,i)) - dt_loc*divergence(idV);
+        adv(idW,k,j,i) = static_cast<FLOC>(state(idW,k,j,i)) - dt_loc*divergence(idW);
+        adv(idT,k,j,i) = static_cast<FLOC>(state(idT,k,j,i)) - dt_loc*divergence(idT);
+        invalid(k,j,i) = !std::isfinite(adv(idR,k,j,i)) || adv(idR,k,j,i) <= std::numeric_limits<FLOC>::min();
+        FLOC const r_rho = invalid(k,j,i) ? 0 : FLOC(1)/adv(idR,k,j,i);
         star(0,k,j,i) = adv(idU,k,j,i)*r_rho;
         star(1,k,j,i) = adv(idV,k,j,i)*r_rho;
         star(2,k,j,i) = adv(idW,k,j,i)*r_rho;
         star(3,k,j,i) = adv(idT,k,j,i)*r_rho;
-        if (gravity) star(2,k,j,i) += dt*grav*(star(3,k,j,i)-theta_h(hs+k))/theta_h(hs+k);
+        if (gravity) {
+          FLOC const theta_h_loc = static_cast<FLOC>(theta_h(hs+k));
+          star(2,k,j,i) += dt_loc*static_cast<FLOC>(grav)*(star(3,k,j,i)-theta_h_loc)/theta_h_loc;
+        }
         for (int tr = 0; tr < num_tracers; tr++) {
-          real const rhoq = tracers(tr,k,j,i) - dt*divergence(num_state+1+tr);
+          FLOC const rhoq = static_cast<FLOC>(tracers(tr,k,j,i))-dt_loc*divergence(num_state+1+tr);
           qstar(tr,k,j,i) = rhoq*r_rho;
         }
       });
@@ -867,12 +889,13 @@ namespace modules {
       if (invalid_global != 0) endrun("ERROR: pressureless anelastic advection produced invalid temporary density");
       if constexpr (yakl::kokkos_debug) {
         if (diagnostics) {
-          real3d density_change("anelastic_temporary_density_change",nz,ny,nx);
+          yakl::Array<FLOC ***> density_change("anelastic_temporary_density_change",nz,ny,nx);
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-            density_change(k,j,i) = std::abs(adv(idR,k,j,i)-rho_h(hs+k));
+            density_change(k,j,i) = std::abs(adv(idR,k,j,i)-static_cast<FLOC>(rho_h(hs+k)));
           });
-          real const max_change = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::maxval(density_change),MPI_MAX);
-          coupler.set_option<real>("dycore_anelastic_last_temporary_density_change",max_change);
+          FLOC const max_change =
+              coupler.get_parallel_comm().all_reduce(yakl::intrinsics::maxval(density_change),MPI_MAX);
+          coupler.set_option<real>("dycore_anelastic_last_temporary_density_change",static_cast<real>(max_change));
         }
       }
 
@@ -880,30 +903,34 @@ namespace modules {
       int constexpr idRU = 1;
       int constexpr idRV = 2;
       int constexpr idRW = 3;
-      real3d pressure("anelastic_projection_pressure",nz,ny,nx);
-      real3d pressure_rhs("anelastic_projection_rhs",nz,ny,nx);
-      real3d pressure_projected("anelastic_projection_pressure_projected",nz,ny,nx);
-      real3d projection_work("anelastic_projection_work",nz,ny,nx);
-      real4d momentum_rhs("anelastic_projection_momentum_rhs",4,nz,ny,nx);
-      real4d momentum_work("anelastic_projection_momentum_work",4,nz,ny,nx);
+      using Projection3d = yakl::Array<ProjectionScalar ***>;
+      using Projection4d = yakl::Array<ProjectionScalar ****>;
+      Projection3d pressure          ("anelastic_projection_pressure"          ,nz,ny,nx);
+      Projection3d pressure_rhs      ("anelastic_projection_rhs"               ,nz,ny,nx);
+      Projection3d pressure_projected("anelastic_projection_pressure_projected",nz,ny,nx);
+      Projection3d projection_work   ("anelastic_projection_work"              ,nz,ny,nx);
+      Projection4d momentum_rhs      ("anelastic_projection_momentum_rhs"      ,4,nz,ny,nx);
+      Projection4d momentum_work     ("anelastic_projection_momentum_work"     ,4,nz,ny,nx);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
         bool const is_fluid = fluid_mask(k,j,i) == 1;
-        pressure(k,j,i) = is_fluid ? pressure_guess(k,j,i) : 0;
+        pressure(k,j,i) = is_fluid ? static_cast<ProjectionScalar>(pressure_guess(k,j,i)) : ProjectionScalar(0);
         pressure_rhs(k,j,i) = 0;
         momentum_rhs(idPP,k,j,i) = 0;
-        momentum_rhs(idRU,k,j,i) = is_fluid ? rho_h(hs+k)*star(0,k,j,i) : 0;
-        momentum_rhs(idRV,k,j,i) = is_fluid ? rho_h(hs+k)*star(1,k,j,i) : 0;
-        momentum_rhs(idRW,k,j,i) = is_fluid ? rho_h(hs+k)*star(2,k,j,i) : 0;
+        ProjectionScalar const rho_h_loc = static_cast<ProjectionScalar>(rho_h(hs+k));
+        momentum_rhs(idRU,k,j,i) = is_fluid ? rho_h_loc*static_cast<ProjectionScalar>(star(0,k,j,i)) : 0;
+        momentum_rhs(idRV,k,j,i) = is_fluid ? rho_h_loc*static_cast<ProjectionScalar>(star(1,k,j,i)) : 0;
+        momentum_rhs(idRW,k,j,i) = is_fluid ? rho_h_loc*static_cast<ProjectionScalar>(star(2,k,j,i)) : 0;
       });
 
       // Orthogonal projection onto pressures that vanish in immersed cells and have zero fluid-domain mean. This is a
       // linear map, so applying it to every matrix input and output preserves the linearity required by Krylov solvers.
-      auto project_pressure = [&] (real3d const & input, real3d const & output) {
+      auto project_pressure = [&] (Projection3d const & input, Projection3d const & output) {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           projection_work(k,j,i) = fluid_mask(k,j,i) == 1 ? input(k,j,i) : 0;
         });
-        real const sum = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
-        real const mean = sum/fluid_count;
+        ProjectionScalar const sum =
+            coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
+        ProjectionScalar const mean = sum/static_cast<ProjectionScalar>(fluid_count);
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           output(k,j,i) = fluid_mask(k,j,i) == 1 ? input(k,j,i)-mean : 0;
         });
@@ -913,24 +940,25 @@ namespace modules {
       // constraints to remove roundoff drift from previous solves. Immersed geometry is fixed after initialization.
       project_pressure(pressure,pressure);
 
-      real const projection_beta = coupler.get_option<real>("dycore_anelastic_projection_beta",0.1);
-      real momentum_hvcoef = projection_beta/std::pow(2._fp,ord);
+      ProjectionScalar const projection_beta = static_cast<ProjectionScalar>(
+          coupler.get_option<real>("dycore_anelastic_projection_beta",0.1));
+      ProjectionScalar momentum_hvcoef = projection_beta/std::pow(ProjectionScalar(2),ord);
       if ((ord/2)%2 == 0) momentum_hvcoef *= -1;
-      real const pressure_beta =
-          coupler.get_option<real>("dycore_anelastic_projection_pressure_beta",0);
+      ProjectionScalar const pressure_beta = static_cast<ProjectionScalar>(
+          coupler.get_option<real>("dycore_anelastic_projection_pressure_beta",0));
       bool const pressure_hv_enabled = pressure_beta != 0;
-      real pressure_hvcoef = pressure_beta/std::pow(2._fp,ord);
+      ProjectionScalar pressure_hvcoef = pressure_beta/std::pow(ProjectionScalar(2),ord);
       if ((ord/2)%2 == 1) pressure_hvcoef *= -1;
-      real4d candidate("anelastic_projection_halos",4,nz+2*hs,ny+2*hs,nx+2*hs);
-      real3d ru_x("anelastic_ru_x",nz,ny,nx+1);
-      real3d rv_y("anelastic_rv_y",nz,ny+1,nx);
-      real3d rw_z("anelastic_rw_z",nz+1,ny,nx);
-      real3d pp_x("anelastic_pp_x",nz,ny,nx+1);
-      real3d pp_y("anelastic_pp_y",nz,ny+1,nx);
-      real3d pp_z("anelastic_pp_z",nz+1,ny,nx);
-      real3d hv_x("anelastic_projection_hv_x",nz,ny,nx+1);
-      real3d hv_y("anelastic_projection_hv_y",nz,ny+1,nx);
-      real3d hv_z("anelastic_projection_hv_z",nz+1,ny,nx);
+      Projection4d candidate("anelastic_projection_halos",4,nz+2*hs,ny+2*hs,nx+2*hs);
+      Projection3d ru_x("anelastic_ru_x",nz,ny,nx+1);
+      Projection3d rv_y("anelastic_rv_y",nz,ny+1,nx);
+      Projection3d rw_z("anelastic_rw_z",nz+1,ny,nx);
+      Projection3d pp_x("anelastic_pp_x",nz,ny,nx+1);
+      Projection3d pp_y("anelastic_pp_y",nz,ny+1,nx);
+      Projection3d pp_z("anelastic_pp_z",nz+1,ny,nx);
+      Projection3d hv_x("anelastic_projection_hv_x",nz,ny,nx+1);
+      Projection3d hv_y("anelastic_projection_hv_y",nz,ny+1,nx);
+      Projection3d hv_z("anelastic_projection_hv_z",nz+1,ny,nx);
 
       // Add unit-free directional hyperviscosity to the fixed provisional momentum. Each face metric cancels the
       // matching inverse metric in the divergence below. Only the normal component samples zero immersed momentum;
@@ -945,23 +973,25 @@ namespace modules {
       if (ord > 1) coupler.halo_exchange_y(candidate,hs);
       projection_boundary_conditions(coupler,candidate);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx+1), KOKKOS_LAMBDA (int k, int j, int i) {
-        SArray<real,ord> s;
+        SArray<ProjectionScalar,ord> s;
         for (int ii = 0; ii < ord; ii++) s(ii) = candidate(idRU,hs+k,hs+j,i+ii);
-        hv_x(k,j,i) = momentum_hvcoef*dx*TransformMatrices::edge_hvder(s);
+        hv_x(k,j,i) = momentum_hvcoef*dx_proj*TransformMatrices::edge_hvder(s);
         if (immersed(hs+k,hs+j,hs+i-1) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) hv_x(k,j,i) = 0;
         if ((px == 0 && i == 0 && wall_x1) || (px == nproc_x-1 && i == nx && wall_x2)) hv_x(k,j,i) = 0;
       });
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny+1,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-        SArray<real,ord> s;
+        SArray<ProjectionScalar,ord> s;
         for (int jj = 0; jj < ord; jj++) s(jj) = candidate(idRV,hs+k,j+jj,hs+i);
-        hv_y(k,j,i) = momentum_hvcoef*dy*TransformMatrices::edge_hvder(s);
+        hv_y(k,j,i) = momentum_hvcoef*dy_proj*TransformMatrices::edge_hvder(s);
         if (immersed(hs+k,hs+j-1,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) hv_y(k,j,i) = 0;
         if ((py == 0 && j == 0 && wall_y1) || (py == nproc_y-1 && j == ny && wall_y2)) hv_y(k,j,i) = 0;
       });
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz+1,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-        SArray<real,ord> s;
+        SArray<ProjectionScalar,ord> s;
         for (int kk = 0; kk < ord; kk++) s(kk) = candidate(idRW,k+kk,hs+j,hs+i);
-        real const dzloc = 0.5_fp*(dz(std::max(0,k-1))+dz(std::min(nz-1,k)));
+        ProjectionScalar const dzloc = ProjectionScalar(0.5)*(
+            static_cast<ProjectionScalar>(dz(std::max(0,k-1))) +
+            static_cast<ProjectionScalar>(dz(std::min(nz-1,k))));
         hv_z(k,j,i) = momentum_hvcoef*dzloc*TransformMatrices::edge_hvder(s);
         if (immersed(hs+k-1,hs+j,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) hv_z(k,j,i) = 0;
         if ((k == 0 && wall_z1) || (k == nz && wall_z2)) hv_z(k,j,i) = 0;
@@ -970,16 +1000,17 @@ namespace modules {
         if (fluid_mask(k,j,i) == 1) {
           momentum_rhs(idRU,k,j,i) += (hv_x(k,j,i+1)-hv_x(k,j,i))*r_dx;
           momentum_rhs(idRV,k,j,i) += (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy;
-          momentum_rhs(idRW,k,j,i) += (hv_z(k+1,j,i)-hv_z(k,j,i))/dz(k);
+          momentum_rhs(idRW,k,j,i) +=
+              (hv_z(k+1,j,i)-hv_z(k,j,i))/static_cast<ProjectionScalar>(dz(k));
         }
       });
 
       // Convert cell-centered momentum to normal cell-edge mass fluxes. Only the normal component samples zero immersed
       // momentum, and every face touching an immersed cell is set to zero before it enters the divergence operator.
-      auto compute_mass_fluxes = [&] (real4d const & momentum) {
+      auto compute_mass_fluxes = [&] (Projection4d const & momentum) {
         candidate = 0;
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          real const r_rho_h = 1._fp/rho_h(hs+k);
+          ProjectionScalar const r_rho_h = ProjectionScalar(1)/static_cast<ProjectionScalar>(rho_h(hs+k));
           candidate(idRU,hs+k,hs+j,hs+i) = momentum(idRU,k,j,i)*r_rho_h;
           candidate(idRV,hs+k,hs+j,hs+i) = momentum(idRV,k,j,i)*r_rho_h;
           candidate(idRW,hs+k,hs+j,hs+i) = momentum(idRW,k,j,i)*r_rho_h;
@@ -988,27 +1019,28 @@ namespace modules {
         if (ord > 1) coupler.halo_exchange_y(candidate,hs);
         projection_boundary_conditions(coupler,candidate);
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx+1), KOKKOS_LAMBDA (int k, int j, int i) {
-          SArray<real,ord> s;
+          SArray<ProjectionScalar,ord> s;
           for (int ii = 0; ii < ord; ii++) s(ii) = candidate(idRU,hs+k,hs+j,i+ii);
-          ru_x(k,j,i) = rho_h(hs+k)*TransformMatrices::edge_val(s);
+          ru_x(k,j,i) = static_cast<ProjectionScalar>(rho_h(hs+k))*TransformMatrices::edge_val(s);
           if (immersed(hs+k,hs+j,hs+i-1) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) ru_x(k,j,i) = 0;
           if ((px == 0 && i == 0 && wall_x1) || (px == nproc_x-1 && i == nx && wall_x2)) ru_x(k,j,i) = 0;
         });
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny+1,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          SArray<real,ord> s;
+          SArray<ProjectionScalar,ord> s;
           for (int jj = 0; jj < ord; jj++) s(jj) = candidate(idRV,hs+k,j+jj,hs+i);
-          rv_y(k,j,i) = rho_h(hs+k)*TransformMatrices::edge_val(s);
+          rv_y(k,j,i) = static_cast<ProjectionScalar>(rho_h(hs+k))*TransformMatrices::edge_val(s);
           if (immersed(hs+k,hs+j-1,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) rv_y(k,j,i) = 0;
           if ((py == 0 && j == 0 && wall_y1) || (py == nproc_y-1 && j == ny && wall_y2)) rv_y(k,j,i) = 0;
         });
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz+1,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          SArray<real,ord> s;
+          SArray<ProjectionScalar,ord> s;
           for (int kk = 0; kk < ord; kk++) s(kk) = candidate(idRW,k+kk,hs+j,hs+i);
-          SArray<real,ord> s_metric = s;
+          SArray<ProjectionScalar,ord> s_metric = s;
           for (int kk = 0; kk < ord; kk++) {
-            s_metric(kk) *= dz(std::max(0,std::min(nz-1,k-hs+kk)));
+            s_metric(kk) *= static_cast<ProjectionScalar>(dz(std::max(0,std::min(nz-1,k-hs+kk))));
           }
-          rw_z(k,j,i) = rho_h_edge(k)*TransformMatrices::edge_val(s_metric)/metjac_edge(k);
+          rw_z(k,j,i) = static_cast<ProjectionScalar>(rho_h_edge(k))*TransformMatrices::edge_val(s_metric)/
+                        static_cast<ProjectionScalar>(metjac_edge(k));
           if (immersed(hs+k-1,hs+j,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) rw_z(k,j,i) = 0;
           if ((k == 0 && wall_z1) || (k == nz && wall_z2)) rw_z(k,j,i) = 0;
         });
@@ -1017,7 +1049,7 @@ namespace modules {
       // Apply a high-order pressure derivative directly to normal face mass fluxes. The derivative is reconstructed at
       // the half node from cell averages and retains a nonzero response to odd-even pressure modes. Cell-centered
       // momentum is updated separately with the existing high-order pressure gradient below.
-      auto compute_pressure_corrected_mass_fluxes = [&] (real3d const & pp, bool add_rhs_flux) {
+      auto compute_pressure_corrected_mass_fluxes = [&] (Projection3d const & pp, bool add_rhs_flux) {
         if (add_rhs_flux) compute_mass_fluxes(momentum_rhs);
         candidate = 0;
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
@@ -1027,40 +1059,41 @@ namespace modules {
         if (ord > 1) coupler.halo_exchange_y(candidate,hs);
         projection_boundary_conditions(coupler,candidate);
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx+1), KOKKOS_LAMBDA (int k, int j, int i) {
-          SArray<real,ord> s;
+          SArray<ProjectionScalar,ord> s;
           SArray<bool,ord> imm;
           for (int ii = 0; ii < ord; ii++) {
             s(ii)   = candidate(idPP,hs+k,hs+j,i+ii);
             imm(ii) = immersed(hs+k,hs+j,i+ii) > imm_th;
           }
           modify_stencil_immersed_der0(s,imm);
-          real const pressure_flux = -dt*TransformMatrices::edge_der(s)*r_dx;
+          ProjectionScalar const pressure_flux = -dt_proj*TransformMatrices::edge_der(s)*r_dx;
           ru_x(k,j,i) = (add_rhs_flux ? ru_x(k,j,i) : 0)+pressure_flux;
           if (immersed(hs+k,hs+j,hs+i-1) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) ru_x(k,j,i) = 0;
           if ((px == 0 && i == 0 && wall_x1) || (px == nproc_x-1 && i == nx && wall_x2)) ru_x(k,j,i) = 0;
         });
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny+1,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          SArray<real,ord> s;
+          SArray<ProjectionScalar,ord> s;
           SArray<bool,ord> imm;
           for (int jj = 0; jj < ord; jj++) {
             s(jj)   = candidate(idPP,hs+k,j+jj,hs+i);
             imm(jj) = immersed(hs+k,j+jj,hs+i) > imm_th;
           }
           modify_stencil_immersed_der0(s,imm);
-          real const pressure_flux = -dt*TransformMatrices::edge_der(s)*r_dy;
+          ProjectionScalar const pressure_flux = -dt_proj*TransformMatrices::edge_der(s)*r_dy;
           rv_y(k,j,i) = (add_rhs_flux ? rv_y(k,j,i) : 0)+pressure_flux;
           if (immersed(hs+k,hs+j-1,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) rv_y(k,j,i) = 0;
           if ((py == 0 && j == 0 && wall_y1) || (py == nproc_y-1 && j == ny && wall_y2)) rv_y(k,j,i) = 0;
         });
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz+1,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          SArray<real,ord> s;
+          SArray<ProjectionScalar,ord> s;
           SArray<bool,ord> imm;
           for (int kk = 0; kk < ord; kk++) {
             s(kk)   = candidate(idPP,k+kk,hs+j,hs+i);
             imm(kk) = immersed(k+kk,hs+j,hs+i) > imm_th;
           }
           modify_stencil_immersed_der0(s,imm);
-          real const pressure_flux = -dt*TransformMatrices::edge_der(s)/metjac_edge(k);
+          ProjectionScalar const pressure_flux = -dt_proj*TransformMatrices::edge_der(s)/
+                                                  static_cast<ProjectionScalar>(metjac_edge(k));
           rw_z(k,j,i) = (add_rhs_flux ? rw_z(k,j,i) : 0)+pressure_flux;
           if (immersed(hs+k-1,hs+j,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) rw_z(k,j,i) = 0;
           if ((k == 0 && wall_z1) || (k == nz && wall_z2)) rw_z(k,j,i) = 0;
@@ -1070,7 +1103,7 @@ namespace modules {
       // Form the momentum response to pressure. Pressure uses a zero-normal-derivative extension at immersed cells before
       // both edge interpolation and hyperviscosity; the resulting momentum is then set to zero in immersed cells. The
       // hyperviscosity has the same timestep and inverse-length-squared scaling as the pressure-divergence operator.
-      auto compute_momentum_from_pressure = [&] (real3d const & pp, real4d const & momentum, bool add_rhs) {
+      auto compute_momentum_from_pressure = [&] (Projection3d const & pp, Projection4d const & momentum, bool add_rhs) {
         candidate = 0;
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           candidate(idPP,hs+k,hs+j,hs+i) = pp(k,j,i);
@@ -1079,7 +1112,7 @@ namespace modules {
         if (ord > 1) coupler.halo_exchange_y(candidate,hs);
         projection_boundary_conditions(coupler,candidate);
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx+1), KOKKOS_LAMBDA (int k, int j, int i) {
-          SArray<real,ord> s;
+          SArray<ProjectionScalar,ord> s;
           SArray<bool,ord> imm;
           for (int ii = 0; ii < ord; ii++) {
             s(ii)   = candidate(idPP,hs+k,hs+j,i+ii);
@@ -1088,13 +1121,13 @@ namespace modules {
           modify_stencil_immersed_der0(s,imm);
           if (add_rhs) pp_x(k,j,i) = TransformMatrices::edge_val(s);
           if (pressure_hv_enabled) {
-            hv_x(k,j,i) = pressure_hvcoef*dt*r_dx*TransformMatrices::edge_hvder(s);
+            hv_x(k,j,i) = pressure_hvcoef*dt_proj*r_dx*TransformMatrices::edge_hvder(s);
             if (immersed(hs+k,hs+j,hs+i-1) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) hv_x(k,j,i) = 0;
             if ((px == 0 && i == 0 && wall_x1) || (px == nproc_x-1 && i == nx && wall_x2)) hv_x(k,j,i) = 0;
           }
         });
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny+1,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          SArray<real,ord> s;
+          SArray<ProjectionScalar,ord> s;
           SArray<bool,ord> imm;
           for (int jj = 0; jj < ord; jj++) {
             s(jj)   = candidate(idPP,hs+k,j+jj,hs+i);
@@ -1103,12 +1136,12 @@ namespace modules {
           modify_stencil_immersed_der0(s,imm);
           if (add_rhs) pp_y(k,j,i) = TransformMatrices::edge_val(s);
           if (pressure_hv_enabled) {
-            hv_y(k,j,i) = pressure_hvcoef*dt*r_dy*TransformMatrices::edge_hvder(s);
+            hv_y(k,j,i) = pressure_hvcoef*dt_proj*r_dy*TransformMatrices::edge_hvder(s);
             if (immersed(hs+k,hs+j-1,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) hv_y(k,j,i) = 0;
           }
         });
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz+1,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          SArray<real,ord> s;
+          SArray<ProjectionScalar,ord> s;
           SArray<bool,ord> imm;
           for (int kk = 0; kk < ord; kk++) {
             s(kk)   = candidate(idPP,k+kk,hs+j,hs+i);
@@ -1116,15 +1149,17 @@ namespace modules {
           }
           modify_stencil_immersed_der0(s,imm);
           if (add_rhs) {
-            SArray<real,ord> s_metric = s;
+            SArray<ProjectionScalar,ord> s_metric = s;
             for (int kk = 0; kk < ord; kk++) {
-              s_metric(kk) *= dz(std::max(0,std::min(nz-1,k-hs+kk)));
+              s_metric(kk) *= static_cast<ProjectionScalar>(dz(std::max(0,std::min(nz-1,k-hs+kk))));
             }
-            pp_z(k,j,i) = TransformMatrices::edge_val(s_metric)/metjac_edge(k);
+            pp_z(k,j,i) = TransformMatrices::edge_val(s_metric)/static_cast<ProjectionScalar>(metjac_edge(k));
           }
           if (pressure_hv_enabled) {
-            real const dzloc = 0.5_fp*(dz(std::max(0,k-1))+dz(std::min(nz-1,k)));
-            hv_z(k,j,i) = pressure_hvcoef*dt/dzloc*TransformMatrices::edge_hvder(s);
+            ProjectionScalar const dzloc = ProjectionScalar(0.5)*(
+                static_cast<ProjectionScalar>(dz(std::max(0,k-1))) +
+                static_cast<ProjectionScalar>(dz(std::min(nz-1,k))));
+            hv_z(k,j,i) = pressure_hvcoef*dt_proj/dzloc*TransformMatrices::edge_hvder(s);
             if (immersed(hs+k-1,hs+j,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i) > imm_th) hv_z(k,j,i) = 0;
             if ((k == 0 && wall_z1) || (k == nz && wall_z2)) hv_z(k,j,i) = 0;
           }
@@ -1133,9 +1168,10 @@ namespace modules {
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
             if (fluid_mask(k,j,i) == 1) {
               momentum(idPP,k,j,i) = 0;
-              momentum(idRU,k,j,i) = momentum_rhs(idRU,k,j,i)-dt*(pp_x(k,j,i+1)-pp_x(k,j,i))*r_dx;
-              momentum(idRV,k,j,i) = momentum_rhs(idRV,k,j,i)-dt*(pp_y(k,j+1,i)-pp_y(k,j,i))*r_dy;
-              momentum(idRW,k,j,i) = momentum_rhs(idRW,k,j,i)-dt*(pp_z(k+1,j,i)-pp_z(k,j,i))/dz(k);
+              momentum(idRU,k,j,i) = momentum_rhs(idRU,k,j,i)-dt_proj*(pp_x(k,j,i+1)-pp_x(k,j,i))*r_dx;
+              momentum(idRV,k,j,i) = momentum_rhs(idRV,k,j,i)-dt_proj*(pp_y(k,j+1,i)-pp_y(k,j,i))*r_dy;
+              momentum(idRW,k,j,i) = momentum_rhs(idRW,k,j,i)-dt_proj*(pp_z(k+1,j,i)-pp_z(k,j,i))/
+                                     static_cast<ProjectionScalar>(dz(k));
             } else {
               momentum(idPP,k,j,i) = 0;
               momentum(idRU,k,j,i) = 0;
@@ -1148,12 +1184,13 @@ namespace modules {
 
       compute_mass_fluxes(momentum_rhs);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-        real const divergence = (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
-                                (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
-                                (rw_z(k+1,j,i)-rw_z(k,j,i))/dz(k);
+        ProjectionScalar const divergence = (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
+                                            (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
+                                            (rw_z(k+1,j,i)-rw_z(k,j,i))/
+                                            static_cast<ProjectionScalar>(dz(k));
         pressure_rhs(k,j,i) = fluid_mask(k,j,i) == 1 ? -divergence : 0;
       });
-      real const pressure_rhs_mean = project_pressure(pressure_rhs,pressure_rhs);
+      ProjectionScalar const pressure_rhs_mean = project_pressure(pressure_rhs,pressure_rhs);
       if constexpr (yakl::kokkos_debug) {
         coupler.set_option<real>("dycore_anelastic_last_pressure_rhs_mean",pressure_rhs_mean);
         if (diagnostics && coupler.is_mainproc()) {
@@ -1161,7 +1198,8 @@ namespace modules {
         }
       }
 
-      auto compute_Ax = [&] (yakl::Array<real *> const & x_in, yakl::Array<real *> const & Ax_out, MPI_Comm comm) {
+      auto compute_Ax = [&] (yakl::Array<ProjectionScalar *> const & x_in,
+                             yakl::Array<ProjectionScalar *> const & Ax_out, MPI_Comm comm) {
         auto pp = x_in.reshape(nz,ny,nx);
         auto Ax = Ax_out.reshape(nz,ny,nx);
         project_pressure(pp,pressure_projected);
@@ -1170,15 +1208,16 @@ namespace modules {
         compute_pressure_corrected_mass_fluxes(pressure_projected,false);
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           if (fluid_mask(k,j,i) == 1) {
-            real const pressure_momentum_divergence = (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
-                                                      (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
-                                                      (rw_z(k+1,j,i)-rw_z(k,j,i))/dz(k);
+            ProjectionScalar const pressure_momentum_divergence =
+                (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
+                (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
+                (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k));
             // Pressure hyperviscosity acts only on the pressure unknown through compute_Ax and has the same timestep and
             // directional inverse-length-squared scaling as pressure_momentum_divergence.
-            real const pressure_hv = pressure_hv_enabled ?
+            ProjectionScalar const pressure_hv = pressure_hv_enabled ?
                 (hv_x(k,j,i+1)-hv_x(k,j,i))*r_dx +
                 (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy +
-                (hv_z(k+1,j,i)-hv_z(k,j,i))/dz(k) : 0;
+                (hv_z(k+1,j,i)-hv_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
             Ax(k,j,i) = pressure_momentum_divergence + pressure_hv;
           } else {
             Ax(k,j,i) = 0;
@@ -1188,12 +1227,14 @@ namespace modules {
         (void) comm;
       };
 
-      YaklRestartedGMRES<real> gmres;
-      YaklRestartedGMRES<real>::Options opts;
+      YaklRestartedGMRES<ProjectionScalar> gmres;
+      typename YaklRestartedGMRES<ProjectionScalar>::Options opts;
       opts.restart = coupler.get_option<int>("dycore_anelastic_gmres_restart",30);
       opts.max_iters = coupler.get_option<int>("dycore_anelastic_gmres_max_iters",200);
-      opts.rel_tol = coupler.get_option<real>("dycore_anelastic_gmres_rel_tol",1.e-6);
-      opts.abs_tol = coupler.get_option<real>("dycore_anelastic_gmres_abs_tol",0);
+      opts.rel_tol = static_cast<ProjectionScalar>(
+          coupler.get_option<real>("dycore_anelastic_gmres_rel_tol",1.e-6));
+      opts.abs_tol = static_cast<ProjectionScalar>(
+          coupler.get_option<real>("dycore_anelastic_gmres_abs_tol",0));
       opts.verbose = coupler.get_option<bool>("dycore_anelastic_gmres_verbose",false);
       opts.reorthogonalize = coupler.get_option<bool>("dycore_anelastic_gmres_reorthogonalize",true);
       MPI_Comm const comm = coupler.get_parallel_comm().get_mpi_comm();
@@ -1203,65 +1244,72 @@ namespace modules {
       if constexpr (yakl::kokkos_debug) {
         bool const cg_checked = coupler.get_option<bool>("dycore_anelastic_cg_compatibility_checked",false);
         if (cg_check && !cg_checked) {
-        real cg_symmetry_error = std::numeric_limits<real>::infinity();
+        ProjectionScalar cg_symmetry_error = std::numeric_limits<ProjectionScalar>::infinity();
         bool cg_positive = false;
-        real3d x("anelastic_cg_check_x",nz,ny,nx);
-        real3d y("anelastic_cg_check_y",nz,ny,nx);
-        real3d checker("anelastic_cg_check_checker",nz,ny,nx);
-        real3d Ax_check("anelastic_cg_check_Ax",nz,ny,nx);
-        real3d Ay_check("anelastic_cg_check_Ay",nz,ny,nx);
-        real3d Achecker("anelastic_cg_check_Achecker",nz,ny,nx);
+        Projection3d x       ("anelastic_cg_check_x"       ,nz,ny,nx);
+        Projection3d y       ("anelastic_cg_check_y"       ,nz,ny,nx);
+        Projection3d checker ("anelastic_cg_check_checker" ,nz,ny,nx);
+        Projection3d Ax_check("anelastic_cg_check_Ax"      ,nz,ny,nx);
+        Projection3d Ay_check("anelastic_cg_check_Ay"      ,nz,ny,nx);
+        Projection3d Achecker("anelastic_cg_check_Achecker",nz,ny,nx);
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           int const i_glob = static_cast<int>(i_beg)+i;
           int const j_glob = static_cast<int>(j_beg)+j;
-          x(k,j,i) = std::sin(2*M_PI*(i_glob+0.5_fp)/nx_glob) +
-                       0.3_fp*std::cos(2*M_PI*(j_glob+0.5_fp)/ny_glob);
-          y(k,j,i) = std::cos(0.019_fp*(1+i_glob+nx_glob*(j_glob+ny_glob*k)));
+          x(k,j,i) = std::sin(ProjectionScalar(2*M_PI)*(i_glob+ProjectionScalar(0.5))/nx_glob) +
+                       ProjectionScalar(0.3)*std::cos(ProjectionScalar(2*M_PI)*
+                       (j_glob+ProjectionScalar(0.5))/ny_glob);
+          y(k,j,i) = std::cos(ProjectionScalar(0.019)*(1+i_glob+nx_glob*(j_glob+ny_glob*k)));
           checker(k,j,i) = (i_glob+j_glob+k)%2 == 0 ? 1 : -1;
         });
         project_pressure(x,x);
         project_pressure(y,y);
         project_pressure(checker,checker);
-        auto dot_fields = [&] (real3d const & a, real3d const & b) {
+        auto dot_fields = [&] (Projection3d const & a, Projection3d const & b) {
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
             projection_work(k,j,i) = a(k,j,i)*b(k,j,i);
           });
           return coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
         };
-        auto pressure_hv_quadratic = [&] (real3d const & mode) {
-          if (!pressure_hv_enabled) return 0._fp;
+        auto pressure_hv_quadratic = [&] (Projection3d const & mode) {
+          if (!pressure_hv_enabled) return ProjectionScalar(0);
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-            real const pressure_hv = (hv_x(k,j,i+1)-hv_x(k,j,i))*r_dx +
-                                     (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy +
-                                     (hv_z(k+1,j,i)-hv_z(k,j,i))/dz(k);
+            ProjectionScalar const pressure_hv = (hv_x(k,j,i+1)-hv_x(k,j,i))*r_dx +
+                                                 (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy +
+                                                 (hv_z(k+1,j,i)-hv_z(k,j,i))/
+                                                 static_cast<ProjectionScalar>(dz(k));
             projection_work(k,j,i) = mode(k,j,i)*pressure_hv;
           });
           return coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
         };
         compute_Ax(x.collapse(),Ax_check.collapse(),comm);
-        real const xAx = dot_fields(x,Ax_check);
-        real const xHx = pressure_hv_quadratic(x);
-        real const x2 = dot_fields(x,x);
+        ProjectionScalar const xAx = dot_fields(x,Ax_check);
+        ProjectionScalar const xHx = pressure_hv_quadratic(x);
+        ProjectionScalar const x2 = dot_fields(x,x);
         compute_Ax(y.collapse(),Ay_check.collapse(),comm);
-        real const xAy = dot_fields(x,Ay_check);
-        real const yAx = dot_fields(y,Ax_check);
-        real const yAy = dot_fields(y,Ay_check);
+        ProjectionScalar const xAy = dot_fields(x,Ay_check);
+        ProjectionScalar const yAx = dot_fields(y,Ax_check);
+        ProjectionScalar const yAy = dot_fields(y,Ay_check);
         compute_Ax(checker.collapse(),Achecker.collapse(),comm);
-        real const checker_A_checker = dot_fields(checker,Achecker);
-        real const checker_H_checker = pressure_hv_quadratic(checker);
-        real const checker2 = dot_fields(checker,checker);
-        real const symmetry_scale = std::max({std::abs(xAy),std::abs(yAx),std::numeric_limits<real>::min()});
+        ProjectionScalar const checker_A_checker = dot_fields(checker,Achecker);
+        ProjectionScalar const checker_H_checker = pressure_hv_quadratic(checker);
+        ProjectionScalar const checker2 = dot_fields(checker,checker);
+        ProjectionScalar const symmetry_scale =
+            std::max({std::abs(xAy),std::abs(yAx),std::numeric_limits<ProjectionScalar>::min()});
         cg_symmetry_error = std::abs(xAy-yAx)/symmetry_scale;
         cg_positive = xAx > 0 && yAy > 0 && checker_A_checker > 0;
-        use_cg = cg_symmetry_error <= 1.e-10_fp && cg_positive;
+        ProjectionScalar const symmetry_tolerance =
+            std::max(ProjectionScalar(1.e-10),ProjectionScalar(10)*std::numeric_limits<ProjectionScalar>::epsilon());
+        use_cg = cg_symmetry_error <= symmetry_tolerance && cg_positive;
         coupler.set_option<bool>("dycore_anelastic_use_cg",use_cg);
         coupler.set_option<bool>("dycore_anelastic_cg_compatibility_checked",true);
-        coupler.set_option<real>("dycore_anelastic_last_cg_symmetry_error",cg_symmetry_error);
+        coupler.set_option<real>("dycore_anelastic_last_cg_symmetry_error",static_cast<real>(cg_symmetry_error));
         coupler.set_option<bool>("dycore_anelastic_last_cg_positive_probes",cg_positive);
-        coupler.set_option<real>("dycore_anelastic_last_smooth_mode_response",xAx/x2);
-        coupler.set_option<real>("dycore_anelastic_last_smooth_mode_hv_response",xHx/x2);
-        coupler.set_option<real>("dycore_anelastic_last_checker_mode_response",checker_A_checker/checker2);
-        coupler.set_option<real>("dycore_anelastic_last_checker_mode_hv_response",checker_H_checker/checker2);
+        coupler.set_option<real>("dycore_anelastic_last_smooth_mode_response",static_cast<real>(xAx/x2));
+        coupler.set_option<real>("dycore_anelastic_last_smooth_mode_hv_response",static_cast<real>(xHx/x2));
+        coupler.set_option<real>("dycore_anelastic_last_checker_mode_response",
+                                 static_cast<real>(checker_A_checker/checker2));
+        coupler.set_option<real>("dycore_anelastic_last_checker_mode_hv_response",
+                                 static_cast<real>(checker_H_checker/checker2));
         if (coupler.is_mainproc()) {
           std::cout << "Anelastic CG compatibility: symmetry error = " << cg_symmetry_error
                     << ", positive probes = " << cg_positive
@@ -1284,32 +1332,37 @@ namespace modules {
         auto work = pressure.collapse().createDeviceObject();
         int const n = x.size();
         yakl::parallel_for(YAKL_AUTO_LABEL(), n, KOKKOS_LAMBDA (int i) {
-          x(i) = std::sin(0.013_fp*(i+1));
-          y(i) = std::cos(0.017_fp*(i+1));
-          z(i) = 0.37_fp*x(i)-0.21_fp*y(i);
+          x(i) = std::sin(ProjectionScalar(0.013)*(i+1));
+          y(i) = std::cos(ProjectionScalar(0.017)*(i+1));
+          z(i) = ProjectionScalar(0.37)*x(i)-ProjectionScalar(0.21)*y(i);
         });
         compute_Ax(x,Ax,comm);
         compute_Ax(y,Ay,comm);
         compute_Ax(z,Az,comm);
         yakl::parallel_for(YAKL_AUTO_LABEL(), n, KOKKOS_LAMBDA (int i) {
-          real const diff = Az(i)-(0.37_fp*Ax(i)-0.21_fp*Ay(i));
+          ProjectionScalar const diff =
+              Az(i)-(ProjectionScalar(0.37)*Ax(i)-ProjectionScalar(0.21)*Ay(i));
           work(i) = diff*diff;
           z(i) = Az(i)*Az(i);
         });
-        real const err = std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(work),MPI_SUM));
-        real const den = std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(z),MPI_SUM));
-        real const rel = den > 0 ? err/den : err;
-        coupler.set_option<real>("dycore_anelastic_last_linearity_error",rel);
+        ProjectionScalar const err =
+            std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(work),MPI_SUM));
+        ProjectionScalar const den =
+            std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(z),MPI_SUM));
+        ProjectionScalar const rel = den > 0 ? err/den : err;
+        coupler.set_option<real>("dycore_anelastic_last_linearity_error",static_cast<real>(rel));
         if (coupler.is_mainproc()) std::cout << "Anelastic projection linearity relative error: " << rel << std::endl;
-        if (rel > 1.e3*std::numeric_limits<real>::epsilon()) endrun("ERROR: anelastic projection operator is nonlinear");
+        if (rel > ProjectionScalar(1.e3)*std::numeric_limits<ProjectionScalar>::epsilon()) {
+          endrun("ERROR: anelastic projection operator is nonlinear");
+        }
         }
       }
 
       auto Ax = pressure.collapse().createDeviceObject();
-      real3d norm_work;
-      real pre_div_l2 = 0;
+      Projection3d norm_work;
+      ProjectionScalar pre_div_l2 = 0;
       if constexpr (yakl::kokkos_debug) {
-        norm_work = real3d("anelastic_projection_norm",nz,ny,nx);
+        norm_work = Projection3d("anelastic_projection_norm",nz,ny,nx);
         if (diagnostics) {
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
             norm_work(k,j,i) = pressure_rhs(k,j,i)*pressure_rhs(k,j,i);
@@ -1321,10 +1374,12 @@ namespace modules {
       int solver_iters = 0;
       bool solver_converged = false;
       if (use_cg) {
-        YaklConjGrad cg;
-        YaklConjGrad::Options cg_opts;
+        YaklConjGrad<ProjectionScalar> cg;
+        typename YaklConjGrad<ProjectionScalar>::Options cg_opts;
         cg_opts.max_iters = opts.max_iters;
-        cg_opts.rel_tol   = opts.rel_tol;
+        // Float CG recurrence norms can undershoot the independently recomputed residual slightly. Solve 10% tighter
+        // internally while retaining the user-requested tolerance for the authoritative full-operator check below.
+        cg_opts.rel_tol   = ProjectionScalar(0.9)*opts.rel_tol;
         cg_opts.abs_tol   = opts.abs_tol;
         cg_opts.verbose   = opts.verbose;
         auto const cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_opts,comm);
@@ -1342,39 +1397,42 @@ namespace modules {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           norm_work(k,j,i) = fluid_mask(k,j,i) == 1 ? pressure(k,j,i) : 0;
         });
-        real const final_pressure_sum =
+        ProjectionScalar const final_pressure_sum =
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM);
-        coupler.set_option<real>("dycore_anelastic_last_pressure_mean",final_pressure_sum/fluid_count);
+        coupler.set_option<real>("dycore_anelastic_last_pressure_mean",
+                                 static_cast<real>(final_pressure_sum/static_cast<ProjectionScalar>(fluid_count)));
       }
       if constexpr (yakl::kokkos_debug) {
         if (cg_check) {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           norm_work(k,j,i) = fluid_mask(k,j,i) == 1 ? pressure(k,j,i)*pressure(k,j,i) : 0;
         });
-        real const pressure_norm_sq =
+        ProjectionScalar const pressure_norm_sq =
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM);
-        real max_checker_correlation = 0;
+        ProjectionScalar max_checker_correlation = 0;
         for (int mode = 1; mode < 8; mode++) {
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
             int parity = 0;
             if ((mode & 1) != 0) parity += static_cast<int>(i_beg)+i;
             if ((mode & 2) != 0) parity += static_cast<int>(j_beg)+j;
             if ((mode & 4) != 0) parity += k;
-            real const checker_value = parity%2 == 0 ? 1 : -1;
+            ProjectionScalar const checker_value = parity%2 == 0 ? 1 : -1;
             bool const is_fluid = fluid_mask(k,j,i) == 1;
             projection_work(k,j,i) = is_fluid ? checker_value : 0;
             norm_work(k,j,i) = is_fluid ? pressure(k,j,i)*checker_value : 0;
           });
-          real const checker_sum =
+          ProjectionScalar const checker_sum =
               coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
-          real const pressure_checker_dot =
+          ProjectionScalar const pressure_checker_dot =
               coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM);
-          real const checker_norm_sq = fluid_count-checker_sum*checker_sum/fluid_count;
-          real const denominator = std::sqrt(pressure_norm_sq*checker_norm_sq);
-          real const correlation = denominator > 0 ? std::abs(pressure_checker_dot)/denominator : 0;
+          ProjectionScalar const checker_norm_sq = static_cast<ProjectionScalar>(fluid_count)-
+              checker_sum*checker_sum/static_cast<ProjectionScalar>(fluid_count);
+          ProjectionScalar const denominator = std::sqrt(pressure_norm_sq*checker_norm_sq);
+          ProjectionScalar const correlation = denominator > 0 ? std::abs(pressure_checker_dot)/denominator : 0;
           max_checker_correlation = std::max(max_checker_correlation,correlation);
         }
-        coupler.set_option<real>("dycore_anelastic_last_pressure_checkerboard_correlation",max_checker_correlation);
+        coupler.set_option<real>("dycore_anelastic_last_pressure_checkerboard_correlation",
+                                 static_cast<real>(max_checker_correlation));
         if (coupler.is_mainproc()) {
           std::cout << "Anelastic solved-pressure maximum checkerboard correlation = "
                     << max_checker_correlation << std::endl;
@@ -1382,7 +1440,9 @@ namespace modules {
         }
       }
       auto pressure_pert = coupler.get_data_manager_readwrite().get<real,3>("anelastic_pressure_pert");
-      pressure.deep_copy_to(pressure_pert);
+      yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+        pressure_pert(k,j,i) = static_cast<real>(pressure(k,j,i));
+      });
       // Reapply the complete operator, including pressure hyperviscosity, for the authoritative final residual.
       compute_Ax(pressure.collapse(),Ax,comm);
       auto residual = projection_work.collapse();
@@ -1391,35 +1451,38 @@ namespace modules {
       if constexpr (yakl::kokkos_debug) {
         auto norm_work_flat = norm_work.collapse();
         yakl::parallel_for(YAKL_AUTO_LABEL(), residual.size(), KOKKOS_LAMBDA (int i) {
-          real const r = bflat(i)-Ax(i);
+          ProjectionScalar const r = bflat(i)-Ax(i);
           bool const is_fluid = mask_flat(i) == 1;
           residual(i) = is_fluid ? r*r : 0;
           Ax(i) = is_fluid ? bflat(i)*bflat(i) : 0;
           norm_work_flat(i) = is_fluid ? 0 : std::abs(r);
         });
-        real const immersed_residual_max =
+        ProjectionScalar const immersed_residual_max =
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::maxval(norm_work),MPI_MAX);
-        coupler.set_option<real>("dycore_anelastic_last_immersed_residual_max",immersed_residual_max);
+        coupler.set_option<real>("dycore_anelastic_last_immersed_residual_max",
+                                 static_cast<real>(immersed_residual_max));
         if (immersed_residual_max != 0) endrun("ERROR: immersed cells contributed to the anelastic solver residual");
       } else {
         yakl::parallel_for(YAKL_AUTO_LABEL(), residual.size(), KOKKOS_LAMBDA (int i) {
-          real const r = bflat(i)-Ax(i);
+          ProjectionScalar const r = bflat(i)-Ax(i);
           bool const is_fluid = mask_flat(i) == 1;
           residual(i) = is_fluid ? r*r : 0;
           Ax(i) = is_fluid ? bflat(i)*bflat(i) : 0;
         });
       }
-      real const true_abs = std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(residual),MPI_SUM));
-      real const bnorm = std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(Ax),MPI_SUM));
-      real const true_rel = bnorm > 0 ? true_abs/bnorm : true_abs;
+      ProjectionScalar const true_abs =
+          std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(residual),MPI_SUM));
+      ProjectionScalar const bnorm =
+          std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(Ax),MPI_SUM));
+      ProjectionScalar const true_rel = bnorm > 0 ? true_abs/bnorm : true_abs;
       coupler.set_option<int>("dycore_anelastic_last_linear_solver_iters",solver_iters);
-      coupler.set_option<real>("dycore_anelastic_last_linear_solver_abs_res",true_abs);
-      coupler.set_option<real>("dycore_anelastic_last_linear_solver_rel_res",true_rel);
+      coupler.set_option<real>("dycore_anelastic_last_linear_solver_abs_res",static_cast<real>(true_abs));
+      coupler.set_option<real>("dycore_anelastic_last_linear_solver_rel_res",static_cast<real>(true_rel));
       // Preserve the established option names for callers that have not yet switched to the solver-neutral diagnostics.
       coupler.set_option<int>("dycore_anelastic_last_gmres_iters",solver_iters);
-      coupler.set_option<real>("dycore_anelastic_last_gmres_abs_res",true_abs);
-      coupler.set_option<real>("dycore_anelastic_last_gmres_rel_res",true_rel);
-      real const threshold = std::max(opts.abs_tol,opts.rel_tol*bnorm);
+      coupler.set_option<real>("dycore_anelastic_last_gmres_abs_res",static_cast<real>(true_abs));
+      coupler.set_option<real>("dycore_anelastic_last_gmres_rel_res",static_cast<real>(true_rel));
+      ProjectionScalar const threshold = std::max(opts.abs_tol,opts.rel_tol*bnorm);
       if (!solver_converged || !std::isfinite(true_abs) || true_abs > threshold) {
         std::ostringstream err;
         err << "ERROR: anelastic " << (use_cg ? "CG" : "GMRES") << " failed after " << solver_iters
@@ -1432,15 +1495,16 @@ namespace modules {
       if constexpr (yakl::kokkos_debug) {
         if (diagnostics) {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          real const divergence = fluid_mask(k,j,i) == 1 ?
+          ProjectionScalar const divergence = fluid_mask(k,j,i) == 1 ?
               (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
               (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
-              (rw_z(k+1,j,i)-rw_z(k,j,i))/dz(k) : 0;
+              (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
           norm_work(k,j,i) = divergence*divergence;
         });
-        real const post_div_l2 = std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM));
+        ProjectionScalar const post_div_l2 =
+            std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM));
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          real immersed_flux = 0;
+          ProjectionScalar immersed_flux = 0;
           if (immersed(hs+k,hs+j,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i+1) > imm_th) {
             immersed_flux = std::max(immersed_flux,std::abs(ru_x(k,j,i+1)));
           }
@@ -1464,10 +1528,12 @@ namespace modules {
             norm_work(k,j,i) = std::max(norm_work(k,j,i),std::abs(k == 0 ? rw_z(0,j,i) : rw_z(nz,j,i)));
           }
         });
-        real const boundary_flux_max = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::maxval(norm_work),MPI_MAX);
-        coupler.set_option<real>("dycore_anelastic_last_pre_div_l2",pre_div_l2);
-        coupler.set_option<real>("dycore_anelastic_last_post_div_l2",post_div_l2);
-        coupler.set_option<real>("dycore_anelastic_last_boundary_normal_flux_max",boundary_flux_max);
+        ProjectionScalar const boundary_flux_max =
+            coupler.get_parallel_comm().all_reduce(yakl::intrinsics::maxval(norm_work),MPI_MAX);
+        coupler.set_option<real>("dycore_anelastic_last_pre_div_l2",static_cast<real>(pre_div_l2));
+        coupler.set_option<real>("dycore_anelastic_last_post_div_l2",static_cast<real>(post_div_l2));
+        coupler.set_option<real>("dycore_anelastic_last_boundary_normal_flux_max",
+                                 static_cast<real>(boundary_flux_max));
         if (coupler.is_mainproc()) {
           std::cout << "Anelastic projection: pre/post physical mass-flux divergence L2 = "
                     << pre_div_l2 << " / " << post_div_l2
@@ -1488,6 +1554,20 @@ namespace modules {
           tracers_tend(tr,k,j,i) = rho*(qstar(tr,k,j,i)-tracers(tr,k,j,i)/rho)/dt;
         }
       });
+    }
+
+
+    // Use single precision for all projection storage and arithmetic by default. The implementation remains templated so
+    // focused verification or future configurations can explicitly request another floating-point projection scalar.
+    void compute_tendencies( core::Coupler       & coupler      ,
+                             real4d        const & state        ,
+                             real4d        const & state_tend   ,
+                             real4d        const & tracers      ,
+                             real4d        const & tracers_tend ,
+                             real                  dt           ,
+                             int                   istage       ,
+                             int                   icycle       ) const {
+      compute_tendencies_impl<>(coupler,state,state_tend,tracers,tracers_tend,dt,istage,icycle);
     }
 
 
