@@ -105,6 +105,74 @@ struct YaklConjGrad {
   }
 
 
+  static Scalar local_dot( yakl::Array<Scalar *> const & a ,
+                           yakl::Array<Scalar *> const & b ) {
+    Scalar result = 0;
+    Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,a.size()),
+                            KOKKOS_LAMBDA (int i, Scalar &sum) { sum += a(i)*b(i); },result);
+    return result;
+  }
+
+
+  static Scalar form_residual( yakl::Array<Scalar *> const & b  ,
+                               yakl::Array<Scalar *> const & Ax ,
+                               yakl::Array<Scalar *> const & r  ) {
+    Scalar result = 0;
+    Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,b.size()),
+                            KOKKOS_LAMBDA (int i, Scalar &sum) {
+      Scalar const ri = b(i)-Ax(i);
+      r(i) = ri;
+      sum += ri*ri;
+    },result);
+    return result;
+  }
+
+
+  static void use_zero_guess( yakl::Array<Scalar *> const & x ,
+                              yakl::Array<Scalar *> const & b ,
+                              yakl::Array<Scalar *> const & r ) {
+    yakl::parallel_for(YAKL_AUTO_LABEL(),x.size(),KOKKOS_LAMBDA (int i) {
+      x(i) = 0;
+      r(i) = b(i);
+    });
+  }
+
+
+  static void initialize_recurrence_vectors( yakl::Array<Scalar *> const & p  ,
+                                             yakl::Array<Scalar *> const & s  ,
+                                             yakl::Array<Scalar *> const & u  ,
+                                             yakl::Array<Scalar *> const & Au ) {
+    yakl::parallel_for(YAKL_AUTO_LABEL(),p.size(),KOKKOS_LAMBDA (int i) {
+      p(i) = u (i);
+      s(i) = Au(i);
+    });
+  }
+
+
+  static void update_solution_and_residual( yakl::Array<Scalar *> const & x ,
+                                            yakl::Array<Scalar *> const & r ,
+                                            yakl::Array<Scalar *> const & p ,
+                                            yakl::Array<Scalar *> const & s ,
+                                            Scalar                         alpha ) {
+    yakl::parallel_for(YAKL_AUTO_LABEL(),x.size(),KOKKOS_LAMBDA (int i) {
+      x(i) += alpha*p(i);
+      r(i) -= alpha*s(i);
+    });
+  }
+
+
+  static void update_recurrence_vectors( yakl::Array<Scalar *> const & p    ,
+                                         yakl::Array<Scalar *> const & s    ,
+                                         yakl::Array<Scalar *> const & u    ,
+                                         yakl::Array<Scalar *> const & Au   ,
+                                         Scalar                         beta ) {
+    yakl::parallel_for(YAKL_AUTO_LABEL(),p.size(),KOKKOS_LAMBDA (int i) {
+      p(i) = u (i) + beta*p(i);
+      s(i) = Au(i) + beta*s(i);
+    });
+  }
+
+
   template <class ApplyA, class RightPreconditioner = std::nullptr_t, class ApplyAAndDot = std::nullptr_t>
   Result solve( yakl::Array<Scalar *> const & x       , // initial guess (in) / solution (out)
                 yakl::Array<Scalar *> const & b       , // right hand side
@@ -134,13 +202,7 @@ struct YaklConjGrad {
 
     // Form r0 and its norm in one GPU reduction kernel.
     apply_A(x,Ap,comm);
-    Scalar loc0 = 0;
-    Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,len_loc),
-                            KOKKOS_LAMBDA (int i, Scalar &sum) {
-      Scalar const ri = b(i)-Ap(i);
-      r(i) = ri;
-      sum += ri*ri;
-    },loc0);
+    Scalar const loc0 = form_residual(b,Ap,r);
     Scalar beta0_sq;
     MPI_Allreduce(&loc0,&beta0_sq,1,mpi_real_type(),MPI_SUM,comm);
     Scalar beta0 = std::sqrt(beta0_sq);
@@ -148,10 +210,7 @@ struct YaklConjGrad {
     // A stale initial guess can be worse than x=0. In that case, recover the zero-guess residual without another
     // operator application. This makes rolling guesses safe even when the operator, geometry, or forcing changes.
     if (beta0 > bnorm) {
-      yakl::parallel_for( YAKL_AUTO_LABEL() , len_loc , KOKKOS_LAMBDA (int i) {
-        x(i) = 0;
-        r(i) = b(i);
-      });
+      use_zero_guess(x,b,r);
       beta0_sq = bnorm*bnorm;
       beta0 = bnorm;
     }
@@ -177,10 +236,7 @@ struct YaklConjGrad {
                                        yakl::Array<Scalar *> const & output) {
       if constexpr (std::is_same_v<std::decay_t<ApplyAAndDot>,std::nullptr_t>) {
         apply_A(input,output,comm);
-        Scalar local = 0;
-        Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,len_loc),
-                                KOKKOS_LAMBDA (int i, Scalar &sum) { sum += input(i)*output(i); },local);
-        return local;
+        return local_dot(input,output);
       } else {
         return apply_A_and_dot(input,output,comm);
       }
@@ -203,11 +259,18 @@ struct YaklConjGrad {
       if (!std::isfinite(gamma) || gamma <= 0 || !std::isfinite(delta) || delta <= 0) return false;
       alpha = gamma/delta;
       if (!std::isfinite(alpha) || alpha <= 0) return false;
-      yakl::parallel_for(YAKL_AUTO_LABEL(),len_loc,KOKKOS_LAMBDA (int i) {
-        p(i) = u(i);
-        s(i) = Ap(i);
-      });
+      initialize_recurrence_vectors(p,s,u,Ap);
       return true;
+    };
+
+    auto replace_with_true_residual = [&] () {
+      apply_A(x,Ap,comm);
+      Scalar const true_loc = form_residual(b,Ap,r);
+      Scalar true_sq;
+      MPI_Allreduce(&true_loc,&true_sq,1,mpi_real_type(),MPI_SUM,comm);
+      beta = std::sqrt(true_sq);
+      if (opts.verbose && rank == 0) std::cout << "CG true residual: " << beta << "\n";
+      return beta <= threshold;
     };
 
     if (!converged && !restart_recurrence()) {
@@ -219,10 +282,7 @@ struct YaklConjGrad {
     while (!converged && result.iters < opts.max_iters) {
       // Chronopoulos-Gear PCG delays convergence testing until after M^-1 and A are applied. This permits r.r, r.z,
       // and z.Az to share one global reduction while retaining one operator and one preconditioner application per step.
-      yakl::parallel_for(YAKL_AUTO_LABEL(),len_loc,KOKKOS_LAMBDA (int i) {
-        x(i) += alpha*p(i);
-        r(i) -= alpha*s(i);
-      });
+      update_solution_and_residual(x,r,p,s,alpha);
 
       result.iters++;
       auto u = apply_preconditioner(r,z);
@@ -245,42 +305,41 @@ struct YaklConjGrad {
       if (beta <= threshold) {
         // The recursively updated residual loses its exact relation to b-A*x in finite precision. Verify convergence
         // with a fresh operator application; if it has drifted above tolerance, restart PCG from that true residual.
-        apply_A(x,Ap,comm);
-        Scalar true_loc = 0;
-        Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,len_loc),
-                                KOKKOS_LAMBDA (int i, Scalar &sum) {
-          Scalar const ri = b(i)-Ap(i);
-          r(i) = ri;
-          sum += ri*ri;
-        },true_loc);
-        Scalar true_sq;
-        MPI_Allreduce(&true_loc,&true_sq,1,mpi_real_type(),MPI_SUM,comm);
-        beta = std::sqrt(true_sq);
-        converged = beta <= threshold;
+        converged = replace_with_true_residual();
         residual_replaced = !converged;
-        if (opts.verbose && rank == 0) std::cout << "CG true residual: " << beta << "\n";
       }
 
       if (!converged && result.iters < opts.max_iters) {
         if (residual_replaced) {
           if (!restart_recurrence()) break;
         } else {
-          if (!std::isfinite(gamma_new) || gamma_new <= 0 || !std::isfinite(delta_new)) break;
-          Scalar const recurrence_beta = gamma_new/gamma;
-          Scalar const denominator = delta_new-recurrence_beta*gamma_new/alpha;
-          if (!std::isfinite(denominator) || denominator <= 0) break;
-          alpha = gamma_new/denominator;
-          if (!std::isfinite(alpha) || alpha <= 0) break;
-          yakl::parallel_for(YAKL_AUTO_LABEL(),len_loc,KOKKOS_LAMBDA (int i) {
-            p(i) = u(i)  + recurrence_beta*p(i);
-            s(i) = Ap(i) + recurrence_beta*s(i);
-          });
-          gamma = gamma_new;
+          bool breakdown = !std::isfinite(gamma_new) || gamma_new <= 0 || !std::isfinite(delta_new);
+          Scalar recurrence_beta = 0;
+          Scalar denominator = 0;
+          if (!breakdown) {
+            recurrence_beta = gamma_new/gamma;
+            denominator = delta_new-recurrence_beta*gamma_new/alpha;
+            breakdown = !std::isfinite(recurrence_beta) || !std::isfinite(denominator) || denominator <= 0;
+          }
+          if (breakdown) {
+            converged = replace_with_true_residual();
+            if (!converged && !restart_recurrence()) break;
+          } else {
+            alpha = gamma_new/denominator;
+            if (!std::isfinite(alpha) || alpha <= 0) {
+              converged = replace_with_true_residual();
+              if (!converged && !restart_recurrence()) break;
+            } else {
+              update_recurrence_vectors(p,s,u,Ap,recurrence_beta);
+              gamma = gamma_new;
+            }
+          }
         }
       }
     }
 
-    // `beta` is authoritative when converged because convergence is accepted only after explicitly recomputing b-A*x.
+    // Report and accept convergence only from the true residual, including recurrence breakdown and iteration exhaustion.
+    if (!converged) converged = replace_with_true_residual();
     result.abs_res    = beta;
     result.rel_res    = bnorm > 0 ? beta/bnorm : beta;
     result.converged  = converged;

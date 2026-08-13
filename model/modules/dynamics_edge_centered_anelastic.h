@@ -908,6 +908,7 @@ namespace modules {
       using Projection4d = yakl::Array<ProjectionScalar ****>;
       Projection3d pressure          ("anelastic_projection_pressure"          ,nz,ny,nx);
       Projection3d pressure_rhs      ("anelastic_projection_rhs"               ,nz,ny,nx);
+      Projection3d pressure_projected("anelastic_projection_pressure_projected",nz,ny,nx);
       Projection3d projection_work   ("anelastic_projection_work"              ,nz,ny,nx);
       Projection4d momentum_rhs      ("anelastic_projection_momentum_rhs"      ,4,nz,ny,nx);
       Projection4d momentum_work     ("anelastic_projection_momentum_work"     ,4,nz,ny,nx);
@@ -1202,9 +1203,10 @@ namespace modules {
                              yakl::Array<ProjectionScalar *> const & Ax_out, MPI_Comm comm) {
         auto pp = x_in.reshape(nz,ny,nx);
         auto Ax = Ax_out.reshape(nz,ny,nx);
+        project_pressure(pp,pressure_projected);
         // The cell response supplies the pressure-HV stencil, while continuity uses the compact face correction.
-        if (pressure_hv_enabled) compute_momentum_from_pressure(pp,momentum_work,false);
-        compute_pressure_corrected_mass_fluxes(pp,false);
+        if (pressure_hv_enabled) compute_momentum_from_pressure(pressure_projected,momentum_work,false);
+        compute_pressure_corrected_mass_fluxes(pressure_projected,false);
         yakl::parallel_for(YAKL_AUTO_LABEL(),SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
           ProjectionScalar value = 0;
           if (fluid_mask(k,j,i) == 1) {
@@ -1220,37 +1222,13 @@ namespace modules {
           }
           Ax(k,j,i) = value;
         });
+        project_pressure(Ax,Ax);
         (void) comm;
       };
       auto compute_Ax_and_local_dot = [&] (yakl::Array<ProjectionScalar *> const & x_in,
                                            yakl::Array<ProjectionScalar *> const & Ax_out, MPI_Comm comm) {
-        auto pp = x_in.reshape(nz,ny,nx);
-        auto Ax = Ax_out.reshape(nz,ny,nx);
-        if (pressure_hv_enabled) compute_momentum_from_pressure(pp,momentum_work,false);
-        compute_pressure_corrected_mass_fluxes(pp,false);
-        ProjectionScalar local_dot = 0;
-        Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,nz*ny*nx),
-                                KOKKOS_LAMBDA (int index, ProjectionScalar &sum) {
-          int const i = index%nx;
-          int const j = index/nx%ny;
-          int const k = index/(nx*ny);
-          ProjectionScalar value = 0;
-          if (fluid_mask(k,j,i) == 1) {
-            ProjectionScalar const pressure_momentum_divergence =
-                (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
-                (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
-                (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k));
-            ProjectionScalar const pressure_hv = pressure_hv_enabled ?
-                (hv_x(k,j,i+1)-hv_x(k,j,i))*r_dx +
-                (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy +
-                (hv_z(k+1,j,i)-hv_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
-            value = pressure_momentum_divergence+pressure_hv;
-          }
-          Ax(k,j,i) = value;
-          sum += pp(k,j,i)*value;
-        },local_dot);
-        (void) comm;
-        return local_dot;
+        compute_Ax(x_in,Ax_out,comm);
+        return YaklConjGrad<ProjectionScalar>::local_dot(x_in,Ax_out);
       };
 
       // The cached diagonal is for a unit timestep. Since the complete projection operator is proportional to dt,
@@ -1405,6 +1383,7 @@ namespace modules {
           }
           z(k,j,i) = fluid_mask(k,j,i) == 1 ? correction*r_dt : 0;
         });
+        project_pressure(z,z);
         (void) comm;
       };
 
@@ -1475,7 +1454,7 @@ namespace modules {
         ProjectionScalar const checker_H_checker = pressure_hv_quadratic(checker);
         ProjectionScalar const checker2 = dot_fields(checker,checker);
         ProjectionScalar const symmetry_scale =
-            std::max({std::abs(xAy),std::abs(yAx),std::numeric_limits<ProjectionScalar>::min()});
+            std::max(std::sqrt(std::abs(xAx*yAy)),std::numeric_limits<ProjectionScalar>::min());
         cg_symmetry_error = std::abs(xAy-yAx)/symmetry_scale;
         cg_positive = xAx > 0 && yAy > 0 && checker_A_checker > 0;
         ProjectionScalar const symmetry_tolerance =

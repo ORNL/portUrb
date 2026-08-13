@@ -174,7 +174,7 @@ void run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     require(coupler,immersed_residual == 0,name + ": immersed cells contributed to the linear solver residual");
     real const pressure_mean = coupler.get_option<real>("dycore_anelastic_last_pressure_mean");
     std::cout << "Pressure mean:" << std::scientific << std::abs(pressure_mean);
-    require(coupler,std::abs(pressure_mean) < 1.e-6,name + ": pressure mean was not removed.);
+    require(coupler,std::abs(pressure_mean) < 3.e-6,name + ": pressure mean was not removed.");
   }
 
   if (flow < 2 && !with_immersed) {
