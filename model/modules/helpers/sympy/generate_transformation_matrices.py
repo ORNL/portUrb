@@ -148,13 +148,17 @@ for N in range(1,Nmax+1,2) :
 
 print("\n")
 print("  ///////////////////////")
-print("  // edge_val, edge_hvder")
+print("  // edge_val, edge_der, edge_hvder")
 print("  ///////////////////////")
 for N in range(2,Nmax+1,2) :
-  val,hvder = tr.gen_edge_centered(N)
+  val,der,hvder = tr.gen_edge_centered(N)
   print(f"  template <class F> KOKKOS_INLINE_FUNCTION real edge_val(yakl::SArray<F,{N}> const & s) "+"{")
   print("    return ",end="")
   print(my_cxxcode(val.n(prec),result_name='',vector_name='s'),end=";\n")
+  print("  }")
+  print(f"  template <class F> KOKKOS_INLINE_FUNCTION real edge_der(yakl::SArray<F,{N}> const & s) "+"{")
+  print("    return ",end="")
+  print(my_cxxcode(der.n(prec),result_name='',vector_name='s'),end=";\n")
   print("  }")
   print(f"  template <class F> KOKKOS_INLINE_FUNCTION real edge_hvder(yakl::SArray<F,{N}> const & s) "+"{")
   print("    return ",end="")
@@ -162,4 +166,3 @@ for N in range(2,Nmax+1,2) :
   print("  }")
 
 print("}\n")
-

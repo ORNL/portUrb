@@ -59,7 +59,7 @@ def gen_edge_centered(N) :
   Ainv   = constr.jacobian(coefs).inv()
   vals   = gen_coefs(N,'s')
   p      = gen_poly(Ainv*vals)
-  return p.subs(x,0) , sp.diff(p,x,N-1).subs(x,0)
+  return p.subs(x,0) , sp.diff(p,x).subs(x,0) , sp.diff(p,x,N-1).subs(x,0)
   
 
 def gen_weno(N) :
@@ -152,4 +152,3 @@ if __name__ == "__main__" :
     print(s2g)
     print(s2g[0,:].tolist()[0][0])
     print(s2g[1,:].tolist()[0][0])
-
