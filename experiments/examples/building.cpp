@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_edge_centered.h"
+#include "dynamics_edge_centered_anelastic.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -23,13 +23,17 @@ int main(int argc, char** argv) {
     real cs = 50;
     real buoy_theta = true;
     real rsst = true;
+    std::string const preconditioner = argc > 1 ? argv[1] : "Schwarz";
+    if (preconditioner != "none" && preconditioner != "Jacobi" && preconditioner != "Schwarz") {
+      endrun("ERROR: building preconditioner must be none, Jacobi, or Schwarz");
+    }
 
     real usfc = 1;
 
     real        xlen        = 400;
     real        ylen        = 400;
     real        zlen        = 400;
-    real        sim_time    = xlen/usfc*1+0.1;
+    real        sim_time    = 10;
     int         nx_glob     = 100;
     int         ny_glob     = 100;
     int         nz          = 100;
@@ -40,7 +44,7 @@ int main(int argc, char** argv) {
     std::string out_prefix  = std::string("building_buoy-") +
                               (buoy_theta ? std::string("thetap_press-") : std::string("rhop_press-")) +
                               (rsst       ? std::string("rsst_cs-")      : std::string("orig_cs-")) +
-                              std::to_string((int)std::round(cs));
+                              std::to_string((int)std::round(cs)) + "-" + preconditioner;
     bool        is_restart  = false;
 
     core::Coupler coupler;
@@ -59,6 +63,14 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "dycore_cs"                          , cs            );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false         );
     coupler.set_option<bool       >( "dycore_use_weno_immersed"           , true          );
+    coupler.set_option<std::string>( "dycore_anelastic_preconditioner"     , preconditioner);
+    coupler.set_option<bool       >( "dycore_anelastic_time_linear_solver" , true          );
+    coupler.set_option<int        >( "dycore_anelastic_schwarz_tile_nx"    , 16            );
+    coupler.set_option<int        >( "dycore_anelastic_schwarz_tile_ny"    , 16            );
+    coupler.set_option<int        >( "dycore_anelastic_schwarz_overlap"    , 2             );
+    coupler.set_option<int        >( "dycore_anelastic_schwarz_chebyshev_degree", 16       );
+    coupler.set_option<real       >( "dycore_anelastic_gmres_rel_tol"      , 1.e-4         );
+    coupler.set_option<int        >( "dycore_anelastic_gmres_max_iters"    , 400           );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false         );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false         );
     coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5        );
@@ -140,10 +152,28 @@ int main(int argc, char** argv) {
       }
     } // End main simulation loop
 
+    int const cg_solve_count = coupler.get_option<int>("dycore_anelastic_cg_solve_count");
+    if (coupler.is_mainproc() && cg_solve_count > 0) {
+      real const iteration_sum = coupler.get_option<real>("dycore_anelastic_cg_iteration_sum");
+      real const iteration_sum_squares = coupler.get_option<real>("dycore_anelastic_cg_iteration_sum_squares");
+      real const iteration_mean = iteration_sum/cg_solve_count;
+      real const iteration_variance = std::max(0._fp,iteration_sum_squares/cg_solve_count-
+                                                     iteration_mean*iteration_mean);
+      std::cout << "Anelastic CG statistics: solves = " << cg_solve_count
+                << ", iterations total/mean/stddev/min/max = " << iteration_sum << " / " << iteration_mean
+                << " / " << std::sqrt(iteration_variance) << " / "
+                << coupler.get_option<int>("dycore_anelastic_cg_iteration_min") << " / "
+                << coupler.get_option<int>("dycore_anelastic_cg_iteration_max")
+                << ", solve seconds total/mean/min/max = "
+                << coupler.get_option<real>("dycore_anelastic_cg_seconds_sum") << " / "
+                << coupler.get_option<real>("dycore_anelastic_cg_seconds_sum")/cg_solve_count << " / "
+                << coupler.get_option<real>("dycore_anelastic_cg_seconds_min") << " / "
+                << coupler.get_option<real>("dycore_anelastic_cg_seconds_max") << std::endl;
+    }
+
     yakl::timer_stop("main");
   }
   yakl::finalize();
   Kokkos::finalize();
   MPI_Finalize();
 }
-

@@ -644,16 +644,15 @@ namespace modules {
 
 
     // One anelastic RK forcing evaluation: pressureless conservative FE advection, theta buoyancy, and projection.
-    template <class ProjectionScalar = float>
-    void compute_tendencies_impl( core::Coupler       & coupler      ,
-                                  real4d        const & state        ,
-                                  real4d        const & state_tend   ,
-                                  real4d        const & tracers      ,
-                                  real4d        const & tracers_tend ,
-                                  real                  dt           ,
-                                  int                   istage       ,
-                                  int                   icycle       ) const {
-      static_assert(std::is_floating_point_v<ProjectionScalar>);
+    void compute_tendencies( core::Coupler       & coupler      ,
+                             real4d        const & state        ,
+                             real4d        const & state_tend   ,
+                             real4d        const & tracers      ,
+                             real4d        const & tracers_tend ,
+                             real                  dt           ,
+                             int                   istage       ,
+                             int                   icycle       ) const {
+      using ProjectionScalar = float;
       using yakl::SimpleBounds;
       if (dt <= 0) endrun("ERROR: anelastic tendency forcing interval must be positive");
 
@@ -675,7 +674,7 @@ namespace modules {
       auto const grav        = coupler.get_option<real>("grav");
       auto const gravity     = coupler.get_option<bool>("enable_gravity",true);
       auto const imm_th      = coupler.get_option<real>("immersed_threshold",0.5);
-      auto const &dm         = coupler.get_data_manager_readonly();
+      auto       &dm         = coupler.get_data_manager_readwrite();
       auto const immersed    = dm.get<real const,3>("dycore_immersed_proportion_halos");
       auto const imm_dist    = dm.get<real const,3>("dycore_immersed_distance");
       auto const rho_h       = dm.get<real const,1>("hy_dens_cells");
@@ -909,7 +908,6 @@ namespace modules {
       using Projection4d = yakl::Array<ProjectionScalar ****>;
       Projection3d pressure          ("anelastic_projection_pressure"          ,nz,ny,nx);
       Projection3d pressure_rhs      ("anelastic_projection_rhs"               ,nz,ny,nx);
-      Projection3d pressure_projected("anelastic_projection_pressure_projected",nz,ny,nx);
       Projection3d projection_work   ("anelastic_projection_work"              ,nz,ny,nx);
       Projection4d momentum_rhs      ("anelastic_projection_momentum_rhs"      ,4,nz,ny,nx);
       Projection4d momentum_work     ("anelastic_projection_momentum_work"     ,4,nz,ny,nx);
@@ -1204,29 +1202,55 @@ namespace modules {
                              yakl::Array<ProjectionScalar *> const & Ax_out, MPI_Comm comm) {
         auto pp = x_in.reshape(nz,ny,nx);
         auto Ax = Ax_out.reshape(nz,ny,nx);
-        project_pressure(pp,pressure_projected);
         // The cell response supplies the pressure-HV stencil, while continuity uses the compact face correction.
-        if (pressure_hv_enabled) compute_momentum_from_pressure(pressure_projected,momentum_work,false);
-        compute_pressure_corrected_mass_fluxes(pressure_projected,false);
-        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+        if (pressure_hv_enabled) compute_momentum_from_pressure(pp,momentum_work,false);
+        compute_pressure_corrected_mass_fluxes(pp,false);
+        yakl::parallel_for(YAKL_AUTO_LABEL(),SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
+          ProjectionScalar value = 0;
           if (fluid_mask(k,j,i) == 1) {
             ProjectionScalar const pressure_momentum_divergence =
                 (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
                 (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
                 (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k));
-            // Pressure hyperviscosity acts only on the pressure unknown through compute_Ax and has the same timestep and
-            // directional inverse-length-squared scaling as pressure_momentum_divergence.
             ProjectionScalar const pressure_hv = pressure_hv_enabled ?
                 (hv_x(k,j,i+1)-hv_x(k,j,i))*r_dx +
                 (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy +
                 (hv_z(k+1,j,i)-hv_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
-            Ax(k,j,i) = pressure_momentum_divergence + pressure_hv;
-          } else {
-            Ax(k,j,i) = 0;
+            value = pressure_momentum_divergence+pressure_hv;
           }
+          Ax(k,j,i) = value;
         });
-        project_pressure(Ax,Ax);
         (void) comm;
+      };
+      auto compute_Ax_and_local_dot = [&] (yakl::Array<ProjectionScalar *> const & x_in,
+                                           yakl::Array<ProjectionScalar *> const & Ax_out, MPI_Comm comm) {
+        auto pp = x_in.reshape(nz,ny,nx);
+        auto Ax = Ax_out.reshape(nz,ny,nx);
+        if (pressure_hv_enabled) compute_momentum_from_pressure(pp,momentum_work,false);
+        compute_pressure_corrected_mass_fluxes(pp,false);
+        ProjectionScalar local_dot = 0;
+        Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,nz*ny*nx),
+                                KOKKOS_LAMBDA (int index, ProjectionScalar &sum) {
+          int const i = index%nx;
+          int const j = index/nx%ny;
+          int const k = index/(nx*ny);
+          ProjectionScalar value = 0;
+          if (fluid_mask(k,j,i) == 1) {
+            ProjectionScalar const pressure_momentum_divergence =
+                (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
+                (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
+                (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k));
+            ProjectionScalar const pressure_hv = pressure_hv_enabled ?
+                (hv_x(k,j,i+1)-hv_x(k,j,i))*r_dx +
+                (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy +
+                (hv_z(k+1,j,i)-hv_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
+            value = pressure_momentum_divergence+pressure_hv;
+          }
+          Ax(k,j,i) = value;
+          sum += pp(k,j,i)*value;
+        },local_dot);
+        (void) comm;
+        return local_dot;
       };
 
       // The cached diagonal is for a unit timestep. Since the complete projection operator is proportional to dt,
@@ -1242,6 +1266,145 @@ namespace modules {
               r(k,j,i)*static_cast<ProjectionScalar>(inv_diagonal_dtless(k,j,i))*r_dt : 0;
         });
         project_pressure(z,z);
+        (void) comm;
+      };
+
+      // Classical additive Schwarz with full-column, globally anchored overlapping tiles. The local operator is the
+      // second-order pressure-flux Laplacian with the fine-grid immersed connectivity and physical no-flux walls.
+      // Fixed Chebyshev-Richardson steps approximate each local inverse and retain a fixed linear SPD map.
+      auto schwarz_preconditioner = [&] (yakl::Array<ProjectionScalar *> const & r_in,
+                                         yakl::Array<ProjectionScalar *> const & z_out, MPI_Comm comm) {
+        auto r = r_in.reshape(nz,ny,nx);
+        auto z = z_out.reshape(nz,ny,nx);
+        int const tile_nx = coupler.get_option<int>("dycore_anelastic_schwarz_tile_nx",8);
+        int const tile_ny = coupler.get_option<int>("dycore_anelastic_schwarz_tile_ny",8);
+        int const overlap = coupler.get_option<int>("dycore_anelastic_schwarz_overlap",2);
+        int const degree = coupler.get_option<int>("dycore_anelastic_schwarz_chebyshev_degree",8);
+        int const schwarz_hs = coupler.get_option<int>("dycore_anelastic_schwarz_halo");
+        int const num_tiles = coupler.get_option<int>("dycore_anelastic_schwarz_num_local_tiles");
+        ProjectionScalar const lambda_min = static_cast<ProjectionScalar>(
+            coupler.get_option<real>("dycore_anelastic_schwarz_chebyshev_lambda_min",0.02));
+        ProjectionScalar const lambda_max = static_cast<ProjectionScalar>(
+            coupler.get_option<real>("dycore_anelastic_schwarz_chebyshev_lambda_max",2));
+        if (!(lambda_min > 0 && lambda_min < lambda_max && lambda_max >= 2)) {
+          endrun("ERROR: invalid anelastic Schwarz Chebyshev spectral bounds");
+        }
+        int const max_tile_x = tile_nx+2*overlap;
+        int const max_tile_y = tile_ny+2*overlap;
+        auto const tiles = dm.get<int const,2>("dycore_anelastic_schwarz_tiles");
+        bool const periodic_x = coupler.get_option<std::string>("bc_x1") == "periodic";
+        bool const periodic_y = coupler.get_option<std::string>("bc_y1") == "periodic";
+        bool const periodic_z = coupler.get_option<std::string>("bc_z1") == "periodic";
+        int const i_beg_int = static_cast<int>(i_beg);
+        int const j_beg_int = static_cast<int>(j_beg);
+        int const nx_glob_int = static_cast<int>(nx_glob);
+        int const ny_glob_int = static_cast<int>(ny_glob);
+
+        auto r_halos = dm.get<ProjectionScalar,4>("dycore_anelastic_schwarz_residual_halos");
+        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+          r_halos(0,schwarz_hs+k,schwarz_hs+j,schwarz_hs+i) = r(k,j,i);
+        });
+        if (coupler.get_nranks() == 1) {
+          yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny+2*schwarz_hs,nx+2*schwarz_hs),
+                             KOKKOS_LAMBDA (int k, int jh, int ih) {
+            int const j = jh-schwarz_hs;
+            int const i = ih-schwarz_hs;
+            if (j >= 0 && j < ny && i >= 0 && i < nx) return;
+            bool const valid = (periodic_y || (j >= 0 && j < ny)) &&
+                               (periodic_x || (i >= 0 && i < nx));
+            int const jj = (j%ny+ny)%ny;
+            int const ii = (i%nx+nx)%nx;
+            r_halos(0,schwarz_hs+k,jh,ih) = valid ? r(k,jj,ii) : 0;
+          });
+        } else {
+          coupler.halo_exchange(r_halos,schwarz_hs);
+        }
+
+        auto local_rhs = dm.get<ProjectionScalar,4>("dycore_anelastic_schwarz_local_rhs");
+        auto local_x   = dm.get<ProjectionScalar,4>("dycore_anelastic_schwarz_local_x_0");
+        auto local_Ax  = dm.get<ProjectionScalar,4>("dycore_anelastic_schwarz_local_x_1");
+        auto const coefficients = dm.get<float const,5>("dycore_anelastic_schwarz_coefficients");
+        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<4>(num_tiles,nz,max_tile_y,max_tile_x),
+                           KOKKOS_LAMBDA (int tile, int k, int jj, int ii) {
+          int const tx = tiles(tile,2);
+          int const ty = tiles(tile,3);
+          local_rhs(tile,k,jj,ii) = 0;
+          local_x  (tile,k,jj,ii) = 0;
+          local_Ax (tile,k,jj,ii) = 0;
+          if (ii >= tx || jj >= ty || coefficients(1,tile,k,jj,ii) <= 0) return;
+          int gi = tiles(tile,0)+ii;
+          int gj = tiles(tile,1)+jj;
+          gi = periodic_x ? (gi%nx_glob_int+nx_glob_int)%nx_glob_int : gi;
+          gj = periodic_y ? (gj%ny_glob_int+ny_glob_int)%ny_glob_int : gj;
+          int di = gi-i_beg_int;
+          int dj = gj-j_beg_int;
+          if (periodic_x && di < -schwarz_hs) di += nx_glob_int;
+          if (periodic_x && di >= nx+schwarz_hs) di -= nx_glob_int;
+          if (periodic_y && dj < -schwarz_hs) dj += ny_glob_int;
+          if (periodic_y && dj >= ny+schwarz_hs) dj -= ny_glob_int;
+          int const ih = schwarz_hs+di;
+          int const jh = schwarz_hs+dj;
+          local_rhs(tile,k,jj,ii) = r_halos(0,schwarz_hs+k,jh,ih);
+        });
+
+        ProjectionScalar const theta = ProjectionScalar(0.5)*(lambda_max+lambda_min);
+        ProjectionScalar const delta = ProjectionScalar(0.5)*(lambda_max-lambda_min);
+        for (int step = 0; step < degree; step++) {
+          ProjectionScalar const angle = ProjectionScalar(M_PI)*(ProjectionScalar(2*step+1))/
+                                         ProjectionScalar(2*degree);
+          ProjectionScalar const omega = ProjectionScalar(1)/(theta-delta*std::cos(angle));
+          yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<4>(num_tiles,nz,max_tile_y,max_tile_x),
+                             KOKKOS_LAMBDA (int tile, int k, int jj, int ii) {
+            int const tx = tiles(tile,2);
+            int const ty = tiles(tile,3);
+            ProjectionScalar const inv_diagonal = coefficients(1,tile,k,jj,ii);
+            if (ii >= tx || jj >= ty || inv_diagonal <= 0) {
+              local_Ax(tile,k,jj,ii) = 0;
+              return;
+            }
+            ProjectionScalar const center = local_x(tile,k,jj,ii);
+            ProjectionScalar Ax_value = static_cast<ProjectionScalar>(coefficients(0,tile,k,jj,ii))*center;
+            if (ii > 0)    Ax_value -= static_cast<ProjectionScalar>(coefficients(2,tile,k,jj,ii))*
+                                          local_x(tile,k,jj,ii-1);
+            if (ii+1 < tx) Ax_value -= static_cast<ProjectionScalar>(coefficients(3,tile,k,jj,ii))*
+                                          local_x(tile,k,jj,ii+1);
+            if (jj > 0)    Ax_value -= static_cast<ProjectionScalar>(coefficients(4,tile,k,jj,ii))*
+                                          local_x(tile,k,jj-1,ii);
+            if (jj+1 < ty) Ax_value -= static_cast<ProjectionScalar>(coefficients(5,tile,k,jj,ii))*
+                                          local_x(tile,k,jj+1,ii);
+            int const km = k > 0 ? k-1 : nz-1;
+            int const kp = k+1 < nz ? k+1 : 0;
+            if (k > 0 || periodic_z) {
+              Ax_value -= static_cast<ProjectionScalar>(coefficients(6,tile,k,jj,ii))*local_x(tile,km,jj,ii);
+            }
+            if (k+1 < nz || periodic_z) {
+              Ax_value -= static_cast<ProjectionScalar>(coefficients(7,tile,k,jj,ii))*local_x(tile,kp,jj,ii);
+            }
+            local_Ax(tile,k,jj,ii) = center+omega*(local_rhs(tile,k,jj,ii)-Ax_value)*inv_diagonal;
+          });
+          std::swap(local_x,local_Ax);
+        }
+
+        ProjectionScalar const r_dt = ProjectionScalar(1)/dt_proj;
+        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+          ProjectionScalar correction = 0;
+          int const gi = i_beg_int+i;
+          int const gj = j_beg_int+j;
+          for (int tile = 0; tile < num_tiles; tile++) {
+            int const i0 = tiles(tile,0);
+            int const j0 = tiles(tile,1);
+            int ii_found = -1;
+            int jj_found = -1;
+            for (int shift = -1; shift <= 1; shift++) {
+              int const ii = gi+shift*nx_glob_int-i0;
+              int const jj = gj+shift*ny_glob_int-j0;
+              if (ii >= 0 && ii < tiles(tile,2)) ii_found = ii;
+              if (jj >= 0 && jj < tiles(tile,3)) jj_found = jj;
+            }
+            if (ii_found >= 0 && jj_found >= 0) correction += local_x(tile,k,jj_found,ii_found);
+          }
+          z(k,j,i) = fluid_mask(k,j,i) == 1 ? correction*r_dt : 0;
+        });
         (void) comm;
       };
 
@@ -1391,9 +1554,24 @@ namespace modules {
 
       int solver_iters = 0;
       bool solver_converged = false;
-      bool const use_jacobi = coupler.get_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true);
+      bool const time_linear_solver =
+          coupler.get_option<bool>("dycore_anelastic_time_linear_solver",false);
+      double solver_start_time = 0;
+      if (time_linear_solver) {
+        Kokkos::fence();
+        coupler.get_parallel_comm().barrier();
+        solver_start_time = MPI_Wtime();
+      }
+      std::string const preconditioner = coupler.get_option<std::string>("dycore_anelastic_preconditioner");
       if (use_cg) {
         YaklConjGrad<ProjectionScalar> cg;
+        typename YaklConjGrad<ProjectionScalar>::Workspace cg_workspace{
+          dm.get_collapsed<ProjectionScalar>("dycore_anelastic_cg_r"),
+          dm.get_collapsed<ProjectionScalar>("dycore_anelastic_cg_z"),
+          dm.get_collapsed<ProjectionScalar>("dycore_anelastic_cg_p"),
+          dm.get_collapsed<ProjectionScalar>("dycore_anelastic_cg_Ap"),
+          dm.get_collapsed<ProjectionScalar>("dycore_anelastic_cg_s")
+        };
         typename YaklConjGrad<ProjectionScalar>::Options cg_opts;
         cg_opts.max_iters = opts.max_iters;
         // Float CG recurrence norms can undershoot the independently recomputed residual slightly. Solve 10% tighter
@@ -1402,17 +1580,24 @@ namespace modules {
         cg_opts.abs_tol   = opts.abs_tol;
         cg_opts.verbose   = opts.verbose;
         typename YaklConjGrad<ProjectionScalar>::Result cg_result;
-        if (use_jacobi) {
-          cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_opts,comm,
-                               jacobi_preconditioner);
+        if (preconditioner == "Schwarz") {
+          cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
+                               schwarz_preconditioner,compute_Ax_and_local_dot);
+        } else if (preconditioner == "Jacobi") {
+          cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
+                               jacobi_preconditioner,compute_Ax_and_local_dot);
         } else {
-          cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_opts,comm);
+          cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
+                               nullptr,compute_Ax_and_local_dot);
         }
         solver_iters = cg_result.iters;
         solver_converged = cg_result.converged;
       } else {
         typename YaklRestartedGMRES<ProjectionScalar>::Result gmres_result;
-        if (use_jacobi) {
+        if (preconditioner == "Schwarz") {
+          gmres_result = gmres.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,opts,comm,nullptr,
+                                     schwarz_preconditioner);
+        } else if (preconditioner == "Jacobi") {
           gmres_result = gmres.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,opts,comm,nullptr,
                                      jacobi_preconditioner);
         } else {
@@ -1421,8 +1606,16 @@ namespace modules {
         solver_iters = gmres_result.iters;
         solver_converged = gmres_result.converged;
       }
+      real solver_elapsed = 0;
+      if (time_linear_solver) {
+        Kokkos::fence();
+        coupler.get_parallel_comm().barrier();
+        solver_elapsed = static_cast<real>(MPI_Wtime()-solver_start_time);
+        solver_elapsed = coupler.get_parallel_comm().all_reduce(solver_elapsed,MPI_MAX);
+        coupler.set_option<real>("dycore_anelastic_last_linear_solver_seconds",solver_elapsed);
+      }
       coupler.set_option<std::string>("dycore_anelastic_last_linear_solver",use_cg ? "CG" : "GMRES");
-      coupler.set_option<std::string>("dycore_anelastic_last_preconditioner",use_jacobi ? "Jacobi" : "none");
+      coupler.set_option<std::string>("dycore_anelastic_last_preconditioner",preconditioner);
       // The only intended pressure nullspace is a constant over fluid cells. Select a deterministic mean-zero representative.
       project_pressure(pressure,pressure);
       if constexpr (yakl::kokkos_debug) {
@@ -1521,6 +1714,28 @@ namespace modules {
             << " iterations; true relative residual = " << true_rel;
         endrun(err.str().c_str());
       }
+      if (use_cg) {
+        int const solve_count = coupler.get_option<int>("dycore_anelastic_cg_solve_count")+1;
+        real const iterations = static_cast<real>(solver_iters);
+        coupler.set_option<int>("dycore_anelastic_cg_solve_count",solve_count);
+        coupler.set_option<real>("dycore_anelastic_cg_iteration_sum",
+                                 coupler.get_option<real>("dycore_anelastic_cg_iteration_sum")+iterations);
+        coupler.set_option<real>("dycore_anelastic_cg_iteration_sum_squares",
+                                 coupler.get_option<real>("dycore_anelastic_cg_iteration_sum_squares")+
+                                 iterations*iterations);
+        coupler.set_option<int>("dycore_anelastic_cg_iteration_min",
+                                std::min(coupler.get_option<int>("dycore_anelastic_cg_iteration_min"),solver_iters));
+        coupler.set_option<int>("dycore_anelastic_cg_iteration_max",
+                                std::max(coupler.get_option<int>("dycore_anelastic_cg_iteration_max"),solver_iters));
+        if (time_linear_solver) {
+          coupler.set_option<real>("dycore_anelastic_cg_seconds_sum",
+                                   coupler.get_option<real>("dycore_anelastic_cg_seconds_sum")+solver_elapsed);
+          coupler.set_option<real>("dycore_anelastic_cg_seconds_min",
+                                   std::min(coupler.get_option<real>("dycore_anelastic_cg_seconds_min"),solver_elapsed));
+          coupler.set_option<real>("dycore_anelastic_cg_seconds_max",
+                                   std::max(coupler.get_option<real>("dycore_anelastic_cg_seconds_max"),solver_elapsed));
+        }
+      }
 
       compute_momentum_from_pressure(pressure,momentum_work,true);
       compute_pressure_corrected_mass_fluxes(pressure,true);
@@ -1587,21 +1802,6 @@ namespace modules {
         }
       });
     }
-
-
-    // Use single precision for all projection storage and arithmetic by default. The implementation remains templated so
-    // focused verification or future configurations can explicitly request another floating-point projection scalar.
-    void compute_tendencies( core::Coupler       & coupler      ,
-                             real4d        const & state        ,
-                             real4d        const & state_tend   ,
-                             real4d        const & tracers      ,
-                             real4d        const & tracers_tend ,
-                             real                  dt           ,
-                             int                   istage       ,
-                             int                   icycle       ) const {
-      compute_tendencies_impl<>(coupler,state,state_tend,tracers,tracers_tend,dt,istage,icycle);
-    }
-
 
 
     // Apply halo boundary conditions to the fields
@@ -2263,7 +2463,7 @@ namespace modules {
       // This lambda function is to interpolate hydrostatic profiles from cell centers to edges
       //  (linear for theta, and log-linear for rho and pressure)
       auto compute_hydrostasis_edges = [] (core::Coupler &coupler) {
-        using yakl::SimpleBounds;;
+        using yakl::SimpleBounds;
         auto nz   = coupler.get_nz  (); // Number of cells in z-direction (not including halos)
         auto ny   = coupler.get_ny  (); // Number of cells in y-direction (not including halos)
         auto nx   = coupler.get_nx  (); // Number of cells in x-direction (not including halos)
@@ -2324,9 +2524,37 @@ namespace modules {
       int const fluid_count = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(fluid_mask),MPI_SUM);
       if (fluid_count == 0) endrun("ERROR: anelastic projection has no fluid cells");
       coupler.set_option<int>("dycore_anelastic_fluid_count",fluid_count);
+      coupler.set_option<int>("dycore_anelastic_cg_solve_count",0);
+      coupler.set_option<real>("dycore_anelastic_cg_iteration_sum",0);
+      coupler.set_option<real>("dycore_anelastic_cg_iteration_sum_squares",0);
+      coupler.set_option<int>("dycore_anelastic_cg_iteration_min",std::numeric_limits<int>::max());
+      coupler.set_option<int>("dycore_anelastic_cg_iteration_max",0);
+      coupler.set_option<real>("dycore_anelastic_cg_seconds_sum",0);
+      coupler.set_option<real>("dycore_anelastic_cg_seconds_min",std::numeric_limits<real>::max());
+      coupler.set_option<real>("dycore_anelastic_cg_seconds_max",0);
       coupler.set_option<bool>("dycore_anelastic_cg_compatibility_checked",false);
       coupler.set_option<bool>("dycore_anelastic_use_cg",
                                coupler.get_option<bool>("dycore_anelastic_check_cg_compatibility",true));
+
+      // Reuse the Krylov vectors across every Runge-Kutta-stage pressure solve. CG receives collapsed views and performs
+      // no runtime allocation.
+      dm.register_and_allocate<float>("dycore_anelastic_cg_r" ,{nz,ny,nx});
+      dm.register_and_allocate<float>("dycore_anelastic_cg_z" ,{nz,ny,nx});
+      dm.register_and_allocate<float>("dycore_anelastic_cg_p" ,{nz,ny,nx});
+      dm.register_and_allocate<float>("dycore_anelastic_cg_Ap",{nz,ny,nx});
+      dm.register_and_allocate<float>("dycore_anelastic_cg_s" ,{nz,ny,nx});
+      auto cg_r  = dm.get<float,3>("dycore_anelastic_cg_r");
+      auto cg_z  = dm.get<float,3>("dycore_anelastic_cg_z");
+      auto cg_p  = dm.get<float,3>("dycore_anelastic_cg_p");
+      auto cg_Ap = dm.get<float,3>("dycore_anelastic_cg_Ap");
+      auto cg_s  = dm.get<float,3>("dycore_anelastic_cg_s");
+      yakl::parallel_for(YAKL_AUTO_LABEL(),SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
+        cg_r (k,j,i) = 0;
+        cg_z (k,j,i) = 0;
+        cg_p (k,j,i) = 0;
+        cg_Ap(k,j,i) = 0;
+        cg_s (k,j,i) = 0;
+      });
 
       // Cache the inverse diagonal of the fixed-geometry, unit-timestep local pressure operator. The mean-zero P*A*P
       // projection is deliberately omitted from this Jacobi approximation because its dense rank-one contribution would
@@ -2445,6 +2673,191 @@ namespace modules {
       if (invalid_diagonal_count > 0) endrun("ERROR: anelastic projection has a nonpositive Jacobi diagonal");
       coupler.set_option<bool>("dycore_anelastic_use_jacobi_preconditioner",
                                coupler.get_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true));
+
+      // Set up globally anchored horizontal Schwarz tiles. Each rank stores only the tiles whose overlapped support
+      // intersects its owned cells. At application time those tiles are evaluated redundantly from a wide MPI halo;
+      // this avoids both atomics and an asymmetric correction exchange at rank boundaries.
+      std::string const default_preconditioner =
+          coupler.get_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true) ? "Jacobi" : "none";
+      std::string const preconditioner =
+          coupler.get_option<std::string>("dycore_anelastic_preconditioner",default_preconditioner);
+      if (preconditioner != "none" && preconditioner != "Jacobi" && preconditioner != "Schwarz") {
+        endrun("ERROR: dycore_anelastic_preconditioner must be none, Jacobi, or Schwarz");
+      }
+      coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
+      if (preconditioner == "Schwarz") {
+        int const tile_nx = coupler.get_option<int>("dycore_anelastic_schwarz_tile_nx",8);
+        int const tile_ny = coupler.get_option<int>("dycore_anelastic_schwarz_tile_ny",8);
+        int const overlap = coupler.get_option<int>("dycore_anelastic_schwarz_overlap",2);
+        int const degree = coupler.get_option<int>("dycore_anelastic_schwarz_chebyshev_degree",8);
+        if (tile_nx <= 0 || tile_ny <= 0 || overlap < 0 || degree <= 0) {
+          endrun("ERROR: invalid anelastic Schwarz tile, overlap, or Chebyshev degree");
+        }
+        int const schwarz_hs = std::max(tile_nx+overlap,tile_ny+overlap);
+        if (schwarz_hs > nx || schwarz_hs > ny) {
+          endrun("ERROR: anelastic Schwarz residual halo exceeds a local horizontal domain extent");
+        }
+        if (tile_nx+2*overlap >= nx_glob_int || tile_ny+2*overlap >= ny_glob_int) {
+          endrun("ERROR: anelastic Schwarz tiles must be smaller than the global periodic domain");
+        }
+
+        auto intersects_owned = [] (int begin, int extent, int owned_begin, int owned_end, int global_extent,
+                                    bool periodic) {
+          for (int offset = 0; offset < extent; offset++) {
+            int index = begin+offset;
+            if (periodic) index = (index%global_extent+global_extent)%global_extent;
+            if (index >= owned_begin && index <= owned_end) return true;
+          }
+          return false;
+        };
+        int const num_tiles_x = (nx_glob_int+tile_nx-1)/tile_nx;
+        int const num_tiles_y = (ny_glob_int+tile_ny-1)/tile_ny;
+        int num_local_tiles = 0;
+        for (int tj = 0; tj < num_tiles_y; tj++) {
+          int const interior_j0 = tj*tile_ny;
+          int j0 = interior_j0-overlap;
+          int j1 = std::min(interior_j0+tile_ny,ny_glob_int)+overlap;
+          if (!periodic_y) {
+            j0 = std::max(j0,0);
+            j1 = std::min(j1,ny_glob_int);
+          }
+          bool const intersects_y = intersects_owned(j0,j1-j0,j_beg_int,j_beg_int+ny-1,ny_glob_int,periodic_y);
+          if (!intersects_y) continue;
+          for (int ti = 0; ti < num_tiles_x; ti++) {
+            int const interior_i0 = ti*tile_nx;
+            int i0 = interior_i0-overlap;
+            int i1 = std::min(interior_i0+tile_nx,nx_glob_int)+overlap;
+            if (!periodic_x) {
+              i0 = std::max(i0,0);
+              i1 = std::min(i1,nx_glob_int);
+            }
+            bool const intersects_x = intersects_owned(i0,i1-i0,i_beg_int,i_beg_int+nx-1,nx_glob_int,periodic_x);
+            if (!intersects_x) continue;
+            num_local_tiles++;
+          }
+        }
+        if (num_local_tiles == 0) endrun("ERROR: anelastic Schwarz setup found no local tiles");
+        dm.register_and_allocate<int>("dycore_anelastic_schwarz_tiles",{num_local_tiles,4});
+        intHost2d tiles_host("dycore_anelastic_schwarz_tiles_host",num_local_tiles,4);
+        int tile = 0;
+        for (int tj = 0; tj < num_tiles_y; tj++) {
+          int const interior_j0 = tj*tile_ny;
+          int j0 = interior_j0-overlap;
+          int j1 = std::min(interior_j0+tile_ny,ny_glob_int)+overlap;
+          if (!periodic_y) {
+            j0 = std::max(j0,0);
+            j1 = std::min(j1,ny_glob_int);
+          }
+          bool const intersects_y = intersects_owned(j0,j1-j0,j_beg_int,j_beg_int+ny-1,ny_glob_int,periodic_y);
+          if (!intersects_y) continue;
+          for (int ti = 0; ti < num_tiles_x; ti++) {
+            int const interior_i0 = ti*tile_nx;
+            int i0 = interior_i0-overlap;
+            int i1 = std::min(interior_i0+tile_nx,nx_glob_int)+overlap;
+            if (!periodic_x) {
+              i0 = std::max(i0,0);
+              i1 = std::min(i1,nx_glob_int);
+            }
+            bool const intersects_x = intersects_owned(i0,i1-i0,i_beg_int,i_beg_int+nx-1,nx_glob_int,periodic_x);
+            if (!intersects_x) continue;
+            tiles_host(tile,0) = i0;
+            tiles_host(tile,1) = j0;
+            tiles_host(tile,2) = i1-i0;
+            tiles_host(tile,3) = j1-j0;
+            tile++;
+          }
+        }
+        tiles_host.deep_copy_to(dm.get<int,2>("dycore_anelastic_schwarz_tiles"));
+        dm.register_and_allocate<int>("dycore_anelastic_schwarz_mask_halos",
+                                      {nz+2*schwarz_hs,ny+2*schwarz_hs,nx+2*schwarz_hs});
+        auto mask_halos = dm.get<int,3>("dycore_anelastic_schwarz_mask_halos");
+        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+          mask_halos(schwarz_hs+k,schwarz_hs+j,schwarz_hs+i) = fluid_mask(k,j,i);
+        });
+        core::MultiField<int,3> mask_fields;
+        mask_fields.add_field(mask_halos);
+        coupler.halo_exchange(mask_fields,schwarz_hs);
+        int const max_tile_x = tile_nx+2*overlap;
+        int const max_tile_y = tile_ny+2*overlap;
+        dm.register_and_allocate<float>("dycore_anelastic_schwarz_residual_halos",
+                                        {1,nz+2*schwarz_hs,ny+2*schwarz_hs,nx+2*schwarz_hs});
+        dm.register_and_allocate<float>("dycore_anelastic_schwarz_local_rhs",
+                                        {num_local_tiles,nz,max_tile_y,max_tile_x});
+        dm.register_and_allocate<float>("dycore_anelastic_schwarz_local_x_0",
+                                        {num_local_tiles,nz,max_tile_y,max_tile_x});
+        dm.register_and_allocate<float>("dycore_anelastic_schwarz_local_x_1",
+                                        {num_local_tiles,nz,max_tile_y,max_tile_x});
+        // Cached rectangular stencil: diagonal, inverse diagonal, and xm/xp/ym/yp/zm/zp neighbor coefficients.
+        dm.register_and_allocate<float>("dycore_anelastic_schwarz_coefficients",
+                                        {8,num_local_tiles,nz,max_tile_y,max_tile_x});
+        auto coefficients = dm.get<float,5>("dycore_anelastic_schwarz_coefficients");
+        coefficients = 0;
+        auto tiles = dm.get<int const,2>("dycore_anelastic_schwarz_tiles");
+        float const cx = r_dx*r_dx;
+        float const cy = r_dy*r_dy;
+        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<4>(num_local_tiles,nz,max_tile_y,max_tile_x),
+                           KOKKOS_LAMBDA (int tile, int k, int jj, int ii) {
+          int const tx = tiles(tile,2);
+          int const ty = tiles(tile,3);
+          if (ii >= tx || jj >= ty) return;
+          int const gi_unwrapped = tiles(tile,0)+ii;
+          int const gj_unwrapped = tiles(tile,1)+jj;
+          int gi = periodic_x ? (gi_unwrapped%nx_glob_int+nx_glob_int)%nx_glob_int : gi_unwrapped;
+          int gj = periodic_y ? (gj_unwrapped%ny_glob_int+ny_glob_int)%ny_glob_int : gj_unwrapped;
+          int di = gi-i_beg_int;
+          int dj = gj-j_beg_int;
+          if (periodic_x && di < -schwarz_hs) di += nx_glob_int;
+          if (periodic_x && di >= nx+schwarz_hs) di -= nx_glob_int;
+          if (periodic_y && dj < -schwarz_hs) dj += ny_glob_int;
+          if (periodic_y && dj >= ny+schwarz_hs) dj -= ny_glob_int;
+          int const ih = schwarz_hs+di;
+          int const jh = schwarz_hs+dj;
+          if (mask_halos(schwarz_hs+k,jh,ih) == 0) return;
+
+          float diagonal = 0;
+          auto cache_horizontal = [&] (int field, int ni, int nj, int ngi, int ngj, float coefficient,
+                                       bool physical_outside) {
+            if (physical_outside) return;
+            if (ni < 0 || ni >= tx || nj < 0 || nj >= ty) {
+              diagonal += coefficient;
+              return;
+            }
+            int ngi_wrapped = periodic_x ? (ngi%nx_glob_int+nx_glob_int)%nx_glob_int : ngi;
+            int ngj_wrapped = periodic_y ? (ngj%ny_glob_int+ny_glob_int)%ny_glob_int : ngj;
+            int ndi = ngi_wrapped-i_beg_int;
+            int ndj = ngj_wrapped-j_beg_int;
+            if (periodic_x && ndi < -schwarz_hs) ndi += nx_glob_int;
+            if (periodic_x && ndi >= nx+schwarz_hs) ndi -= nx_glob_int;
+            if (periodic_y && ndj < -schwarz_hs) ndj += ny_glob_int;
+            if (periodic_y && ndj >= ny+schwarz_hs) ndj -= ny_glob_int;
+            if (mask_halos(schwarz_hs+k,schwarz_hs+ndj,schwarz_hs+ndi) == 0) return;
+            diagonal += coefficient;
+            coefficients(field,tile,k,jj,ii) = coefficient;
+          };
+          cache_horizontal(2,ii-1,jj,gi_unwrapped-1,gj_unwrapped,cx,!periodic_x && gi_unwrapped-1 < 0);
+          cache_horizontal(3,ii+1,jj,gi_unwrapped+1,gj_unwrapped,cx,
+                           !periodic_x && gi_unwrapped+1 >= nx_glob_int);
+          cache_horizontal(4,ii,jj-1,gi_unwrapped,gj_unwrapped-1,cy,!periodic_y && gj_unwrapped-1 < 0);
+          cache_horizontal(5,ii,jj+1,gi_unwrapped,gj_unwrapped+1,cy,
+                           !periodic_y && gj_unwrapped+1 >= ny_glob_int);
+          int const km = k > 0 ? k-1 : nz-1;
+          int const kp = k+1 < nz ? k+1 : 0;
+          if ((k > 0 || periodic_z) && mask_halos(schwarz_hs+km,jh,ih) == 1) {
+            float const coefficient = 1.f/(static_cast<float>(dz(k))*static_cast<float>(metjac_edges(k)));
+            diagonal += coefficient;
+            coefficients(6,tile,k,jj,ii) = coefficient;
+          }
+          if ((k+1 < nz || periodic_z) && mask_halos(schwarz_hs+kp,jh,ih) == 1) {
+            float const coefficient = 1.f/(static_cast<float>(dz(k))*static_cast<float>(metjac_edges(k+1)));
+            diagonal += coefficient;
+            coefficients(7,tile,k,jj,ii) = coefficient;
+          }
+          coefficients(0,tile,k,jj,ii) = diagonal;
+          coefficients(1,tile,k,jj,ii) = diagonal > 0 ? 1.f/diagonal : 0;
+        });
+        coupler.set_option<int>("dycore_anelastic_schwarz_num_local_tiles",num_local_tiles);
+        coupler.set_option<int>("dycore_anelastic_schwarz_halo",schwarz_hs);
+      }
 
       // Register immersed_proportion as an output and restart variable
       coupler.register_output_variable<real>( "immersed_proportion" , core::Coupler::DIMS_3D      );
