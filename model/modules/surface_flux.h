@@ -149,11 +149,9 @@ namespace modules {
       // Compute surface flux tendencies using Monin-Obukhov similarity theory
       // This applies surface friction to neighboring cells if they are the surface or if they are
       //   immersed. 
+      // Keep each face in a separate launch to limit kernel size. The device queue preserves launch order, so the
+      // west kernel can initialize the tendency arrays before the remaining kernels accumulate into them.
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        real u  = state(idU,k,j,i);  // u-velocity at this grid point
-        real v  = state(idV,k,j,i);  // v-velocity at this grid point
-        real w  = state(idW,k,j,i);  // w-velocity at this grid point
-        real th = state(idT,k,j,i);  // Potential temperature at this grid point
         // Initialize tendencies to zero prior to accumulation
         tend_u  (k,j,i) = 0;
         tend_v  (k,j,i) = 0;
@@ -161,99 +159,139 @@ namespace modules {
         tend_th (k,j,i) = 0;
         tend_tke(k,j,i) = 0;
         if (imm_prop(hs+k,hs+j,hs+i) > imm_th) return;
-        int indk, indj, indi;  // These indices will index into neighboring cells
 
         // West neighbor
-        indk = hs+k;  indj = hs+j;  indi = hs+i-1;
+        int const indk = hs+k;
+        int const indj = hs+j;
+        int const indi = hs+i-1;
         if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
-          real z0        = imm_rough(indk,indj,indi);
-          real mag       = std::max( std::sqrt(v*v+w*w) , 1.e-10 );
-          real ustar     = presc_ustar ? ustar_val : vk*mag/std::log((dx/2+z0)/z0);
+          real const v      = state(idV,k,j,i);
+          real const w      = state(idW,k,j,i);
+          real const th     = state(idT,k,j,i);
+          real const z0     = imm_rough(indk,indj,indi);
+          real const mag    = std::max( std::sqrt(v*v+w*w) , 1.e-10 );
+          real const ustar  = presc_ustar ? ustar_val : vk*mag/std::log((dx/2+z0)/z0);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dx;
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dx;
           if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dx;
           if (force_theta) {
-            real th0        = imm_theta(indk,indj,indi);
-            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
-            real thstar     = vk*(th-th0)/std::log((dx/2+z0h)/z0h);
+            real const th0    = imm_theta(indk,indj,indi);
+            real const z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+            real const thstar = vk*(th-th0)/std::log((dx/2+z0h)/z0h);
             tend_th(k,j,i) += -ustar*thstar/dx;
           }
         }
+      });
+
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (imm_prop(hs+k,hs+j,hs+i) > imm_th) return;
 
         // East neighbor
-        indk = hs+k;  indj = hs+j;  indi = hs+i+1;
+        int const indk = hs+k;
+        int const indj = hs+j;
+        int const indi = hs+i+1;
         if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
-          real z0        = imm_rough(indk,indj,indi);
-          real mag       = std::max( std::sqrt(v*v+w*w) , 1.e-10 );
-          real ustar     = presc_ustar ? ustar_val : vk*mag/std::log((dx/2+z0)/z0);
+          real const v      = state(idV,k,j,i);
+          real const w      = state(idW,k,j,i);
+          real const th     = state(idT,k,j,i);
+          real const z0     = imm_rough(indk,indj,indi);
+          real const mag    = std::max( std::sqrt(v*v+w*w) , 1.e-10 );
+          real const ustar  = presc_ustar ? ustar_val : vk*mag/std::log((dx/2+z0)/z0);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dx;
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dx;
           if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dx;
           if (force_theta) {
-            real th0        = imm_theta(indk,indj,indi);
-            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
-            real thstar     = vk*(th-th0)/std::log((dx/2+z0h)/z0h);
+            real const th0    = imm_theta(indk,indj,indi);
+            real const z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+            real const thstar = vk*(th-th0)/std::log((dx/2+z0h)/z0h);
             tend_th(k,j,i) += -ustar*thstar/dx;
           }
         }
+      });
+
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (imm_prop(hs+k,hs+j,hs+i) > imm_th) return;
 
         // South neighbor
-        indk = hs+k;  indj = hs+j-1;  indi = hs+i;
+        int const indk = hs+k;
+        int const indj = hs+j-1;
+        int const indi = hs+i;
         if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
-          real z0        = imm_rough(indk,indj,indi);
-          real mag       = std::max( std::sqrt(u*u+w*w) , 1.e-10 );
-          real ustar     = presc_ustar ? ustar_val : vk*mag/std::log((dy/2+z0)/z0);
+          real const u      = state(idU,k,j,i);
+          real const w      = state(idW,k,j,i);
+          real const th     = state(idT,k,j,i);
+          real const z0     = imm_rough(indk,indj,indi);
+          real const mag    = std::max( std::sqrt(u*u+w*w) , 1.e-10 );
+          real const ustar  = presc_ustar ? ustar_val : vk*mag/std::log((dy/2+z0)/z0);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dy;
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dy;
           if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dy;
           if (force_theta) {
-            real th0        = imm_theta(indk,indj,indi);
-            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
-            real thstar     = vk*(th-th0)/std::log((dy/2+z0h)/z0h);
+            real const th0    = imm_theta(indk,indj,indi);
+            real const z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+            real const thstar = vk*(th-th0)/std::log((dy/2+z0h)/z0h);
             tend_th(k,j,i) += -ustar*thstar/dy;
           }
         }
+      });
+
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (imm_prop(hs+k,hs+j,hs+i) > imm_th) return;
 
         // North neighbor
-        indk = hs+k;  indj = hs+j+1;  indi = hs+i;
+        int const indk = hs+k;
+        int const indj = hs+j+1;
+        int const indi = hs+i;
         if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
-          real z0        = imm_rough(indk,indj,indi);
-          real mag       = std::max( std::sqrt(u*u+w*w) , 1.e-10 );
-          real ustar     = presc_ustar ? ustar_val : vk*mag/std::log((dy/2+z0)/z0);
+          real const u      = state(idU,k,j,i);
+          real const w      = state(idW,k,j,i);
+          real const th     = state(idT,k,j,i);
+          real const z0     = imm_rough(indk,indj,indi);
+          real const mag    = std::max( std::sqrt(u*u+w*w) , 1.e-10 );
+          real const ustar  = presc_ustar ? ustar_val : vk*mag/std::log((dy/2+z0)/z0);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dy;
           tend_w(k,j,i) += -ustar*ustar*(w-0)/mag/dy;
           if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dy;
           if (force_theta) {
-            real th0        = imm_theta(indk,indj,indi);
-            real z0h        = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
-            real thstar     = vk*(th-th0)/std::log((dy/2+z0h)/z0h);
+            real const th0    = imm_theta(indk,indj,indi);
+            real const z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+            real const thstar = vk*(th-th0)/std::log((dy/2+z0h)/z0h);
             tend_th(k,j,i) += -ustar*thstar/dy;
           }
         }
+      });
+
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (imm_prop(hs+k,hs+j,hs+i) > imm_th) return;
 
         // Bottom neighbor
-        indk = hs+k-1;  indj = hs+j;  indi = hs+i;
+        int const indk = hs+k-1;
+        int const indj = hs+j;
+        int const indi = hs+i;
         if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
-          real z0     = imm_rough(indk,indj,indi);
-          real mag    = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
-          real ustar  = presc_ustar ? ustar_val : vk*mag/std::log((dz(k)/2+z0)/z0);
-          real th0    = imm_theta(indk,indj,indi);
-          real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+          real const u   = state(idU,k,j,i);
+          real const v   = state(idV,k,j,i);
+          real const th  = state(idT,k,j,i);
+          real const z0  = imm_rough(indk,indj,indi);
+          real const mag = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
+          real ustar     = presc_ustar ? ustar_val : vk*mag/std::log((dz(k)/2+z0)/z0);
+          real const th0 = imm_theta(indk,indj,indi);
+          real const z0h = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
           real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
           if (presc_wpthp) thstar = -sfc_wpthp/std::max(ustar,1e-10);
           if (stab_corr) stability_correction(vk,mag,z0,th,th0,grav,Czil,nu,dz(k),use_z0h,presc_ustar,
                                               presc_wpthp,sfc_wpthp,ustar,thstar);
-          real wpthp = presc_wpthp ? sfc_wpthp : (force_theta ? -ustar*thstar : 0);
+          real const wpthp = presc_wpthp ? sfc_wpthp : (force_theta ? -ustar*thstar : 0);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
           if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dz(k);
@@ -264,18 +302,27 @@ namespace modules {
             sfc_bflux (j,i) = grav/th0*wpthp;
           }
         }
-        
+      });
+
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        if (imm_prop(hs+k,hs+j,hs+i) > imm_th) return;
+
         // Top neighbor
-        indk = hs+k+1;  indj = hs+j;  indi = hs+i;
+        int const indk = hs+k+1;
+        int const indj = hs+j;
+        int const indi = hs+i;
         if (imm_prop(indk,indj,indi) > imm_th) {
           // Compute roughness length, log of height ratio, drag coefficient, immersed temperature,
           //   and adjacent transverse velocity magnitude
-          real z0     = imm_rough(indk,indj,indi);
-          real mag    = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
-          real ustar  = presc_ustar ? ustar_val : vk*mag/std::log((dz(k)/2+z0)/z0);
-          real th0    = imm_theta(indk,indj,indi);
-          real z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
-          real thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
+          real const u      = state(idU,k,j,i);
+          real const v      = state(idV,k,j,i);
+          real const th     = state(idT,k,j,i);
+          real const z0     = imm_rough(indk,indj,indi);
+          real const mag    = std::max( std::sqrt(u*u+v*v) , 1.e-10 );
+          real const ustar  = presc_ustar ? ustar_val : vk*mag/std::log((dz(k)/2+z0)/z0);
+          real const th0    = imm_theta(indk,indj,indi);
+          real const z0h    = use_z0h ? z0*std::exp(-vk*Czil*std::sqrt(ustar*z0/nu)) : z0;
+          real const thstar = vk*(th-th0)/std::log((dz(k)/2+z0h)/z0h);
           tend_u(k,j,i) += -ustar*ustar*(u-0)/mag/dz(k);
           tend_v(k,j,i) += -ustar*ustar*(v-0)/mag/dz(k);
           if (idTKE >= 0) tend_tke(k,j,i) += Ctke*std::abs(ustar)*std::abs(ustar)*mag/dz(k);

@@ -26,6 +26,7 @@ inline void check_for_nan_inf(T val , std::string file , int line) {
 }
 
 inline void debug_print( char const * file , int line ) {
+  Kokkos::fence();
   MPI_Barrier(MPI_COMM_WORLD);
   int rank;
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
