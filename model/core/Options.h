@@ -36,6 +36,18 @@ namespace core {
       return std::get<T>(it->second);  // std::get throws std::bad_variant_access if the type is wrong
     }
 
+    template <class F> void visit_option(std::string const & key, F &&func) {
+      auto it = options.find(key);
+      if (it == options.end()) throw std::runtime_error(std::string("Option not found: ")+key);
+      std::visit(std::forward<F>(func),it->second);
+    }
+
+    template <class F> void visit_option(std::string const & key, F &&func) const {
+      auto it = options.find(key);
+      if (it == options.end()) throw std::runtime_error(std::string("Option not found: ")+key);
+      std::visit(std::forward<F>(func),it->second);
+    }
+
     bool option_exists  (std::string const & key) const { return options.count(key) > 0; }
     void delete_option  (std::string const & key)       { options.erase(key); }
     int  get_num_options()                        const { return (int)options.size(); }
@@ -47,5 +59,4 @@ namespace core {
   };
 
 } // namespace core
-
 

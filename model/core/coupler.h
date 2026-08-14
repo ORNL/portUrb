@@ -47,6 +47,7 @@ namespace core {
     DataManager<> dm;            // Organizes shared variables
     std::vector<Tracer>    tracers;     // Organizes tracer entries for transport and diffusion
     std::vector<OutputVar> output_vars; // Organizes output variables on the standard grid dims
+    std::vector<std::string> output_options; // Organizes options written as global attributes and restored on restart
     // Allows modules to register their own output writing functions for variables not on the standard grid dims
     std::vector<std::function<void(core::Coupler &coupler , yakl::SimplePNetCDF &nc)>> out_write_funcs;
     // Allows modules to register their own restart functions for variables absent from output_vars
@@ -161,6 +162,7 @@ namespace core {
       coupler.file_counter       = this->file_counter      ;
       coupler.tracers            = this->tracers           ;
       coupler.output_vars        = this->output_vars       ;
+      coupler.output_options     = this->output_options    ;
       coupler.out_write_funcs    = this->out_write_funcs   ;
       coupler.restart_read_funcs = this->restart_read_funcs;
       coupler.inform_timer       = this->inform_timer      ;
@@ -685,6 +687,22 @@ namespace core {
     }
 
 
+    // Register an option to be written as a NetCDF global attribute and overwritten from restart files.
+    // The option must exist before registration so its type is known and preserved during restart.
+    void register_output_option( std::string name ) {
+      if (!option_exists(name)) throw std::runtime_error(std::string("Option not found: ")+name);
+      bool supported = true;
+      options.visit_option(name,[&] (auto const &value) {
+        using T = std::remove_cvref_t<decltype(value)>;
+        if constexpr (std::is_same_v<T,long double> || std::is_same_v<T,std::vector<std::string>>) supported = false;
+      });
+      if (!supported) throw std::runtime_error(std::string("Unsupported output option type: ")+name);
+      if (std::find(output_options.begin(),output_options.end(),name) == output_options.end()) {
+        output_options.push_back(std::move(name));
+      }
+    }
+
+
     // Register a function to write output variables to NetCDF files
     // The function must take a Coupler reference and a yakl::SimplePNetCDF reference as its arguments
     // The function is called during output operations to write additional variables to the NetCDF file
@@ -1031,6 +1049,15 @@ namespace core {
       }
       nc.writeGlobalAttribute(etime       ,"etime"       ); // Store elapsed time as file metadata
       nc.writeGlobalAttribute(file_counter,"file_counter"); // Store file counter as file metadata
+      // Write registered options as global attributes while the file is still in define mode.
+      for (auto const &name : output_options) {
+        options.visit_option(name,[&] (auto const &value) {
+          using T = std::remove_cvref_t<decltype(value)>;
+          if constexpr (!std::is_same_v<T,long double> && !std::is_same_v<T,std::vector<std::string>>) {
+            nc.writeGlobalAttribute(value,name);
+          }
+        });
+      }
       nc.enddef(); // End define mode, which means we can now write data to the file
       //////////////////////////////////////////////////////
       // WRITE DATA TO FILE
@@ -1128,6 +1155,15 @@ namespace core {
       real etime = 0;
       nc.readGlobalAttribute(etime       ,"etime"       ); // Read elapsed time from file metadata
       nc.readGlobalAttribute(file_counter,"file_counter"); // Read file counter from file metadata
+      // Restore registered options from global attributes, preserving each option's registered type.
+      for (auto const &name : output_options) {
+        options.visit_option(name,[&] (auto &value) {
+          using T = std::remove_cvref_t<decltype(value)>;
+          if constexpr (!std::is_same_v<T,long double> && !std::is_same_v<T,std::vector<std::string>>) {
+            nc.readGlobalAttribute(value,name);
+          }
+        });
+      }
       set_option<real>("elapsed_time",etime); // Update coupler's elapsed time
       std::vector<MPI_Offset> start_3d      = {0,j_beg,i_beg}; // Starting indices for 3D variables
       std::vector<MPI_Offset> start_surface = {  j_beg,i_beg}; // Starting indices for surface variables
