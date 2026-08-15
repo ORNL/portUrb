@@ -698,6 +698,9 @@ namespace modules {
       ProjectionScalar const dy_proj = static_cast<ProjectionScalar>(dy);
       ProjectionScalar const r_dx = ProjectionScalar(1)/dx_proj;
       ProjectionScalar const r_dy = ProjectionScalar(1)/dy_proj;
+      ProjectionScalar const screening_inv_length_squared = static_cast<ProjectionScalar>(
+          coupler.get_option<real>("dycore_anelastic_screening_inverse_length_squared"));
+      bool const screening_enabled = screening_inv_length_squared > 0;
 
       // The temporary conservative system always starts from fixed hydrostatic density.
       yakl::Array<FLOC ****> fields_loc("anelastic_adv_fields",nfields,nz+2*hs,ny+2*hs,nx+2*hs);
@@ -923,12 +926,19 @@ namespace modules {
         momentum_rhs(idRW,k,j,i) = is_fluid ? rho_h_loc*static_cast<ProjectionScalar>(star(2,k,j,i)) : 0;
       });
 
-      // Orthogonal projection onto pressures that vanish in immersed cells and have zero fluid-domain mean. This is a
-      // linear map, so applying it to every matrix input and output preserves the linearity required by Krylov solvers.
+      // Restrict pressure to fluid cells. The unscreened Poisson operator additionally requires a zero-mean pressure
+      // representative, while screening removes that constant nullspace. Applying the appropriate linear restriction to
+      // every matrix input and output preserves the linearity required by Krylov solvers.
       auto project_pressure = [&] (Projection3d const & input, Projection3d const & output) {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           projection_work(k,j,i) = fluid_mask(k,j,i) == 1 ? input(k,j,i) : 0;
         });
+        if (screening_enabled) {
+          yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+            output(k,j,i) = projection_work(k,j,i);
+          });
+          return ProjectionScalar(0);
+        }
         ProjectionScalar const sum =
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
         ProjectionScalar const mean = sum/static_cast<ProjectionScalar>(fluid_count);
@@ -1218,7 +1228,8 @@ namespace modules {
                 (hv_x(k,j,i+1)-hv_x(k,j,i))*r_dx +
                 (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy +
                 (hv_z(k+1,j,i)-hv_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
-            value = pressure_momentum_divergence+pressure_hv;
+            value = pressure_momentum_divergence+pressure_hv+
+                    dt_proj*screening_inv_length_squared*pressure_projected(k,j,i);
           }
           Ax(k,j,i) = value;
         });
@@ -1595,7 +1606,8 @@ namespace modules {
       }
       coupler.set_option<std::string>("dycore_anelastic_last_linear_solver",use_cg ? "CG" : "GMRES");
       coupler.set_option<std::string>("dycore_anelastic_last_preconditioner",preconditioner);
-      // The only intended pressure nullspace is a constant over fluid cells. Select a deterministic mean-zero representative.
+      // Select a deterministic mean-zero representative for the unscreened operator, or only mask immersed cells when
+      // screening makes pressure unique.
       project_pressure(pressure,pressure);
       if constexpr (yakl::kokkos_debug) {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
@@ -1730,6 +1742,17 @@ namespace modules {
         ProjectionScalar const post_div_l2 =
             std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM));
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+          ProjectionScalar const divergence = fluid_mask(k,j,i) == 1 ?
+              (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
+              (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
+              (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
+          ProjectionScalar const constraint = divergence+
+              dt_proj*screening_inv_length_squared*pressure(k,j,i);
+          norm_work(k,j,i) = constraint*constraint;
+        });
+        ProjectionScalar const screened_constraint_l2 =
+            std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM));
+        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           ProjectionScalar immersed_flux = 0;
           if (immersed(hs+k,hs+j,hs+i) > imm_th || immersed(hs+k,hs+j,hs+i+1) > imm_th) {
             immersed_flux = std::max(immersed_flux,std::abs(ru_x(k,j,i+1)));
@@ -1758,11 +1781,14 @@ namespace modules {
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::maxval(norm_work),MPI_MAX);
         coupler.set_option<real>("dycore_anelastic_last_pre_div_l2",static_cast<real>(pre_div_l2));
         coupler.set_option<real>("dycore_anelastic_last_post_div_l2",static_cast<real>(post_div_l2));
+        coupler.set_option<real>("dycore_anelastic_last_screened_constraint_l2",
+                                 static_cast<real>(screened_constraint_l2));
         coupler.set_option<real>("dycore_anelastic_last_boundary_normal_flux_max",
                                  static_cast<real>(boundary_flux_max));
         if (coupler.is_mainproc()) {
           std::cout << "Anelastic projection: pre/post physical mass-flux divergence L2 = "
                     << pre_div_l2 << " / " << post_div_l2
+                    << ", screened constraint L2 = " << screened_constraint_l2
                     << ", " << (use_cg ? "CG" : "GMRES") << " iterations = " << solver_iters
                     << ", true relative residual = " << true_rel << std::endl;
         }
@@ -2515,6 +2541,15 @@ namespace modules {
       coupler.set_option<bool>("dycore_anelastic_use_cg",
                                coupler.get_option<bool>("dycore_anelastic_check_cg_compatibility",true));
 
+      // Screening length L is in meters. Zero retains the original unscreened Poisson projection.
+      real const screening_length = coupler.get_option<real>("dycore_anelastic_screening_length",0);
+      if (!std::isfinite(screening_length) || screening_length < 0) {
+        endrun("ERROR: dycore_anelastic_screening_length must be finite and nonnegative");
+      }
+      real const screening_inv_length_squared = screening_length > 0 ?
+          1/(screening_length*screening_length) : 0;
+      coupler.set_option<real>("dycore_anelastic_screening_inverse_length_squared",screening_inv_length_squared);
+
       // Reuse the Krylov vectors across every Runge-Kutta-stage pressure solve. CG receives collapsed views and performs
       // no runtime allocation.
       dm.register_and_allocate<float>("dycore_anelastic_cg_r" ,{nz,ny,nx});
@@ -2545,6 +2580,8 @@ namespace modules {
       float pressure_hvcoef = pressure_beta/std::pow(2.f,ord);
       if ((ord/2)%2 == 1) pressure_hvcoef *= -1;
       bool const pressure_hv_enabled = pressure_beta != 0;
+      float const screening_inv_length_squared_float = static_cast<float>(
+          coupler.get_option<real>("dycore_anelastic_screening_inverse_length_squared"));
       bool const periodic_x = coupler.get_option<std::string>("bc_x1") == "periodic";
       bool const periodic_y = coupler.get_option<std::string>("bc_y1") == "periodic";
       bool const periodic_z = coupler.get_option<std::string>("bc_z1") == "periodic";
@@ -2625,7 +2662,8 @@ namespace modules {
         float const z_der_l = z_face_response(k  ,false);
         float const z_der_r = z_face_response(k+1,false);
         float const dz_cell = static_cast<float>(dz(k));
-        float diagonal = (x_der_l-x_der_r)*r_dx*r_dx + (y_der_l-y_der_r)*r_dy*r_dy +
+        float diagonal = screening_inv_length_squared_float +
+                         (x_der_l-x_der_r)*r_dx*r_dx + (y_der_l-y_der_r)*r_dy*r_dy +
                          (z_der_l/static_cast<float>(metjac_edges(k))-
                           z_der_r/static_cast<float>(metjac_edges(k+1)))/dz_cell;
         if (pressure_hv_enabled) {
@@ -2793,7 +2831,7 @@ namespace modules {
           int const jh = schwarz_hs+dj;
           if (mask_halos(schwarz_hs+k,jh,ih) == 0) return;
 
-          float diagonal = 0;
+          float diagonal = screening_inv_length_squared_float;
           auto cache_horizontal = [&] (int field, int ni, int nj, int ngi, int ngj, float coefficient,
                                        bool physical_outside) {
             if (physical_outside) return;
@@ -2841,7 +2879,8 @@ namespace modules {
       // Register immersed_proportion as an output and restart variable
       coupler.register_output_variable<real>( "immersed_proportion" , core::Coupler::DIMS_3D      );
 
-      // Projection pressure is a mean-zero diagnostic constraint pressure, not thermodynamic EOS pressure.
+      // Projection pressure is a diagnostic constraint pressure, not thermodynamic EOS pressure. It is mean-zero only
+      // for the unscreened operator, whose pressure has a constant nullspace.
       dm.register_and_allocate<real>("anelastic_pressure_pert",{nz,ny,nx});
       dm.get<real,3>("anelastic_pressure_pert") = 0;
       coupler.register_write_output_module( [] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {

@@ -34,10 +34,10 @@ void check_pressure_face_derivative_order(core::Coupler & coupler) {
   require(coupler,observed_order > order-0.5_fp,"high-order pressure face derivative failed its convergence check");
 }
 
-void run_case(std::string const & name, int flow, bool with_immersed, int n = 8, real grid_spacing = 1,
+real run_case(std::string const & name, int flow, bool with_immersed, int n = 8, real grid_spacing = 1,
               int cube_width = 2, int cube_k_beg = 2, bool run_invariance_checks = true,
               bool use_hydrostatic_profile = true, std::string const & preconditioner = "Jacobi",
-              int schwarz_tile = 16, int schwarz_degree = 16) {
+              int schwarz_tile = 16, int schwarz_degree = 16, real screening_length = 0) {
   int const nx = n;
   int const ny = n;
   int const nz = n;
@@ -63,6 +63,9 @@ void run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<bool>("dycore_anelastic_check_linearity",flow == 2 && run_invariance_checks);
   coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",benchmark_case);
   coupler.set_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true);
+  if (screening_length > 0) {
+    coupler.set_option<real>("dycore_anelastic_screening_length",screening_length);
+  }
   if (benchmark_case) {
     coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
     coupler.set_option<bool>("dycore_anelastic_time_linear_solver",false);
@@ -174,7 +177,9 @@ void run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     require(coupler,immersed_residual == 0,name + ": immersed cells contributed to the linear solver residual");
     real const pressure_mean = coupler.get_option<real>("dycore_anelastic_last_pressure_mean");
     std::cout << "Pressure mean:" << std::scientific << std::abs(pressure_mean);
-    require(coupler,std::abs(pressure_mean) < 3.e-6,name + ": pressure mean was not removed.");
+    if (screening_length == 0) {
+      require(coupler,std::abs(pressure_mean) < 3.e-6,name + ": pressure mean was not removed.");
+    }
   }
 
   if (flow < 2 && !with_immersed) {
@@ -185,8 +190,14 @@ void run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     if constexpr (yakl::kokkos_debug) {
       real const pre  = coupler.get_option<real>("dycore_anelastic_last_pre_div_l2");
       real const post = coupler.get_option<real>("dycore_anelastic_last_post_div_l2");
+      real const constraint = coupler.get_option<real>("dycore_anelastic_last_screened_constraint_l2");
       real const rho_change = coupler.get_option<real>("dycore_anelastic_last_temporary_density_change");
-      require(coupler,pre > 0 && post < 0.1_fp*pre,name + ": projection did not reduce physical mass-flux divergence");
+      require(coupler,pre > 0,name + ": provisional mass-flux divergence is zero");
+      if (screening_length > 0) {
+        require(coupler,constraint < 2.e-4_fp*pre,name + ": screened divergence constraint was not satisfied");
+      } else {
+        require(coupler,post < 0.1_fp*pre,name + ": projection did not reduce physical mass-flux divergence");
+      }
       require(coupler,rho_change > 0,name + ": temporary advective density did not change");
     }
     if (benchmark_case) {
@@ -206,6 +217,7 @@ void run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
           coupler.get_option<real>("dycore_anelastic_pressure_face_derivative_order");
       if (coupler.is_mainproc()) {
         std::cout << name << ": preconditioner = " << preconditioner
+                  << ", screening L = " << (screening_length > 0 ? std::to_string(screening_length) : "off")
                   << (preconditioner == "Schwarz" ? ", tile = "+std::to_string(schwarz_tile)+
                                                        ", degree = "+std::to_string(schwarz_degree) : "")
                   << ", mean CG iterations = " << benchmark_iterations_mean
@@ -311,6 +323,7 @@ void run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     }
     std::cout << std::endl;
   }
+  return benchmark_iterations_mean;
 }
 
 } // namespace
@@ -325,9 +338,43 @@ int main(int argc, char **argv) {
     run_case("anelastic_hydrostatic_rest",0,false);
     run_case("anelastic_uniform_periodic",1,false);
     run_case("anelastic_divergent_immersed",2,true);
-    if (argc == 1) run_case("anelastic_large_uniform_cube_none",1,true,64,100,8,0,false,false,"none");
-    run_case("anelastic_large_uniform_cube_schwarz",1,true,64,100,8,0,false,false,"Schwarz",
-             schwarz_tile,schwarz_degree);
+    real constexpr benchmark_grid_spacing = 100;
+    std::array<real,6> const screening_lengths_in_cells = {16,24,32,48,64,0};
+    std::array<real,6> none_iterations;
+    std::array<real,6> schwarz_iterations;
+    for (int il = 0; il < screening_lengths_in_cells.size(); il++) {
+      real const screening_length_in_cells = screening_lengths_in_cells[il];
+      real const screening_length = screening_length_in_cells*benchmark_grid_spacing;
+      std::string const suffix = screening_length > 0 ?
+          "L"+std::to_string(static_cast<int>(screening_length_in_cells))+"delta" : "off";
+      none_iterations[il] = run_case("anelastic_large_uniform_cube_none_"+suffix,1,true,64,benchmark_grid_spacing,
+                                     8,0,false,false,
+                                     "none",schwarz_tile,schwarz_degree,screening_length);
+      schwarz_iterations[il] = run_case("anelastic_large_uniform_cube_schwarz_"+suffix,1,true,64,
+                                        benchmark_grid_spacing,8,0,false,false,
+                                        "Schwarz",schwarz_tile,schwarz_degree,screening_length);
+    }
+    for (int il = 1; il < screening_lengths_in_cells.size(); il++) {
+      if (none_iterations[il] < none_iterations[il-1]) {
+        endrun("ERROR: unpreconditioned screened iteration count did not increase monotonically with L");
+      }
+      if (schwarz_iterations[il] < schwarz_iterations[il-1]) {
+        endrun("ERROR: Schwarz-preconditioned screened iteration count did not increase monotonically with L");
+      }
+    }
+    if (none_iterations.back() <= none_iterations[screening_lengths_in_cells.size()-2] ||
+        schwarz_iterations.back() <= schwarz_iterations[screening_lengths_in_cells.size()-2]) {
+      endrun("ERROR: disabling screening did not increase both 64^3 iteration counts");
+    }
+    if (core::ParallelComm(MPI_COMM_WORLD).get_rank_id() == 0) {
+      std::cout << "64^3 screening iteration study (L/delta, none, Schwarz):" << std::endl;
+      for (int il = 0; il < screening_lengths_in_cells.size(); il++) {
+        std::cout << "  "
+                  << (screening_lengths_in_cells[il] > 0 ? std::to_string(screening_lengths_in_cells[il]) : "off")
+                  << ", "
+                  << none_iterations[il] << ", " << schwarz_iterations[il] << std::endl;
+      }
+    }
   }
   yakl::finalize();
   Kokkos::finalize();
