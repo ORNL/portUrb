@@ -374,7 +374,7 @@ namespace modules {
       coupler.register_output_variable<real>( "turbine_tend_v" , coupler.DIMS_3D );
       coupler.register_output_variable<real>( "turbine_tend_w" , coupler.DIMS_3D );
       // Register output writing function to write turbine traces
-      coupler.register_write_output_module( [=,this] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
+      coupler.register_write_output_module( [=,this] (core::Coupler &coupler, core::FileIO &nc) {
         if (trace_size > 0) {
           int nrad = ref_turbine.host_rad_locs.size();
           nc.redef();  // Enter define mode in order to add new variables and dimensions
@@ -387,7 +387,7 @@ namespace modules {
             auto &turbine = turbine_group.turbines.at(iturb); // Grab a reference to this turbine for convenience
             for (const auto & entry : turbine.traces.entries) {
               if ( entry.dims_pnts ) {
-                nc.create_var<real>( entry.name+std::to_string(iturb) , {"ndt","nblades","nrad"} );
+                nc.create_var<float>( entry.name+std::to_string(iturb) , {"ndt","nblades","nrad"} );
               } else {
                 nc.create_var<real>( entry.name+std::to_string(iturb) , {"ndt"                 } );
               }
@@ -404,7 +404,7 @@ namespace modules {
               for (const auto & entry : turbine.traces.entries) {
                 if ( entry.dims_pnts ) {
                   auto data = turbine.traces.get_pnts(entry.name);
-                  realHost3d arr("arr",trace_size,ref_turbine.B,nrad);
+                  floatHost3d arr("arr",trace_size,ref_turbine.B,nrad);
                   for (int i1=0; i1 < trace_size; i1++) {
                     for (int i2=0; i2 < ref_turbine.B; i2++) {
                       for (int i3=0; i3 < nrad; i3++) {
@@ -825,5 +825,3 @@ namespace modules {
   };
 
 }
-
-

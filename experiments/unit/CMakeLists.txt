@@ -38,3 +38,12 @@ process_target(supercell_morr2mom)
 process_target(turbine_neutral_ensemble)
 process_target(turbine_simple)
 process_target(anelastic_dycore)
+
+if (PORTURB_FILE_IO_BACKEND STREQUAL "adios2")
+  add_executable(file_io_codec_mpi file_io_codec_mpi.cpp)
+  target_compile_options(file_io_codec_mpi PUBLIC $<$<COMPILE_LANGUAGE:CXX>:${PORTURB_CXX_FLAGS}>)
+  target_link_libraries(file_io_codec_mpi ${mylibs})
+  add_test(NAME file_io_codec_mpi COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+                                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:file_io_codec_mpi> ${MPIEXEC_POSTFLAGS})
+  set_tests_properties(file_io_codec_mpi PROPERTIES ENVIRONMENT "CUDA_VISIBLE_DEVICES=0;GATOR_INITIAL_MB=64")
+endif()

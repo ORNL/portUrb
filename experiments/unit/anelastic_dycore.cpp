@@ -4,6 +4,9 @@
 
 namespace {
 
+real constexpr benchmark_max_wind = 20;
+real constexpr benchmark_cfl = 0.6;
+
 template <class Array>
 real max_abs(core::Coupler const & coupler, Array const & field) {
   auto flat = field.collapse();
@@ -15,6 +18,134 @@ real max_abs(core::Coupler const & coupler, Array const & field) {
 void require(core::Coupler const & coupler, bool condition, std::string const & message) {
   int const valid = coupler.get_parallel_comm().all_reduce(condition ? 1 : 0,MPI_MIN);
   if (valid == 0) endrun(message.c_str());
+}
+
+void check_output_metadata(core::Coupler const & coupler, std::string const & filename) {
+  auto const nx = coupler.get_nx();
+  auto const ny = coupler.get_ny();
+  auto const nz = coupler.get_nz();
+  auto const hs = modules::Dynamics_Euler_Stratified::hs;
+  core::FileIO nc(coupler.get_parallel_comm().get_mpi_comm(),core::FileIO::default_backend());
+  nc.open(filename);
+
+  std::string units;
+  nc.readVariableAttribute(units,"x","units");
+  require(coupler,units == "m","x coordinate units metadata is incorrect");
+  nc.readVariableAttribute(units,"uvel","units");
+  require(coupler,units == "m/s","velocity units metadata is incorrect");
+  nc.readVariableAttribute(units,"water_vapor","units");
+  require(coupler,units == "kg/m^3","tracer units metadata is incorrect");
+  nc.readVariableAttribute(units,"C0","units");
+  require(coupler,units == "Pa (kg m^-3 K)^-gamma_d","C0 units metadata is incorrect");
+
+  std::int32_t attribute_integer = 0;
+  std::vector<std::uint64_t> attribute_vector;
+  nc.readVariableAttribute(attribute_integer,"C0","test_integer");
+  nc.readVariableAttribute(attribute_vector,"C0","test_vector");
+  require(coupler,attribute_integer == -7,"integer variant attribute did not round trip");
+  require(coupler,attribute_vector == std::vector<std::uint64_t>({2,3,5}),
+          "vector variant attribute did not round trip");
+
+  int dycore_hs = -1;
+  nc.readGlobalAttribute(dycore_hs,"dycore_hs");
+  require(coupler,dycore_hs == hs,"dycore_hs global attribute is incorrect");
+
+  double C0 = 0;
+  nc.begin_indep_data();
+  if (coupler.is_mainproc()) nc.read(C0,"C0");
+  nc.end_indep_data();
+  coupler.get_parallel_comm().broadcast(C0);
+  require(coupler,C0 == coupler.get_option<real>("C0"),"scalar double output value is incorrect");
+
+  real1d x("metadata_x",nx);
+  nc.read_all(x,"x",{static_cast<MPI_Offset>(coupler.get_i_beg())});
+  float3d density("metadata_density",nz,ny,nx);
+  nc.read_all(density,"density_dry",{0,static_cast<MPI_Offset>(coupler.get_j_beg()),
+                                     static_cast<MPI_Offset>(coupler.get_i_beg())});
+  float3d pressure("metadata_pressure",nz,ny,nx);
+  nc.read_all(pressure,"anelastic_pressure_pert",{0,static_cast<MPI_Offset>(coupler.get_j_beg()),
+                                                  static_cast<MPI_Offset>(coupler.get_i_beg())});
+  real1d z_halo("metadata_z_halo",nz+2*hs);
+  nc.read_all(z_halo,"z_halo",{0});
+  nc.close();
+
+  auto const zmid = coupler.get_zmid();
+  auto const dz   = coupler.get_dz();
+  real1d z_halo_error("metadata_z_halo_error",nz+2*hs);
+  yakl::parallel_for(YAKL_AUTO_LABEL(),nz+2*hs,KOKKOS_LAMBDA (int k) {
+    real expected;
+    if      (k < hs   ) expected = zmid(0    )-(hs-k)*dz(0   );
+    else if (k >= hs+nz) expected = zmid(nz-1)+(k-hs-nz+1)*dz(nz-1);
+    else                  expected = zmid(k-hs);
+    z_halo_error(k) = std::abs(z_halo(k)-expected);
+  });
+  require(coupler,max_abs(coupler,z_halo_error) == 0,"z_halo coordinate does not replicate edge grid spacing");
+}
+
+void check_unmanaged_output_rejected(core::Coupler const & coupler) {
+  core::FileIO file(coupler.get_parallel_comm().get_mpi_comm(),core::FileIO::default_backend());
+  std::string const filename = "anelastic_dycore_ownership_test."+
+                               std::string(core::FileIO::default_backend() == "adios2" ? "bp" : "nc");
+  file.create(filename);
+  file.create_dim("ownership_test",1);
+  file.create_var<double>("ownership_test",{"ownership_test"});
+  file.enddef();
+  double1d owned("ownership_test",1);
+  double1d unmanaged(owned.data(),1);
+  bool rejected = false;
+  try {
+    file.write_all(unmanaged,"ownership_test",{0});
+  } catch (std::runtime_error const &) {
+    rejected = true;
+  }
+  require(coupler,rejected,"unmanaged direct FileIO view was not rejected");
+  file.close();
+}
+
+void check_blosc_compression(core::Coupler const & coupler, std::string const & filename) {
+#if defined(PORTURB_HAS_ADIOS2) && defined(PORTURB_HAS_BLOSC2)
+  core::FileIO file(coupler.get_parallel_comm().get_mpi_comm(),core::FileIO::default_backend());
+  file.open(filename);
+  std::string schema;
+  std::string codec;
+  std::string compressor;
+  std::string dtype;
+  file.readGlobalAttribute(schema,"codec_schema");
+  file.readVariableAttribute(codec,"density_dry","codec");
+  file.readVariableAttribute(compressor,"density_dry","codec_compressor");
+  file.readVariableAttribute(dtype,"density_dry","codec_dtype");
+  require(coupler,schema == "bp5-codec-v1","large BP5 output does not declare the codec schema");
+  require(coupler,codec == "blosc2","large BP5 density variable does not use out-of-band Blosc2 compression");
+  require(coupler,compressor == "lz4","large BP5 density variable does not use the LZ4 compressor");
+  require(coupler,dtype == "<f4","large BP5 density variable does not declare its logical float32 dtype");
+  require(coupler,file.var_exists("density_dry/codec_block_directory"),
+          "large BP5 density variable does not contain a block directory");
+  require(coupler,!file.variable_has_operations("density_dry"),
+          "out-of-band compressed density unexpectedly contains an ADIOS2 compression operation");
+
+  auto const nx = coupler.get_nx();
+  auto const ny = coupler.get_ny();
+  auto const nz = coupler.get_nz();
+  size_t const logical_bytes = static_cast<size_t>(coupler.get_nx_glob())*coupler.get_ny_glob()*nz*sizeof(float);
+  size_t const payload_bytes = file.get_dim_size("density_dry");
+  require(coupler,payload_bytes < logical_bytes,"LZ4 density payload is not smaller than its logical float32 array");
+  if (coupler.is_mainproc()) {
+    std::cout << "density_dry LZ4 compression ratio = " << static_cast<double>(logical_bytes)/payload_bytes << std::endl;
+  }
+  float3d restored("compressed_density",nz,ny,nx);
+  file.read_all(restored,"density_dry",{0,static_cast<MPI_Offset>(coupler.get_j_beg()),
+                                         static_cast<MPI_Offset>(coupler.get_i_beg())});
+  file.close();
+
+  auto expected = coupler.get_data_manager_readonly().get<real const,3>("density_dry").as<float>();
+  yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
+    restored(k,j,i) -= expected(k,j,i);
+  });
+  require(coupler,max_abs(coupler,restored) == 0,"compressed BP5 density did not round trip exactly");
+#else
+  (void) coupler;
+  (void) filename;
+#endif
 }
 
 void check_pressure_face_derivative_order(core::Coupler & coupler) {
@@ -37,11 +168,12 @@ void check_pressure_face_derivative_order(core::Coupler & coupler) {
 real run_case(std::string const & name, int flow, bool with_immersed, int n = 8, real grid_spacing = 1,
               int cube_width = 2, int cube_k_beg = 2, bool run_invariance_checks = true,
               bool use_hydrostatic_profile = true, std::string const & preconditioner = "Jacobi",
-              int schwarz_tile = 16, int schwarz_degree = 16, real screening_length = 0) {
+              int schwarz_tile = 16, int schwarz_degree = 16, real sound_speed = 0,
+              bool check_compression = false) {
   int const nx = n;
   int const ny = n;
   int const nz = n;
-  real constexpr dt = 0.1;
+  real constexpr correctness_dt = 0.1;
   real constexpr q0 = 0.01;
   bool const benchmark_case = n >= 32;
   real const xlen = nx*grid_spacing;
@@ -55,17 +187,15 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<real>("geostrophic_u",0);
   coupler.set_option<real>("geostrophic_v",0);
   coupler.set_option<bool>("enable_gravity",use_hydrostatic_profile);
-  coupler.set_option<real>("dycore_max_wind",benchmark_case ? 20._fp : 2._fp);
-  coupler.set_option<real>("dycore_cs",20);
-  coupler.set_option<real>("cfl",0.6);
+  coupler.set_option<real>("dycore_max_wind",benchmark_case ? benchmark_max_wind : 2._fp);
+  coupler.set_option<real>("dycore_cs",sound_speed > 0 ? sound_speed : 20);
+  coupler.set_option<real>("cfl",benchmark_cfl);
   coupler.set_option<std::string>("dycore_time_stepper","ssprk3");
   coupler.set_option<bool>("dycore_anelastic_projection_diagnostics",true);
   coupler.set_option<bool>("dycore_anelastic_check_linearity",flow == 2 && run_invariance_checks);
   coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",benchmark_case);
   coupler.set_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true);
-  if (screening_length > 0) {
-    coupler.set_option<real>("dycore_anelastic_screening_length",screening_length);
-  }
+  coupler.set_option<bool>("dycore_anelastic_screening",sound_speed > 0);
   if (benchmark_case) {
     coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
     coupler.set_option<bool>("dycore_anelastic_time_linear_solver",false);
@@ -79,7 +209,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<real>("dycore_anelastic_gmres_rel_tol",1.e-4);
   if (flow == 2 || with_immersed) {
     coupler.set_option<int>("dycore_anelastic_gmres_restart",100);
-    coupler.set_option<int>("dycore_anelastic_gmres_max_iters",400);
+    coupler.set_option<int>("dycore_anelastic_gmres_max_iters",benchmark_case ? 800 : 400);
   }
   coupler.init(core::ParallelComm(MPI_COMM_WORLD),coupler.generate_levels_equal(nz,zlen),ny,nx,ylen,xlen);
   coupler.add_tracer("water_vapor","water_vapor",true,false,true);
@@ -128,6 +258,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   });
 
   modules::Dynamics_Euler_Stratified dycore;
+  real const dt = benchmark_case ? dycore.compute_time_step(coupler) : correctness_dt;
   if (benchmark_case) check_pressure_face_derivative_order(coupler);
   dycore.init(coupler);
   real4d state("anelastic_test_state",dycore.num_state,nz,ny_local,nx_local);
@@ -170,6 +301,12 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   int const initial_solver_iters = coupler.get_option<int>("dycore_anelastic_last_linear_solver_iters");
   require(coupler,std::isfinite(residual),name + ": linear solver residual is invalid");
   if (flow == 2 || with_immersed) require(coupler,residual <= 1.1e-4,name + ": linear solver residual is too large");
+  real const screening_coefficient =
+      coupler.get_option<real>("dycore_anelastic_last_screening_inverse_length_squared");
+  real const acoustic_length = dt*sound_speed;
+  real const expected_screening_coefficient = sound_speed > 0 ? 1/(acoustic_length*acoustic_length) : 0;
+  require(coupler,screening_coefficient == expected_screening_coefficient,
+          name + ": finite-sound-speed screening coefficient does not equal 1/(dt^2*c_s^2)");
   if constexpr (yakl::kokkos_debug) {
     real const boundary_flux = coupler.get_option<real>("dycore_anelastic_last_boundary_normal_flux_max");
     require(coupler,boundary_flux == 0,name + ": solid/immersed normal flux is nonzero");
@@ -177,7 +314,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     require(coupler,immersed_residual == 0,name + ": immersed cells contributed to the linear solver residual");
     real const pressure_mean = coupler.get_option<real>("dycore_anelastic_last_pressure_mean");
     std::cout << "Pressure mean:" << std::scientific << std::abs(pressure_mean);
-    if (screening_length == 0) {
+    if (sound_speed == 0) {
       require(coupler,std::abs(pressure_mean) < 3.e-6,name + ": pressure mean was not removed.");
     }
   }
@@ -193,7 +330,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
       real const constraint = coupler.get_option<real>("dycore_anelastic_last_screened_constraint_l2");
       real const rho_change = coupler.get_option<real>("dycore_anelastic_last_temporary_density_change");
       require(coupler,pre > 0,name + ": provisional mass-flux divergence is zero");
-      if (screening_length > 0) {
+      if (sound_speed > 0) {
         require(coupler,constraint < 2.e-4_fp*pre,name + ": screened divergence constraint was not satisfied");
       } else {
         require(coupler,post < 0.1_fp*pre,name + ": projection did not reduce physical mass-flux divergence");
@@ -217,7 +354,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
           coupler.get_option<real>("dycore_anelastic_pressure_face_derivative_order");
       if (coupler.is_mainproc()) {
         std::cout << name << ": preconditioner = " << preconditioner
-                  << ", screening L = " << (screening_length > 0 ? std::to_string(screening_length) : "off")
+                  << ", sound speed = " << (sound_speed > 0 ? std::to_string(sound_speed) : "screening off")
                   << (preconditioner == "Schwarz" ? ", tile = "+std::to_string(schwarz_tile)+
                                                        ", degree = "+std::to_string(schwarz_degree) : "")
                   << ", mean CG iterations = " << benchmark_iterations_mean
@@ -299,8 +436,28 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
       coupler.set_option<real>("dycore_cs",900);
       real const dt2 = dycore.compute_time_step(coupler);
       require(coupler,dt1 == dt2,name + ": dycore_cs changed the anelastic timestep");
+      coupler.register_output_variable<real>("C0",core::Coupler::DIMS_SCALAR,
+                                             {{"units",std::string("duplicate ignored")},
+                                              {"test_integer",std::int32_t(-7)},
+                                              {"test_vector",std::vector<std::uint64_t>({2,3,5})}});
+      std::string const output_file = "anelastic_dycore_output_test_00000000."+
+                                      std::string(core::FileIO::default_backend() == "adios2" ? "bp" : "nc");
       coupler.write_output_file("anelastic_dycore_output_test",false);
+      check_output_metadata(coupler,output_file);
+      check_unmanaged_output_rejected(coupler);
+      real const C0_before_restart = coupler.get_option<real>("C0");
+      coupler.set_option<real>("C0",-1);
+      coupler.set_option<std::string>("restart_file",output_file);
+      coupler.overwrite_with_restart();
+      require(coupler,coupler.get_option<real>("C0") == C0_before_restart,
+              "scalar physical constant was not restored from restart");
     }
+  }
+
+  if (check_compression && core::FileIO::default_backend() == "adios2") {
+    std::string const output_prefix = "anelastic_dycore_restart_test";
+    coupler.write_output_file(output_prefix,false);
+    check_blosc_compression(coupler,output_prefix+"_00000000.bp");
   }
 
   if (coupler.is_mainproc()) {
@@ -339,40 +496,49 @@ int main(int argc, char **argv) {
     run_case("anelastic_uniform_periodic",1,false);
     run_case("anelastic_divergent_immersed",2,true);
     real constexpr benchmark_grid_spacing = 100;
-    std::array<real,6> const screening_lengths_in_cells = {16,24,32,48,64,0};
-    std::array<real,6> none_iterations;
-    std::array<real,6> schwarz_iterations;
-    for (int il = 0; il < screening_lengths_in_cells.size(); il++) {
-      real const screening_length_in_cells = screening_lengths_in_cells[il];
-      real const screening_length = screening_length_in_cells*benchmark_grid_spacing;
-      std::string const suffix = screening_length > 0 ?
-          "L"+std::to_string(static_cast<int>(screening_length_in_cells))+"delta" : "off";
-      none_iterations[il] = run_case("anelastic_large_uniform_cube_none_"+suffix,1,true,64,benchmark_grid_spacing,
-                                     8,0,false,false,
-                                     "none",schwarz_tile,schwarz_degree,screening_length);
-      schwarz_iterations[il] = run_case("anelastic_large_uniform_cube_schwarz_"+suffix,1,true,64,
-                                        benchmark_grid_spacing,8,0,false,false,
-                                        "Schwarz",schwarz_tile,schwarz_degree,screening_length);
+    real constexpr benchmark_dt = benchmark_cfl*benchmark_grid_spacing/benchmark_max_wind;
+    std::array<real,7> const acoustic_lengths_in_cells = {12,16,24,32,48,64,0};
+    std::array<real,7> none_iterations;
+    std::array<real,7> schwarz_iterations;
+    for (int il = 0; il < acoustic_lengths_in_cells.size(); il++) {
+      real const acoustic_length_in_cells = acoustic_lengths_in_cells[il];
+      real const acoustic_length = acoustic_length_in_cells*benchmark_grid_spacing;
+      real const sound_speed = acoustic_length > 0 ? acoustic_length/benchmark_dt : 0;
+      std::string const suffix = acoustic_length > 0 ?
+          "csdt"+std::to_string(static_cast<int>(acoustic_length_in_cells))+"delta" : "off";
+      none_iterations[il] = run_case("anelastic_large_uniform_cube_none_"+suffix,1,true,128,benchmark_grid_spacing,
+                                     32,0,false,false,
+                                     "none",schwarz_tile,schwarz_degree,sound_speed,il == 0);
+      schwarz_iterations[il] = run_case("anelastic_large_uniform_cube_schwarz_"+suffix,1,true,128,
+                                        benchmark_grid_spacing,32,0,false,false,
+                                        "Schwarz",schwarz_tile,schwarz_degree,sound_speed);
     }
-    for (int il = 1; il < screening_lengths_in_cells.size(); il++) {
+    for (int il = 1; il < acoustic_lengths_in_cells.size(); il++) {
       if (none_iterations[il] < none_iterations[il-1]) {
-        endrun("ERROR: unpreconditioned screened iteration count did not increase monotonically with L");
+        endrun("ERROR: unpreconditioned screened iteration count did not increase monotonically with c_s*dt");
       }
       if (schwarz_iterations[il] < schwarz_iterations[il-1]) {
-        endrun("ERROR: Schwarz-preconditioned screened iteration count did not increase monotonically with L");
+        endrun("ERROR: Schwarz-preconditioned screened iteration count did not increase monotonically with c_s*dt");
       }
     }
-    if (none_iterations.back() <= none_iterations[screening_lengths_in_cells.size()-2] ||
-        schwarz_iterations.back() <= schwarz_iterations[screening_lengths_in_cells.size()-2]) {
-      endrun("ERROR: disabling screening did not increase both 64^3 iteration counts");
+    if (none_iterations.back() <= none_iterations[acoustic_lengths_in_cells.size()-2] ||
+        schwarz_iterations.back() <= schwarz_iterations[acoustic_lengths_in_cells.size()-2]) {
+      endrun("ERROR: disabling screening did not increase both 128^3 iteration counts");
     }
     if (core::ParallelComm(MPI_COMM_WORLD).get_rank_id() == 0) {
-      std::cout << "64^3 screening iteration study (L/delta, none, Schwarz):" << std::endl;
-      for (int il = 0; il < screening_lengths_in_cells.size(); il++) {
-        std::cout << "  "
-                  << (screening_lengths_in_cells[il] > 0 ? std::to_string(screening_lengths_in_cells[il]) : "off")
-                  << ", "
-                  << none_iterations[il] << ", " << schwarz_iterations[il] << std::endl;
+      std::cout << "128^3 finite-sound-speed iteration study (c_s*dt/delta, c_s, Mach_20, none, Schwarz):"
+                << std::endl;
+      for (int il = 0; il < acoustic_lengths_in_cells.size(); il++) {
+        real const acoustic_length = acoustic_lengths_in_cells[il]*benchmark_grid_spacing;
+        real const sound_speed = acoustic_length > 0 ? acoustic_length/benchmark_dt : 0;
+        std::cout << "  ";
+        if (sound_speed > 0) {
+          std::cout << acoustic_lengths_in_cells[il] << ", " << sound_speed << ", "
+                    << benchmark_max_wind/sound_speed;
+        } else {
+          std::cout << "off, off, off";
+        }
+        std::cout << ", " << none_iterations[il] << ", " << schwarz_iterations[il] << std::endl;
       }
     }
   }

@@ -16,3 +16,6 @@
 [submodule "external/eigen"]
 	path = external/eigen
 	url = https://gitlab.com/libeigen/eigen.git
+[submodule "external/c-blosc2"]
+	path = external/c-blosc2
+	url = https://github.com/Blosc/c-blosc2.git

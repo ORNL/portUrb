@@ -698,9 +698,21 @@ namespace modules {
       ProjectionScalar const dy_proj = static_cast<ProjectionScalar>(dy);
       ProjectionScalar const r_dx = ProjectionScalar(1)/dx_proj;
       ProjectionScalar const r_dy = ProjectionScalar(1)/dy_proj;
-      ProjectionScalar const screening_inv_length_squared = static_cast<ProjectionScalar>(
-          coupler.get_option<real>("dycore_anelastic_screening_inverse_length_squared"));
-      bool const screening_enabled = screening_inv_length_squared > 0;
+      bool const screening_enabled = coupler.get_option<bool>("dycore_anelastic_screening");
+      real const sound_speed = coupler.get_option<real>("dycore_cs",350);
+      if (screening_enabled && (!std::isfinite(sound_speed) || sound_speed <= 0)) {
+        endrun("ERROR: dycore_cs must be finite and positive when anelastic screening is enabled");
+      }
+      real const screening_length = dt*sound_speed;
+      if (screening_enabled && (!std::isfinite(screening_length) || screening_length <= 0)) {
+        endrun("ERROR: dt*dycore_cs must be finite and positive when anelastic screening is enabled");
+      }
+      real const screening_inv_length_squared_real = screening_enabled ?
+          1/(screening_length*screening_length) : 0;
+      ProjectionScalar const screening_inv_length_squared =
+          static_cast<ProjectionScalar>(screening_inv_length_squared_real);
+      coupler.set_option<real>("dycore_anelastic_last_screening_inverse_length_squared",
+                               screening_inv_length_squared_real);
 
       // The temporary conservative system always starts from fixed hydrostatic density.
       yakl::Array<FLOC ****> fields_loc("anelastic_adv_fields",nfields,nz+2*hs,ny+2*hs,nx+2*hs);
@@ -1242,17 +1254,20 @@ namespace modules {
         return YaklConjGrad<ProjectionScalar>::local_dot(x_in,Ax_out);
       };
 
-      // The cached diagonal is for a unit timestep. Since the complete projection operator is proportional to dt,
-      // its inverse diagonal is inv_diagonal_dtless/dt. Projecting the result back into the mean-zero fluid pressure
-      // space makes this P*D^{-1}*P preconditioner symmetric, as required by preconditioned CG.
+      // The cached diagonal is for the unscreened unit-timestep operator. Add the timestep-dependent screening term
+      // before dividing by dt. Projecting the result back into the mean-zero fluid pressure space makes this
+      // P*D^{-1}*P preconditioner symmetric, as required by preconditioned CG.
       auto jacobi_preconditioner = [&] (yakl::Array<ProjectionScalar *> const & r_in,
                                         yakl::Array<ProjectionScalar *> const & z_out, MPI_Comm comm) {
         auto r = r_in.reshape(nz,ny,nx);
         auto z = z_out.reshape(nz,ny,nx);
         ProjectionScalar const r_dt = ProjectionScalar(1)/dt_proj;
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          z(k,j,i) = fluid_mask(k,j,i) == 1 ?
-              r(k,j,i)*static_cast<ProjectionScalar>(inv_diagonal_dtless(k,j,i))*r_dt : 0;
+          ProjectionScalar const inv_diagonal_spatial =
+              static_cast<ProjectionScalar>(inv_diagonal_dtless(k,j,i));
+          ProjectionScalar const inv_diagonal = inv_diagonal_spatial/
+              (ProjectionScalar(1)+screening_inv_length_squared*inv_diagonal_spatial);
+          z(k,j,i) = fluid_mask(k,j,i) == 1 ? r(k,j,i)*inv_diagonal*r_dt : 0;
         });
         project_pressure(z,z);
         (void) comm;
@@ -1346,13 +1361,17 @@ namespace modules {
                              KOKKOS_LAMBDA (int tile, int k, int jj, int ii) {
             int const tx = tiles(tile,2);
             int const ty = tiles(tile,3);
-            ProjectionScalar const inv_diagonal = coefficients(1,tile,k,jj,ii);
-            if (ii >= tx || jj >= ty || inv_diagonal <= 0) {
+            ProjectionScalar const inv_diagonal_spatial = coefficients(1,tile,k,jj,ii);
+            if (ii >= tx || jj >= ty || inv_diagonal_spatial <= 0) {
               local_Ax(tile,k,jj,ii) = 0;
               return;
             }
+            ProjectionScalar const inv_diagonal = inv_diagonal_spatial/
+                (ProjectionScalar(1)+screening_inv_length_squared*inv_diagonal_spatial);
             ProjectionScalar const center = local_x(tile,k,jj,ii);
-            ProjectionScalar Ax_value = static_cast<ProjectionScalar>(coefficients(0,tile,k,jj,ii))*center;
+            ProjectionScalar Ax_value =
+                (static_cast<ProjectionScalar>(coefficients(0,tile,k,jj,ii))+
+                 screening_inv_length_squared)*center;
             if (ii > 0)    Ax_value -= static_cast<ProjectionScalar>(coefficients(2,tile,k,jj,ii))*
                                           local_x(tile,k,jj,ii-1);
             if (ii+1 < tx) Ax_value -= static_cast<ProjectionScalar>(coefficients(3,tile,k,jj,ii))*
@@ -2541,14 +2560,9 @@ namespace modules {
       coupler.set_option<bool>("dycore_anelastic_use_cg",
                                coupler.get_option<bool>("dycore_anelastic_check_cg_compatibility",true));
 
-      // Screening length L is in meters. Zero retains the original unscreened Poisson projection.
-      real const screening_length = coupler.get_option<real>("dycore_anelastic_screening_length",0);
-      if (!std::isfinite(screening_length) || screening_length < 0) {
-        endrun("ERROR: dycore_anelastic_screening_length must be finite and nonnegative");
-      }
-      real const screening_inv_length_squared = screening_length > 0 ?
-          1/(screening_length*screening_length) : 0;
-      coupler.set_option<real>("dycore_anelastic_screening_inverse_length_squared",screening_inv_length_squared);
+      // When enabled, screening uses the acoustic propagation length dycore_cs*dt for each projection solve.
+      coupler.set_option<bool>("dycore_anelastic_screening",
+                               coupler.get_option<bool>("dycore_anelastic_screening",false));
 
       // Reuse the Krylov vectors across every Runge-Kutta-stage pressure solve. CG receives collapsed views and performs
       // no runtime allocation.
@@ -2570,9 +2584,9 @@ namespace modules {
         cg_s (k,j,i) = 0;
       });
 
-      // Cache the inverse diagonal of the fixed-geometry, unit-timestep local pressure operator. The mean-zero P*A*P
-      // projection is deliberately omitted from this Jacobi approximation because its dense rank-one contribution would
-      // destroy locality. Runtime application divides by dt, the only remaining operator scale.
+      // Cache the inverse diagonal of the fixed-geometry, unscreened unit-timestep local pressure operator. The mean-zero
+      // P*A*P projection is deliberately omitted from this Jacobi approximation because its dense rank-one contribution
+      // would destroy locality. Runtime application adds screening and divides by dt.
       dm.register_and_allocate<float>("dycore_anelastic_projection_inv_diagonal_dtless",{nz,ny,nx});
       auto inv_diagonal = dm.get<float,3>("dycore_anelastic_projection_inv_diagonal_dtless");
       float const pressure_beta = static_cast<float>(
@@ -2580,8 +2594,6 @@ namespace modules {
       float pressure_hvcoef = pressure_beta/std::pow(2.f,ord);
       if ((ord/2)%2 == 1) pressure_hvcoef *= -1;
       bool const pressure_hv_enabled = pressure_beta != 0;
-      float const screening_inv_length_squared_float = static_cast<float>(
-          coupler.get_option<real>("dycore_anelastic_screening_inverse_length_squared"));
       bool const periodic_x = coupler.get_option<std::string>("bc_x1") == "periodic";
       bool const periodic_y = coupler.get_option<std::string>("bc_y1") == "periodic";
       bool const periodic_z = coupler.get_option<std::string>("bc_z1") == "periodic";
@@ -2662,8 +2674,7 @@ namespace modules {
         float const z_der_l = z_face_response(k  ,false);
         float const z_der_r = z_face_response(k+1,false);
         float const dz_cell = static_cast<float>(dz(k));
-        float diagonal = screening_inv_length_squared_float +
-                         (x_der_l-x_der_r)*r_dx*r_dx + (y_der_l-y_der_r)*r_dy*r_dy +
+        float diagonal = (x_der_l-x_der_r)*r_dx*r_dx + (y_der_l-y_der_r)*r_dy*r_dy +
                          (z_der_l/static_cast<float>(metjac_edges(k))-
                           z_der_r/static_cast<float>(metjac_edges(k+1)))/dz_cell;
         if (pressure_hv_enabled) {
@@ -2831,7 +2842,7 @@ namespace modules {
           int const jh = schwarz_hs+dj;
           if (mask_halos(schwarz_hs+k,jh,ih) == 0) return;
 
-          float diagonal = screening_inv_length_squared_float;
+          float diagonal = 0;
           auto cache_horizontal = [&] (int field, int ni, int nj, int ngi, int ngj, float coefficient,
                                        bool physical_outside) {
             if (physical_outside) return;
@@ -2883,22 +2894,14 @@ namespace modules {
       // for the unscreened operator, whose pressure has a constant nullspace.
       dm.register_and_allocate<real>("anelastic_pressure_pert",{nz,ny,nx});
       dm.get<real,3>("anelastic_pressure_pert") = 0;
-      coupler.register_write_output_module( [] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
-        auto const i_beg = coupler.get_i_beg();
-        auto const j_beg = coupler.get_j_beg();
-        auto const &dm = coupler.get_data_manager_readonly();
-        nc.redef();
-        nc.create_var<real>("anelastic_pressure_pert",{"z","y","x"});
-        nc.enddef();
-        std::vector<MPI_Offset> const start = {0,static_cast<MPI_Offset>(j_beg),static_cast<MPI_Offset>(i_beg)};
-        nc.write_all(dm.get<real const,3>("anelastic_pressure_pert"),"anelastic_pressure_pert",start);
-      });
+      coupler.register_output_variable<real>("anelastic_pressure_pert",core::Coupler::DIMS_3D,
+                                             {{"units",std::string("Pa")}});
 
       // Create an output module to be called during coupler.write_output() to write hydrostatic profiles
       //   and write perturbations of potential temperature, pressure, and density to file
       // coupler : reference to the coupler object
-      // nc      : reference to the SimplePNetCDF object for writing output (open and not in define mode)
-      coupler.register_write_output_module( [=] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
+      // nc      : reference to the FileIO object for writing output (open and not in define mode)
+      coupler.register_write_output_module( [=] (core::Coupler &coupler, core::FileIO &nc) {
         auto i_beg = coupler.get_i_beg(); // Get local starting indices in x and y directions
         auto j_beg = coupler.get_j_beg(); // Get local starting indices in x and y directions
         auto nz    = coupler.get_nz();    // Get local number of cells in z-direction (not including halos)
@@ -2906,19 +2909,37 @@ namespace modules {
         auto nx    = coupler.get_nx();    // Get local number of cells in x-direction (not including halos)
         nc.redef();  // re-enter define mode to add new dimensions and variables
         nc.create_dim( "z_halo" , coupler.get_nz()+2*hs );         // Vertical dimension with halos
+        nc.create_var<real>( "z_halo"             , {"z_halo"});    // Define haloed vertical coordinate
         nc.create_var<real>( "hy_dens_cells"     , {"z_halo"});    // Define hydrostatic density variable
         nc.create_var<real>( "hy_theta_cells"    , {"z_halo"});    // Define hydrostatic potential temperature variable
         nc.create_var<real>( "hy_pressure_cells" , {"z_halo"});    // Define hydrostatic pressure variable
+        nc.writeVariableAttribute(std::string("m")       ,"z_halo"            ,"units");
+        nc.writeVariableAttribute(std::string("z_halo")  ,"hy_dens_cells"     ,"coordinates");
+        nc.writeVariableAttribute(std::string("kg/m^3")  ,"hy_dens_cells"     ,"units");
+        nc.writeVariableAttribute(std::string("z_halo")  ,"hy_theta_cells"    ,"coordinates");
+        nc.writeVariableAttribute(std::string("K")       ,"hy_theta_cells"    ,"units");
+        nc.writeVariableAttribute(std::string("z_halo")  ,"hy_pressure_cells" ,"coordinates");
+        nc.writeVariableAttribute(std::string("Pa")      ,"hy_pressure_cells" ,"units");
+        nc.writeGlobalAttribute(hs,"dycore_hs");
         // nc.create_var<real>( "theta_pert"        , {"z","y","x"}); // Define potential temperature perturbation variable
         // nc.create_var<real>( "pressure_pert"     , {"z","y","x"}); // Define pressure perturbation variable
         // nc.create_var<real>( "density_pert"      , {"z","y","x"}); // Define density perturbation variable
         nc.enddef(); // Exit define mode to write data
+        auto const zmid = coupler.get_zmid();
+        auto const dz   = coupler.get_dz();
+        real1d z_halo("z_halo_output",nz+2*hs);
+        yakl::parallel_for(YAKL_AUTO_LABEL(),nz+2*hs,KOKKOS_LAMBDA (int k) {
+          if      (k < hs   ) z_halo(k) = zmid(0    )-(hs-k)*dz(0   );
+          else if (k >= hs+nz) z_halo(k) = zmid(nz-1)+(k-hs-nz+1)*dz(nz-1);
+          else                  z_halo(k) = zmid(k-hs);
+        });
         nc.begin_indep_data(); // Enter independent data mode to write 1-D arrays from main task only
         auto &dm = coupler.get_data_manager_readonly(); // Get data manager as read-only
         // Write hydrostatic profiles from main task only
-        if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_dens_cells"    ) , "hy_dens_cells"     );
-        if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_theta_cells"   ) , "hy_theta_cells"    );
-        if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_pressure_cells") , "hy_pressure_cells" );
+        if (coupler.is_mainproc()) nc.write( z_halo                                      , "z_halo"           );
+        if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_dens_cells"    ,"hy_dens_cells"    );
+        if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_theta_cells"   ,"hy_theta_cells"   );
+        if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_pressure_cells","hy_pressure_cells");
         nc.end_indep_data(); // Exit independent data mode to write 3-D perturbation arrays
         // // Allocate state and tracer arrays, and convert coupler data to dynamics format to compute perturbations
         // real4d state  ("state"  ,num_state  ,nz,ny,nx);
@@ -2949,8 +2970,8 @@ namespace modules {
 
       // Register a restart module to read in hydrostatic profiles from file
       // coupler : reference to the coupler object
-      // nc      : reference to the SimplePNetCDF object for reading restart data (opened)
-      coupler.register_overwrite_with_restart_module( [=, this] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
+      // nc      : reference to the FileIO object for reading restart data (opened)
+      coupler.register_overwrite_with_restart_module( [=, this] (core::Coupler &coupler, core::FileIO &nc) {
         auto &dm = coupler.get_data_manager_readwrite();
         nc.read_all(dm.get<real,1>("hy_dens_cells"    ),"hy_dens_cells"    ,{0});
         nc.read_all(dm.get<real,1>("hy_theta_cells"   ),"hy_theta_cells"   ,{0});

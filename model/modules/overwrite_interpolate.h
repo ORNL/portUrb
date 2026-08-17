@@ -28,8 +28,8 @@ namespace modules {
     auto R_d    = coupler.get_option<real>("R_d");
     // Open the file
     auto par_comm = coupler.get_parallel_comm();
-    yakl::SimplePNetCDF nc(par_comm.get_mpi_comm());
-    nc.open(fname,NC_NOWRITE);
+    core::FileIO nc(par_comm.get_mpi_comm(),core::FileIO::default_backend());
+    nc.open(fname);
     // Get the x, y, and z coordinates from the file
     int nx_glob_f = (int) nc.get_dim_size("x");
     int ny_glob_f = (int) nc.get_dim_size("y");
@@ -38,29 +38,29 @@ namespace modules {
     int hs_f      = (nz_halo_f-nz_f)/2;
     int hs        = (hy_r.size()-nz)/2;
     nc.begin_indep_data();
-    float1d x_f_float   ("x_f_float"   ,nx_glob_f);
-    float1d y_f_float   ("y_f_float"   ,ny_glob_f);
-    float1d z_f_float   ("z_f_float"   ,nz_f     );
-    float1d zint_f_float("zint_f_float",nz_f+1   );
+    double1d x_f_double   ("x_f_double"   ,nx_glob_f);
+    double1d y_f_double   ("y_f_double"   ,ny_glob_f);
+    double1d z_f_double   ("z_f_double"   ,nz_f     );
+    double1d zint_f_double("zint_f_double",nz_f+1   );
     real1d hy_r_f("hy_dens_cells"    ,nz_halo_f);
     real1d hy_p_f("hy_pressure_cells",nz_halo_f);
-    if (coupler.is_mainproc()) nc.read(x_f_float   ,"x" );
-    if (coupler.is_mainproc()) nc.read(y_f_float   ,"y" );
-    if (coupler.is_mainproc()) nc.read(z_f_float   ,"z" );
-    if (coupler.is_mainproc()) nc.read(zint_f_float,"zi");
+    if (coupler.is_mainproc()) nc.read(x_f_double   ,"x" );
+    if (coupler.is_mainproc()) nc.read(y_f_double   ,"y" );
+    if (coupler.is_mainproc()) nc.read(z_f_double   ,"z" );
+    if (coupler.is_mainproc()) nc.read(zint_f_double,"zi");
     if (coupler.is_mainproc()) nc.read(hy_r_f,"hy_dens_cells"    );
     if (coupler.is_mainproc()) nc.read(hy_p_f,"hy_pressure_cells");
-    par_comm.broadcast(x_f_float   );
-    par_comm.broadcast(y_f_float   );
-    par_comm.broadcast(z_f_float   );
-    par_comm.broadcast(zint_f_float);
+    par_comm.broadcast(x_f_double   );
+    par_comm.broadcast(y_f_double   );
+    par_comm.broadcast(z_f_double   );
+    par_comm.broadcast(zint_f_double);
     par_comm.broadcast(hy_r_f);
     par_comm.broadcast(hy_p_f);
     nc.end_indep_data();
-    auto x_f       = x_f_float   .as<real>();
-    auto y_f       = y_f_float   .as<real>();
-    auto z_f       = z_f_float   .as<real>();
-    auto zint_f    = zint_f_float.as<real>();
+    auto x_f       = x_f_double   .as<real>();
+    auto y_f       = y_f_double   .as<real>();
+    auto z_f       = z_f_double   .as<real>();
+    auto zint_f    = zint_f_double.as<real>();
     auto x_f_h    = x_f   .createHostCopy();
     auto y_f_h    = y_f   .createHostCopy();
     auto z_f_h    = z_f   .createHostCopy();
@@ -120,4 +120,3 @@ namespace modules {
 
 
 }
-

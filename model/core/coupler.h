@@ -3,16 +3,33 @@
 
 #include "main_header.h"
 #include "DataManager.h"
-#include "YAKL_pnetcdf.h"
+#include "FileIO.h"
 #include "MultipleFields.h"
 #include "Options.h"
 #include "ParallelComm.h"
+#include <cstdint>
+#include <variant>
 
 // The Coupler class holds everything a component or module of this model would need in order to perform its
 // changes to the model state
 
 
 namespace core {
+
+  // Attribute types are restricted to the portable intersection of PNetCDF CDF-5 and ADIOS2 BP5.
+  using OutputAttributeValue = std::variant<
+      std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t,
+      std::int64_t, std::uint64_t, float, double, std::string,
+      std::vector<std::int8_t>, std::vector<std::uint8_t>,
+      std::vector<std::int16_t>, std::vector<std::uint16_t>,
+      std::vector<std::int32_t>, std::vector<std::uint32_t>,
+      std::vector<std::int64_t>, std::vector<std::uint64_t>,
+      std::vector<float>, std::vector<double>>;
+
+  struct OutputAttribute {
+    std::string          name;
+    OutputAttributeValue value;
+  };
 
   class Coupler {
   protected:
@@ -23,6 +40,7 @@ namespace core {
     struct Tracer {
       std::string name;        // Tracer variable name
       std::string desc;        // Tracer description
+      std::string units;       // Tracer output units
       bool        positive;    // Whether the tracer is constrained to be positive
       bool        adds_mass;   // Whether the tracer adds mass to the total density
       bool        diffuse;     // Whether the tracer is to be diffused by the SGS closure
@@ -32,8 +50,9 @@ namespace core {
     // Variables registered must have one of the dims specifications listed in Coupler::DIMS_*
     struct OutputVar {
       std::string name;       // Variable name
-      int         dims;       // Variable dims specification (1 = column, 2 = surface, 3 = 3D)
+      int         dims;       // Variable dims specification (0 = scalar, 1 = column, 2 = surface, 3 = 3D)
       size_t      type_hash;  // Hash of the variable type for type checking during output
+      std::vector<OutputAttribute> attributes; // Portable variable metadata
     };
 
     real          xlen;          // Domain length in the x-direction in meters
@@ -49,9 +68,9 @@ namespace core {
     std::vector<OutputVar> output_vars; // Organizes output variables on the standard grid dims
     std::vector<std::string> output_options; // Organizes options written as global attributes and restored on restart
     // Allows modules to register their own output writing functions for variables not on the standard grid dims
-    std::vector<std::function<void(core::Coupler &coupler , yakl::SimplePNetCDF &nc)>> out_write_funcs;
+    std::vector<std::function<void(core::Coupler &coupler , core::FileIO &nc)>> out_write_funcs;
     // Allows modules to register their own restart functions for variables absent from output_vars
-    std::vector<std::function<void(core::Coupler &coupler , yakl::SimplePNetCDF &nc)>> restart_read_funcs;
+    std::vector<std::function<void(core::Coupler &coupler , core::FileIO &nc)>> restart_read_funcs;
     // Keeps track of timing information so users can assess how long modules take
     std::chrono::time_point<std::chrono::high_resolution_clock> inform_timer;
     // MPI parallelization information
@@ -75,9 +94,33 @@ namespace core {
                              // Y: 0 = south;  1 = middle;  2 = north
                              // X: 0 = west ;  1 = center;  3 = east 
 
+    static void add_output_attribute( std::vector<OutputAttribute> &attributes, OutputAttribute attribute,
+                                      std::string const &variable_name ) {
+      auto const existing = std::find_if(attributes.begin(),attributes.end(),[&] (auto const &entry) {
+        return entry.name == attribute.name;
+      });
+      if (existing != attributes.end()) {
+        if constexpr (yakl::kokkos_debug) {
+          std::cerr << "WARNING: ignoring duplicate output attribute [" << attribute.name << "] for variable ["
+                    << variable_name << "]" << std::endl;
+        }
+        return;
+      }
+      attributes.push_back(std::move(attribute));
+    }
+
+    static void write_output_attributes( core::FileIO &nc, std::string const &variable_name,
+                                         std::vector<OutputAttribute> const &attributes ) {
+      for (auto const &attribute : attributes) {
+        std::visit([&] (auto const &value) { nc.writeVariableAttribute(value,variable_name,attribute.name); },
+                   attribute.value);
+      }
+    }
+
   public:
 
     // Entries for the dims specification of output_vars for variables on standard grid dimensions
+    int static constexpr DIMS_SCALAR  = 0; // Scalar variable backed by a Coupler option
     int static constexpr DIMS_COLUMN  = 1; // Column variable (z dimension only)
     int static constexpr DIMS_SURFACE = 2; // Surface variable (x and y dimensions only)
     int static constexpr DIMS_3D      = 3; // 3D variable (x, y, and z dimensions)
@@ -89,6 +132,8 @@ namespace core {
       this->zlen         = -1;
       this->file_counter = 0;
       this->inform_timer = std::chrono::high_resolution_clock::now();
+      options.add_option<std::string>("file_io_backend",core::FileIO::default_backend());
+      options.add_option<int>("adios2_compression_min_bytes",1048576);
       this->nx_glob      = 0;
       this->ny_glob      = 0;
       this->nx           = 0;
@@ -561,6 +606,7 @@ namespace core {
     // positive    : (optional) Whether the tracer is constrained to be positive (default: true)
     // adds_mass   : (optional) Whether the tracer adds to the total mass (default: false)
     // diffuse     : (optional) Whether the tracer is diffused by diffusion operators (default: true)
+    // units       : (optional) Tracer output units (default: kg/m^3)
     // Returns the index of the added or existing tracer
     // Note that the tracer variable is allocated in the DataManager with dimensions (z,y,x)
     //  and can be accessed with dm.get<real,3>(tracer_name)
@@ -581,7 +627,8 @@ namespace core {
                     std::string tracer_desc = "" ,
                     bool positive  = true        ,
                     bool adds_mass = false       ,
-                    bool diffuse   = true        ) {
+                    bool diffuse   = true        ,
+                    std::string units = "kg/m^3" ) {
       int ind = get_tracer_index(tracer_name); // Check if the tracer already exists
       // If the tracer exists, check that the attributes match and return the existing index
       if (ind != -1) {
@@ -600,6 +647,11 @@ namespace core {
                     << "] that already exists with different diffuse attribute";
           endrun();
         }
+        if (tracers.at(ind).units != units) {
+          std::cerr << "ERROR: adding tracer [" << tracer_name
+                    << "] that already exists with different units attribute";
+          endrun();
+        }
         return ind;
       }
       // if the tracer does not exist, register and allocate it in the DataManager
@@ -609,7 +661,7 @@ namespace core {
       // Register and allocate the tracer variable in the DataManager with dimensions (z,y,x)
       dm.register_and_allocate<real>( tracer_name , {nz,ny,nx} );
       // Add the tracer to the coupler's list of tracers
-      tracers.push_back( { tracer_name , tracer_desc , positive , adds_mass , diffuse } );
+      tracers.push_back( { tracer_name , tracer_desc , units , positive , adds_mass , diffuse } );
       // Return the index of the newly added tracer
       return tracers.size()-1;
     }
@@ -672,9 +724,10 @@ namespace core {
     }
 
 
-    // Register an output variable with the coupler for output to NetCDF files
+    // Register an output variable with the coupler for output files
     // name : Name of the variable to output
-    // dims : Number of dimensions of the variable (DIMS_1D, DIMS_2D, DIMS_3D)
+    // dims : Dimensions of the variable (DIMS_SCALAR, DIMS_COLUMN, DIMS_SURFACE, DIMS_3D)
+    // attributes : Portable scalar, vector, or string attributes attached to the variable
     // The variable must be registered with the DataManager using the given name
     //  and allocated with the correct dimensions
     // The variable type T must match the type used when registering the variable with the DataManager
@@ -682,12 +735,38 @@ namespace core {
     // This function does not allocate the variable; it only registers it for output operations
     //  so the user must ensure that the variable is properly registered and allocated beforehand
     // This function must be called before any output operations are performed
-    template <class T> void register_output_variable( std::string name , int dims ) {
-      output_vars.push_back({name,dims,get_type_hash<T>()});
+    template <class T>
+    void register_output_variable( std::string name, int dims, std::vector<OutputAttribute> attributes = {} ) {
+      if (dims < DIMS_SCALAR || dims > DIMS_3D) {
+        throw std::runtime_error(std::string("Unsupported dimensions for output variable: ")+name);
+      }
+      if (dims == DIMS_SCALAR) {
+        if constexpr (!std::is_same_v<T,float> && !std::is_same_v<T,double> && !std::is_same_v<T,int>) {
+          throw std::runtime_error(std::string("Unsupported scalar output type: ")+name);
+        }
+        if (!option_exists(name)) throw std::runtime_error(std::string("Scalar output option not found: ")+name);
+        options.visit_option(name,[&] (auto const &value) {
+          using OptionType = std::remove_cvref_t<decltype(value)>;
+          if constexpr (!std::is_same_v<OptionType,T>) {
+            throw std::runtime_error(std::string("Scalar output option type mismatch: ")+name);
+          }
+        });
+      }
+      if (dims == DIMS_COLUMN) add_output_attribute(attributes,{"coordinates",std::string("z")},name);
+      if (dims == DIMS_SURFACE) add_output_attribute(attributes,{"coordinates",std::string("y x")},name);
+      if (dims == DIMS_3D) add_output_attribute(attributes,{"coordinates",std::string("z y x")},name);
+      auto existing = std::find_if(output_vars.begin(),output_vars.end(),[&] (auto const &var) { return var.name == name; });
+      if (existing == output_vars.end()) {
+        output_vars.push_back({name,dims,get_type_hash<T>(),{}});
+        existing = output_vars.end()-1;
+      } else if (existing->dims != dims || existing->type_hash != get_type_hash<T>()) {
+        throw std::runtime_error(std::string("Output variable re-registered with different type or dimensions: ")+name);
+      }
+      for (auto &attribute : attributes) add_output_attribute(existing->attributes,std::move(attribute),name);
     }
 
 
-    // Register an option to be written as a NetCDF global attribute and overwritten from restart files.
+    // Register an option to be written as a global attribute and overwritten from restart files.
     // The option must exist before registration so its type is known and preserved during restart.
     void register_output_option( std::string name ) {
       if (!option_exists(name)) throw std::runtime_error(std::string("Option not found: ")+name);
@@ -703,38 +782,38 @@ namespace core {
     }
 
 
-    // Register a function to write output variables to NetCDF files
-    // The function must take a Coupler reference and a yakl::SimplePNetCDF reference as its arguments
+    // Register a function to write additional output variables
+    // The function must take a Coupler reference and a core::FileIO reference as its arguments
     // The function is called during output operations to write additional variables to the NetCDF file
-    // The function signature is: void func( core::Coupler &coupler , yakl::SimplePNetCDF &nc )
+    // The function signature is: void func( core::Coupler &coupler , core::FileIO &file )
     // The function must be registered before any output operations are performed
     // Multiple functions can be registered and they will be called in the order they were registered
     // This allows for modular output operations where different modules can write their own variables
     //  to the same NetCDF file
     // The function is responsible for writing its own variables to the NetCDF file using the provided
-    //  yakl::SimplePNetCDF object
+    //  core::FileIO object
     // The function can access coupler data and variables using the provided Coupler reference
-    // The SimplePNetCDF object is already opened for writing when the function is called
+    // The FileIO object is already opened for writing when the function is called
     void register_write_output_module( std::function<void(core::Coupler &coupler ,
-                                                          yakl::SimplePNetCDF &nc)> func ) {
+                                                          core::FileIO &nc)> func ) {
       out_write_funcs.push_back( func );
     };
 
 
-    // Register a function to overwrite coupler variables from NetCDF files during restart operations
-    // The function must take a Coupler reference and a yakl::SimplePNetCDF reference as its arguments
+    // Register a function to overwrite coupler variables from restart files
+    // The function must take a Coupler reference and a core::FileIO reference as its arguments
     // The function is called during restart read operations to overwrite coupler variables
-    // The function signature is: void func( core::Coupler &coupler , yakl::SimplePNetCDF &nc )
+    // The function signature is: void func( core::Coupler &coupler , core::FileIO &file )
     // The function must be registered before any restart read operations are performed
     // Multiple functions can be registered and they will be called in the order they were registered
     // This allows for modular restart operations where different modules can overwrite their own variables
     //  from the same NetCDF file
     // The function is responsible for reading its own variables from the NetCDF file using the provided
-    //  yakl::SimplePNetCDF object
+    //  core::FileIO object
     // The function can access coupler data and variables using the provided Coupler reference
-    // The SimplePNetCDF object is already opened for reading when the function is called
+    // The FileIO object is already opened for reading when the function is called
     void register_overwrite_with_restart_module( std::function<void(core::Coupler &coupler ,
-                                                                    yakl::SimplePNetCDF &nc)> func ) {
+                                                                    core::FileIO &nc)> func ) {
       restart_read_funcs.push_back( func );
     };
 
@@ -961,8 +1040,8 @@ namespace core {
     // Write output/restart file with the given prefix
     // prefix  : Prefix for the output file name
     // verbose : Whether to print status messages (default: true)
-    // The output file is written in NetCDF format using yakl::SimplePNetCDF
-    // The file name is constructed as prefix_XXXXXXXX.nc where XXXXXXXX is a zero-padded file counter
+    // The output file uses the backend selected when portUrb was configured
+    // The file name is constructed as prefix_XXXXXXXX followed by the backend extension
     // The file contains the coupler's standard fields and any registered output variables
     // The standard fields include density_dry, uvel, vvel, wvel, temperature, and tracers
     // The file also contains metadata such as elapsed time and file counter
@@ -990,16 +1069,19 @@ namespace core {
       //////////////////////////////////////////////////////
       // FILE OPERATIONS
       //////////////////////////////////////////////////////
-      yakl::SimplePNetCDF nc(par_comm.get_mpi_comm()); // Create SimplePNetCDF object with the coupler's MPI communicator
+      auto const file_io_backend = get_option<std::string>("file_io_backend",core::FileIO::default_backend());
+      auto const compression_min = get_option<int>("adios2_compression_min_bytes",1048576);
+      core::FileIO nc(par_comm.get_mpi_comm(),file_io_backend,compression_min);
       std::stringstream fname; // String stream to construct file name
-      fname << prefix << "_" << std::setw(8) << std::setfill('0') << file_counter << ".nc";
+      fname << prefix << "_" << std::setw(8) << std::setfill('0') << file_counter
+            << (file_io_backend == "adios2" ? ".bp" : ".nc");
       MPI_Info info; // Create MPI_Info object for I/O hints
       MPI_Info_create(&info); // Initialize MPI_Info object
       MPI_Info_set(info, "romio_no_indep_rw",    "true");    // Set I/O hints for performance
       MPI_Info_set(info, "nc_header_align_size", "1048576"); // Set I/O hints for performance
       MPI_Info_set(info, "nc_var_align_size",    "1048576"); // Set I/O hints for performance
       // Create the NetCDF file with the specified name to overwrite existing files and use 64-bit offsets for large files
-      nc.create(fname.str() , NC_CLOBBER | NC_64BIT_DATA , info );
+      nc.create(fname.str(),0,info);
       //////////////////////////////////////////////////////
       // DIMENSIONS
       //////////////////////////////////////////////////////      
@@ -1013,10 +1095,10 @@ namespace core {
       //////////////////////////////////////////////////////
       // CREATE VARIABLES
       ////////////////////////////////////////////////////// 
-      nc.create_var<float>( "x"   , {"x"} );                // Create x-coordinate variable
-      nc.create_var<float>( "y"   , {"y"} );                // Create y-coordinate variable
-      nc.create_var<float>( "z"   , {"z"} );                // Create z-coordinate variable
-      nc.create_var<float>( "zi"  , {"zi"} );               // Create z-interface coordinate variable
+      nc.create_var<double>( "x"   , {"x"} );               // Create x-coordinate variable
+      nc.create_var<double>( "y"   , {"y"} );               // Create y-coordinate variable
+      nc.create_var<double>( "z"   , {"z"} );               // Create z-coordinate variable
+      nc.create_var<double>( "zi"  , {"zi"} );              // Create z-interface coordinate variable
       nc.create_var<float>( "density_dry"  , dimnames_3d ); // Create dry density variable
       nc.create_var<float>( "uvel"         , dimnames_3d ); // Create u-velocity variable
       nc.create_var<float>( "vvel"         , dimnames_3d ); // Create v-velocity variable
@@ -1030,9 +1112,13 @@ namespace core {
         auto name = output_vars.at(ivar).name;
         auto hash = output_vars.at(ivar).type_hash;
         auto dims = output_vars.at(ivar).dims;
-        if        (dims == DIMS_COLUMN ) {
-          if      (hash == get_type_hash<float >()) { nc.create_var<float >(name,dimnames_column ); }
-          else if (hash == get_type_hash<double>()) { nc.create_var<float >(name,dimnames_column ); }
+        if        (dims == DIMS_SCALAR ) {
+          if      (hash == get_type_hash<float >()) { nc.create_var<double>(name,{}); }
+          else if (hash == get_type_hash<double>()) { nc.create_var<double>(name,{}); }
+          else if (hash == get_type_hash<int   >()) { nc.create_var<int   >(name,{}); }
+        } else if (dims == DIMS_COLUMN ) {
+          if      (hash == get_type_hash<float >()) { nc.create_var<double>(name,dimnames_column ); }
+          else if (hash == get_type_hash<double>()) { nc.create_var<double>(name,dimnames_column ); }
           else if (hash == get_type_hash<int   >()) { nc.create_var<int   >(name,dimnames_column ); }
           else if (hash == get_type_hash<uchar >()) { nc.create_var<uchar >(name,dimnames_column ); }
         } else if (dims == DIMS_SURFACE) {
@@ -1046,6 +1132,27 @@ namespace core {
           else if (hash == get_type_hash<int   >()) { nc.create_var<int   >(name,dimnames_3d     ); }
           else if (hash == get_type_hash<uchar >()) { nc.create_var<uchar >(name,dimnames_3d     ); }
         }
+      }
+      write_output_attributes(nc,"x"           ,{{"units",std::string("m")}});
+      write_output_attributes(nc,"y"           ,{{"units",std::string("m")}});
+      write_output_attributes(nc,"z"           ,{{"units",std::string("m")}});
+      write_output_attributes(nc,"zi"          ,{{"units",std::string("m")}});
+      write_output_attributes(nc,"density_dry" ,{{"coordinates",std::string("z y x")},
+                                                   {"units",std::string("kg/m^3")}});
+      write_output_attributes(nc,"uvel"        ,{{"coordinates",std::string("z y x")},
+                                                   {"units",std::string("m/s")}});
+      write_output_attributes(nc,"vvel"        ,{{"coordinates",std::string("z y x")},
+                                                   {"units",std::string("m/s")}});
+      write_output_attributes(nc,"wvel"        ,{{"coordinates",std::string("z y x")},
+                                                   {"units",std::string("m/s")}});
+      write_output_attributes(nc,"temperature" ,{{"coordinates",std::string("z y x")},
+                                                   {"units",std::string("K")}});
+      for (int tr = 0; tr < num_tracers; tr++) {
+        write_output_attributes(nc,tracers.at(tr).name,{{"coordinates",std::string("z y x")},
+                                                        {"units",tracers.at(tr).units}});
+      }
+      for (auto const &output_var : output_vars) {
+        write_output_attributes(nc,output_var.name,output_var.attributes);
       }
       nc.writeGlobalAttribute(etime       ,"etime"       ); // Store elapsed time as file metadata
       nc.writeGlobalAttribute(file_counter,"file_counter"); // Store file counter as file metadata
@@ -1063,56 +1170,69 @@ namespace core {
       // WRITE DATA TO FILE
       ////////////////////////////////////////////////////// 
       // Create and write the x-coordinate data to file
-      float1d xloc("xloc",nx);
+      real1d xloc("xloc",nx);
       yakl::parallel_for( YAKL_AUTO_LABEL() , nx , KOKKOS_LAMBDA (int i) { xloc(i) = (i+i_beg+0.5)*dx; });
-      nc.write_all( xloc , "x" , {i_beg} );
+      nc.write_all( xloc , "x" , {i_beg} , py == 0 );
       // Create and write the y-coordinate data to file
-      float1d yloc("yloc",ny);
+      real1d yloc("yloc",ny);
       yakl::parallel_for( YAKL_AUTO_LABEL() , ny , KOKKOS_LAMBDA (int j) { yloc(j) = (j+j_beg+0.5)*dy; });
-      nc.write_all( yloc , "y" , {j_beg} );
+      nc.write_all( yloc , "y" , {j_beg} , px == 0 );
       nc.begin_indep_data(); // Begin independent data section for variables that are the same on all processes
       if (is_mainproc()) {
-        nc.write( zmid.as<float>() , "z"  ); // Write z midpoints from main process
-        nc.write( zint.as<float>() , "zi" ); // Write z interfaces from main process
+        nc.write( zmid , "z"  ); // Write z midpoints from main process
+        nc.write( zint , "zi" ); // Write z interfaces from main process
       }
       nc.end_indep_data(); // End independent data section so that other processes can write their own data
       auto &dm = get_data_manager_readonly(); // Get a reference to the read-only DataManager
       std::vector<MPI_Offset> start_3d      = {0,j_beg,i_beg}; // Starting indices for 3D variables
       std::vector<MPI_Offset> start_surface = {  j_beg,i_beg}; // Starting indices for surface variables
-      nc.write_all(dm.get<real const,3>("density_dry").as<float>(),"density_dry",start_3d); // Write dry density
-      nc.write_all(dm.get<real const,3>("uvel"       ).as<float>(),"uvel"       ,start_3d); // Write u-velocity
-      nc.write_all(dm.get<real const,3>("vvel"       ).as<float>(),"vvel"       ,start_3d); // Write v-velocity
-      nc.write_all(dm.get<real const,3>("wvel"       ).as<float>(),"wvel"       ,start_3d); // Write w-velocity
-      nc.write_all(dm.get<real const,3>("temperature").as<float>(),"temperature",start_3d); // Write temperature
+      nc.write_data_manager<real,3,float>(dm,"density_dry","density_dry",start_3d); // Write dry density
+      nc.write_data_manager<real,3,float>(dm,"uvel"       ,"uvel"       ,start_3d); // Write u-velocity
+      nc.write_data_manager<real,3,float>(dm,"vvel"       ,"vvel"       ,start_3d); // Write v-velocity
+      nc.write_data_manager<real,3,float>(dm,"wvel"       ,"wvel"       ,start_3d); // Write w-velocity
+      nc.write_data_manager<real,3,float>(dm,"temperature","temperature",start_3d); // Write temperature
       // Write tracer variables to file
       for (int i=0; i < tracer_names.size(); i++) {
-        nc.write_all(dm.get<real const,3>(tracer_names.at(i)).as<float>(),tracer_names.at(i),start_3d);
+        nc.write_data_manager<real,3,float>(dm,tracer_names.at(i),tracer_names.at(i),start_3d);
       }
       // Write user-registered output variables to file according to their specified dimensions and type
       for (int ivar = 0; ivar < output_vars.size(); ivar++) {
         auto name = output_vars.at(ivar).name;      // Get variable name
         auto hash = output_vars.at(ivar).type_hash; // Get variable type hash
         auto dims = output_vars.at(ivar).dims;      // Get variable dimensions
-        if        (dims == DIMS_COLUMN ) { // For column variables, write 1D data independently from main process
+        if        (dims == DIMS_SCALAR ) { // Scalar variables are Coupler options and are written from the main process
+          nc.begin_indep_data();
+          if (is_mainproc()) {
+            options.visit_option(name,[&] (auto const &value) {
+              using T = std::remove_cvref_t<decltype(value)>;
+              if constexpr (std::is_same_v<T,float> || std::is_same_v<T,double>) {
+                nc.write(static_cast<double>(value),name);
+              } else if constexpr (std::is_same_v<T,int>) {
+                nc.write(value,name);
+              }
+            });
+          }
+          nc.end_indep_data();
+        } else if (dims == DIMS_COLUMN ) { // For column variables, write 1D data independently from main process
           nc.begin_indep_data(); // Begin independent data section
           if (is_mainproc()) {
             // Write the column variable data based on its type
-            if      (hash == get_type_hash<float >()) { nc.write(dm.get<float  const,1>(name),name); }
-            else if (hash == get_type_hash<double>()) { nc.write(dm.get<double const,1>(name).as<float>(),name); }
-            else if (hash == get_type_hash<int   >()) { nc.write(dm.get<int    const,1>(name),name); }
-            else if (hash == get_type_hash<uchar >()) { nc.write(dm.get<uchar  const,1>(name),name); }
+            if      (hash == get_type_hash<float >()) { nc.write_data_manager<float ,1,double>(dm,name,name); }
+            else if (hash == get_type_hash<double>()) { nc.write_data_manager<double,1,double>(dm,name,name); }
+            else if (hash == get_type_hash<int   >()) { nc.write_data_manager<int   ,1,int   >(dm,name,name); }
+            else if (hash == get_type_hash<uchar >()) { nc.write_data_manager<uchar ,1,uchar >(dm,name,name); }
           }
           nc.end_indep_data(); // End independent data section
         } else if (dims == DIMS_SURFACE) { // For surface variables, write 2D data from each process
-          if      (hash == get_type_hash<float >()) { nc.write_all(dm.get<float  const,2>(name),name,start_surface); }
-          else if (hash == get_type_hash<double>()) { nc.write_all(dm.get<double const,2>(name).as<float>(),name,start_surface); }
-          else if (hash == get_type_hash<int   >()) { nc.write_all(dm.get<int    const,2>(name),name,start_surface); }
-          else if (hash == get_type_hash<uchar >()) { nc.write_all(dm.get<uchar  const,2>(name),name,start_surface); }
+          if      (hash == get_type_hash<float >()) { nc.write_data_manager<float ,2,float>(dm,name,name,start_surface); }
+          else if (hash == get_type_hash<double>()) { nc.write_data_manager<double,2,float>(dm,name,name,start_surface); }
+          else if (hash == get_type_hash<int   >()) { nc.write_data_manager<int   ,2,int  >(dm,name,name,start_surface); }
+          else if (hash == get_type_hash<uchar >()) { nc.write_data_manager<uchar ,2,uchar>(dm,name,name,start_surface); }
         } else if (dims == DIMS_3D     ) { // For 3D variables, write 3D data from each process
-          if      (hash == get_type_hash<float >()) { nc.write_all(dm.get<float  const,3>(name),name,start_3d); }
-          else if (hash == get_type_hash<double>()) { nc.write_all(dm.get<double const,3>(name).as<float>(),name,start_3d); }
-          else if (hash == get_type_hash<int   >()) { nc.write_all(dm.get<int    const,3>(name),name,start_3d); }
-          else if (hash == get_type_hash<uchar >()) { nc.write_all(dm.get<uchar  const,3>(name),name,start_3d); }
+          if      (hash == get_type_hash<float >()) { nc.write_data_manager<float ,3,float>(dm,name,name,start_3d); }
+          else if (hash == get_type_hash<double>()) { nc.write_data_manager<double,3,float>(dm,name,name,start_3d); }
+          else if (hash == get_type_hash<int   >()) { nc.write_data_manager<int   ,3,int  >(dm,name,name,start_3d); }
+          else if (hash == get_type_hash<uchar >()) { nc.write_data_manager<uchar ,3,uchar>(dm,name,name,start_3d); }
         }
       }
       // Execute the user-registered output functions to write any additional data to the file
@@ -1135,7 +1255,7 @@ namespace core {
 
 
     // Overwrite the coupler's data with values read from a restart file specified in the coupler options.
-    // The restart file is read in NetCDF format using yakl::SimplePNetCDF.
+    // The restart file is read using the backend selected when portUrb was configured.
     // The function reads standard coupler fields and any registered restart read functions.
     // Standard fields include density_dry, uvel, vvel, wvel, temperature, and tracers.
     // The function also reads any registered output variables automatically based on their dimensions and types.
@@ -1150,8 +1270,10 @@ namespace core {
       int i_beg = get_i_beg(); // Get starting index in x direction for this MPI process (inclusive)
       int j_beg = get_j_beg(); // Get starting index in y direction for this MPI process (inclusive)
       auto tracer_names = get_tracer_names();
-      yakl::SimplePNetCDF nc(par_comm.get_mpi_comm()); // Create SimplePNetCDF object with the coupler's MPI communicator
-      nc.open( get_option<std::string>("restart_file") , NC_NOWRITE ); // Open the restart file in read-only mode
+      auto const file_io_backend = get_option<std::string>("file_io_backend",core::FileIO::default_backend());
+      auto const compression_min = get_option<int>("adios2_compression_min_bytes",1048576);
+      core::FileIO nc(par_comm.get_mpi_comm(),file_io_backend,compression_min);
+      nc.open(get_option<std::string>("restart_file")); // Open the restart file in read-only mode
       real etime = 0;
       nc.readGlobalAttribute(etime       ,"etime"       ); // Read elapsed time from file metadata
       nc.readGlobalAttribute(file_counter,"file_counter"); // Read file counter from file metadata
@@ -1168,20 +1290,27 @@ namespace core {
       std::vector<MPI_Offset> start_3d      = {0,j_beg,i_beg}; // Starting indices for 3D variables
       std::vector<MPI_Offset> start_surface = {  j_beg,i_beg}; // Starting indices for surface variables
       std::vector<MPI_Offset> start_column  = {0            }; // Starting index for column variables
-      auto read_real = [&] (auto const &field, std::string const &name, std::vector<MPI_Offset> const &start) {
+      auto read_real32 = [&] (auto const &field, std::string const &name, std::vector<MPI_Offset> const &start) {
+        using ValueType = typename std::remove_cvref_t<decltype(field)>::non_const_value_type;
         auto field_float = field.template as<float>();
         nc.read_all(field_float,name,start);
-        field_float.template as<real>().deep_copy_to(field);
+        field_float.template as<ValueType>().deep_copy_to(field);
       };
-      read_real(dm.get<real,3>("density_dry"),"density_dry",start_3d); // Read dry density
-      read_real(dm.get<real,3>("uvel"       ),"uvel"       ,start_3d); // Read u-velocity
-      read_real(dm.get<real,3>("vvel"       ),"vvel"       ,start_3d); // Read v-velocity
-      read_real(dm.get<real,3>("wvel"       ),"wvel"       ,start_3d); // Read w-velocity
-      read_real(dm.get<real,3>("temperature"),"temperature",start_3d); // Read temperature
+      auto read_real64 = [&] (auto const &field, std::string const &name, std::vector<MPI_Offset> const &start) {
+        using ValueType = typename std::remove_cvref_t<decltype(field)>::non_const_value_type;
+        auto field_double = field.template as<double>();
+        nc.read_all(field_double,name,start);
+        field_double.template as<ValueType>().deep_copy_to(field);
+      };
+      read_real32(dm.get<real,3>("density_dry"),"density_dry",start_3d); // Read dry density
+      read_real32(dm.get<real,3>("uvel"       ),"uvel"       ,start_3d); // Read u-velocity
+      read_real32(dm.get<real,3>("vvel"       ),"vvel"       ,start_3d); // Read v-velocity
+      read_real32(dm.get<real,3>("wvel"       ),"wvel"       ,start_3d); // Read w-velocity
+      read_real32(dm.get<real,3>("temperature"),"temperature",start_3d); // Read temperature
       // Read tracer variables from file
       for (int i=0; i < tracer_names.size(); i++) {
         if (nc.var_exists(tracer_names.at(i))) {
-          read_real(dm.get<real,3>(tracer_names.at(i)),tracer_names.at(i),start_3d);
+          read_real32(dm.get<real,3>(tracer_names.at(i)),tracer_names.at(i),start_3d);
         }
       }
       // Read user-registered output variables from file according to their specified dimensions and type
@@ -1189,19 +1318,25 @@ namespace core {
         auto name = output_vars.at(ivar).name;
         auto hash = output_vars.at(ivar).type_hash;
         auto dims = output_vars.at(ivar).dims;
-        if        (dims == DIMS_COLUMN ) {
-          if      (hash == get_type_hash<float >()) { nc.read_all(dm.get<float ,1>(name),name,start_column); }
-          else if (hash == get_type_hash<double>()) { read_real(dm.get<double,1>(name),name,start_column); }
+        if        (dims == DIMS_SCALAR ) {
+          nc.begin_indep_data();
+          if      (hash == get_type_hash<float >()) { double value; nc.read(value,name); set_option<float >(name,value); }
+          else if (hash == get_type_hash<double>()) { double value; nc.read(value,name); set_option<double>(name,value); }
+          else if (hash == get_type_hash<int   >()) { int    value; nc.read(value,name); set_option<int   >(name,value); }
+          nc.end_indep_data();
+        } else if (dims == DIMS_COLUMN ) {
+          if      (hash == get_type_hash<float >()) { read_real64(dm.get<float ,1>(name),name,start_column); }
+          else if (hash == get_type_hash<double>()) { read_real64(dm.get<double,1>(name),name,start_column); }
           else if (hash == get_type_hash<int   >()) { nc.read_all(dm.get<int   ,1>(name),name,start_column); }
           else if (hash == get_type_hash<uchar >()) { nc.read_all(dm.get<uchar ,1>(name),name,start_column); }
         } else if (dims == DIMS_SURFACE) {
           if      (hash == get_type_hash<float >()) { nc.read_all(dm.get<float ,2>(name),name,start_surface); }
-          else if (hash == get_type_hash<double>()) { read_real(dm.get<double,2>(name),name,start_surface); }
+          else if (hash == get_type_hash<double>()) { read_real32(dm.get<double,2>(name),name,start_surface); }
           else if (hash == get_type_hash<int   >()) { nc.read_all(dm.get<int   ,2>(name),name,start_surface); }
           else if (hash == get_type_hash<uchar >()) { nc.read_all(dm.get<uchar ,2>(name),name,start_surface); }
         } else if (dims == DIMS_3D     ) {
           if      (hash == get_type_hash<float >()) { nc.read_all(dm.get<float ,3>(name),name,start_3d); }
-          else if (hash == get_type_hash<double>()) { read_real(dm.get<double,3>(name),name,start_3d); }
+          else if (hash == get_type_hash<double>()) { read_real32(dm.get<double,3>(name),name,start_3d); }
           else if (hash == get_type_hash<int   >()) { nc.read_all(dm.get<int   ,3>(name),name,start_3d); }
           else if (hash == get_type_hash<uchar >()) { nc.read_all(dm.get<uchar ,3>(name),name,start_3d); }
         }

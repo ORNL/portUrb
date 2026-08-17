@@ -58,9 +58,18 @@ namespace custom_modules {
     if (! coupler.option_exists("kappa_d")) coupler.set_option<real>("kappa_d",kappa_d);
     if (! coupler.option_exists("cv_v"   )) coupler.set_option<real>("cv_v"   ,cv_v   );
     if (! coupler.option_exists("C0"     )) coupler.set_option<real>("C0"     ,C0     );
-    for (auto const &name : {"R_d", "cp_d", "R_v", "cp_v", "p0", "grav", "cv_d", "gamma_d", "kappa_d", "cv_v", "C0"}) {
-      coupler.register_output_option(name);
-    }
+    coupler.register_output_variable<real>("R_d"    ,core::Coupler::DIMS_SCALAR,{{"units",std::string("J kg^-1 K^-1")}});
+    coupler.register_output_variable<real>("cp_d"   ,core::Coupler::DIMS_SCALAR,{{"units",std::string("J kg^-1 K^-1")}});
+    coupler.register_output_variable<real>("R_v"    ,core::Coupler::DIMS_SCALAR,{{"units",std::string("J kg^-1 K^-1")}});
+    coupler.register_output_variable<real>("cp_v"   ,core::Coupler::DIMS_SCALAR,{{"units",std::string("J kg^-1 K^-1")}});
+    coupler.register_output_variable<real>("p0"     ,core::Coupler::DIMS_SCALAR,{{"units",std::string("Pa")}});
+    coupler.register_output_variable<real>("grav"   ,core::Coupler::DIMS_SCALAR,{{"units",std::string("m s^-2")}});
+    coupler.register_output_variable<real>("cv_d"   ,core::Coupler::DIMS_SCALAR,{{"units",std::string("J kg^-1 K^-1")}});
+    coupler.register_output_variable<real>("gamma_d",core::Coupler::DIMS_SCALAR,{{"units",std::string("1")}});
+    coupler.register_output_variable<real>("kappa_d",core::Coupler::DIMS_SCALAR,{{"units",std::string("1")}});
+    coupler.register_output_variable<real>("cv_v"   ,core::Coupler::DIMS_SCALAR,{{"units",std::string("J kg^-1 K^-1")}});
+    coupler.register_output_variable<real>("C0"     ,core::Coupler::DIMS_SCALAR,
+                                           {{"units",std::string("Pa (kg m^-3 K)^-gamma_d")}});
     // Variables
     auto &dm = coupler.get_data_manager_readwrite();
     auto dims3d = {nz,ny,nx};

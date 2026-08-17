@@ -54,7 +54,7 @@ namespace modules {
         imm_theta(0    ,j,i) = imm_theta(1      ,j,i);
         imm_theta(hs+nz,j,i) = imm_theta(hs+nz-1,j,i);
       });
-      coupler.register_write_output_module( [=] (core::Coupler &coupler , yakl::SimplePNetCDF &nc) {
+      coupler.register_write_output_module( [=] (core::Coupler &coupler , core::FileIO &nc) {
         using yakl::SimpleBounds;
         auto nz        = coupler.get_nz();
         auto ny        = coupler.get_ny();
@@ -65,16 +65,31 @@ namespace modules {
         auto imm_theta = dm.get<real const,3>("surface_flux_imm_theta");
         nc.redef();
         if (! nc.dim_exists("zp2")) nc.create_dim( "zp2" , nz+2 );
-        nc.create_var<real>( "surface_flux_imm_theta" , {"zp2","y","x"} );
+        nc.create_var<real >( "zp2"                   , {"zp2"} );
+        nc.create_var<float>( "surface_flux_imm_theta" , {"zp2","y","x"} );
+        nc.writeVariableAttribute(std::string("m")      ,"zp2"                  ,"units");
+        nc.writeVariableAttribute(std::string("zp2 y x"),"surface_flux_imm_theta","coordinates");
+        nc.writeVariableAttribute(std::string("K")      ,"surface_flux_imm_theta","units");
         nc.enddef();
-        real3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
+        auto const zmid = coupler.get_zmid();
+        auto const dz   = coupler.get_dz();
+        real1d zp2("zp2_output",nz+2);
+        yakl::parallel_for(YAKL_AUTO_LABEL(),nz+2,KOKKOS_LAMBDA (int k) {
+          if      (k == 0   ) zp2(k) = zmid(0   )-dz(0   );
+          else if (k == nz+1) zp2(k) = zmid(nz-1)+dz(nz-1);
+          else                zp2(k) = zmid(k-1);
+        });
+        float3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
           imm_theta_loc(k,j,i) = imm_theta(k,hs+j,hs+i);
         });
+        nc.begin_indep_data();
+        if (coupler.is_mainproc()) nc.write(zp2,"zp2");
+        nc.end_indep_data();
         std::vector<MPI_Offset> start = {(MPI_Offset)0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
         nc.write_all( imm_theta_loc , "surface_flux_imm_theta" , start );
       });
-      coupler.register_overwrite_with_restart_module( [=] (core::Coupler &coupler , yakl::SimplePNetCDF &nc) {
+      coupler.register_overwrite_with_restart_module( [=] (core::Coupler &coupler , core::FileIO &nc) {
         auto nz        = coupler.get_nz();
         auto ny        = coupler.get_ny();
         auto nx        = coupler.get_nx();
@@ -82,11 +97,11 @@ namespace modules {
         auto j_beg     = coupler.get_j_beg();
         auto &dm       = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
         auto imm_theta = dm.get<real,3>("surface_flux_imm_theta");
-        real3d imm_theta_loc("imm_theta_loc",nz+2,ny,nx);
+        float3d imm_theta_file("imm_theta_file",nz+2,ny,nx);
         std::vector<MPI_Offset> start = {(MPI_Offset)0,(MPI_Offset)j_beg,(MPI_Offset)i_beg};
-        nc.read_all( imm_theta_loc , "surface_flux_imm_theta" , start );
+        nc.read_all( imm_theta_file , "surface_flux_imm_theta" , start );
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+2,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-          imm_theta(k,hs+j,hs+i) = imm_theta_loc(k,j,i);
+          imm_theta(k,hs+j,hs+i) = imm_theta_file(k,j,i);
         });
         core::MultiField<real,3> fields;
         fields.add_field(imm_theta);

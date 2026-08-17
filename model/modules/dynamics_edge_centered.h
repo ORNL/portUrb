@@ -1577,8 +1577,8 @@ namespace modules {
       // Create an output module to be called during coupler.write_output() to write hydrostatic profiles
       //   and write perturbations of potential temperature, pressure, and density to file
       // coupler : reference to the coupler object
-      // nc      : reference to the SimplePNetCDF object for writing output (open and not in define mode)
-      coupler.register_write_output_module( [=] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
+      // nc      : reference to the FileIO object for writing output (open and not in define mode)
+      coupler.register_write_output_module( [=] (core::Coupler &coupler, core::FileIO &nc) {
         auto i_beg = coupler.get_i_beg(); // Get local starting indices in x and y directions
         auto j_beg = coupler.get_j_beg(); // Get local starting indices in x and y directions
         auto nz    = coupler.get_nz();    // Get local number of cells in z-direction (not including halos)
@@ -1586,19 +1586,37 @@ namespace modules {
         auto nx    = coupler.get_nx();    // Get local number of cells in x-direction (not including halos)
         nc.redef();  // re-enter define mode to add new dimensions and variables
         nc.create_dim( "z_halo" , coupler.get_nz()+2*hs );         // Vertical dimension with halos
+        nc.create_var<real>( "z_halo"             , {"z_halo"});    // Define haloed vertical coordinate
         nc.create_var<real>( "hy_dens_cells"     , {"z_halo"});    // Define hydrostatic density variable
         nc.create_var<real>( "hy_theta_cells"    , {"z_halo"});    // Define hydrostatic potential temperature variable
         nc.create_var<real>( "hy_pressure_cells" , {"z_halo"});    // Define hydrostatic pressure variable
+        nc.writeVariableAttribute(std::string("m")       ,"z_halo"            ,"units");
+        nc.writeVariableAttribute(std::string("z_halo")  ,"hy_dens_cells"     ,"coordinates");
+        nc.writeVariableAttribute(std::string("kg/m^3")  ,"hy_dens_cells"     ,"units");
+        nc.writeVariableAttribute(std::string("z_halo")  ,"hy_theta_cells"    ,"coordinates");
+        nc.writeVariableAttribute(std::string("K")       ,"hy_theta_cells"    ,"units");
+        nc.writeVariableAttribute(std::string("z_halo")  ,"hy_pressure_cells" ,"coordinates");
+        nc.writeVariableAttribute(std::string("Pa")      ,"hy_pressure_cells" ,"units");
+        nc.writeGlobalAttribute(hs,"dycore_hs");
         // nc.create_var<real>( "theta_pert"        , {"z","y","x"}); // Define potential temperature perturbation variable
         // nc.create_var<real>( "pressure_pert"     , {"z","y","x"}); // Define pressure perturbation variable
         // nc.create_var<real>( "density_pert"      , {"z","y","x"}); // Define density perturbation variable
         nc.enddef(); // Exit define mode to write data
+        auto const zmid = coupler.get_zmid();
+        auto const dz   = coupler.get_dz();
+        real1d z_halo("z_halo_output",nz+2*hs);
+        yakl::parallel_for(YAKL_AUTO_LABEL(),nz+2*hs,KOKKOS_LAMBDA (int k) {
+          if      (k < hs   ) z_halo(k) = zmid(0    )-(hs-k)*dz(0   );
+          else if (k >= hs+nz) z_halo(k) = zmid(nz-1)+(k-hs-nz+1)*dz(nz-1);
+          else                  z_halo(k) = zmid(k-hs);
+        });
         nc.begin_indep_data(); // Enter independent data mode to write 1-D arrays from main task only
         auto &dm = coupler.get_data_manager_readonly(); // Get data manager as read-only
         // Write hydrostatic profiles from main task only
-        if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_dens_cells"    ) , "hy_dens_cells"     );
-        if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_theta_cells"   ) , "hy_theta_cells"    );
-        if (coupler.is_mainproc()) nc.write( dm.get<real const,1>("hy_pressure_cells") , "hy_pressure_cells" );
+        if (coupler.is_mainproc()) nc.write( z_halo                                      , "z_halo"           );
+        if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_dens_cells"    ,"hy_dens_cells"    );
+        if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_theta_cells"   ,"hy_theta_cells"   );
+        if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_pressure_cells","hy_pressure_cells");
         nc.end_indep_data(); // Exit independent data mode to write 3-D perturbation arrays
         // // Allocate state and tracer arrays, and convert coupler data to dynamics format to compute perturbations
         // real4d state  ("state"  ,num_state  ,nz,ny,nx);
@@ -1629,8 +1647,8 @@ namespace modules {
 
       // Register a restart module to read in hydrostatic profiles from file
       // coupler : reference to the coupler object
-      // nc      : reference to the SimplePNetCDF object for reading restart data (opened)
-      coupler.register_overwrite_with_restart_module( [=, this] (core::Coupler &coupler, yakl::SimplePNetCDF &nc) {
+      // nc      : reference to the FileIO object for reading restart data (opened)
+      coupler.register_overwrite_with_restart_module( [=, this] (core::Coupler &coupler, core::FileIO &nc) {
         auto &dm = coupler.get_data_manager_readwrite();
         nc.read_all(dm.get<real,1>("hy_dens_cells"    ),"hy_dens_cells"    ,{0});
         nc.read_all(dm.get<real,1>("hy_theta_cells"   ),"hy_theta_cells"   ,{0});
