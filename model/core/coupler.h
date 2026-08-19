@@ -8,6 +8,7 @@
 #include "Options.h"
 #include "ParallelComm.h"
 #include <cstdint>
+#include <limits>
 #include <variant>
 
 // The Coupler class holds everything a component or module of this model would need in order to perform its
@@ -94,6 +95,42 @@ namespace core {
                              // Y: 0 = south;  1 = middle;  2 = north
                              // X: 0 = west ;  1 = center;  3 = east 
 
+#ifdef PORTURB_HAS_ADIOS2
+    // Give readers case-specific thermodynamic expressions through ordinary ADIOS2 metadata.
+    std::string declared_derived_variables() const {
+      std::ostringstream density_expression;
+      density_expression << "density_dry";
+      bool water_vapor_exists = false;
+      for (auto const &tracer : tracers) {
+        if (tracer.adds_mass) density_expression << " + " << tracer.name;
+        if (tracer.name == "water_vapor") water_vapor_exists = true;
+      }
+
+      auto const R_d   = get_option<real>("R_d");
+      auto const R_v   = get_option<real>("R_v");
+      auto const gamma = get_option<real>("gamma_d");
+      auto const C0    = get_option<real>("C0");
+      auto const hs    = get_option<int>("dycore_hs");
+
+      std::ostringstream derived_variables;
+      derived_variables << std::setprecision(std::numeric_limits<real>::max_digits10);
+      derived_variables << "dycore_hs:int32 = " << hs << "; "
+                        << "density:float64[z,y,x] = " << density_expression.str() << "; "
+                        << "pressure:float64[z,y,x] = temperature * (density_dry * " << R_d;
+      if (water_vapor_exists) derived_variables << " + water_vapor * " << R_v;
+      derived_variables << "); "
+                        << "theta:float64[z,y,x] = (pressure / " << C0 << ")**(1.0 / " << gamma
+                        << ") / density; "
+                        << "density_pert:float64[z,y,x] = density - "
+                        << "hy_dens_cells[dycore_hs:dycore_hs+raw_dims[\"z\"],None,None]; "
+                        << "pressure_pert:float64[z,y,x] = pressure - "
+                        << "hy_pressure_cells[dycore_hs:dycore_hs+raw_dims[\"z\"],None,None]; "
+                        << "theta_pert:float64[z,y,x] = theta - "
+                        << "hy_theta_cells[dycore_hs:dycore_hs+raw_dims[\"z\"],None,None]";
+      return derived_variables.str();
+    }
+#endif
+
     static void add_output_attribute( std::vector<OutputAttribute> &attributes, OutputAttribute attribute,
                                       std::string const &variable_name ) {
       auto const existing = std::find_if(attributes.begin(),attributes.end(),[&] (auto const &entry) {
@@ -134,6 +171,8 @@ namespace core {
       this->inform_timer = std::chrono::high_resolution_clock::now();
       options.add_option<std::string>("file_io_backend",core::FileIO::default_backend());
       options.add_option<int>("adios2_compression_min_bytes",1048576);
+      options.add_option<std::string>("adios2_compression_compressor",core::FileIO::default_compression_compressor());
+      options.add_option<int>("adios2_compression_clevel",core::FileIO::default_compression_clevel());
       this->nx_glob      = 0;
       this->ny_glob      = 0;
       this->nx           = 0;
@@ -1071,7 +1110,12 @@ namespace core {
       //////////////////////////////////////////////////////
       auto const file_io_backend = get_option<std::string>("file_io_backend",core::FileIO::default_backend());
       auto const compression_min = get_option<int>("adios2_compression_min_bytes",1048576);
-      core::FileIO nc(par_comm.get_mpi_comm(),file_io_backend,compression_min);
+      auto const compression_compressor = get_option<std::string>("adios2_compression_compressor",
+                                                                   core::FileIO::default_compression_compressor());
+      auto const compression_clevel = get_option<int>("adios2_compression_clevel",
+                                                       core::FileIO::default_compression_clevel());
+      core::FileIO nc(par_comm.get_mpi_comm(),file_io_backend,compression_min,
+                      compression_compressor,compression_clevel);
       std::stringstream fname; // String stream to construct file name
       fname << prefix << "_" << std::setw(8) << std::setfill('0') << file_counter
             << (file_io_backend == "adios2" ? ".bp" : ".nc");
@@ -1156,6 +1200,12 @@ namespace core {
       }
       nc.writeGlobalAttribute(etime       ,"etime"       ); // Store elapsed time as file metadata
       nc.writeGlobalAttribute(file_counter,"file_counter"); // Store file counter as file metadata
+#ifdef PORTURB_HAS_ADIOS2
+      if (file_io_backend == "adios2" && option_exists("dycore_hs") && dm.entry_exists("hy_dens_cells") &&
+          dm.entry_exists("hy_theta_cells") && dm.entry_exists("hy_pressure_cells")) {
+        nc.writeGlobalAttribute(declared_derived_variables(),"declare_derived_variables");
+      }
+#endif
       // Write registered options as global attributes while the file is still in define mode.
       for (auto const &name : output_options) {
         options.visit_option(name,[&] (auto const &value) {
@@ -1272,7 +1322,12 @@ namespace core {
       auto tracer_names = get_tracer_names();
       auto const file_io_backend = get_option<std::string>("file_io_backend",core::FileIO::default_backend());
       auto const compression_min = get_option<int>("adios2_compression_min_bytes",1048576);
-      core::FileIO nc(par_comm.get_mpi_comm(),file_io_backend,compression_min);
+      auto const compression_compressor = get_option<std::string>("adios2_compression_compressor",
+                                                                   core::FileIO::default_compression_compressor());
+      auto const compression_clevel = get_option<int>("adios2_compression_clevel",
+                                                       core::FileIO::default_compression_clevel());
+      core::FileIO nc(par_comm.get_mpi_comm(),file_io_backend,compression_min,
+                      compression_compressor,compression_clevel);
       nc.open(get_option<std::string>("restart_file")); // Open the restart file in read-only mode
       real etime = 0;
       nc.readGlobalAttribute(etime       ,"etime"       ); // Read elapsed time from file metadata

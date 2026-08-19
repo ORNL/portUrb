@@ -82,6 +82,33 @@ void check_output_metadata(core::Coupler const & coupler, std::string const & fi
   require(coupler,max_abs(coupler,z_halo_error) == 0,"z_halo coordinate does not replicate edge grid spacing");
 }
 
+void check_declared_derived_variables(core::Coupler const & coupler, std::string const & filename) {
+#ifdef PORTURB_HAS_ADIOS2
+  core::FileIO file(coupler.get_parallel_comm().get_mpi_comm(),core::FileIO::default_backend());
+  file.open(filename);
+  std::string derived;
+  file.readGlobalAttribute(derived,"declare_derived_variables");
+  file.close();
+  require(coupler,derived.find("density:float64[z,y,x] = density_dry; ") != std::string::npos,
+          "non-mass-adding water vapor was included in derived total density");
+  require(coupler,derived.find("pressure:float64[z,y,x] = temperature * (density_dry * ") != std::string::npos,
+          "derived pressure does not use the dycore equation of state");
+  require(coupler,derived.find(" + water_vapor * ") != std::string::npos,
+          "derived pressure omits water-vapor gas pressure");
+  require(coupler,derived.find("theta:float64[z,y,x] = (pressure / ") != std::string::npos,
+          "derived potential temperature is missing");
+  require(coupler,derived.find("density_pert:float64[z,y,x] = density - hy_dens_cells[") != std::string::npos,
+          "derived density perturbation does not use the interior hydrostatic profile");
+  require(coupler,derived.find("pressure_pert:float64[z,y,x] = pressure - hy_pressure_cells[") != std::string::npos,
+          "derived pressure perturbation is missing");
+  require(coupler,derived.find("theta_pert:float64[z,y,x] = theta - hy_theta_cells[") != std::string::npos,
+          "derived potential-temperature perturbation is missing");
+#else
+  (void) coupler;
+  (void) filename;
+#endif
+}
+
 void check_unmanaged_output_rejected(core::Coupler const & coupler) {
   core::FileIO file(coupler.get_parallel_comm().get_mpi_comm(),core::FileIO::default_backend());
   std::string const filename = "anelastic_dycore_ownership_test."+
@@ -102,36 +129,16 @@ void check_unmanaged_output_rejected(core::Coupler const & coupler) {
   file.close();
 }
 
-void check_blosc_compression(core::Coupler const & coupler, std::string const & filename) {
-#if defined(PORTURB_HAS_ADIOS2) && defined(PORTURB_HAS_BLOSC2)
+void check_native_compression(core::Coupler const & coupler, std::string const & filename) {
+#ifdef PORTURB_HAS_ADIOS2
   core::FileIO file(coupler.get_parallel_comm().get_mpi_comm(),core::FileIO::default_backend());
   file.open(filename);
-  std::string schema;
-  std::string codec;
-  std::string compressor;
-  std::string dtype;
-  file.readGlobalAttribute(schema,"codec_schema");
-  file.readVariableAttribute(codec,"density_dry","codec");
-  file.readVariableAttribute(compressor,"density_dry","codec_compressor");
-  file.readVariableAttribute(dtype,"density_dry","codec_dtype");
-  require(coupler,schema == "bp5-codec-v1","large BP5 output does not declare the codec schema");
-  require(coupler,codec == "blosc2","large BP5 density variable does not use out-of-band Blosc2 compression");
-  require(coupler,compressor == "lz4","large BP5 density variable does not use the LZ4 compressor");
-  require(coupler,dtype == "<f4","large BP5 density variable does not declare its logical float32 dtype");
-  require(coupler,file.var_exists("density_dry/codec_block_directory"),
-          "large BP5 density variable does not contain a block directory");
-  require(coupler,!file.variable_has_operations("density_dry"),
-          "out-of-band compressed density unexpectedly contains an ADIOS2 compression operation");
+  require(coupler,file.variable_has_operations("density_dry"),
+          "large BP5 density variable does not contain a native ADIOS2 compression operation");
 
   auto const nx = coupler.get_nx();
   auto const ny = coupler.get_ny();
   auto const nz = coupler.get_nz();
-  size_t const logical_bytes = static_cast<size_t>(coupler.get_nx_glob())*coupler.get_ny_glob()*nz*sizeof(float);
-  size_t const payload_bytes = file.get_dim_size("density_dry");
-  require(coupler,payload_bytes < logical_bytes,"LZ4 density payload is not smaller than its logical float32 array");
-  if (coupler.is_mainproc()) {
-    std::cout << "density_dry LZ4 compression ratio = " << static_cast<double>(logical_bytes)/payload_bytes << std::endl;
-  }
   float3d restored("compressed_density",nz,ny,nx);
   file.read_all(restored,"density_dry",{0,static_cast<MPI_Offset>(coupler.get_j_beg()),
                                          static_cast<MPI_Offset>(coupler.get_i_beg())});
@@ -444,6 +451,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
                                       std::string(core::FileIO::default_backend() == "adios2" ? "bp" : "nc");
       coupler.write_output_file("anelastic_dycore_output_test",false);
       check_output_metadata(coupler,output_file);
+      check_declared_derived_variables(coupler,output_file);
       check_unmanaged_output_rejected(coupler);
       real const C0_before_restart = coupler.get_option<real>("C0");
       coupler.set_option<real>("C0",-1);
@@ -456,8 +464,10 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
 
   if (check_compression && core::FileIO::default_backend() == "adios2") {
     std::string const output_prefix = "anelastic_dycore_restart_test";
+    coupler.set_option<std::string>("adios2_compression_compressor","lz4hc");
+    coupler.set_option<int>("adios2_compression_clevel",7);
     coupler.write_output_file(output_prefix,false);
-    check_blosc_compression(coupler,output_prefix+"_00000000.bp");
+    check_native_compression(coupler,output_prefix+"_00000000.bp");
   }
 
   if (coupler.is_mainproc()) {

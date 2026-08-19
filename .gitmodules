@@ -19,3 +19,7 @@
 [submodule "external/c-blosc2"]
 	path = external/c-blosc2
 	url = https://github.com/Blosc/c-blosc2.git
+[submodule "external/ADIOS2"]
+	path = external/ADIOS2
+	url = https://github.com/ornladios/ADIOS2.git
+	fetchRecurseSubmodules = true

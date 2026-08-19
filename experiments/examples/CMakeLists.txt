@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.18)
 project(portUrb)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -41,4 +41,3 @@ process_target(supercell)
 process_target(tank_set)
 process_target(turbine_les_generate)
 process_target(turbine_simplest)
-

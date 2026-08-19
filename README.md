@@ -11,7 +11,7 @@ Welcome to portUrb: your friendly neighborhood portable urban flow model. The go
 ```bash
 git clone git@github.com:ORNL/portUrb.git
 cd portUrb
-git submodule update --init
+git submodule update --init --recursive
 cd build
 source machines/frontier/frontier_gpu.env
 ./cmakescript.sh ../experiments/examples
@@ -20,6 +20,69 @@ make -j8 supercell
 num_tasks=`echo "$SLURM_JOB_NUM_NODES*8" | bc`
 srun -n $num_tasks -c 1 --gpus-per-task=1 --gpu-bind=closest ./supercell ./inputs/input_supercell.yaml
 ```
+
+## Reading compressed BP5 output with Python
+
+ADIOS2 is portUrb's default file backend. Arrays of at least 1 MiB are written
+with ADIOS2's native Blosc2 operator using Zstd level 5 and bit-shuffle, so a reader whose
+ADIOS2 was built with Blosc2 decompresses them automatically. The build also
+includes BloscLZ, LZ4, and LZ4HC for files that select them. There is no
+portUrb runtime plugin or activation step.
+
+The Coupler options `adios2_compression_compressor` and
+`adios2_compression_clevel` select the compressor and its effort level. The
+compressor must be `blosclz`, `lz4`, `lz4hc`, or `zstd`, and the level must be
+an integer from 1 through 9. Their defaults are `zstd` and 5. Bit-shuffle remains
+enabled for all compressors. `adios2_compression_min_bytes` controls the
+minimum variable size to which compression is applied and defaults to 1 MiB.
+
+The standalone file-I/O correctness test and turbulence compression benchmark
+are opt-in. Set `PORTURB_ENABLE_FILE_IO_TESTS=ON` before running
+`build/cmakescript.sh` to configure their explicit build targets. They are
+excluded from the default `all` build target.
+
+The supported Python analysis runtime for portUrb output is the unofficial
+[`adios2-compressors`](https://github.com/mrnorman/adios2_compression_wheels)
+wheel distribution. It embeds ADIOS2's native Blosc2, SZ2, SZ3, and ZFP
+operators and installs them under the separate `adios2_compressors` namespace,
+so it can coexist with the upstream `adios2` package. Its compressor libraries
+are statically linked; Python readers do not need separate Blosc2, MPI, CUDA,
+or OpenMP installations.
+
+Install the architecture-matched wheel produced by that repository:
+
+```bash
+python3 -m pip install /path/to/adios2_compressors-*.whl
+```
+
+The current `cp312-abi3` wheel line supports CPython 3.12 and newer. Wheels are
+provided for manylinux2014 / `manylinux_2_17` Linux on x86-64 and ARM64, and
+for Intel and Apple Silicon Macs with macOS 11 or newer. SlickView uses these
+wheels when its existing ADIOS2 runtime cannot read portUrb's native
+compression operators.
+
+Import the compression-enabled build through its distinct namespace. The
+ordinary ADIOS2 Python API is unchanged:
+
+```python
+import adios2_compressors as adios2
+
+with adios2.FileReader("ABL_neutral_00000000.bp") as reader:
+    print(reader.available_variables())
+    density = reader.read("density_dry")
+    print(density.shape, density.min(), density.max())
+```
+
+An upstream `adios2` installation may also read these files when that build
+contains the required native compressor, but it is not the portable portUrb
+analysis baseline. Installing `adios2-compressors` does not add compressor
+support to private ADIOS2 libraries embedded in applications such as ParaView.
+
+Each dycore BP5 file contains a global `declare_derived_variables` attribute
+that declares `density`, `pressure`, `theta`, and their hydrostatic
+perturbations. The expressions are generated from the simulation's actual
+thermodynamic constants and tracer `adds_mass` settings. Readers such as
+SlickView can create the calculated fields directly from this metadata.
 
 ## Core Classes to Understand
 
