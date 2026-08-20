@@ -223,6 +223,8 @@ namespace modules {
       }
     }
 
+  public:
+    // NVCC requires functions enclosing extended host/device lambdas to be publicly accessible.
     // Equal numbers of compact eddies at different diameters do not have equal plane-averaged response: their
     // support volumes and the Fourier response of the curl kernel differ. Measure that response for the retained
     // ensemble one scale at a time, then choose the amplitude of each scale so its variance equals the exact
@@ -372,6 +374,7 @@ namespace modules {
       calibration = target_sum > 0 ? std::sqrt(target_sum/actual_sum) : 0;
     }
 
+  private:
     void advance_eddies(core::Coupler const &coupler, real dt) {
       auto zmid_host = coupler.get_zmid().createHostCopy();
       auto diameters_host = scale_diameter.createHostCopy();
