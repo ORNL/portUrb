@@ -23,10 +23,12 @@ namespace modules {
   class SyntheticTurbulentInflow {
   public:
     struct Config {
-      int  num_eddies        = 256; // Total compact eddies distributed approximately evenly among scale bands
-      int  random_seed       = 0;   // Seed for decomposition-independent deterministic eddy properties
-      real outer_length      = -1;  // Largest eddy diameter [m]; <= 0 uses 1/4 of the smaller inlet dimension
-      real wall_decay_length = -1;  // Free-slip normal-velocity decay distance [m]; <= 0 uses outer_length/2
+      int  num_eddies;        // Total compact eddies distributed approximately evenly among scale bands
+      int  random_seed;       // Seed for decomposition-independent deterministic eddy properties
+      real outer_length;      // Largest eddy diameter [m]; <= 0 uses 1/4 of the smaller inlet dimension
+      real wall_decay_length; // Free-slip normal-velocity decay distance [m]; <= 0 uses outer_length/2
+
+      Config() : num_eddies(256), random_seed(0), outer_length(-1), wall_decay_length(-1) {}
     };
 
   private:

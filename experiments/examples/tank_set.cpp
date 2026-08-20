@@ -11,6 +11,7 @@
 #include "tank_tracer_injection.h"
 #include <numeric>
 #include "edge_sponge.h"
+#include "synthetic_turbulent_inflow.h"
 
 /*
 In blender, delete the initial objects.
@@ -31,6 +32,7 @@ int main(int argc, char** argv) {
     real scale = 1./1250.;
     real dx = 0.30*scale;
     real u0 = 0.5624;
+    real turbulence_intensity = 0.10;
 
     modules::TriMesh mesh;
     mesh.load_file("/ccs/home/imn/330deg.obj");
@@ -104,6 +106,7 @@ int main(int argc, char** argv) {
     modules::LES_Closure                       les_closure;
     modules::EdgeSponge                        edge_sponge1;
     modules::EdgeSponge                        edge_sponge2;
+    modules::SyntheticTurbulentInflow          inflow;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -120,14 +123,13 @@ int main(int argc, char** argv) {
     time_averager.init        ( coupler , {"tank_tracer"});
     edge_sponge1 .set_column  ( coupler , {"density_dry","temperature"} );
     edge_sponge2 .set_column  ( coupler , {"vvel","wvel"} );
-    auto ghost_col = dycore.compute_average_ghost_column( coupler );
-    yakl::parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
-      ghost_col(dycore.idR,k) = 0;
-      ghost_col(dycore.idU,k) = u0;
-      ghost_col(dycore.idV,k) = 0;
-      ghost_col(dycore.idW,k) = 0;
-      ghost_col(dycore.idT,k) = 0;
-    });
+    real1d u_mean("synthetic_inflow_u_mean",nz);
+    real1d v_mean("synthetic_inflow_v_mean",nz);
+    real1d intensity("synthetic_inflow_intensity",nz);
+    u_mean    = u0;
+    v_mean    = 0;
+    intensity = turbulence_intensity;
+    inflow.init( coupler , dycore , u_mean , v_mean , intensity );
     custom_modules::sc_perturb( coupler );
 
     real etime = coupler.get_option<real>("elapsed_time");
@@ -195,7 +197,7 @@ int main(int argc, char** argv) {
         //   coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,utend,vtend); } , "pg_forcing" );
         // }
         coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply      (c,0,0.1,0,0);   } , "edge_sponge1"  );
-        dycore.copy_column_to_precursor_ghost_cells( coupler , ghost_col );
+        coupler.run_module( [&] (Coupler &c) { inflow.apply(c,dycore,dt); } , "synthetic_inflow" );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"         );
         // coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
         // coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );
@@ -224,4 +226,3 @@ int main(int argc, char** argv) {
   Kokkos::finalize();
   MPI_Finalize();
 }
-
