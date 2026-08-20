@@ -42,6 +42,7 @@ process_target(supercell_morr2mom)
 process_target(turbine_neutral_ensemble)
 process_target(turbine_simple)
 process_target(anelastic_dycore)
+process_target(synthetic_turbulent_inflow)
 
 if (PORTURB_ENABLE_FILE_IO_TESTS)
   if (NOT PORTURB_FILE_IO_BACKEND STREQUAL "adios2")
