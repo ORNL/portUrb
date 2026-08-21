@@ -152,8 +152,10 @@ namespace {
     real const cutoff = inflow.get_smallest_length();
     auto fractions = inflow.get_scale_energy_fraction();
     auto amplitudes = inflow.get_scale_amplitude();
+    auto counts = inflow.get_scale_eddy_count();
     require(coupler,num_scales == 2,"Synthetic inflow test did not exercise multiple inertial-range scales");
     real fraction_sum = 0;
+    int population_sum = 0;
     for (int scale = 0; scale < num_scales; scale++) {
       real const band_outer = outer_length/std::pow(2._fp,scale);
       real const band_inner = std::max(cutoff,band_outer/2);
@@ -164,9 +166,18 @@ namespace {
       require(coupler,std::isfinite(amplitudes(scale)) && amplitudes(scale) > 0,
               "Synthetic inflow produced an invalid scale-response calibration");
       fraction_sum += fractions(scale);
+      population_sum += counts(scale);
     }
     require(coupler,std::abs(fraction_sum-1) < 1.e-12,
             "Synthetic inflow inertial-range energy fractions do not sum to one");
+    require(coupler,population_sum == inflow.get_num_eddies(),
+            "Synthetic inflow band populations do not sum to the total population");
+    require(coupler,counts(1) > counts(0),
+            "Synthetic inflow did not assign more eddies to the smaller projected support");
+    real const support_0 = counts(0)*outer_length*outer_length;
+    real const support_1 = counts(1)*(outer_length/2)*(outer_length/2);
+    require(coupler,std::abs(support_0-support_1) < 0.03_fp*std::max(support_0,support_1),
+            "Synthetic inflow band populations do not provide comparable projected coverage");
   }
 
 }
@@ -227,11 +238,14 @@ int main(int argc, char **argv) {
       intensity(k) = 0.10;
     });
     modules::SyntheticTurbulentInflow::Config config;
-    config.num_eddies = 192;
+    config.minimum_eddies = 1;
+    config.cells_per_eddy = 0.5;
     config.random_seed = 731;
     config.outer_length = 120;
     config.wall_decay_length = 30;
     inflow.init(coupler,dycore,u_mean,v_mean,intensity,config);
+    require(coupler,inflow.get_num_eddies() == 2*ny_glob*nz,
+            "Synthetic inflow automatic population did not scale with the global inlet slab cells");
     check_scale_model(coupler,inflow,config.outer_length);
     edge_sponge.set_column(coupler,{"density_dry","temperature"});
 

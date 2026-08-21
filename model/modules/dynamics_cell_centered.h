@@ -6,7 +6,9 @@
 #include "MultipleFields.h"
 #include "TransformMatrices.h"
 #include "WenoLimiter.h"
+#include <functional>
 #include <sstream>
+#include <vector>
 
 namespace modules {
 
@@ -37,6 +39,24 @@ namespace modules {
     int  static constexpr idT = 4;  // Density * potential temperature
 
     typedef float FLOC; // Use single precision locally
+
+    using FluxArray = yakl::Array<FLOC ****>;
+    using FluxAdditionCallback = std::function<void(core::Coupler const &,
+                                                     real4d        const &,
+                                                     real4d        const &,
+                                                     FluxArray     const &,
+                                                     FluxArray     const &,
+                                                     FluxArray     const &,
+                                                     int                   ,
+                                                     real                  ,
+                                                     int                   ,
+                                                     int                   )>;
+
+    std::vector<FluxAdditionCallback> flux_addition_callbacks;
+
+    void register_flux_addition_callback(FluxAdditionCallback const &callback) {
+      flux_addition_callbacks.push_back(callback);
+    }
 
 
     // Increase precursor ghost-cell storage when the current sub-cycle exceeds its capacity
@@ -1030,6 +1050,11 @@ namespace modules {
         flux_z(idR,k,j,i)  = rw;          // Mass flux
         flux_z(idW,k,j,i) += p_z(k,j,i);  // Momentum flux includes pressure
       });
+
+      // Add user-specified fluxes after the dycore flux construction and before computing flux divergences.
+      for (auto const &callback : flux_addition_callbacks) {
+        callback(coupler,state,tracers,flux_x,flux_y,flux_z,num_state,dt,istage,icycle);
+      }
 
       //////////////////////////////////////////////////////////////////////////////////////////////
       // COMPUTE TENDENCIES FROM FLUX DIVERGENCES AND SOURCE TERMS

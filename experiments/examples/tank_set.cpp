@@ -119,6 +119,10 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>("bc_x2","open"     );
     les_closure  .init        ( coupler );
     dycore       .init        ( coupler );
+    custom_modules::register_tank_tracer_injection( coupler , dycore ,
+                                                    (offset_x1+disk_x/2)*scale ,
+                                                    (offset_y1+disk_y/2)*scale ,
+                                                    2*scale , 1 , 0.78 , "tank_tracer" );
     sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler , {"tank_tracer"});
     edge_sponge1 .set_column  ( coupler , {"density_dry","temperature"} );
@@ -129,7 +133,9 @@ int main(int argc, char** argv) {
     u_mean    = u0;
     v_mean    = 0;
     intensity = turbulence_intensity;
-    inflow.init( coupler , dycore , u_mean , v_mean , intensity );
+    modules::SyntheticTurbulentInflow::Config inflow_config;
+    inflow_config.outer_length = zlen/2;
+    inflow.init( coupler , dycore , u_mean , v_mean , intensity , inflow_config );
     custom_modules::sc_perturb( coupler );
 
     real etime = coupler.get_option<real>("elapsed_time");
@@ -162,20 +168,6 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_yzplane;
         using modules::uniform_pg_wind_forcing_specified;
-        using custom_modules::tank_tracer_injection;
-        {
-          real x1   = (offset_x1+disk_x/2-2)*scale;
-          real x2   = (offset_x1+disk_x/2+2)*scale;
-          real y1   = (offset_y1+disk_y/2-2)*scale;
-          real y2   = (offset_y1+disk_y/2+2)*scale;
-          real z1   = 2   *scale;
-          real z2   = 4.25*scale;
-          real conc = 1;
-          real wvel = 0.78;
-          coupler.run_module( [&] (Coupler &c) {
-            tank_tracer_injection(c,dt,x1,x2,y1,y2,z1,z2,conc,wvel,"tank_tracer");
-          } , "tracer_inj" );
-        }
         // {
         //   real z1  = 0.013470728;
         //   real z2  = 0.02;

@@ -23,12 +23,15 @@ namespace modules {
   class SyntheticTurbulentInflow {
   public:
     struct Config {
-      int  num_eddies;        // Total compact eddies distributed approximately evenly among scale bands
+      int  num_eddies;        // Total eddies; <= 0 selects a count from the global inlet slab cell count
+      int  minimum_eddies;    // Lower bound for an automatically selected population
+      real cells_per_eddy;    // Global inlet (y,z) cells per automatically selected eddy
       int  random_seed;       // Seed for decomposition-independent deterministic eddy properties
       real outer_length;      // Largest eddy diameter [m]; <= 0 uses 1/4 of the smaller inlet dimension
       real wall_decay_length; // Free-slip normal-velocity decay distance [m]; <= 0 uses outer_length/2
 
-      Config() : num_eddies(256), random_seed(0), outer_length(-1), wall_decay_length(-1) {}
+      Config() : num_eddies(-1), minimum_eddies(256), cells_per_eddy(32), random_seed(0), outer_length(-1),
+                 wall_decay_length(-1) {}
     };
 
   private:
@@ -65,6 +68,7 @@ namespace modules {
     real1d scale_diameter;
     real1d scale_fraction;
     real1d scale_amplitude;
+    intHost1d scale_eddy_count;
     real2d base_column;
     real2d eddies;
     realHost2d eddy_state_host;
@@ -99,8 +103,8 @@ namespace modules {
       return level;
     }
 
-    void randomize_eddy(int eddy, int recycle, realHost1d const &diameters, real ylen, real zlen, bool initial) {
-      int const scale = eddy % num_scales;
+    void randomize_eddy(int eddy, int recycle, int scale, realHost1d const &diameters, real ylen, real zlen,
+                        bool initial) {
       real const y = uniform(eddy,recycle,1)*ylen;
       real const z = uniform(eddy,recycle,2)*zlen;
       real const radius = diameters(scale)/2;
@@ -395,7 +399,8 @@ namespace modules {
         real const radius = eddy_state_host(n,id_radius);
         if (eddy_state_host(n,id_x)-radius > 0) {
           int const recycle = static_cast<int>(eddy_state_host(n,id_recycle))+1;
-          randomize_eddy(n,recycle,diameters_host,ylen,zlen,false);
+          int const scale = static_cast<int>(eddy_state_host(n,id_scale));
+          randomize_eddy(n,recycle,scale,diameters_host,ylen,zlen,false);
         }
       }
     }
@@ -475,6 +480,16 @@ namespace modules {
       return scale_amplitude.createHostCopy();
     }
 
+    int get_num_eddies() const {
+      if (! initialized) endrun("Synthetic turbulent inflow population diagnostics requested before init");
+      return config.num_eddies;
+    }
+
+    intHost1d get_scale_eddy_count() const {
+      if (! initialized) endrun("Synthetic turbulent inflow population diagnostics requested before init");
+      return scale_eddy_count;
+    }
+
     template <class Dycore>
     void init(core::Coupler &coupler, Dycore &dycore, real1d const &u_mean_in, real1d const &v_mean_in,
               real1d const &turbulence_intensity_in, Config const &config_in = Config()) {
@@ -486,7 +501,8 @@ namespace modules {
       if (u_mean_in.extent(0) != nz || v_mean_in.extent(0) != nz || turbulence_intensity_in.extent(0) != nz) {
         endrun("Synthetic turbulent inflow profiles must have extent nz");
       }
-      if (config_in.num_eddies <= 0) endrun("Synthetic turbulent inflow requires num_eddies > 0");
+      if (config_in.minimum_eddies <= 0) endrun("Synthetic turbulent inflow requires minimum_eddies > 0");
+      if (config_in.cells_per_eddy <= 0) endrun("Synthetic turbulent inflow requires cells_per_eddy > 0");
       config = config_in;
       halo_size = Dycore::hs;
       x_ghost_min = -halo_size*coupler.get_dx();
@@ -529,6 +545,11 @@ namespace modules {
       }
       num_scales = 0;
       for (real band_outer = outer_length; band_outer > smallest_length; band_outer /= 2) num_scales++;
+      if (config.num_eddies <= 0) {
+        long long const slab_cells = static_cast<long long>(coupler.get_ny_glob())*nz;
+        config.num_eddies = std::max(config.minimum_eddies,
+                                     static_cast<int>(std::ceil(slab_cells/config.cells_per_eddy)));
+      }
       if (config.num_eddies < num_scales) {
         endrun("Synthetic turbulent inflow requires at least one eddy per inertial-range scale");
       }
@@ -543,6 +564,34 @@ namespace modules {
         fractions_host(scale) = (std::pow(band_outer,2._fp/3._fp)-std::pow(band_inner,2._fp/3._fp))/denominator;
         amplitudes_host(scale) = 1;
       }
+      // Give every band comparable expected coverage on the inlet plane. Since one compact eddy covers an area
+      // proportional to diameter squared, the required population is proportional to inverse diameter squared.
+      scale_eddy_count = intHost1d("synthetic_turbulent_inflow_scale_eddy_count",num_scales);
+      std::vector<real> population_weight(num_scales);
+      std::vector<real> population_remainder(num_scales);
+      real weight_sum = 0;
+      for (int scale = 0; scale < num_scales; scale++) {
+        population_weight[scale] = 1/(diameters_host(scale)*diameters_host(scale));
+        weight_sum += population_weight[scale];
+      }
+      int assigned = num_scales;
+      int const remaining = config.num_eddies-num_scales;
+      for (int scale = 0; scale < num_scales; scale++) {
+        real const exact = remaining*population_weight[scale]/weight_sum;
+        int const additional = static_cast<int>(std::floor(exact));
+        scale_eddy_count(scale) = 1+additional;
+        population_remainder[scale] = exact-additional;
+        assigned += additional;
+      }
+      while (assigned < config.num_eddies) {
+        int selected = 0;
+        for (int scale = 1; scale < num_scales; scale++) {
+          if (population_remainder[scale] > population_remainder[selected]) selected = scale;
+        }
+        scale_eddy_count(selected)++;
+        population_remainder[selected] = -1;
+        assigned++;
+      }
       scale_diameter = diameters_host.createDeviceCopy();
       scale_fraction = fractions_host.createDeviceCopy();
       scale_amplitude = amplitudes_host.createDeviceCopy();
@@ -551,8 +600,12 @@ namespace modules {
       eddy_state_host = realHost2d("synthetic_turbulent_inflow_state",config.num_eddies,num_eddy_properties);
       eddies = real2d("synthetic_turbulent_inflow_eddies",config.num_eddies,num_device_properties);
       auto zmid_host = coupler.get_zmid().createHostCopy();
-      for (int n = 0; n < config.num_eddies; n++) {
-        randomize_eddy(n,0,diameters_host,coupler.get_ylen(),coupler.get_zlen(),true);
+      int eddy = 0;
+      for (int scale = 0; scale < num_scales; scale++) {
+        for (int count = 0; count < scale_eddy_count(scale); count++) {
+          randomize_eddy(eddy,0,scale,diameters_host,coupler.get_ylen(),coupler.get_zlen(),true);
+          eddy++;
+        }
       }
       update_device_eddies(zmid_host);
       calibrate_scales(coupler);

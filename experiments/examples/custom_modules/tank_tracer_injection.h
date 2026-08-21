@@ -1,56 +1,67 @@
-
 #pragma once
 
 #include "coupler.h"
 
 namespace custom_modules {
-  
-  inline void tank_tracer_injection( core::Coupler & coupler     ,
-                                     real            dt          ,
-                                     real            x1          ,
-                                     real            x2          ,
-                                     real            y1          ,
-                                     real            y2          ,
-                                     real            z1          ,
-                                     real            z2          ,
-                                     real            conc        ,
-                                     real            wvel        ,
-                                     std::string     tracer_name ) {
+
+  template <class Dycore>
+  inline void register_tank_tracer_injection( core::Coupler const & coupler     ,
+                                              Dycore             & dycore       ,
+                                              real                 x0           ,
+                                              real                 y0           ,
+                                              real                 radius       ,
+                                              real                 tracer_in    ,
+                                              real                 wvel         ,
+                                              std::string          tracer_name ) {
     using yakl::SimpleBounds;
-    using yakl::componentwise::operator/;  // Allows use of '/' on yakl::Array objects
-    using yakl::componentwise::operator-;  // Allows use of '-' on yakl::Array objects
-    auto nx       = coupler.get_nx();      // Get local number of cells in x-direction
-    auto nx_glob  = coupler.get_nx_glob(); // Get global number of cells in x-direction
-    auto ny       = coupler.get_ny();      // Get local number of cells in y-direction
-    auto nz       = coupler.get_nz();      // Get local number of cells in z-direction
-    auto dx       = coupler.get_dx();      // Get grid spacing in x-direction
-    auto dy       = coupler.get_dy();      // Get grid spacing in y-direction
-    auto dz       = coupler.get_dz();      // Get grid spacing in z-direction
-    auto zmid     = coupler.get_zmid();    // Get vertical grid mid points
-    auto i_beg    = coupler.get_i_beg();   // Get global starting index in x-direction
-    auto j_beg    = coupler.get_j_beg();   // Get global starting index in y-direction
-    auto &dm      = coupler.get_data_manager_readwrite(); // Get DataManager for read/write access
-    auto dm_trac  = dm.get<real      ,3>(tracer_name);
-    auto dm_rho_d = dm.get<real const,3>("density_dry");
-    auto dm_w     = dm.get<real      ,3>("wvel");
-    real x0       = (x1+x2)/2;
-    real y0       = (y1+y2)/2;
-    real sigma    = (x2-x1)/4;
-    yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-      real x = (i_beg+i+0.5)*dx;
-      real y = (j_beg+j+0.5)*dy;
-      real z = zmid(k);
-      if (x >= x1 && x <= x2 && y >= y1 && y <= y2 && z >= z1 && z <= z2) {
-        real r = std::sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0));
-        dm_trac(k,j,i) = conc*dm_rho_d(k,j,i);
-        dm_w   (k,j,i) = wvel - (r/0.0022)*(r/0.0022);
+    using FLOC      = typename Dycore::FLOC;
+    using FluxArray = typename Dycore::FluxArray;
+
+    auto tracer_id = coupler.get_tracer_index(tracer_name);
+    if (tracer_id < 0) { endrun("ERROR: tank tracer injection tracer is not registered"); }
+    if (radius <= 0)   { endrun("ERROR: tank tracer injection radius must be positive"); }
+
+    dycore.register_flux_addition_callback(
+      [=] ( core::Coupler const & c                  ,
+            real4d        const & /* state */        ,
+            real4d        const & /* tracers */      ,
+            FluxArray     const & /* flux_x */       ,
+            FluxArray     const & /* flux_y */       ,
+            FluxArray     const & flux_z             ,
+            int                   tracer_flux_offset ,
+            real                  /* dt */           ,
+            int                   /* istage */       ,
+            int                   /* icycle */       ) {
+        auto nx             = c.get_nx();
+        auto ny             = c.get_ny();
+        auto dx             = c.get_dx();
+        auto dy             = c.get_dy();
+        auto i_beg          = c.get_i_beg();
+        auto j_beg          = c.get_j_beg();
+        auto imm_th         = c.get_option<real>("immersed_threshold",0.5);
+        auto &dm            = c.get_data_manager_readonly();
+        auto immersed_prop  = dm.get<real const,3>("immersed_proportion");
+        auto hy_dens_edges  = dm.get<real const,1>("hy_dens_edges"      );
+        auto hy_theta_edges = dm.get<real const,1>("hy_theta_edges"     );
+        int constexpr idR   = Dycore::idR;
+        int constexpr idW   = Dycore::idW;
+        int constexpr idT   = Dycore::idT;
+
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
+          real x = (i_beg+i+0.5_fp)*dx;
+          real y = (j_beg+j+0.5_fp)*dy;
+          real r = std::sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0));
+          if (r <= radius && immersed_prop(0,j,i) <= imm_th) {
+            FLOC w_in      = static_cast<FLOC>(wvel*std::max(0._fp,1._fp-(r/radius)*(r/radius)));
+            FLOC mass_flux = static_cast<FLOC>(hy_dens_edges(0))*w_in;
+            flux_z(idR                         ,0,j,i) += mass_flux;
+            flux_z(idW                         ,0,j,i) += mass_flux*w_in;
+            flux_z(idT                         ,0,j,i) += mass_flux*static_cast<FLOC>(hy_theta_edges(0));
+            flux_z(tracer_flux_offset+tracer_id,0,j,i) += mass_flux*static_cast<FLOC>(tracer_in);
+          }
+        });
       }
-      // int start = std::round(0.95*nx_glob);
-      // if ((i_beg+i) >= start) {
-      //   dm_trac(k,j,i) *= (nx_glob-1-(i_beg+i)) / (nx_glob-1-start);
-      // }
-    });
+    );
   }
+
 }
-
-
