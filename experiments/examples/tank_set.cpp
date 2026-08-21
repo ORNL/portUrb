@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     modules::LES_Closure                       les_closure;
     modules::EdgeSponge                        edge_sponge1;
     modules::EdgeSponge                        edge_sponge2;
-    modules::SyntheticTurbulentInflow          inflow;
+    modules::DigitalFilterTurbulentInflow      inflow;
 
     // No microphysics specified, so create a water_vapor tracer required by the dycore
     coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
@@ -133,8 +133,7 @@ int main(int argc, char** argv) {
     u_mean    = u0;
     v_mean    = 0;
     intensity = turbulence_intensity;
-    modules::SyntheticTurbulentInflow::Config inflow_config;
-    inflow_config.outer_length = zlen/2;
+    modules::DigitalFilterTurbulentInflow::Config inflow_config;
     inflow.init( coupler , dycore , u_mean , v_mean , intensity , inflow_config );
     custom_modules::sc_perturb( coupler );
 
@@ -189,7 +188,7 @@ int main(int argc, char** argv) {
         //   coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_specified(c,dt,utend,vtend); } , "pg_forcing" );
         // }
         coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply      (c,0,0.1,0,0);   } , "edge_sponge1"  );
-        coupler.run_module( [&] (Coupler &c) { inflow.apply(c,dycore,dt); } , "synthetic_inflow" );
+        coupler.run_module( [&] (Coupler &c) { inflow.apply(c,dycore,dt); } , "digital_filter_inflow" );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"         );
         // coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
         // coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );

@@ -6,722 +6,563 @@
 
 namespace modules {
 
-
-  // Generates a temporally coherent, multi-scale turbulent inflow in the existing x1 precursor storage.
+  // Generates homogeneous tank-style turbulence with exponential correlations based on the two-dimensional
+  // digital-filter method of Xie and Castro (2008). Three filtered vector potentials and their smooth time
+  // derivatives define velocity as a space-time curl. Taylor's hypothesis supplies d/dx=-d/dt/U, making the
+  // convected extension discretely divergence free while requiring only transverse derivatives at the inlet.
   //
-  // Each eddy is represented by a compact vector potential. The velocity is evaluated as its analytic curl, so
-  // the continuum field is divergence free even though sampling it on the dycore grid is not discretely solenoidal.
-  // Eddy bands cover only the truncated inertial range from outer_length through the globally resolvable four-cell
-  // cutoff. Their target energies are exact band integrals of E(k) proportional to k^(-5/3); no production or
-  // dissipation range is modeled.
-  // The module perturbs velocity only; density, potential temperature, pressure, and tracers use a fixed primitive
-  // column captured during initialization. This deliberately avoids injecting thermodynamic noise at a compressible
-  // boundary.
+  // Correlation and wall-decay lengths are specified in cells so their defaults follow the grid's resolvable scales.
+  // The streamwise cell count is converted to a Lagrangian time scale with Taylor's hypothesis. The first
+  // implementation deliberately targets uniform, shear-free wind- and water-tank configurations.
   //
-  // The module is stateful and registers output/restart callbacks that retain a pointer to it. Construct it in the
-  // same scope as the Coupler, initialize it once, and do not move it afterward.
-  class SyntheticTurbulentInflow {
+  // This class registers callbacks that retain its address. Construct it in the same
+  // scope as the Coupler, initialize it once, and do not move it afterward.
+  class DigitalFilterTurbulentInflow {
   public:
     struct Config {
-      int  num_eddies;        // Total eddies; <= 0 selects a count from the global inlet slab cell count
-      int  minimum_eddies;    // Lower bound for an automatically selected population
-      real cells_per_eddy;    // Global inlet (y,z) cells per automatically selected eddy
-      int  random_seed;       // Seed for decomposition-independent deterministic eddy properties
-      real outer_length;      // Largest eddy diameter [m]; <= 0 uses 1/4 of the smaller inlet dimension
-      real wall_decay_length; // Free-slip normal-velocity decay distance [m]; <= 0 uses outer_length/2
-
-      Config() : num_eddies(-1), minimum_eddies(256), cells_per_eddy(32), random_seed(0), outer_length(-1),
-                 wall_decay_length(-1) {}
+      int random_seed             = 0; // Decomposition-independent deterministic random seed
+      int streamwise_length_cells = 5; // Streamwise integral correlation length [cells]
+      int spanwise_length_cells   = 5; // Spanwise integral correlation length [cells]
+      int vertical_length_cells   = 5; // Vertical integral correlation length [cells]
+      int wall_decay_cells        = 3; // Normal-velocity decay distance [cells]
     };
 
   private:
-    int static constexpr num_eddy_properties = 9;
-    int static constexpr num_device_properties = 11;
-    int static constexpr id_x       = 0;
-    int static constexpr id_y       = 1;
-    int static constexpr id_z       = 2;
-    int static constexpr id_radius  = 3;
-    int static constexpr id_ex      = 4;
-    int static constexpr id_ey      = 5;
-    int static constexpr id_ez      = 6;
-    int static constexpr id_scale   = 7;
-    int static constexpr id_recycle = 8;
-
     Config config;
     bool initialized = false;
+    bool periodic_y  = false;
+    bool periodic_z  = false;
     bool wall_y1     = false;
     bool wall_y2     = false;
     bool wall_z1     = false;
     bool wall_z2     = false;
-    bool periodic_y  = false;
-    int  num_scales  = 0;
-    int  halo_size   = 0;
-    real outer_length = 0;
-    real smallest_length = 0;
-    real wall_decay_length = 0;
-    real calibration = 1;
-    real x_ghost_min = 0;
+    int halo_size    = 0;
+    int filter_ny    = 0;
+    int filter_nz    = 0;
+    int random_count = 0;
+    real mean_u      = 0;
+    real intensity   = 0;
+    real time_scale  = 0;
+    real axial_potential_scale      = 0;
+    real transverse_potential_scale = 0;
 
-    real1d u_mean;
-    real1d v_mean;
-    real1d turbulence_intensity;
-    real1d scale_diameter;
-    real1d scale_fraction;
-    real1d scale_amplitude;
-    intHost1d scale_eddy_count;
+    real1d filter_y;
+    real1d filter_z;
     real2d base_column;
-    real2d eddies;
-    realHost2d eddy_state_host;
+    // (Ax,Ay,Az,dAx/dt,dAy/dt,dAz/dt,z,local y with one halo)
+    real3d state;
 
-    // SplitMix64 provides inexpensive reproducible random bits without retaining a standard-library RNG state.
-    // Eddy recycling therefore depends only on the user seed, eddy index, recycle count, and property stream.
-    static std::uint64_t mix_bits(std::uint64_t value) {
+    KOKKOS_INLINE_FUNCTION static std::uint64_t mix_bits_device(std::uint64_t value) {
       value += 0x9e3779b97f4a7c15ULL;
       value  = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
       value  = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
       return value ^ (value >> 31);
     }
 
-    real uniform(int eddy, int recycle, int stream) const {
-      auto value = static_cast<std::uint64_t>(config.random_seed);
-      value ^= static_cast<std::uint64_t>(eddy    + 1) * 0xd2b74407b1ce6e93ULL;
-      value ^= static_cast<std::uint64_t>(recycle + 1) * 0xca5a826395121157ULL;
-      value ^= static_cast<std::uint64_t>(stream  + 1) * 0x9e3779b97f4a7c15ULL;
-      return static_cast<real>(mix_bits(value) >> 11) * (1._fp / 9007199254740992._fp);
+    KOKKOS_INLINE_FUNCTION static real random_unit_variance(int seed, int count, int field, int k, int j) {
+      auto value = static_cast<std::uint64_t>(seed);
+      value ^= static_cast<std::uint64_t>(count + 1) * 0xd2b74407b1ce6e93ULL;
+      value ^= static_cast<std::uint64_t>(field + 1) * 0xca5a826395121157ULL;
+      value ^= static_cast<std::uint64_t>(static_cast<std::int64_t>(k)) * 0x9e3779b97f4a7c15ULL;
+      value ^= static_cast<std::uint64_t>(static_cast<std::int64_t>(j)) * 0x94d049bb133111ebULL;
+      real const uniform = static_cast<real>(mix_bits_device(value) >> 11) *
+                           (static_cast<real>(1) / static_cast<real>(9007199254740992ULL));
+      return std::sqrt(static_cast<real>(3))*(2*uniform-1);
     }
 
-    static int nearest_level(real z, realHost1d const &zmid) {
-      int level = 0;
-      real distance = std::abs(z-zmid(0));
-      for (int k = 1; k < zmid.extent(0); k++) {
-        real const candidate = std::abs(z-zmid(k));
-        if (candidate < distance) {
-          distance = candidate;
-          level = k;
-        }
+    KOKKOS_INLINE_FUNCTION static int wrap_index(int index, int extent) {
+      int wrapped = index % extent;
+      if (wrapped < 0) wrapped += extent;
+      return wrapped;
+    }
+
+    KOKKOS_INLINE_FUNCTION static real smooth_factor(real distance, real decay_length) {
+      if (distance >= decay_length) return 1;
+      real const xi = std::max(static_cast<real>(0),distance/decay_length);
+      return xi*xi*xi*(10 + xi*(-15 + 6*xi));
+    }
+
+    KOKKOS_INLINE_FUNCTION static real wall_factor(real location, real length, real decay_length,
+                                                   bool wall_lower, bool wall_upper) {
+      real factor = 1;
+      if (wall_lower) factor *= smooth_factor(location,decay_length);
+      if (wall_upper) factor *= smooth_factor(length-location,decay_length);
+      return factor;
+    }
+
+    static bool nearly_equal(real lhs, real rhs) {
+      return std::abs(lhs-rhs) <= 1.e-12*std::max(static_cast<real>(1),std::max(std::abs(lhs),std::abs(rhs)));
+    }
+
+    void initialize_filter(int length_cells, int half_width, real1d &filter, std::string const &label) {
+      realHost1d host(label+"_host",2*half_width+1);
+      real sum_squared = 0;
+      for (int offset = -half_width; offset <= half_width; offset++) {
+        real const value = std::exp(-M_PI*std::abs(offset)/length_cells);
+        host(offset+half_width) = value;
+        sum_squared += value*value;
       }
-      return level;
-    }
-
-    void randomize_eddy(int eddy, int recycle, int scale, realHost1d const &diameters, real ylen, real zlen,
-                        bool initial) {
-      real const y = uniform(eddy,recycle,1)*ylen;
-      real const z = uniform(eddy,recycle,2)*zlen;
-      real const radius = diameters(scale)/2;
-
-      real const ez = 2*uniform(eddy,recycle,3)-1;
-      real const azimuth = 2*M_PI*uniform(eddy,recycle,4);
-      real const eh = std::sqrt(std::max(0._fp,1-ez*ez));
-      real const ex = eh*std::cos(azimuth);
-      real const ey = eh*std::sin(azimuth);
-
-      // Initially distribute centers across the complete slab that can influence x1 ghosts. Recycled eddies enter
-      // where their leading edge first touches the outermost ghost-cell face.
-      real const xmin = x_ghost_min-radius;
-      real const xmax = radius;
-      real const x = initial ? xmin + uniform(eddy,recycle,0)*(xmax-xmin) : xmin;
-      eddy_state_host(eddy,id_x      ) = x;
-      eddy_state_host(eddy,id_y      ) = y;
-      eddy_state_host(eddy,id_z      ) = z;
-      eddy_state_host(eddy,id_radius ) = radius;
-      eddy_state_host(eddy,id_ex     ) = ex;
-      eddy_state_host(eddy,id_ey     ) = ey;
-      eddy_state_host(eddy,id_ez     ) = ez;
-      eddy_state_host(eddy,id_scale  ) = scale;
-      eddy_state_host(eddy,id_recycle) = recycle;
-    }
-
-    void update_device_eddies(realHost1d const &zmid_host) {
-      auto u_host  = u_mean.createHostCopy();
-      auto v_host  = v_mean.createHostCopy();
-      auto ti_host = turbulence_intensity.createHostCopy();
-      auto amplitudes_host = scale_amplitude.createHostCopy();
-      realHost2d eddies_host("synthetic_turbulent_inflow_eddies_host",config.num_eddies,num_device_properties);
-      for (int n = 0; n < config.num_eddies; n++) {
-        int const k = nearest_level(eddy_state_host(n,id_z),zmid_host);
-        int const scale = static_cast<int>(eddy_state_host(n,id_scale));
-        real const mean_speed = std::sqrt(u_host(k)*u_host(k) + v_host(k)*v_host(k));
-        real const amplitude = ti_host(k)*mean_speed*amplitudes_host(scale);
-        for (int p = 0; p < 7; p++) eddies_host(n,p) = eddy_state_host(n,p);
-        eddies_host(n,7) = amplitude;
-        eddies_host(n,8) = u_host(k);
-        eddies_host(n,9) = v_host(k);
-        eddies_host(n,10) = scale;
-      }
-      eddies_host.deep_copy_to(eddies);
-    }
-
-    // Quintic smoothstep and its derivative. Both the first and second derivatives vanish at xi=0 and xi=1,
-    // preventing the wall taper itself from introducing a sharp feature into high-order reconstruction stencils.
-    KOKKOS_INLINE_FUNCTION static void smooth_wall(real distance, real decay_length, real derivative_sign,
-                                                    real &factor, real &derivative) {
-      if (distance >= decay_length) {
-        factor = 1;
-        derivative = 0;
-        return;
-      }
-      real const xi = std::max(0._fp,distance/decay_length);
-      factor = xi*xi*xi*(10 + xi*(-15 + 6*xi));
-      derivative = derivative_sign*30*xi*xi*(xi-1)*(xi-1)/decay_length;
-    }
-
-    KOKKOS_INLINE_FUNCTION static void wall_factors(real y, real z, real ylen, real zlen, real decay_length,
-                                                    bool wall_y1, bool wall_y2, bool wall_z1, bool wall_z2,
-                                                    real &Y, real &dYdy, real &Z, real &dZdz) {
-      real y1 = 1, y2 = 1, z1 = 1, z2 = 1;
-      real dy1 = 0, dy2 = 0, dz1 = 0, dz2 = 0;
-      if (wall_y1) smooth_wall(y,      decay_length,  1,y1,dy1);
-      if (wall_y2) smooth_wall(ylen-y, decay_length, -1,y2,dy2);
-      if (wall_z1) smooth_wall(z,      decay_length,  1,z1,dz1);
-      if (wall_z2) smooth_wall(zlen-z, decay_length, -1,z2,dz2);
-      Y = y1*y2;
-      Z = z1*z2;
-      dYdy = dy1*y2 + y1*dy2;
-      dZdz = dz1*z2 + z1*dz2;
-    }
-
-    // Evaluate the analytic curl of
-    //   A_x = Y Z A0_x,  A_y = Z A0_y,  A_z = Y A0_z.
-    // This component-selective taper makes v vanish at spanwise free-slip walls and w vanish at vertical free-slip
-    // walls. Tangential fluctuations need not vanish. Since the final field remains a curl, it is analytically
-    // divergence free everywhere that the compact polynomial is differentiable.
-    KOKKOS_INLINE_FUNCTION static void evaluate_velocity(real x, real y, real z, real ylen, real zlen,
-                                                         real decay_length, bool wall_y1, bool wall_y2,
-                                                         bool wall_z1, bool wall_z2, bool periodic_y,
-                                                         real calibration, realConst2d const &eddies,
-                                                         real time_offset, int requested_scale,
-                                                         real &u, real &v, real &w) {
-      u = 0;
-      v = 0;
-      w = 0;
-      real Y, dYdy, Z, dZdz;
-      wall_factors(y,z,ylen,zlen,decay_length,wall_y1,wall_y2,wall_z1,wall_z2,Y,dYdy,Z,dZdz);
-      for (int n = 0; n < eddies.extent(0); n++) {
-        if (requested_scale >= 0 && static_cast<int>(eddies(n,10)) != requested_scale) continue;
-        real rx = x-eddies(n,0)-eddies(n,8)*time_offset;
-        real ry = y-eddies(n,1)-eddies(n,9)*time_offset;
-        real rz = z-eddies(n,2);
-        if (periodic_y) {
-          if      (ry >  ylen/2) ry -= ylen;
-          else if (ry < -ylen/2) ry += ylen;
-        }
-        real const radius = eddies(n,3);
-        real const q2 = (rx*rx + ry*ry + rz*rz)/(radius*radius);
-        if (q2 >= 1) continue;
-
-        real const one_minus_q2 = 1-q2;
-        real const phi = one_minus_q2*one_minus_q2*one_minus_q2;
-        real const gradient_coefficient = -6*one_minus_q2*one_minus_q2/(radius*radius);
-        real const coefficient = calibration*eddies(n,7)*radius;
-        real const ax = coefficient*eddies(n,4)*phi;
-        real const ay = coefficient*eddies(n,5)*phi;
-        real const az = coefficient*eddies(n,6)*phi;
-        real const dax_dy = coefficient*eddies(n,4)*gradient_coefficient*ry;
-        real const dax_dz = coefficient*eddies(n,4)*gradient_coefficient*rz;
-        real const day_dx = coefficient*eddies(n,5)*gradient_coefficient*rx;
-        real const day_dz = coefficient*eddies(n,5)*gradient_coefficient*rz;
-        real const daz_dx = coefficient*eddies(n,6)*gradient_coefficient*rx;
-        real const daz_dy = coefficient*eddies(n,6)*gradient_coefficient*ry;
-
-        u += dYdy*az + Y*daz_dy - dZdz*ay - Z*day_dz;
-        v += Y*dZdz*ax + Y*Z*dax_dz - Y*daz_dx;
-        w += Z*day_dx - dYdy*Z*ax - Y*Z*dax_dy;
-      }
+      for (int offset = 0; offset < host.extent(0); offset++) host(offset) /= std::sqrt(sum_squared);
+      filter = host.createDeviceCopy();
     }
 
   public:
     // NVCC requires functions enclosing extended host/device lambdas to be publicly accessible.
-    // Equal numbers of compact eddies at different diameters do not have equal plane-averaged response: their
-    // support volumes and the Fourier response of the curl kernel differ. Measure that response for the retained
-    // ensemble one scale at a time, then choose the amplitude of each scale so its variance equals the exact
-    // integral of k^(-5/3) over that wavenumber band. This is an initialization-only calculation.
-    void calibrate_scales(core::Coupler const &coupler) {
+    real3d create_filtered_innovation(core::Coupler const &coupler, int count) const {
       using yakl::SimpleBounds;
-      int const px      = coupler.get_px();
       int const nz      = coupler.get_nz();
       int const ny      = coupler.get_ny();
-      int const j_beg   = coupler.get_j_beg();
       int const ny_glob = coupler.get_ny_glob();
-      real const dx     = coupler.get_dx();
-      real const dy     = coupler.get_dy();
-      real const ylen   = coupler.get_ylen();
-      real const zlen   = coupler.get_zlen();
-      auto const zmid = coupler.get_zmid();
-      auto const eddies_device = realConst2d(eddies);
-      real4d velocity("synthetic_turbulent_inflow_scale_velocity",num_scales,3,nz,ny);
-      real3d means("synthetic_turbulent_inflow_scale_means",num_scales,2,nz);
-      real1d actual("synthetic_turbulent_inflow_scale_actual",num_scales);
-      bool const wy1 = wall_y1;
-      bool const wy2 = wall_y2;
-      bool const wz1 = wall_z1;
-      bool const wz2 = wall_z2;
-      bool const py  = periodic_y;
-      real const decay = wall_decay_length;
-      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_scales,nz,ny) ,
-                                              KOKKOS_LAMBDA (int scale, int k, int j) {
-        velocity(scale,0,k,j) = 0;
-        velocity(scale,1,k,j) = 0;
-        velocity(scale,2,k,j) = 0;
-        if (px != 0) return;
-        real const y = (j_beg+j+0.5_fp)*dy;
-        real u, v, w;
-        evaluate_velocity(-0.5_fp*dx,y,zmid(k),ylen,zlen,decay,wy1,wy2,wz1,wz2,py,1,eddies_device,0,scale,u,v,w);
-        velocity(scale,0,k,j) = u;
-        velocity(scale,1,k,j) = v;
-        velocity(scale,2,k,j) = w;
-      });
-      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(num_scales,2,nz) ,
-                                              KOKKOS_LAMBDA (int scale, int component, int k) {
-        means(scale,component,k) = 0;
-        if (px != 0) return;
-        for (int j = 0; j < ny; j++) means(scale,component,k) += velocity(scale,component,k,j);
-      });
-      means = coupler.get_parallel_comm().all_reduce(means,MPI_SUM,"synthetic_inflow_scale_means");
-      bool const correct_v = !wall_y1 && !wall_y2;
-      yakl::parallel_for( YAKL_AUTO_LABEL() , num_scales , KOKKOS_LAMBDA (int scale) {
-        actual(scale) = 0;
-        if (px != 0) return;
-        for (int k = 0; k < nz; k++) {
-          real const mean_u = means(scale,0,k)/ny_glob;
-          real const mean_v = correct_v ? means(scale,1,k)/ny_glob : 0;
-          for (int j = 0; j < ny; j++) {
-            real const u = velocity(scale,0,k,j)-mean_u;
-            real const v = velocity(scale,1,k,j)-mean_v;
-            real const w = velocity(scale,2,k,j);
-            actual(scale) += u*u + v*v + w*w;
-          }
-        }
-      });
-      actual = coupler.get_parallel_comm().all_reduce(actual,MPI_SUM,"synthetic_inflow_scale_variance");
+      int const j_beg   = coupler.get_j_beg();
+      int const ny_pad  = filter_ny;
+      int const nz_pad  = filter_nz;
+      int const seed    = config.random_seed;
+      bool const py     = periodic_y;
+      bool const pz     = periodic_z;
+      auto const by = realConst1d(filter_y);
+      auto const bz = realConst1d(filter_z);
 
-      auto actual_host    = actual.createHostCopy();
-      auto fraction_host  = scale_fraction.createHostCopy();
-      auto amplitude_host = scale_amplitude.createHostCopy();
-      auto u_host  = u_mean.createHostCopy();
-      auto v_host  = v_mean.createHostCopy();
-      auto ti_host = turbulence_intensity.createHostCopy();
-      real target_total = 0;
-      for (int k = 0; k < nz; k++) {
-        real const mean_speed_squared = u_host(k)*u_host(k) + v_host(k)*v_host(k);
-        target_total += ny_glob*3*ti_host(k)*ti_host(k)*mean_speed_squared;
-      }
-      for (int scale = 0; scale < num_scales; scale++) {
-        real const target = fraction_host(scale)*target_total;
-        if (target > 0 && actual_host(scale) <= 0) {
-          endrun("Synthetic turbulent inflow scale produced zero calibration variance");
+      // The wide random padding is generated from global indices on every rank. It therefore costs no communication,
+      // remains independent of MPI decomposition, and permits a filter wider than a rank's local y slab.
+      real3d filtered_y("digital_filter_inflow_filtered_y",6,nz+2*nz_pad,ny);
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(6,nz+2*nz_pad,ny) ,
+                                              KOKKOS_LAMBDA (int field, int kp, int j) {
+        int const source_k = kp-nz_pad;
+        int const random_k = pz ? wrap_index(source_k,nz) : source_k;
+        real value = 0;
+        for (int offset = -ny_pad; offset <= ny_pad; offset++) {
+          int const source_j = j_beg+j+offset;
+          int const random_j = py ? wrap_index(source_j,ny_glob) : source_j;
+          value += by(offset+ny_pad)*random_unit_variance(seed,count,field,random_k,random_j);
         }
-        amplitude_host(scale) = target > 0 ? std::sqrt(target/actual_host(scale)) : 0;
-      }
-      amplitude_host.deep_copy_to(scale_amplitude);
+        filtered_y(field,kp,j) = value;
+      });
+
+      real3d innovation("digital_filter_inflow_innovation",6,nz,ny);
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(6,nz,ny) , KOKKOS_LAMBDA (int field, int k, int j) {
+        real value = 0;
+        for (int offset = -nz_pad; offset <= nz_pad; offset++) {
+          value += bz(offset+nz_pad)*filtered_y(field,k+offset+nz_pad,j);
+        }
+        innovation(field,k,j) = value;
+      });
+      return innovation;
     }
 
-    // Independent scale responses add only in the ensemble mean. A finite retained ensemble has small cross-scale
-    // correlations, so apply one common residual factor after scale calibration. Because it multiplies every band
-    // equally, this enforces the requested total turbulence intensity without changing the intended band ratios.
-    void calibrate_total(core::Coupler const &coupler) {
+    void exchange_state_y(core::Coupler const &coupler) {
+      using yakl::SimpleBounds;
+      int const nz = coupler.get_nz();
+      int const ny = coupler.get_ny();
+      real2d send_south("digital_filter_inflow_send_south",6,nz);
+      real2d send_north("digital_filter_inflow_send_north",6,nz);
+      real2d recv_south("digital_filter_inflow_recv_south",6,nz);
+      real2d recv_north("digital_filter_inflow_recv_north",6,nz);
+      auto state_device = state;
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(6,nz) , KOKKOS_LAMBDA (int field, int k) {
+        send_south(field,k) = state_device(field,k,1);
+        send_north(field,k) = state_device(field,k,ny);
+      });
+      auto const &neighbors = coupler.get_neighbor_rankid_matrix();
+      coupler.get_parallel_comm().send_receive<real,2>( { {recv_south,neighbors(0,1),20},
+                                                          {recv_north,neighbors(2,1),21} },
+                                                        { {send_south,neighbors(0,1),21},
+                                                          {send_north,neighbors(2,1),20} },
+                                                        "digital_filter_inflow_y_halo" );
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(6,nz) , KOKKOS_LAMBDA (int field, int k) {
+        state_device(field,k,0   ) = recv_south(field,k);
+        state_device(field,k,ny+1) = recv_north(field,k);
+      });
+    }
+
+    real3d compute_raw_velocity(core::Coupler const &coupler, real axial_scale, real transverse_scale) {
+      using yakl::SimpleBounds;
+      exchange_state_y(coupler);
+      int const nz      = coupler.get_nz();
+      int const ny      = coupler.get_ny();
+      int const ny_glob = coupler.get_ny_glob();
+      int const j_beg   = coupler.get_j_beg();
+      real const dy     = coupler.get_dy();
+      real const zlen   = coupler.get_zlen();
+      bool const py     = periodic_y;
+      bool const pz     = periodic_z;
+      bool const wy1    = wall_y1;
+      bool const wy2    = wall_y2;
+      bool const wz1    = wall_z1;
+      bool const wz2    = wall_z2;
+      real const decay_cells = config.wall_decay_cells;
+      auto const dz = coupler.get_dz();
+      auto const zint = coupler.get_zint();
+      auto const zmid = coupler.get_zmid();
+      auto state_device = state;
+      real3d potential("digital_filter_inflow_tapered_potential",6,nz,ny+2);
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(6,nz,ny) ,
+                                              KOKKOS_LAMBDA (int field, int k, int j) {
+        real const y_cell = j_beg+j+static_cast<real>(0.5);
+        real const z_cell = k+static_cast<real>(0.5);
+        real const taper = wall_factor(y_cell,ny_glob,decay_cells,wy1,wy2)*
+                           wall_factor(z_cell,nz,decay_cells,wz1,wz2);
+        real const scale = field % 3 == 0 ? axial_scale : transverse_scale;
+        potential(field,k,j+1) = scale*taper*state_device(field,k,j+1);
+      });
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(6,nz) , KOKKOS_LAMBDA (int field, int k) {
+        if (j_beg == 0 && !py) {
+          potential(field,k,0) = wy1 ? -potential(field,k,1) : potential(field,k,1);
+        } else {
+          real const y_cell = j_beg-static_cast<real>(0.5);
+          real const z_cell = k+static_cast<real>(0.5);
+          real const scale = field % 3 == 0 ? axial_scale : transverse_scale;
+          potential(field,k,0) = scale*wall_factor(y_cell,ny_glob,decay_cells,wy1,wy2)*
+                                 wall_factor(z_cell,nz,decay_cells,wz1,wz2)*state_device(field,k,0);
+        }
+        if (j_beg+ny == ny_glob && !py) {
+          potential(field,k,ny+1) = wy2 ? -potential(field,k,ny) : potential(field,k,ny);
+        } else {
+          real const y_cell = j_beg+ny+static_cast<real>(0.5);
+          real const z_cell = k+static_cast<real>(0.5);
+          real const scale = field % 3 == 0 ? axial_scale : transverse_scale;
+          potential(field,k,ny+1) = scale*wall_factor(y_cell,ny_glob,decay_cells,wy1,wy2)*
+                                    wall_factor(z_cell,nz,decay_cells,wz1,wz2)*state_device(field,k,ny+1);
+        }
+      });
+
+      // gradient(0,...)=d/dy and gradient(1,...)=d/dz. Applying identical linear operators to all potential
+      // components makes the discrete mixed derivatives commute in the interior. The vertical finite-volume
+      // operator uses actual interface and center heights, so it remains conservative on a stretched grid.
+      real4d gradient("digital_filter_inflow_potential_gradient",2,6,nz,ny);
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(6,nz,ny) ,
+                                              KOKKOS_LAMBDA (int field, int k, int j) {
+        real const center = potential(field,k,j+1);
+        real lower;
+        real upper;
+        real lower_face;
+        real upper_face;
+        if (k > 0) {
+          lower = potential(field,k-1,j+1);
+          real const weight = (zint(k)-zmid(k-1))/(zmid(k)-zmid(k-1));
+          lower_face = lower+weight*(center-lower);
+        } else if (pz) {
+          lower = potential(field,nz-1,j+1);
+          real const lower_z = zmid(nz-1)-zlen;
+          real const weight = (zint(0)-lower_z)/(zmid(0)-lower_z);
+          lower_face = lower+weight*(center-lower);
+        } else {
+          lower_face = wz1 ? 0 : center;
+        }
+        if (k+1 < nz) {
+          upper = potential(field,k+1,j+1);
+          real const weight = (zint(k+1)-zmid(k))/(zmid(k+1)-zmid(k));
+          upper_face = center+weight*(upper-center);
+        } else if (pz) {
+          upper = potential(field,0,j+1);
+          real const upper_z = zmid(0)+zlen;
+          real const weight = (zint(nz)-zmid(nz-1))/(upper_z-zmid(nz-1));
+          upper_face = center+weight*(upper-center);
+        } else {
+          upper_face = wz2 ? 0 : center;
+        }
+        gradient(0,field,k,j) = (potential(field,k,j+2)-potential(field,k,j))/(2*dy);
+        gradient(1,field,k,j) = (upper_face-lower_face)/dz(k);
+      });
+
+      // Extra components retain the two contributions to v and w for initialization-only energy calibration.
+      real3d velocity("digital_filter_inflow_raw_velocity",8,nz,ny);
+      real const inverse_u = static_cast<real>(1)/mean_u;
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ny) , KOKKOS_LAMBDA (int k, int j) {
+        real const v_axial     =  gradient(1,0,k,j);
+        real const v_temporal  =  potential(5,k,j+1)*inverse_u;
+        real const w_temporal  = -potential(4,k,j+1)*inverse_u;
+        real const w_axial     = -gradient(0,0,k,j);
+        velocity(0,k,j) = gradient(0,2,k,j)-gradient(1,1,k,j);
+        velocity(1,k,j) = v_axial+v_temporal;
+        velocity(2,k,j) = w_temporal+w_axial;
+        velocity(3,k,j) = gradient(0,5,k,j)-gradient(1,4,k,j); // du'/dt
+        velocity(4,k,j) = v_axial;
+        velocity(5,k,j) = v_temporal;
+        velocity(6,k,j) = w_temporal;
+        velocity(7,k,j) = w_axial;
+      });
+      return velocity;
+    }
+
+    real3d compute_raw_velocity(core::Coupler const &coupler) {
+      return compute_raw_velocity(coupler,axial_potential_scale,transverse_potential_scale);
+    }
+
+    void calibrate(core::Coupler const &coupler) {
+      using yakl::SimpleBounds;
+      auto velocity = compute_raw_velocity(coupler,1,1);
+      int const px = coupler.get_px();
+      int const nz = coupler.get_nz();
+      int const ny = coupler.get_ny();
+      real2d u_variance("digital_filter_inflow_u_variance",nz,ny);
+      real2d axial_variance("digital_filter_inflow_axial_potential_variance",nz,ny);
+      real2d transverse_variance("digital_filter_inflow_transverse_potential_variance",nz,ny);
+      real2d transverse_cross("digital_filter_inflow_transverse_cross",nz,ny);
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ny) , KOKKOS_LAMBDA (int k, int j) {
+        u_variance(k,j) = px == 0 ? velocity(0,k,j)*velocity(0,k,j) : 0;
+        axial_variance(k,j) = px == 0 ? velocity(4,k,j)*velocity(4,k,j) +
+                                               velocity(7,k,j)*velocity(7,k,j) : 0;
+        transverse_variance(k,j) = px == 0 ? velocity(5,k,j)*velocity(5,k,j) +
+                                                    velocity(6,k,j)*velocity(6,k,j) : 0;
+        transverse_cross(k,j) = px == 0 ? 2*(velocity(4,k,j)*velocity(5,k,j) +
+                                              velocity(7,k,j)*velocity(6,k,j)) : 0;
+      });
+      real const count = nz*coupler.get_ny_glob();
+      real const actual_u = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(u_variance),MPI_SUM)/count;
+      real const axial = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(axial_variance),MPI_SUM)/count;
+      real const transverse = coupler.get_parallel_comm().all_reduce(
+                                   yakl::intrinsics::sum(transverse_variance),MPI_SUM)/count;
+      real const cross = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(transverse_cross),MPI_SUM)/count;
+      real const target = intensity*intensity*mean_u*mean_u;
+      if (target > 0 && (actual_u <= 0 || axial <= 0)) {
+        endrun("Digital-filter turbulent inflow produced zero calibration variance");
+      }
+      if (target == 0) {
+        axial_potential_scale = 0;
+        transverse_potential_scale = 0;
+        return;
+      }
+      transverse_potential_scale = std::sqrt(target/actual_u);
+      real const linear = cross*transverse_potential_scale;
+      real const constant = transverse*transverse_potential_scale*transverse_potential_scale-2*target;
+      real const discriminant = linear*linear-4*axial*constant;
+      if (discriminant < 0) endrun("Digital-filter turbulent inflow could not calibrate vector-potential energy");
+      real const root_positive = (-linear+std::sqrt(discriminant))/(2*axial);
+      real const root_negative = (-linear-std::sqrt(discriminant))/(2*axial);
+      axial_potential_scale = std::max(root_positive,root_negative);
+      if (axial_potential_scale <= 0) {
+        endrun("Digital-filter turbulent inflow vector-potential calibration produced a nonpositive scale");
+      }
+    }
+
+    void advance(core::Coupler const &coupler, real dt) {
+      using yakl::SimpleBounds;
+      auto innovation = create_filtered_innovation(coupler,random_count);
+      int const nz = coupler.get_nz();
+      int const ny = coupler.get_ny();
+      // This critically damped second-order stochastic process has stationary Var(A)=1, Var(dA/dt)=lambda^2,
+      // and correlation (1+lambda*t)exp(-lambda*t). lambda=2/T makes its integral time scale equal to T=Lx/U.
+      real const lambda = static_cast<real>(2)/time_scale;
+      real const decay = std::exp(-lambda*dt);
+      real const phi00 = decay*(1+lambda*dt);
+      real const phi01 = decay*dt;
+      real const phi10 = -decay*lambda*lambda*dt;
+      real const phi11 = decay*(1-lambda*dt);
+      real const covariance00 = std::max(static_cast<real>(0),1-(phi00*phi00+lambda*lambda*phi01*phi01));
+      real const covariance01 = -(phi00*phi10+lambda*lambda*phi01*phi11);
+      real const covariance11 = std::max(static_cast<real>(0),lambda*lambda-(phi10*phi10+lambda*lambda*phi11*phi11));
+      real const noise00 = std::sqrt(covariance00);
+      real const noise10 = noise00 > 0 ? covariance01/noise00 : 0;
+      real const noise11 = std::sqrt(std::max(static_cast<real>(0),covariance11-noise10*noise10));
+      auto state_device = state;
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(3,nz,ny) ,
+                                              KOKKOS_LAMBDA (int component, int k, int j) {
+        real const potential = state_device(component  ,k,j+1);
+        real const rate      = state_device(component+3,k,j+1);
+        state_device(component  ,k,j+1) = phi00*potential + phi01*rate + noise00*innovation(component,k,j);
+        state_device(component+3,k,j+1) = phi10*potential + phi11*rate + noise10*innovation(component  ,k,j) +
+                                                                            noise11*innovation(component+3,k,j);
+      });
+      random_count++;
+    }
+
+    real3d gather_global_state(core::Coupler const &coupler) const {
       using yakl::SimpleBounds;
       int const px      = coupler.get_px();
       int const nz      = coupler.get_nz();
       int const ny      = coupler.get_ny();
-      int const j_beg   = coupler.get_j_beg();
       int const ny_glob = coupler.get_ny_glob();
-      real const dx     = coupler.get_dx();
-      real const dy     = coupler.get_dy();
-      real const ylen   = coupler.get_ylen();
-      real const zlen   = coupler.get_zlen();
-      auto const zmid = coupler.get_zmid();
-      auto const eddies_device = realConst2d(eddies);
-      real3d velocity("synthetic_turbulent_inflow_total_velocity",3,nz,ny);
-      real2d means("synthetic_turbulent_inflow_total_means",2,nz);
-      real2d actual("synthetic_turbulent_inflow_total_actual",nz,ny);
-      bool const wy1 = wall_y1;
-      bool const wy2 = wall_y2;
-      bool const wz1 = wall_z1;
-      bool const wz2 = wall_z2;
-      bool const py  = periodic_y;
-      real const decay = wall_decay_length;
-      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ny) , KOKKOS_LAMBDA (int k, int j) {
-        velocity(0,k,j) = 0;
-        velocity(1,k,j) = 0;
-        velocity(2,k,j) = 0;
-        if (px != 0) return;
-        real const y = (j_beg+j+0.5_fp)*dy;
-        real u, v, w;
-        evaluate_velocity(-0.5_fp*dx,y,zmid(k),ylen,zlen,decay,wy1,wy2,wz1,wz2,py,1,eddies_device,0,-1,u,v,w);
-        velocity(0,k,j) = u;
-        velocity(1,k,j) = v;
-        velocity(2,k,j) = w;
-      });
-      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(2,nz) , KOKKOS_LAMBDA (int component, int k) {
-        means(component,k) = 0;
-        if (px != 0) return;
-        for (int j = 0; j < ny; j++) means(component,k) += velocity(component,k,j);
-      });
-      means = coupler.get_parallel_comm().all_reduce(means,MPI_SUM,"synthetic_inflow_total_means");
-      bool const correct_v = !wall_y1 && !wall_y2;
-      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(nz,ny) , KOKKOS_LAMBDA (int k, int j) {
-        actual(k,j) = 0;
-        if (px != 0) return;
-        real const u = velocity(0,k,j)-means(0,k)/ny_glob;
-        real const v = velocity(1,k,j)-(correct_v ? means(1,k)/ny_glob : 0);
-        real const w = velocity(2,k,j);
-        actual(k,j) = u*u + v*v + w*w;
-      });
-      real const actual_sum = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(actual),MPI_SUM);
-      auto u_host  = u_mean.createHostCopy();
-      auto v_host  = v_mean.createHostCopy();
-      auto ti_host = turbulence_intensity.createHostCopy();
-      real target_sum = 0;
-      for (int k = 0; k < nz; k++) {
-        real const mean_speed_squared = u_host(k)*u_host(k) + v_host(k)*v_host(k);
-        target_sum += ny_glob*3*ti_host(k)*ti_host(k)*mean_speed_squared;
+      int const j_beg   = coupler.get_j_beg();
+      auto state_device = state;
+      real3d local("digital_filter_inflow_global_state_local",6,nz,ny_glob);
+      local = 0;
+      if (px == 0) {
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(6,nz,ny) , KOKKOS_LAMBDA (int field, int k, int j) {
+          local(field,k,j_beg+j) = state_device(field,k,j+1);
+        });
       }
-      if (target_sum > 0 && actual_sum <= 0) endrun("Synthetic turbulent inflow produced zero calibration variance");
-      calibration = target_sum > 0 ? std::sqrt(target_sum/actual_sum) : 0;
+      return coupler.get_parallel_comm().all_reduce(local,MPI_SUM,"digital_filter_inflow_gather_state");
+    }
+
+    void scatter_global_state(core::Coupler const &coupler, real3d const &global) {
+      using yakl::SimpleBounds;
+      int const nz    = coupler.get_nz();
+      int const ny    = coupler.get_ny();
+      int const j_beg = coupler.get_j_beg();
+      auto state_device = state;
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(6,nz,ny) , KOKKOS_LAMBDA (int field, int k, int j) {
+        state_device(field,k,j+1) = global(field,k,j_beg+j);
+      });
     }
 
   private:
-    void advance_eddies(core::Coupler const &coupler, real dt) {
-      auto zmid_host = coupler.get_zmid().createHostCopy();
-      auto diameters_host = scale_diameter.createHostCopy();
-      auto u_host = u_mean.createHostCopy();
-      auto v_host = v_mean.createHostCopy();
-      real const ylen = coupler.get_ylen();
-      real const zlen = coupler.get_zlen();
-      for (int n = 0; n < config.num_eddies; n++) {
-        int const k = nearest_level(eddy_state_host(n,id_z),zmid_host);
-        eddy_state_host(n,id_x) += u_host(k)*dt;
-        eddy_state_host(n,id_y) += v_host(k)*dt;
-        if (periodic_y) {
-          while (eddy_state_host(n,id_y) < 0   ) eddy_state_host(n,id_y) += ylen;
-          while (eddy_state_host(n,id_y) >= ylen) eddy_state_host(n,id_y) -= ylen;
-        }
-        real const radius = eddy_state_host(n,id_radius);
-        if (eddy_state_host(n,id_x)-radius > 0) {
-          int const recycle = static_cast<int>(eddy_state_host(n,id_recycle))+1;
-          int const scale = static_cast<int>(eddy_state_host(n,id_scale));
-          randomize_eddy(n,recycle,scale,diameters_host,ylen,zlen,false);
-        }
-      }
-    }
-
     void register_restart(core::Coupler &coupler) {
       coupler.register_write_output_module( [this] (core::Coupler &coupler, core::FileIO &nc) {
+        auto global_state = gather_global_state(coupler);
         auto base_host = base_column.createHostCopy();
-        auto scale_amplitude_host = scale_amplitude.createHostCopy();
         nc.redef();
-        nc.create_dim("synthetic_inflow_eddy",config.num_eddies);
-        nc.create_dim("synthetic_inflow_eddy_property",num_eddy_properties);
-        nc.create_dim("synthetic_inflow_base_field",base_column.extent(0));
-        nc.create_dim("synthetic_inflow_scale",num_scales);
-        nc.create_var<real>("synthetic_inflow_eddy_state",{"synthetic_inflow_eddy","synthetic_inflow_eddy_property"});
-        nc.create_var<real>("synthetic_inflow_base_column",{"synthetic_inflow_base_field","z"});
-        nc.create_var<real>("synthetic_inflow_scale_amplitude",{"synthetic_inflow_scale"});
-        nc.create_var<real>("synthetic_inflow_calibration",{});
+        nc.create_dim("digital_filter_inflow_field",6);
+        nc.create_dim("digital_filter_inflow_base_field",base_column.extent(0));
+        nc.create_var<real>("digital_filter_inflow_state",{"digital_filter_inflow_field","z","y"});
+        nc.create_var<real>("digital_filter_inflow_base_column",{"digital_filter_inflow_base_field","z"});
+        nc.create_var<real>("digital_filter_inflow_axial_potential_scale",{});
+        nc.create_var<real>("digital_filter_inflow_transverse_potential_scale",{});
+        nc.create_var<int>("digital_filter_inflow_random_count",{});
         nc.enddef();
         nc.begin_indep_data();
         if (coupler.is_mainproc()) {
-          nc.write(eddy_state_host,"synthetic_inflow_eddy_state");
-          nc.write(base_host,"synthetic_inflow_base_column");
-          nc.write(scale_amplitude_host,"synthetic_inflow_scale_amplitude");
-          nc.write(calibration,"synthetic_inflow_calibration");
+          nc.write(global_state,"digital_filter_inflow_state");
+          nc.write(base_host,"digital_filter_inflow_base_column");
+          nc.write(axial_potential_scale,"digital_filter_inflow_axial_potential_scale");
+          nc.write(transverse_potential_scale,"digital_filter_inflow_transverse_potential_scale");
+          nc.write(random_count,"digital_filter_inflow_random_count");
         }
         nc.end_indep_data();
       });
       coupler.register_overwrite_with_restart_module( [this] (core::Coupler &coupler, core::FileIO &nc) {
-        realHost2d base_host("synthetic_inflow_restart_base",base_column.extent(0),base_column.extent(1));
-        realHost1d scale_amplitude_host("synthetic_inflow_restart_scale_amplitude",num_scales);
+        real3d global_state("digital_filter_inflow_restart_state",6,coupler.get_nz(),coupler.get_ny_glob());
+        realHost2d base_host("digital_filter_inflow_restart_base",base_column.extent(0),base_column.extent(1));
         nc.begin_indep_data();
         if (coupler.is_mainproc()) {
-          nc.read(eddy_state_host,"synthetic_inflow_eddy_state");
-          nc.read(base_host,"synthetic_inflow_base_column");
-          nc.read(scale_amplitude_host,"synthetic_inflow_scale_amplitude");
-          nc.read(calibration,"synthetic_inflow_calibration");
+          nc.read(global_state,"digital_filter_inflow_state");
+          nc.read(base_host,"digital_filter_inflow_base_column");
+          nc.read(axial_potential_scale,"digital_filter_inflow_axial_potential_scale");
+          nc.read(transverse_potential_scale,"digital_filter_inflow_transverse_potential_scale");
+          nc.read(random_count,"digital_filter_inflow_random_count");
         }
         nc.end_indep_data();
         auto const comm = coupler.get_parallel_comm();
-        comm.broadcast(eddy_state_host);
+        comm.broadcast(global_state);
         comm.broadcast(base_host);
-        comm.broadcast(scale_amplitude_host);
-        comm.broadcast(calibration);
+        comm.broadcast(axial_potential_scale);
+        comm.broadcast(transverse_potential_scale);
+        comm.broadcast(random_count);
         base_host.deep_copy_to(base_column);
-        scale_amplitude_host.deep_copy_to(scale_amplitude);
-        update_device_eddies(coupler.get_zmid().createHostCopy());
+        scatter_global_state(coupler,global_state);
       });
     }
 
   public:
-    SyntheticTurbulentInflow() = default;
-    SyntheticTurbulentInflow(SyntheticTurbulentInflow const &) = delete;
-    SyntheticTurbulentInflow &operator=(SyntheticTurbulentInflow const &) = delete;
-    SyntheticTurbulentInflow(SyntheticTurbulentInflow &&) = delete;
-    SyntheticTurbulentInflow &operator=(SyntheticTurbulentInflow &&) = delete;
+    DigitalFilterTurbulentInflow() = default;
+    DigitalFilterTurbulentInflow(DigitalFilterTurbulentInflow const &) = delete;
+    DigitalFilterTurbulentInflow &operator=(DigitalFilterTurbulentInflow const &) = delete;
+    DigitalFilterTurbulentInflow(DigitalFilterTurbulentInflow &&) = delete;
+    DigitalFilterTurbulentInflow &operator=(DigitalFilterTurbulentInflow &&) = delete;
 
-    // Host diagnostics expose the realized scale model for unit tests and experiment metadata. Fractions sum to
-    // one and are exact integrals of the truncated k^(-5/3) target; amplitudes additionally account for the compact
-    // kernel, finite eddy population, mean correction, and wall taper.
-    int get_num_scales() const {
-      if (! initialized) endrun("Synthetic turbulent inflow scale diagnostics requested before init");
-      return num_scales;
-    }
-
-    real get_smallest_length() const {
-      if (! initialized) endrun("Synthetic turbulent inflow scale diagnostics requested before init");
-      return smallest_length;
-    }
-
-    realHost1d get_scale_energy_fraction() const {
-      if (! initialized) endrun("Synthetic turbulent inflow scale diagnostics requested before init");
-      return scale_fraction.createHostCopy();
-    }
-
-    realHost1d get_scale_amplitude() const {
-      if (! initialized) endrun("Synthetic turbulent inflow scale diagnostics requested before init");
-      return scale_amplitude.createHostCopy();
-    }
-
-    int get_num_eddies() const {
-      if (! initialized) endrun("Synthetic turbulent inflow population diagnostics requested before init");
-      return config.num_eddies;
-    }
-
-    intHost1d get_scale_eddy_count() const {
-      if (! initialized) endrun("Synthetic turbulent inflow population diagnostics requested before init");
-      return scale_eddy_count;
+    real get_time_scale() const {
+      if (!initialized) endrun("Digital-filter turbulent inflow diagnostics requested before init");
+      return time_scale;
     }
 
     template <class Dycore>
     void init(core::Coupler &coupler, Dycore &dycore, real1d const &u_mean_in, real1d const &v_mean_in,
               real1d const &turbulence_intensity_in, Config const &config_in = Config()) {
-      if (initialized) endrun("Synthetic turbulent inflow may only be initialized once");
+      if (initialized) endrun("Digital-filter turbulent inflow may only be initialized once");
       if (coupler.get_option<std::string>("bc_x1") != "precursor") {
-        endrun("Synthetic turbulent inflow requires bc_x1=precursor");
+        endrun("Digital-filter turbulent inflow requires bc_x1=precursor");
       }
       int const nz = coupler.get_nz();
       if (u_mean_in.extent(0) != nz || v_mean_in.extent(0) != nz || turbulence_intensity_in.extent(0) != nz) {
-        endrun("Synthetic turbulent inflow profiles must have extent nz");
+        endrun("Digital-filter turbulent inflow profiles must have extent nz");
       }
-      if (config_in.minimum_eddies <= 0) endrun("Synthetic turbulent inflow requires minimum_eddies > 0");
-      if (config_in.cells_per_eddy <= 0) endrun("Synthetic turbulent inflow requires cells_per_eddy > 0");
       config = config_in;
+      if (config.streamwise_length_cells <= 0 || config.spanwise_length_cells <= 0 ||
+          config.vertical_length_cells <= 0) {
+        endrun("Digital-filter turbulent inflow correlation lengths must be positive cell counts");
+      }
+      if (config.wall_decay_cells <= 0) {
+        endrun("Digital-filter turbulent inflow wall decay must be a positive cell count");
+      }
+      auto u_host  = u_mean_in.createHostCopy();
+      auto v_host  = v_mean_in.createHostCopy();
+      auto ti_host = turbulence_intensity_in.createHostCopy();
+      mean_u = u_host(0);
+      intensity = ti_host(0);
+      if (mean_u <= 0) endrun("Digital-filter turbulent inflow requires positive uniform u_mean");
+      if (intensity < 0) endrun("Digital-filter turbulent inflow intensity must be nonnegative");
+      for (int k = 0; k < nz; k++) {
+        if (!nearly_equal(u_host(k),mean_u) || !nearly_equal(v_host(k),0) || !nearly_equal(ti_host(k),intensity)) {
+          endrun("Digital-filter turbulent inflow requires constant u_mean, zero v_mean, and constant intensity");
+        }
+      }
+      std::string const bc_y1 = coupler.get_option<std::string>("bc_y1");
+      std::string const bc_y2 = coupler.get_option<std::string>("bc_y2");
+      std::string const bc_z1 = coupler.get_option<std::string>("bc_z1");
+      std::string const bc_z2 = coupler.get_option<std::string>("bc_z2");
+      periodic_y = bc_y1 == "periodic" && bc_y2 == "periodic";
+      periodic_z = bc_z1 == "periodic" && bc_z2 == "periodic";
+      wall_y1 = bc_y1 == "wall_free_slip";
+      wall_y2 = bc_y2 == "wall_free_slip";
+      wall_z1 = bc_z1 == "wall_free_slip";
+      wall_z2 = bc_z2 == "wall_free_slip";
+      if (!(periodic_y || (wall_y1 && wall_y2)) || !(periodic_z || (wall_z1 && wall_z2))) {
+        endrun("Digital-filter turbulent inflow requires periodic or wall_free_slip transverse boundary pairs");
+      }
+
       halo_size = Dycore::hs;
-      x_ghost_min = -halo_size*coupler.get_dx();
-      wall_y1 = coupler.get_option<std::string>("bc_y1") == "wall_free_slip";
-      wall_y2 = coupler.get_option<std::string>("bc_y2") == "wall_free_slip";
-      wall_z1 = coupler.get_option<std::string>("bc_z1") == "wall_free_slip";
-      wall_z2 = coupler.get_option<std::string>("bc_z2") == "wall_free_slip";
-      periodic_y = coupler.get_option<std::string>("bc_y1") == "periodic" &&
-                   coupler.get_option<std::string>("bc_y2") == "periodic";
-      outer_length = config.outer_length > 0 ? config.outer_length :
-                                             0.25_fp*std::min(coupler.get_ylen(),coupler.get_zlen());
-      wall_decay_length = config.wall_decay_length > 0 ? config.wall_decay_length : outer_length/2;
-      if (outer_length <= 0 || wall_decay_length <= 0) endrun("Synthetic turbulent inflow lengths must be positive");
-
-      u_mean = real1d("synthetic_turbulent_inflow_u_mean",nz);
-      v_mean = real1d("synthetic_turbulent_inflow_v_mean",nz);
-      turbulence_intensity = real1d("synthetic_turbulent_inflow_intensity",nz);
-      u_mean_in.deep_copy_to(u_mean);
-      v_mean_in.deep_copy_to(v_mean);
-      turbulence_intensity_in.deep_copy_to(turbulence_intensity);
-      auto u_host  = u_mean.createHostCopy();
-      auto v_host  = v_mean.createHostCopy();
-      auto ti_host = turbulence_intensity.createHostCopy();
-      for (int k = 0; k < nz; k++) {
-        if (u_host(k) <= 0) endrun("Synthetic turbulent inflow requires positive u_mean at every level");
-        if (ti_host(k) < 0) endrun("Synthetic turbulent inflow intensity must be nonnegative");
-        if ((wall_y1 || wall_y2) && std::abs(v_host(k)) > 1.e-12) {
-          endrun("Synthetic turbulent inflow requires v_mean=0 when a spanwise boundary is wall_free_slip");
-        }
-      }
-
-      auto dz_host = coupler.get_dz().createHostCopy();
-      smallest_length = 4*std::max(coupler.get_dx(),coupler.get_dy());
-      for (int k = 0; k < nz; k++) {
-        real const cutoff = 4*std::max(coupler.get_dx(),std::max(coupler.get_dy(),dz_host(k)));
-        smallest_length = std::max(smallest_length,cutoff);
-      }
-      if (outer_length <= smallest_length) {
-        endrun("Synthetic turbulent inflow outer_length must exceed the four-cell cutoff");
-      }
-      num_scales = 0;
-      for (real band_outer = outer_length; band_outer > smallest_length; band_outer /= 2) num_scales++;
-      if (config.num_eddies <= 0) {
-        long long const slab_cells = static_cast<long long>(coupler.get_ny_glob())*nz;
-        config.num_eddies = std::max(config.minimum_eddies,
-                                     static_cast<int>(std::ceil(slab_cells/config.cells_per_eddy)));
-      }
-      if (config.num_eddies < num_scales) {
-        endrun("Synthetic turbulent inflow requires at least one eddy per inertial-range scale");
-      }
-      realHost1d diameters_host("synthetic_turbulent_inflow_scale_diameter_host",num_scales);
-      realHost1d fractions_host("synthetic_turbulent_inflow_scale_fraction_host",num_scales);
-      realHost1d amplitudes_host("synthetic_turbulent_inflow_scale_amplitude_host",num_scales);
-      real const denominator = std::pow(outer_length,2._fp/3._fp)-std::pow(smallest_length,2._fp/3._fp);
-      for (int scale = 0; scale < num_scales; scale++) {
-        real const band_outer = outer_length/std::pow(2._fp,scale);
-        real const band_inner = std::max(smallest_length,band_outer/2);
-        diameters_host(scale) = band_outer;
-        fractions_host(scale) = (std::pow(band_outer,2._fp/3._fp)-std::pow(band_inner,2._fp/3._fp))/denominator;
-        amplitudes_host(scale) = 1;
-      }
-      // Give every band comparable expected coverage on the inlet plane. Since one compact eddy covers an area
-      // proportional to diameter squared, the required population is proportional to inverse diameter squared.
-      scale_eddy_count = intHost1d("synthetic_turbulent_inflow_scale_eddy_count",num_scales);
-      std::vector<real> population_weight(num_scales);
-      std::vector<real> population_remainder(num_scales);
-      real weight_sum = 0;
-      for (int scale = 0; scale < num_scales; scale++) {
-        population_weight[scale] = 1/(diameters_host(scale)*diameters_host(scale));
-        weight_sum += population_weight[scale];
-      }
-      int assigned = num_scales;
-      int const remaining = config.num_eddies-num_scales;
-      for (int scale = 0; scale < num_scales; scale++) {
-        real const exact = remaining*population_weight[scale]/weight_sum;
-        int const additional = static_cast<int>(std::floor(exact));
-        scale_eddy_count(scale) = 1+additional;
-        population_remainder[scale] = exact-additional;
-        assigned += additional;
-      }
-      while (assigned < config.num_eddies) {
-        int selected = 0;
-        for (int scale = 1; scale < num_scales; scale++) {
-          if (population_remainder[scale] > population_remainder[selected]) selected = scale;
-        }
-        scale_eddy_count(selected)++;
-        population_remainder[selected] = -1;
-        assigned++;
-      }
-      scale_diameter = diameters_host.createDeviceCopy();
-      scale_fraction = fractions_host.createDeviceCopy();
-      scale_amplitude = amplitudes_host.createDeviceCopy();
+      time_scale = config.streamwise_length_cells*coupler.get_dx()/mean_u;
+      filter_ny = 2*config.spanwise_length_cells;
+      filter_nz = 2*config.vertical_length_cells;
+      initialize_filter(config.spanwise_length_cells,filter_ny,filter_y,"digital_filter_inflow_filter_y");
+      initialize_filter(config.vertical_length_cells,filter_nz,filter_z,"digital_filter_inflow_filter_z");
 
       base_column = dycore.compute_average_ghost_column(coupler);
-      eddy_state_host = realHost2d("synthetic_turbulent_inflow_state",config.num_eddies,num_eddy_properties);
-      eddies = real2d("synthetic_turbulent_inflow_eddies",config.num_eddies,num_device_properties);
-      auto zmid_host = coupler.get_zmid().createHostCopy();
-      int eddy = 0;
-      for (int scale = 0; scale < num_scales; scale++) {
-        for (int count = 0; count < scale_eddy_count(scale); count++) {
-          randomize_eddy(eddy,0,scale,diameters_host,coupler.get_ylen(),coupler.get_zlen(),true);
-          eddy++;
-        }
-      }
-      update_device_eddies(zmid_host);
-      calibrate_scales(coupler);
-      update_device_eddies(zmid_host);
-      calibrate_total(coupler);
+      state = real3d("digital_filter_inflow_state",6,nz,coupler.get_ny()+2);
+      auto initial = create_filtered_innovation(coupler,random_count);
+      auto state_device = state;
+      real const lambda = static_cast<real>(2)/time_scale;
+      yakl::parallel_for( YAKL_AUTO_LABEL() , yakl::SimpleBounds<3>(3,nz,coupler.get_ny()) ,
+                                              KOKKOS_LAMBDA (int component, int k, int j) {
+        state_device(component  ,k,j+1) = initial(component  ,k,j);
+        state_device(component+3,k,j+1) = lambda*initial(component+3,k,j);
+      });
+      random_count++;
+      calibrate(coupler);
       register_restart(coupler);
       initialized = true;
     }
 
-    // Fill dycore_ghost_x1 for the complete physical step, including every acoustic subcycle and RK stage, then
-    // advance the retained eddy ensemble to the end of the physical step. Call immediately before dycore.time_step.
+    // Populate every x1 ghost needed by the dycore, advancing the stochastic state at acoustic-subcycle cadence.
+    // A single correlated plane is held fixed across all RK stages within each acoustic subcycle.
     template <class Dycore>
     void apply(core::Coupler &coupler, Dycore &dycore, real dt) {
-      if (! initialized) endrun("Synthetic turbulent inflow apply called before init");
-      if (dt <= 0) endrun("Synthetic turbulent inflow requires dt > 0");
       using yakl::SimpleBounds;
       using FLOC = typename Dycore::FLOC;
+      if (!initialized) endrun("Digital-filter turbulent inflow apply called before init");
+      if (dt <= 0) endrun("Digital-filter turbulent inflow requires dt > 0");
       real const dt_stable = dycore.compute_time_step(coupler);
       int const ncycles = static_cast<int>(std::ceil(dt/dt_stable));
       real const dt_dyn = dt/ncycles;
       dycore.ensure_dycore_max_cycles(coupler,ncycles-1);
-      int const nstages = coupler.get_option<int>("dycore_num_stages");
-      std::string const time_stepper = coupler.get_option<std::string>("dycore_time_stepper","ssprk3");
-      int stepper = 0;
-      if      (time_stepper == "linrk3" ) stepper = 1;
-      else if (time_stepper == "linrk4" ) stepper = 2;
-      else if (time_stepper == "ssprk3") stepper = 3;
-      else endrun("Synthetic turbulent inflow encountered an unsupported dycore time stepper");
-
-      int const px = coupler.get_px();
-      int const nz = coupler.get_nz();
-      int const ny = coupler.get_ny();
-      int const j_beg = coupler.get_j_beg();
+      int const nstages   = coupler.get_option<int>("dycore_num_stages");
+      int const px        = coupler.get_px();
+      int const nz        = coupler.get_nz();
+      int const ny        = coupler.get_ny();
       int const num_fields = base_column.extent(0);
-      real const dx = coupler.get_dx();
-      real const dy = coupler.get_dy();
-      real const ylen = coupler.get_ylen();
-      real const zlen = coupler.get_zlen();
-      auto const zmid = coupler.get_zmid();
       auto const base = realConst2d(base_column);
-      auto const u_profile = realConst1d(u_mean);
-      auto const v_profile = realConst1d(v_mean);
-      auto const eddies_device = realConst2d(eddies);
-      bool const wy1 = wall_y1;
-      bool const wy2 = wall_y2;
-      bool const wz1 = wall_z1;
-      bool const wz2 = wall_z2;
-      bool const py  = periodic_y;
-      real const decay = wall_decay_length;
-      real const scale = calibration;
 
       if (px == 0) {
         auto ghost = coupler.get_data_manager_readwrite().template get<FLOC,6>("dycore_ghost_x1");
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<6>(ncycles,nstages,num_fields,nz,ny,halo_size) ,
-                                                KOKKOS_LAMBDA (int cycle, int stage, int l, int k, int j, int ii) {
-          ghost(cycle,stage,l,k,j,ii) = static_cast<FLOC>(base(l,k));
-        });
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(ncycles,nstages,nz,ny,halo_size) ,
-                                                KOKKOS_LAMBDA (int cycle, int stage, int k, int j, int ii) {
-          real stage_fraction = 0;
-          if (stepper == 1) {
-            if      (stage == 1) stage_fraction = 1._fp/3._fp;
-            else if (stage == 2) stage_fraction = 1._fp/2._fp;
-          } else if (stepper == 2) {
-            if      (stage == 1) stage_fraction = 1._fp/4._fp;
-            else if (stage == 2) stage_fraction = 1._fp/3._fp;
-            else if (stage == 3) stage_fraction = 1._fp/2._fp;
-          } else {
-            if      (stage == 1) stage_fraction = 1;
-            else if (stage == 2) stage_fraction = 1._fp/2._fp;
-          }
-          real const time_offset = (cycle+stage_fraction)*dt_dyn;
-          real const x = -(ii+0.5_fp)*dx;
-          real const y = (j_beg+j+0.5_fp)*dy;
-          real u, v, w;
-          evaluate_velocity(x,y,zmid(k),ylen,zlen,decay,wy1,wy2,wz1,wz2,py,scale,eddies_device,
-                            time_offset,-1,u,v,w);
-          ghost(cycle,stage,Dycore::idU,k,j,ii) = static_cast<FLOC>(u_profile(k)+u);
-          ghost(cycle,stage,Dycore::idV,k,j,ii) = static_cast<FLOC>(v_profile(k)+v);
-          ghost(cycle,stage,Dycore::idW,k,j,ii) = static_cast<FLOC>(w);
+                                                KOKKOS_LAMBDA (int cycle, int stage, int field, int k, int j, int ii) {
+          ghost(cycle,stage,field,k,j,ii) = static_cast<FLOC>(base(field,k));
         });
       }
 
-      // A height-dependent correction to u that is constant in x and y has zero divergence and removes finite-eddy
-      // fluctuations in bulk inflow. Compute it at the innermost ghost center and apply the same value throughout
-      // the normal ghost thickness; computing a separate correction at each ii would introduce an x derivative.
-      // The analogous v correction is omitted when y is a wall-normal direction.
-      real4d means("synthetic_turbulent_inflow_means",ncycles,nstages,2,nz);
-      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ncycles,nstages,2,nz) ,
-                                              KOKKOS_LAMBDA (int cycle, int stage, int l, int k) {
-        means(cycle,stage,l,k) = 0;
-      });
-      if (px == 0) {
-        auto ghost = coupler.get_data_manager_readonly().template get<FLOC const,6>("dycore_ghost_x1");
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(ncycles,nstages,2,nz) ,
-                                                KOKKOS_LAMBDA (int cycle, int stage, int l, int k) {
-          real const profile = l == 0 ? u_profile(k) : v_profile(k);
-          int const field = l == 0 ? Dycore::idU : Dycore::idV;
-          for (int j = 0; j < ny; j++) means(cycle,stage,l,k) += ghost(cycle,stage,field,k,j,0)-profile;
-        });
+      for (int cycle = 0; cycle < ncycles; cycle++) {
+        auto velocity = compute_raw_velocity(coupler);
+        real const um = mean_u;
+        if (px == 0) {
+          auto ghost = coupler.get_data_manager_readwrite().template get<FLOC,6>("dycore_ghost_x1");
+          yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nstages,nz,ny,halo_size) ,
+                                                  KOKKOS_LAMBDA (int stage, int k, int j, int ii) {
+            ghost(cycle,stage,Dycore::idU,k,j,ii) = static_cast<FLOC>(um+velocity(0,k,j));
+            ghost(cycle,stage,Dycore::idV,k,j,ii) = static_cast<FLOC>(velocity(1,k,j));
+            ghost(cycle,stage,Dycore::idW,k,j,ii) = static_cast<FLOC>(velocity(2,k,j));
+          });
+        }
+        advance(coupler,dt_dyn);
       }
-      means = coupler.get_parallel_comm().all_reduce(means,MPI_SUM,"synthetic_inflow_mean");
-      if (px == 0) {
-        auto ghost = coupler.get_data_manager_readwrite().template get<FLOC,6>("dycore_ghost_x1");
-        bool const correct_v = !wall_y1 && !wall_y2;
-        real const inverse_ny = 1._fp/coupler.get_ny_glob();
-        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<5>(ncycles,nstages,nz,ny,halo_size) ,
-                                                KOKKOS_LAMBDA (int cycle, int stage, int k, int j, int ii) {
-          ghost(cycle,stage,Dycore::idU,k,j,ii) -= static_cast<FLOC>(means(cycle,stage,0,k)*inverse_ny);
-          if (correct_v) {
-            ghost(cycle,stage,Dycore::idV,k,j,ii) -= static_cast<FLOC>(means(cycle,stage,1,k)*inverse_ny);
-          }
-        });
-      }
-      advance_eddies(coupler,dt);
-      update_device_eddies(coupler.get_zmid().createHostCopy());
     }
   };
 
