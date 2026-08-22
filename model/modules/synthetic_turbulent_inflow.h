@@ -456,7 +456,13 @@ namespace modules {
 
     template <class Dycore>
     void init(core::Coupler &coupler, Dycore &dycore, real1d const &u_mean_in, real1d const &v_mean_in,
-              real1d const &turbulence_intensity_in, Config const &config_in = Config()) {
+              real1d const &turbulence_intensity_in) {
+      init(coupler,dycore,u_mean_in,v_mean_in,turbulence_intensity_in,Config());
+    }
+
+    template <class Dycore>
+    void init(core::Coupler &coupler, Dycore &dycore, real1d const &u_mean_in, real1d const &v_mean_in,
+              real1d const &turbulence_intensity_in, Config const &config_in) {
       if (initialized) endrun("Digital-filter turbulent inflow may only be initialized once");
       if (coupler.get_option<std::string>("bc_x1") != "precursor") {
         endrun("Digital-filter turbulent inflow requires bc_x1=precursor");
