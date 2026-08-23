@@ -43,6 +43,8 @@ process_target(turbine_neutral_ensemble)
 process_target(turbine_simple)
 process_target(anelastic_dycore)
 process_target(digital_filter_turbulent_inflow)
+add_test(NAME digital_filter_turbulent_inflow_periodic COMMAND digital_filter_turbulent_inflow --periodic-transverse)
+add_test(NAME digital_filter_turbulent_inflow_octaves_64 COMMAND digital_filter_turbulent_inflow --octave-only-64)
 
 if (PORTURB_ENABLE_FILE_IO_TESTS)
   if (NOT PORTURB_FILE_IO_BACKEND STREQUAL "adios2")

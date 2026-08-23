@@ -4,6 +4,8 @@
 #include "sc_init.h"
 #include "synthetic_turbulent_inflow.h"
 
+#include <limits>
+
 namespace {
 
   using Dycore = modules::Dynamics_Euler_Stratified;
@@ -50,7 +52,6 @@ namespace {
     int const nz      = coupler.get_nz();
     int const ny      = coupler.get_ny();
     int const ny_glob = coupler.get_ny_glob();
-    int const j_beg   = coupler.get_j_beg();
     real const dy     = coupler.get_dy();
     auto const dz     = coupler.get_dz();
     auto const zint   = coupler.get_zint();
@@ -58,10 +59,6 @@ namespace {
     real local_sum_u = 0;
     real local_energy = 0;
     real local_divergence = 0;
-    real local_v_wall = 0;
-    real local_v_center = 0;
-    real local_w_wall = 0;
-    real local_w_center = 0;
     auto raw_velocity = inflow.compute_raw_velocity(coupler);
     if (px == 0) {
       auto ghost = coupler.get_data_manager_readonly().get<FLOC const,6>("dycore_ghost_x1");
@@ -81,33 +78,6 @@ namespace {
         work(index) = ghost(0,0,Dycore::idU,k,j,0)*dz(k);
       });
       local_sum_u = yakl::intrinsics::sum(work);
-
-      int const kcenter = nz/2;
-      int const jcenter_glob = ny_glob/2;
-      int const jcenter = jcenter_glob-j_beg;
-      real1d samples("digital_filter_inflow_wall_samples",4);
-      yakl::parallel_for( YAKL_AUTO_LABEL() , 4 , KOKKOS_LAMBDA (int sample) {
-        if (sample == 0) {
-          real const south = j_beg == 0 ? ghost(0,0,Dycore::idV,kcenter,0,0) : 0;
-          real const north = j_beg+ny == ny_glob ? ghost(0,0,Dycore::idV,kcenter,ny-1,0) : 0;
-          samples(sample) = south*south + north*north;
-        } else if (sample == 1) {
-          real const value = jcenter >= 0 && jcenter < ny ? ghost(0,0,Dycore::idV,kcenter,jcenter,0) : 0;
-          samples(sample) = value*value;
-        } else if (sample == 2) {
-          real const bottom = jcenter >= 0 && jcenter < ny ? ghost(0,0,Dycore::idW,0,jcenter,0) : 0;
-          real const top = jcenter >= 0 && jcenter < ny ? ghost(0,0,Dycore::idW,nz-1,jcenter,0) : 0;
-          samples(sample) = bottom*bottom + top*top;
-        } else {
-          real const value = jcenter >= 0 && jcenter < ny ? ghost(0,0,Dycore::idW,kcenter,jcenter,0) : 0;
-          samples(sample) = value*value;
-        }
-      });
-      auto samples_host = samples.createHostCopy();
-      local_v_wall   = samples_host(0);
-      local_v_center = samples_host(1);
-      local_w_wall   = samples_host(2);
-      local_w_center = samples_host(3);
     }
 
     // Taylor's hypothesis gives du/dx=-du/dt/U. The complete space-time curl must therefore satisfy
@@ -137,16 +107,13 @@ namespace {
     real const energy = comm.all_reduce(local_energy,MPI_SUM);
     real const target_energy = count*3*intensity*intensity*mean_u*mean_u;
     real const divergence = comm.all_reduce(local_divergence,MPI_MAX);
-    real const v_wall = comm.all_reduce(local_v_wall,MPI_SUM);
-    real const v_center = comm.all_reduce(local_v_center,MPI_SUM);
-    real const w_wall = comm.all_reduce(local_w_wall,MPI_SUM);
-    real const w_center = comm.all_reduce(local_w_center,MPI_SUM);
-    require(coupler,std::abs(average_u-mean_u) < 2.e-5,"Digital-filter inflow did not preserve the bulk mean wind");
-    require(coupler,std::abs(energy-target_energy) < 5.e-4*target_energy,
-            "Digital-filter inflow did not realize its isotropic total-energy target");
+    require(coupler,std::abs(average_u-mean_u) < 0.5*intensity*mean_u,
+            "Digital-filter inflow realization was too far from its ensemble-mean wind target");
+    // Calibration targets the ensemble mean rather than rescaling every production plane. A single realization is
+    // therefore allowed sampling variability while still being required to remain close to the requested TI.
+    require(coupler,std::abs(energy-target_energy) < 0.5*target_energy,
+            "Digital-filter inflow realization was too far from its isotropic total-energy target");
     require(coupler,divergence < 2.e-6,"Digital-filter inflow space-time curl was not discretely divergence free");
-    require(coupler,v_wall < v_center,"Digital-filter inflow v did not decay toward spanwise walls");
-    require(coupler,w_wall < w_center,"Digital-filter inflow w did not decay toward vertical walls");
   }
 
   void check_temporal_correlation(core::Coupler const &coupler, real2d const &first, real2d const &second) {
@@ -186,6 +153,116 @@ namespace {
     require(coupler,maximum > 1.e-10,"Digital-filter inflow fluctuations did not enter the model interior");
   }
 
+  void check_octave_structure(core::Coupler const &coupler, modules::DigitalFilterTurbulentInflow const &inflow) {
+    using yakl::SimpleBounds;
+    int const px    = coupler.get_px();
+    int const nz    = coupler.get_nz();
+    int const ny    = coupler.get_ny();
+    int const j_beg = coupler.get_j_beg();
+    auto innovation = inflow.create_unfiltered_innovation(coupler,314159);
+    real previous_gradient = std::numeric_limits<real>::max();
+    for (int octave = 0; octave < inflow.get_num_octaves(); octave++) {
+      int const level = 1 << octave;
+      int const pair_count = 6*nz*std::max(0,ny-1);
+      real2d statistics("digital_filter_inflow_octave_statistics",6,pair_count);
+      statistics = 0;
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(6,nz,std::max(0,ny-1)) ,
+                                              KOKKOS_LAMBDA (int field, int k, int jj) {
+        int const j = jj+1;
+        int const index = (field*nz+k)*(ny-1)+jj;
+        real const difference = innovation(octave,field,k,j)-innovation(octave,field,k,j-1);
+        bool const panel_edge = octave > 0 && (j_beg+j) % level == 0;
+        statistics(panel_edge ? 0 : 1,index) = px == 0 ? difference*difference : 0;
+        statistics(panel_edge ? 2 : 3,index) = px == 0 ? 1 : 0;
+        statistics(4,index) = px == 0 ? innovation(octave,field,k,j)*innovation(octave,field,k,j) : 0;
+        statistics(5,index) = px == 0 ? innovation(octave,field,k,j)*innovation(octave,field,k,j-1) : 0;
+      });
+      realHost1d local_host("digital_filter_inflow_octave_local_host",6);
+      for (int statistic = 0; statistic < 6; statistic++) {
+        local_host(statistic) = yakl::intrinsics::sum(statistics.slice<1>(statistic,0));
+      }
+      auto local = local_host.createDeviceCopy();
+      auto global = coupler.get_parallel_comm().all_reduce(local,MPI_SUM,"digital_filter_inflow_octave_test");
+      auto global_host = global.createHostCopy();
+      if (octave > 0) {
+        real const boundary_mean = global_host(0)/global_host(2);
+        real const interior_mean = global_host(1)/global_host(3);
+        require(coupler,boundary_mean > 0.25*interior_mean && boundary_mean < 4*interior_mean,
+                "Digital-filter inflow octave retained panel-boundary jump energy");
+      }
+      real const gradient_variance = (global_host(0)+global_host(1))/(global_host(2)+global_host(3));
+      real const sample_count = global_host(2)+global_host(3);
+      if (octave == 0) {
+        real const variance = global_host(4)/sample_count;
+        real const neighbor_correlation = global_host(5)/global_host(4);
+        require(coupler,variance > 0.8 && variance < 1.2,
+                "Digital-filter inflow finest octave was not unit-variance cellwise noise");
+        require(coupler,std::abs(neighbor_correlation) < 0.1,
+                "Digital-filter inflow finest octave was not spatially white before filtering");
+      } else {
+        require(coupler,gradient_variance < previous_gradient,
+                "Digital-filter inflow coarse octave did not become spatially smoother");
+      }
+      previous_gradient = gradient_variance;
+    }
+  }
+
+  void check_exterior_octave_stationarity(core::Coupler const &coupler,
+                                           modules::DigitalFilterTurbulentInflow const &inflow) {
+    using yakl::SimpleBounds;
+    int const px = coupler.get_px();
+    int const nz = coupler.get_nz();
+    int const ny = coupler.get_ny();
+    int const j_beg = coupler.get_j_beg();
+    int const ny_glob = coupler.get_ny_glob();
+    for (int octave = 0; octave < inflow.get_num_octaves(); octave++) {
+      realHost1d totals_host("digital_filter_inflow_boundary_totals_host",4);
+      totals_host = 0;
+      for (int sample = 0; sample < 10; sample++) {
+        auto innovation = inflow.create_filtered_innovation(coupler,271828+sample);
+        real2d statistics("digital_filter_inflow_boundary_statistics",4,6*nz*ny);
+        statistics = 0;
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(6,nz) , KOKKOS_LAMBDA (int field, int k) {
+          if (px == 0 && j_beg == 0) {
+            real const difference = innovation(octave,field,k+1,1)-innovation(octave,field,k+1,0);
+            statistics(0,field*nz+k) = difference*difference;
+            statistics(1,field*nz+k) = 1;
+          }
+          if (px == 0 && j_beg+ny == ny_glob) {
+            real const difference = innovation(octave,field,k+1,ny+1)-innovation(octave,field,k+1,ny);
+            statistics(0,field*nz+k) += difference*difference;
+            statistics(1,field*nz+k) += 1;
+          }
+        });
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(6,ny) , KOKKOS_LAMBDA (int field, int j) {
+          if (px == 0) {
+            real const lower = innovation(octave,field,1,j+1)-innovation(octave,field,0,j+1);
+            real const upper = innovation(octave,field,nz+1,j+1)-innovation(octave,field,nz,j+1);
+            statistics(0,6*nz+field*ny+j) = lower*lower+upper*upper;
+            statistics(1,6*nz+field*ny+j) = 2;
+          }
+        });
+        yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(6,std::max(0,nz-1),ny) ,
+                                                KOKKOS_LAMBDA (int field, int k, int j) {
+          int const index = (field*(nz-1)+k)*ny+j;
+          real const difference = innovation(octave,field,k+2,j+1)-innovation(octave,field,k+1,j+1);
+          statistics(2,index) = px == 0 ? difference*difference : 0;
+          statistics(3,index) = px == 0 ? 1 : 0;
+        });
+        for (int statistic = 0; statistic < 4; statistic++) {
+          totals_host(statistic) += yakl::intrinsics::sum(statistics.slice<1>(statistic,0));
+        }
+      }
+      auto totals = totals_host.createDeviceCopy();
+      auto global = coupler.get_parallel_comm().all_reduce(totals,MPI_SUM,"digital_filter_inflow_boundary_test");
+      auto global_host = global.createHostCopy();
+      real const boundary_variance = global_host(0)/global_host(1);
+      real const interior_variance = global_host(2)/global_host(3);
+      require(coupler,boundary_variance > 0.5*interior_variance && boundary_variance < 2*interior_variance,
+              "Digital-filter inflow octave lost stationarity at an exterior boundary");
+    }
+  }
+
 }
 
 int main(int argc, char **argv) {
@@ -194,15 +271,19 @@ int main(int argc, char **argv) {
   yakl::init();
   {
     bool visualize      = false;
+    bool octave_only_64 = false;
     bool use_edge_sponge = true;
+    bool periodic_transverse = false;
     for (int arg = 1; arg < argc; arg++) {
       if (std::string(argv[arg]) == "--visualize") visualize = true;
+      if (std::string(argv[arg]) == "--octave-only-64") octave_only_64 = true;
       if (std::string(argv[arg]) == "--no-sponge") use_edge_sponge = false;
+      if (std::string(argv[arg]) == "--periodic-transverse") periodic_transverse = true;
     }
     core::Coupler coupler;
-    int  const     nx_glob = visualize ? 64 : 20;
-    int  const     ny_glob = visualize ? 64 : 20;
-    int  const     nz      = visualize ? 64 : 20;
+    int  const     nx_glob = visualize || octave_only_64 ? 64 : 20;
+    int  const     ny_glob = visualize || octave_only_64 ? 64 : 20;
+    int  const     nz      = visualize || octave_only_64 ? 64 : 20;
     real constexpr spacing = 10;
     real constexpr mean_u  = 8;
     real constexpr ti      = 0.10;
@@ -217,8 +298,9 @@ int main(int argc, char **argv) {
     coupler.set_option<real>("dycore_max_wind",20);
     coupler.set_option<int>("dycore_max_cycles",4);
     coupler.set_option<std::string>("dycore_time_stepper","ssprk3");
-    auto levels = visualize ? coupler.generate_levels_equal(nz,nz*spacing) :
-                              coupler.generate_levels_exp(nz,nz*spacing,static_cast<real>(0.7)*spacing);
+    auto levels = visualize || octave_only_64 ? coupler.generate_levels_equal(nz,nz*spacing) :
+                                                coupler.generate_levels_exp(nz,nz*spacing,
+                                                                            static_cast<real>(0.7)*spacing);
     coupler.init(core::ParallelComm(MPI_COMM_WORLD),levels,
                  ny_glob,nx_glob,ny_glob*spacing,nx_glob*spacing);
     coupler.add_tracer("water_vapor","water_vapor",true,true,true);
@@ -226,10 +308,11 @@ int main(int argc, char **argv) {
     custom_modules::sc_init(coupler);
     coupler.set_option<std::string>("bc_x1","precursor");
     coupler.set_option<std::string>("bc_x2","open");
-    coupler.set_option<std::string>("bc_y1","wall_free_slip");
-    coupler.set_option<std::string>("bc_y2","wall_free_slip");
-    coupler.set_option<std::string>("bc_z1","wall_free_slip");
-    coupler.set_option<std::string>("bc_z2","wall_free_slip");
+    std::string const transverse_bc = periodic_transverse ? "periodic" : "wall_free_slip";
+    coupler.set_option<std::string>("bc_y1",transverse_bc);
+    coupler.set_option<std::string>("bc_y2",transverse_bc);
+    coupler.set_option<std::string>("bc_z1",transverse_bc);
+    coupler.set_option<std::string>("bc_z2",transverse_bc);
 
     Dycore dycore;
     modules::DigitalFilterTurbulentInflow inflow;
@@ -243,13 +326,33 @@ int main(int argc, char **argv) {
     intensity = ti;
     modules::DigitalFilterTurbulentInflow::Config config;
     config.random_seed = 8123;
+    require(coupler,modules::DigitalFilterTurbulentInflow::compute_maximum_octave_level(64,64,64,
+                                                                                       config.maximum_length_fraction) == 16,
+            "A 64-cubed inflow did not select octave levels 1,2,4,8,16");
+    require(coupler,modules::DigitalFilterTurbulentInflow::compute_num_octaves(64,64,64,
+                                                                               config.maximum_length_fraction) == 5,
+            "A 64-cubed inflow did not create exactly five dyadic octaves");
+    require(coupler,modules::DigitalFilterTurbulentInflow::compute_capped_filter_length(1000,640,800,960) == 160,
+            "Digital-filter inflow did not cap its filter at one quarter of the shortest domain length");
     inflow.init(coupler,dycore,u_profile,v_profile,intensity,config);
-    real const expected_time_scale = config.streamwise_length_cells*coupler.get_dx()/mean_u;
+    int const maximum_multiplier = modules::DigitalFilterTurbulentInflow::compute_maximum_octave_level(
+                                     nx_glob,ny_glob,nz,config.maximum_length_fraction);
+    int const maximum_streamwise_length = std::max(config.streamwise_length_cells,maximum_multiplier);
+    real const expected_time_scale = maximum_streamwise_length*coupler.get_dx()/mean_u;
     require(coupler,std::abs(inflow.get_time_scale()-expected_time_scale) < 1.e-12,
             "Digital-filter inflow used the wrong Taylor time scale");
+    require(coupler,inflow.get_maximum_octave_level() == maximum_multiplier,
+            "Digital-filter inflow did not honor its maximum octave cutoff");
+    require(coupler,inflow.get_num_octaves() == (visualize || octave_only_64 ? 5 : 3),
+            "Digital-filter inflow created the wrong number of dyadic octaves");
+    check_octave_structure(coupler,inflow);
+    if (!periodic_transverse) check_exterior_octave_stationarity(coupler,inflow);
     if (use_edge_sponge) edge_sponge.set_column(coupler,{"density_dry","temperature"});
 
-    if (visualize) {
+    if (octave_only_64) {
+      // Initialization plus the octave and exterior-stationarity checks above are the complete focused test.
+      coupler.write_output_file("digital_filter_turbulent_inflow_octaves_64",false);
+    } else if (visualize) {
       // Stop after one mean-flow transit through the 640 m domain. One-second snapshots resolve passage of the
       // five-cell transverse structures while keeping the visualization compact.
       int const visualization_steps = static_cast<int>(std::ceil(coupler.get_xlen()/(mean_u*dt)));
@@ -276,14 +379,16 @@ int main(int argc, char **argv) {
       dycore.time_step(coupler,dt);
       coupler.set_option<real>("elapsed_time",dt);
       check_interior_fluctuations(coupler,mean_u);
-      coupler.write_output_file("digital_filter_turbulent_inflow",false);
+      std::string const output_prefix = periodic_transverse ? "digital_filter_turbulent_inflow_periodic" :
+                                                              "digital_filter_turbulent_inflow";
+      coupler.write_output_file(output_prefix,false);
 
       inflow.apply(coupler,dycore,dt);
       auto second_u = copy_u_fluctuation(coupler,mean_u);
       check_temporal_correlation(coupler,first_u,second_u);
       real const uninterrupted_signature = ghost_signature(coupler);
       std::string const extension = core::FileIO::default_backend() == "adios2" ? ".bp" : ".nc";
-      coupler.set_option<std::string>("restart_file","digital_filter_turbulent_inflow_00000000"+extension);
+      coupler.set_option<std::string>("restart_file",output_prefix+"_00000000"+extension);
       coupler.overwrite_with_restart();
       inflow.apply(coupler,dycore,dt);
       real const restarted_signature = ghost_signature(coupler);
