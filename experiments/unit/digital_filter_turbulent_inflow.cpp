@@ -326,24 +326,35 @@ int main(int argc, char **argv) {
     intensity = ti;
     modules::DigitalFilterTurbulentInflow::Config config;
     config.random_seed = 8123;
-    require(coupler,modules::DigitalFilterTurbulentInflow::compute_maximum_octave_level(64,64,64,
-                                                                                       config.maximum_length_fraction) == 16,
-            "A 64-cubed inflow did not select octave levels 1,2,4,8,16");
-    require(coupler,modules::DigitalFilterTurbulentInflow::compute_num_octaves(64,64,64,
-                                                                               config.maximum_length_fraction) == 5,
-            "A 64-cubed inflow did not create exactly five dyadic octaves");
+    require(coupler,modules::DigitalFilterTurbulentInflow::compute_maximum_octave_level(640,640,10,10,
+                                                                                       config.maximum_length_fraction) == 4,
+            "A default 64-cubed inflow did not select octave levels 1,2,4");
+    require(coupler,modules::DigitalFilterTurbulentInflow::compute_num_octaves(640,640,10,10,
+                                                                               config.maximum_length_fraction) == 3,
+            "A default 64-cubed inflow did not create exactly three dyadic octaves");
+    require(coupler,modules::DigitalFilterTurbulentInflow::compute_maximum_octave_level(640,640,10,10,0.25) == 16,
+            "A user-selected quarter-domain cutoff did not retain octave levels 1,2,4,8,16");
+    require(coupler,modules::DigitalFilterTurbulentInflow::compute_maximum_octave_level(640,640,10,20,0.10) == 2,
+            "A stretched vertical grid did not conservatively limit the maximum physical octave length");
     require(coupler,modules::DigitalFilterTurbulentInflow::compute_capped_filter_length(1000,640,800,960) == 160,
             "Digital-filter inflow did not cap its filter at one quarter of the shortest domain length");
     inflow.init(coupler,dycore,u_profile,v_profile,intensity,config);
+    auto dz_host = coupler.get_dz().createHostCopy();
+    real maximum_dz = 0;
+    for (int k = 0; k < nz; k++) maximum_dz = std::max(maximum_dz,dz_host(k));
     int const maximum_multiplier = modules::DigitalFilterTurbulentInflow::compute_maximum_octave_level(
-                                     nx_glob,ny_glob,nz,config.maximum_length_fraction);
+                                     coupler.get_ylen(),coupler.get_zlen(),coupler.get_dy(),maximum_dz,
+                                     config.maximum_length_fraction);
     int const maximum_streamwise_length = std::max(config.streamwise_length_cells,maximum_multiplier);
     real const expected_time_scale = maximum_streamwise_length*coupler.get_dx()/mean_u;
     require(coupler,std::abs(inflow.get_time_scale()-expected_time_scale) < 1.e-12,
             "Digital-filter inflow used the wrong Taylor time scale");
     require(coupler,inflow.get_maximum_octave_level() == maximum_multiplier,
             "Digital-filter inflow did not honor its maximum octave cutoff");
-    require(coupler,inflow.get_num_octaves() == (visualize || octave_only_64 ? 5 : 3),
+    int const expected_octaves = modules::DigitalFilterTurbulentInflow::compute_num_octaves(
+                                   coupler.get_ylen(),coupler.get_zlen(),coupler.get_dy(),maximum_dz,
+                                   config.maximum_length_fraction);
+    require(coupler,inflow.get_num_octaves() == expected_octaves,
             "Digital-filter inflow created the wrong number of dyadic octaves");
     check_octave_structure(coupler,inflow);
     if (!periodic_transverse) check_exterior_octave_stationarity(coupler,inflow);

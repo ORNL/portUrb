@@ -15,7 +15,9 @@ namespace modules {
   // Taylor's hypothesis supplies d/dx=-d/dt/U, making the convected extension discretely divergence free while
   // requiring only transverse derivatives at the inlet.
   //
-  // Octave spacings are 1,2,4,... finest-grid cells and stop at a user-selected fraction of the shortest domain.
+  // Octave spacings are 1,2,4,... finest-grid cells and stop at a user-selected fraction of the shorter transverse
+  // domain length. The conservative default is one tenth, avoiding synthetic energy-producing scales that approach
+  // the wall separation.
   // Random noise and stochastic potential state extend one curl halo beyond nonperiodic transverse boundaries, so
   // no octave stencil stops or changes shape at a wall. Ten stationary realizations measure the complete
   // filtered discrete-curl response and calibrate each octave to its Kolmogorov energy share. The implementation
@@ -30,7 +32,7 @@ namespace modules {
       int streamwise_length_cells      = 5;    // Shared streamwise filter length [finest-grid cells]
       int spanwise_length_cells        = 5;    // Shared spanwise filter length [finest-grid cells]
       int vertical_length_cells        = 5;    // Shared vertical filter length [finest-grid cells]
-      real maximum_length_fraction     = 0.25; // Largest dyadic level as a fraction of the shortest domain dimension
+      real maximum_length_fraction     = 0.10; // Largest octave length / shorter transverse domain length
       int calibration_realizations     = 10;   // Sequential stationary samples used for TI calibration
     };
 
@@ -547,17 +549,18 @@ namespace modules {
       return 1 << (num_octaves-1);
     }
 
-    static int compute_maximum_octave_level(int nx, int ny, int nz, real maximum_length_fraction) {
-      int const shortest_extent = std::min({nx,ny,nz});
-      int const cutoff = static_cast<int>(std::floor(maximum_length_fraction*shortest_extent));
+    static int compute_maximum_octave_level(real ylen, real zlen, real dy, real maximum_dz,
+                                             real maximum_length_fraction) {
+      real const cutoff_length = maximum_length_fraction*std::min(ylen,zlen);
+      int const cutoff = static_cast<int>(std::floor(cutoff_length/std::max(dy,maximum_dz)));
       if (cutoff < 1) return 0;
       int level = 1;
       while (level <= cutoff/2) level *= 2;
       return level;
     }
 
-    static int compute_num_octaves(int nx, int ny, int nz, real maximum_length_fraction) {
-      int const maximum_level = compute_maximum_octave_level(nx,ny,nz,maximum_length_fraction);
+    static int compute_num_octaves(real ylen, real zlen, real dy, real maximum_dz, real maximum_length_fraction) {
+      int const maximum_level = compute_maximum_octave_level(ylen,zlen,dy,maximum_dz,maximum_length_fraction);
       int count = 0;
       for (int level = 1; level <= maximum_level; level *= 2) {
         count++;
@@ -625,16 +628,18 @@ namespace modules {
       periodic_z = bc_z1 == "periodic";
 
       halo_size = Dycore::hs;
-      int const maximum_level = compute_maximum_octave_level(coupler.get_nx_glob(),coupler.get_ny_glob(),nz,
+      real const dy = coupler.get_dy();
+      auto dz_host = coupler.get_dz().createHostCopy();
+      real maximum_dz = 0;
+      for (int k = 0; k < nz; k++) maximum_dz = std::max(maximum_dz,dz_host(k));
+      int const maximum_level = compute_maximum_octave_level(coupler.get_ylen(),coupler.get_zlen(),dy,maximum_dz,
                                                               config.maximum_length_fraction);
       if (maximum_level < 1) {
         endrun("Digital-filter turbulent inflow maximum length cutoff is smaller than one cell");
       }
-      num_octaves = compute_num_octaves(coupler.get_nx_glob(),coupler.get_ny_glob(),nz,
+      num_octaves = compute_num_octaves(coupler.get_ylen(),coupler.get_zlen(),dy,maximum_dz,
                                         config.maximum_length_fraction);
       real const dx = coupler.get_dx();
-      real const dy = coupler.get_dy();
-      real const average_dz = coupler.get_zlen()/nz;
       real const streamwise_filter_length = compute_capped_filter_length(
                                                config.streamwise_length_cells*dx,coupler.get_xlen(),
                                                coupler.get_ylen(),coupler.get_zlen());
@@ -642,12 +647,12 @@ namespace modules {
                                              config.spanwise_length_cells*dy,coupler.get_xlen(),
                                              coupler.get_ylen(),coupler.get_zlen());
       real const vertical_filter_length = compute_capped_filter_length(
-                                             config.vertical_length_cells*average_dz,coupler.get_xlen(),
+                                             config.vertical_length_cells*maximum_dz,coupler.get_xlen(),
                                              coupler.get_ylen(),coupler.get_zlen());
       int fixed_ny;
       int fixed_nz;
       auto fixed_y = initialize_filter(spanwise_filter_length/dy,fixed_ny,"digital_filter_inflow_filter_y_host");
-      auto fixed_z = initialize_filter(vertical_filter_length/average_dz,fixed_nz,
+      auto fixed_z = initialize_filter(vertical_filter_length/maximum_dz,fixed_nz,
                                        "digital_filter_inflow_filter_z_host");
       octave_kernels.clear();
       octave_kernels.reserve(num_octaves);
