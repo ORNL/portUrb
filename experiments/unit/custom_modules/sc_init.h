@@ -29,12 +29,9 @@ namespace custom_modules {
     auto nx_glob   = coupler.get_nx_glob();
     auto ny_glob   = coupler.get_ny_glob();
     auto roughness = coupler.get_option<real>("roughness",0.1);
-    auto idWV      = coupler.get_option<int >("idWV"     ,-1 );
-    if (idWV == -1) {
-      auto tracer_names = coupler.get_tracer_names();
-      for (int tr=0; tr < tracer_names.size(); tr++) { if (tracer_names.at(tr) == "water_vapor") idWV = tr; }
-      coupler.set_option<int>("idWV",idWV);
-    }
+    auto idWV = coupler.get_tracer_index("water_vapor");
+    coupler.set_option<int>("idWV",idWV);
+    bool water_vapor_exists = idWV >= 0;
     // Physics parameters
     real R_d     = 287.     ;
     real cp_d    = 1003.    ;
@@ -79,7 +76,9 @@ namespace custom_modules {
     if (! dm.entry_exists("vvel"               )) dm.register_and_allocate<real>("vvel"               ,dims3d);
     if (! dm.entry_exists("wvel"               )) dm.register_and_allocate<real>("wvel"               ,dims3d);
     if (! dm.entry_exists("temperature"        )) dm.register_and_allocate<real>("temperature"        ,dims3d);
-    if (! dm.entry_exists("water_vapor"        )) dm.register_and_allocate<real>("water_vapor"        ,dims3d);
+    if (water_vapor_exists && ! dm.entry_exists("water_vapor")) {
+      dm.register_and_allocate<real>("water_vapor",dims3d);
+    }
     if (! dm.entry_exists("immersed_proportion")) dm.register_and_allocate<real>("immersed_proportion",dims3d);
     if (! dm.entry_exists("immersed_roughness" )) dm.register_and_allocate<real>("immersed_roughness" ,dims3d);
     if (! dm.entry_exists("surface_roughness"  )) dm.register_and_allocate<real>("surface_roughness"  ,dims2d);
@@ -88,14 +87,15 @@ namespace custom_modules {
     auto dm_vvel           = dm.get<real,3>("vvel"               );
     auto dm_wvel           = dm.get<real,3>("wvel"               );
     auto dm_temp           = dm.get<real,3>("temperature"        );
-    auto dm_rho_v          = dm.get<real,3>("water_vapor"        );
+    real3d dm_rho_v;
+    if (water_vapor_exists) dm_rho_v = dm.get<real,3>("water_vapor");
     auto dm_immersed_prop  = dm.get<real,3>("immersed_proportion");
     auto dm_immersed_rough = dm.get<real,3>("immersed_roughness" );
     auto dm_surface_rough  = dm.get<real,2>("surface_roughness"  );
     dm_immersed_prop  = 0;
     dm_immersed_rough = roughness;
     dm_surface_rough  = roughness;
-    dm_rho_v          = 0;
+    if (water_vapor_exists) dm_rho_v = 0;
     // Quadrature parameters
     const int nqpoints = 9;
     SArray<real,nqpoints> qpoints;
@@ -136,7 +136,7 @@ namespace custom_modules {
         dm_vvel         (k,j,i) = 0;
         dm_wvel         (k,j,i) = 0;
         dm_temp         (k,j,i) = 0;
-        dm_rho_v        (k,j,i) = 0;
+        if (water_vapor_exists) dm_rho_v        (k,j,i) = 0;
         dm_immersed_prop(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
@@ -162,7 +162,7 @@ namespace custom_modules {
               dm_vvel         (k,j,i) += (z<=zmesh(j,i,jj,ii) ? 0 : v) * wt;
               dm_wvel         (k,j,i) += (z<=zmesh(j,i,jj,ii) ? 0 : w) * wt;
               dm_temp         (k,j,i) += T                             * wt;
-              dm_rho_v        (k,j,i) += rho_v                         * wt;
+              if (water_vapor_exists) dm_rho_v        (k,j,i) += rho_v                         * wt;
             }
           }
         }
@@ -185,7 +185,7 @@ namespace custom_modules {
         dm_vvel (k,j,i) = 0;
         dm_wvel (k,j,i) = 0;
         dm_temp (k,j,i) = 0;
-        dm_rho_v(k,j,i) = 0;
+        if (water_vapor_exists) dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
           real z         = zmid(k) + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
@@ -203,7 +203,7 @@ namespace custom_modules {
           dm_vvel (k,j,i) += v     * wt;
           dm_wvel (k,j,i) += w     * wt;
           dm_temp (k,j,i) += T     * wt;
-          dm_rho_v(k,j,i) += rho_v * wt;
+          if (water_vapor_exists) dm_rho_v(k,j,i) += rho_v * wt;
         }
       });
 
@@ -222,7 +222,7 @@ namespace custom_modules {
         dm_vvel (k,j,i) = 0;
         dm_wvel (k,j,i) = 0;
         dm_temp (k,j,i) = 0;
-        dm_rho_v(k,j,i) = 0;
+        if (water_vapor_exists) dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
           real z         = zmid(k) + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
@@ -240,7 +240,7 @@ namespace custom_modules {
           dm_vvel (k,j,i) += v     * wt;
           dm_wvel (k,j,i) += w     * wt;
           dm_temp (k,j,i) += T     * wt;
-          dm_rho_v(k,j,i) += rho_v * wt;
+          if (water_vapor_exists) dm_rho_v(k,j,i) += rho_v * wt;
         }
       });
 
@@ -263,7 +263,7 @@ namespace custom_modules {
         dm_vvel (k,j,i) = v;
         dm_wvel (k,j,i) = w;
         dm_temp (k,j,i) = T;
-        dm_rho_v(k,j,i) = 0;
+        if (water_vapor_exists) dm_rho_v(k,j,i) = 0;
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
@@ -282,7 +282,7 @@ namespace custom_modules {
         dm_vvel (k,j,i) = 0;
         dm_wvel (k,j,i) = 0;
         dm_temp (k,j,i) = 0;
-        dm_rho_v(k,j,i) = 0;
+        if (water_vapor_exists) dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
           real z         = zmid(k) + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
@@ -300,7 +300,7 @@ namespace custom_modules {
           dm_vvel (k,j,i) += v     * wt;
           dm_wvel (k,j,i) += w     * wt;
           dm_temp (k,j,i) += T     * wt;
-          dm_rho_v(k,j,i) += rho_v * wt;
+          if (water_vapor_exists) dm_rho_v(k,j,i) += rho_v * wt;
         }
       });
 
@@ -321,7 +321,7 @@ namespace custom_modules {
         dm_vvel (k,j,i) = 0;
         dm_wvel (k,j,i) = 0;
         dm_temp (k,j,i) = 0;
-        dm_rho_v(k,j,i) = 0;
+        if (water_vapor_exists) dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
           real z         = zmid(k) + qpoints(kk)*dz(k);
           real theta     = compute_theta(z);
@@ -340,11 +340,13 @@ namespace custom_modules {
           dm_vvel (k,j,i) += v     * wt;
           dm_wvel (k,j,i) += w     * wt;
           dm_temp (k,j,i) += T     * wt;
-          dm_rho_v(k,j,i) += rho_v * wt;
+          if (water_vapor_exists) dm_rho_v(k,j,i) += rho_v * wt;
         }
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "supercell") {
+
+      if (! water_vapor_exists) endrun("ERROR: supercell initialization requires the water_vapor tracer");
 
       YAML::Node config = YAML::LoadFile( "./inputs/wrf_supercell_sounding.yaml" );
       if ( !config ) { endrun("ERROR: Invalid turbine input file"); }
@@ -404,7 +406,7 @@ namespace custom_modules {
         dm_vvel (k,j,i) = 0;
         dm_wvel (k,j,i) = 0;
         dm_temp (k,j,i) = 0;
-        dm_rho_v(k,j,i) = 0;
+        if (water_vapor_exists) dm_rho_v(k,j,i) = 0;
         for (int kk=0; kk<nqpoints; kk++) {
           for (int jj=0; jj<nqpoints; jj++) {
             for (int ii=0; ii<nqpoints; ii++) {
@@ -425,7 +427,7 @@ namespace custom_modules {
               dm_vvel (k,j,i) += v     * wt;
               dm_wvel (k,j,i) += w     * wt;
               dm_temp (k,j,i) += T     * wt;
-              dm_rho_v(k,j,i) += rho_v * wt;
+              if (water_vapor_exists) dm_rho_v(k,j,i) += rho_v * wt;
             }
           }
         }

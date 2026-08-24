@@ -30,8 +30,9 @@ namespace modules {
       int  idTKE = -1;
       for (int tr=0; tr < tracer_names.size(); tr++) { if (tracer_names.at(tr) == "TKE") { idTKE = tr; break; } }
       coupler.set_option<int>("surface_flux_idTKE",idTKE);
-      real4d state  ("state"  ,num_state  ,nz,ny,nx);
-      real4d tracers("tracers",num_tracers,nz,ny,nx);
+      real4d state("state",num_state,nz,ny,nx);
+      real4d tracers;
+      if (num_tracers > 0) tracers = real4d("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
       dm.register_and_allocate<real>("surface_flux_sfc_ustar",{ny,nx});
       coupler.register_output_variable<real>("surface_flux_sfc_ustar",core::Coupler::DIMS_SURFACE);
@@ -146,8 +147,9 @@ namespace modules {
       auto presc_ustar = coupler.get_option<bool>("surface_flux_use_fixed_ustar"      ,false );
       auto ustar_val   = coupler.get_option<real>("surface_flux_fixed_ustar"          ,0.01  );
       auto imm_th      = coupler.get_option<real>("immersed_threshold"                ,0.5   );
-      real4d state  ("state"  ,num_state  ,nz,ny,nx);
-      real4d tracers("tracers",num_tracers,nz,ny,nx);
+      real4d state("state",num_state,nz,ny,nx);
+      real4d tracers;
+      if (num_tracers > 0) tracers = real4d("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers );
 
       real vk   = 0.40;   // von karman constant
@@ -453,7 +455,7 @@ namespace modules {
       auto  R_v         = coupler.get_option<real>("R_v"    );  // Gas constant for water vapor
       auto  gamma       = coupler.get_option<real>("gamma_d");  // Ratio of specific heats for dry air
       auto  C0          = coupler.get_option<real>("C0"     );  // p = C0 * (rho*theta)^gamma
-      auto  idWV        = coupler.get_option<int >("idWV"   );  // Tracer index for water vapor
+      auto  idWV        = coupler.get_option<int >("idWV",-1);  // Tracer index for water vapor, or -1 if absent
       auto  num_tracers = coupler.get_num_tracers();            // Number of tracers
       auto  &dm         = coupler.get_data_manager_readwrite(); // Get data manager as read-write
       auto  dm_rho_d    = dm.get<real,3>("density_dry");        // Get coupler dry density array
@@ -475,7 +477,7 @@ namespace modules {
         real w     = state(idW,k,j,i);              // w-velocity
         real theta = state(idT,k,j,i);              // Potential temperature
         real press = C0 * pow( rho*theta , gamma ); // Full pressure
-        real rho_v = tracers(idWV,k,j,i);           // Water vapor density
+        real rho_v = idWV >= 0 ? tracers(idWV,k,j,i) : 0;  // Water vapor density
         real rho_d = rho;                           // Dry air density starting value
         // Subtract mass-adding tracers from total density to get dry air density
         for (int tr=0; tr < num_tracers; tr++) { if (tracer_adds_mass(tr)) rho_d -= tracers(tr,k,j,i); }
@@ -507,7 +509,7 @@ namespace modules {
       auto  R_v         = coupler.get_option<real>("R_v"    ); // Gas constant for water vapor
       auto  gamma       = coupler.get_option<real>("gamma_d"); // Ratio of specific heats for dry air
       auto  C0          = coupler.get_option<real>("C0"     ); // p = C0 * (rho*theta)^gamma
-      auto  idWV        = coupler.get_option<int >("idWV"   ); // Tracer index for water vapor
+      auto  idWV        = coupler.get_option<int >("idWV",-1); // Tracer index for water vapor, or -1 if absent
       auto  num_tracers = coupler.get_num_tracers();           // Number of tracers
       auto  &dm         = coupler.get_data_manager_readonly(); // Get data manager as read-only
       auto  dm_rho_d    = dm.get<real const,3>("density_dry"); // Get coupler dry density array
@@ -528,7 +530,7 @@ namespace modules {
         real v     = dm_vvel (k,j,i);                         // v-velocity
         real w     = dm_wvel (k,j,i);                         // w-velocity
         real temp  = dm_temp (k,j,i);                         // Temperature
-        real rho_v = dm_tracers(idWV,k,j,i);                  // Water vapor density
+        real rho_v = idWV >= 0 ? dm_tracers(idWV,k,j,i) : 0; // Water vapor density
         real press = rho_d * R_d * temp + rho_v * R_v * temp; // Full pressure
         real rho = rho_d;                                     // Total density starting value
         // Add mass-adding tracers to dry density to get total density

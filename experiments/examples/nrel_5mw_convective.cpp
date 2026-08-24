@@ -129,9 +129,6 @@ int main(int argc, char** argv) {
     modules::ColumnNudger                      col_nudge_prec;
     modules::ColumnNudger                      col_nudge_main;
 
-    // No microphysics specified, so create a water_vapor tracer required by the dycore
-    coupler_main.add_tracer("water_vapor","water_vapor",true,true ,true);
-    coupler_main.get_data_manager_readwrite().get<real,3>("water_vapor") = 0;
 
     // These are set for init just for periodic case
     coupler_main.set_option<real>("turbine_hub_height",hub_z);  // Height of hub / center of turbines
@@ -285,4 +282,3 @@ int main(int argc, char** argv) {
   Kokkos::finalize();
   MPI_Finalize();
 }
-

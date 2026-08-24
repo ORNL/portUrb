@@ -108,9 +108,6 @@ int main(int argc, char** argv) {
     modules::EdgeSponge                        edge_sponge2;
     modules::DigitalFilterTurbulentInflow      inflow;
 
-    // No microphysics specified, so create a water_vapor tracer required by the dycore
-    coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
-    coupler.get_data_manager_readwrite().get<real,3>("water_vapor") = 0;
     coupler.add_tracer("tank_tracer","tank_tracer",true,false,true);
     coupler.get_data_manager_readwrite().get<real,3>("tank_tracer") = 0;
 

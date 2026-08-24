@@ -153,8 +153,9 @@ namespace modules {
       auto ny          = coupler.get_ny(); // Number of cells in y-direction (excluding halos)
       auto nz          = coupler.get_nz(); // Number of cells in z-direction (excluding halos)
       auto &dm         = coupler.get_data_manager_readwrite(); // Get data manager for read/write access
-      real4d state  ("state"  ,num_state  ,nz,ny,nx); // State array for the dynamical core
-      real4d tracers("tracers",num_tracers,nz,ny,nx); // Tracer array for the dynamical core
+      real4d state("state",num_state,nz,ny,nx); // State array for the dynamical core
+      real4d tracers;
+      if (num_tracers > 0) tracers = real4d("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers ); // Convert coupler data to dynamical core format
       real dt_dyn = compute_time_step( coupler );        // Compute maximum stable dynamical core time step
       int ncycles = (int) std::ceil( dt_phys / dt_dyn ); // Determine number of sub-cycles needed for stability
@@ -210,11 +211,15 @@ namespace modules {
       auto &dm         = coupler.get_data_manager_readonly(); // Get data manager for read-only access
       auto tracer_positive = dm.get<bool const,1>("tracer_positive"); // Whether each tracer is positive definite
       // RK3 requires temporary arrays to hold intermediate state and tracers arrays
-      real4d state_tmp   ("state_tmp"   ,num_state  ,nz,ny,nx);
-      real4d tracers_tmp ("tracers_tmp" ,num_tracers,nz,ny,nx);
+      real4d state_tmp("state_tmp",num_state,nz,ny,nx);
+      real4d tracers_tmp;
       // To hold tendencies (time derivatives of state and tracers)
-      real4d state_tend  ("state_tend"  ,num_state  ,nz,ny,nx);
-      real4d tracers_tend("tracers_tend",num_tracers,nz,ny,nx);
+      real4d state_tend("state_tend",num_state,nz,ny,nx);
+      real4d tracers_tend;
+      if (num_tracers > 0) {
+        tracers_tmp  = real4d("tracers_tmp" ,num_tracers,nz,ny,nx);
+        tracers_tend = real4d("tracers_tend",num_tracers,nz,ny,nx);
+      }
 
       // Set immersed boundaries in state and tracers to hydrostasis at rest
       enforce_immersed_boundaries( coupler , state , tracers );
@@ -301,11 +306,15 @@ namespace modules {
       auto &dm         = coupler.get_data_manager_readonly(); // Get data manager for read-only access
       auto tracer_positive = dm.get<bool const,1>("tracer_positive"); // Whether each tracer is positive definite
       // SSPRK3 requires temporary arrays to hold intermediate state and tracers arrays
-      real4d state_tmp   ("state_tmp"   ,num_state  ,nz,ny,nx);
-      real4d tracers_tmp ("tracers_tmp" ,num_tracers,nz,ny,nx);
+      real4d state_tmp("state_tmp",num_state,nz,ny,nx);
+      real4d tracers_tmp;
       // To hold tendencies (time derivatives of state and tracers)
-      real4d state_tend  ("state_tend"  ,num_state  ,nz,ny,nx);
-      real4d tracers_tend("tracers_tend",num_tracers,nz,ny,nx);
+      real4d state_tend("state_tend",num_state,nz,ny,nx);
+      real4d tracers_tend;
+      if (num_tracers > 0) {
+        tracers_tmp  = real4d("tracers_tmp" ,num_tracers,nz,ny,nx);
+        tracers_tend = real4d("tracers_tend",num_tracers,nz,ny,nx);
+      }
 
       // Set immersed boundaries in state and tracers to hydrostasis at rest
       enforce_immersed_boundaries( coupler , state , tracers );
@@ -407,11 +416,15 @@ namespace modules {
       auto &dm         = coupler.get_data_manager_readonly();  // Get data manager for read-only access
       auto tracer_positive = dm.get<bool const,1>("tracer_positive"); // Whether each tracer is positive definite
       // SSPRK3 requires temporary arrays to hold intermediate state and tracers arrays
-      real4d state_tmp   ("state_tmp"   ,num_state  ,nz,ny,nx);
-      real4d tracers_tmp ("tracers_tmp" ,num_tracers,nz,ny,nx);
+      real4d state_tmp("state_tmp",num_state,nz,ny,nx);
+      real4d tracers_tmp;
       // To hold tendencies (time derivatives of state and tracers)
-      real4d state_tend  ("state_tend"  ,num_state  ,nz,ny,nx);
-      real4d tracers_tend("tracers_tend",num_tracers,nz,ny,nx);
+      real4d state_tend("state_tend",num_state,nz,ny,nx);
+      real4d tracers_tend;
+      if (num_tracers > 0) {
+        tracers_tmp  = real4d("tracers_tmp" ,num_tracers,nz,ny,nx);
+        tracers_tend = real4d("tracers_tend",num_tracers,nz,ny,nx);
+      }
 
       // Set immersed boundaries in state and tracers to hydrostasis at rest
       enforce_immersed_boundaries( coupler , state , tracers );
@@ -1152,8 +1165,9 @@ namespace modules {
       auto hy_pressure_cells = coupler.get_data_manager_readonly().get<real const,1>("hy_pressure_cells");
       auto hy_dens_cells     = coupler.get_data_manager_readonly().get<real const,1>("hy_dens_cells");
       auto hy_theta_cells    = coupler.get_data_manager_readonly().get<real const,1>("hy_theta_cells");
-      real4d state  ("state"  ,num_state  ,nz,ny,nx); // State variables
-      real4d tracers("tracers",num_tracers,nz,ny,nx); // Tracer variables
+      real4d state("state",num_state,nz,ny,nx); // State variables
+      real4d tracers;
+      if (num_tracers > 0) tracers = real4d("tracers",num_tracers,nz,ny,nx);
       convert_coupler_to_dynamics( coupler , state , tracers ); // Convert coupler data to dynamics format
       real4d fields_loc("fields_loc",num_state+num_tracers+1,nz+2*hs,ny+2*hs,nx+2*hs); // Local fields with halos
       bool rsst = coupler.get_option<bool>("dycore_rsst",false) || (coupler.get_option<real>("dycore_cs",350) != 350);
@@ -1433,10 +1447,12 @@ namespace modules {
 
       // Accumulate arrays that determine whethe each tracer adds mass and whether each tracer is positive definite
       // Do this on the host at first since it involves std::string operations
-      bool1d tracer_adds_mass("tracer_adds_mass",num_tracers);
-      bool1d tracer_positive ("tracer_positive" ,num_tracers);
+      bool1d tracer_adds_mass("tracer_adds_mass",std::max(1,num_tracers));
+      bool1d tracer_positive ("tracer_positive" ,std::max(1,num_tracers));
       auto tracer_adds_mass_host = tracer_adds_mass.createHostCopy();
       auto tracer_positive_host  = tracer_positive .createHostCopy();
+      tracer_adds_mass_host = false;
+      tracer_positive_host  = false;
       for (int tr=0; tr < num_tracers; tr++) {
         std::string tracer_desc;
         bool        tracer_found, positive, adds_mass, diffuse;
@@ -1447,17 +1463,22 @@ namespace modules {
       // Copy to device, register in coupler data manager, and store in data manager memory
       tracer_positive_host .deep_copy_to(tracer_positive );
       tracer_adds_mass_host.deep_copy_to(tracer_adds_mass);
-      dm.register_and_allocate<bool>("tracer_adds_mass",{num_tracers});
+      dm.register_and_allocate<bool>("tracer_adds_mass",{std::max(1,num_tracers)});
       auto dm_tracer_adds_mass = dm.get<bool,1>("tracer_adds_mass");
       tracer_adds_mass.deep_copy_to(dm_tracer_adds_mass);
-      dm.register_and_allocate<bool>("tracer_positive",{num_tracers});
+      dm.register_and_allocate<bool>("tracer_positive",{std::max(1,num_tracers)});
       auto dm_tracer_positive = dm.get<bool,1>("tracer_positive");
       tracer_positive.deep_copy_to(dm_tracer_positive);
 
       // Allocate state and tracer arrays, and convert coupler data to dynamics format for
       //  computing the initial hydrostatic profiles of density, potential temperature, and pressure
-      real4d state  ("state"  ,num_state  ,nz,ny,nx);  state   = 0;
-      real4d tracers("tracers",num_tracers,nz,ny,nx);  tracers = 0;
+      real4d state("state",num_state,nz,ny,nx);
+      real4d tracers;
+      state = 0;
+      if (num_tracers > 0) {
+        tracers = real4d("tracers",num_tracers,nz,ny,nx);
+        tracers = 0;
+      }
       convert_coupler_to_dynamics( coupler , state , tracers );
       // Compute the average column of density, potential temperature, and pressure for use
       //  in initializing the hydrostatic profiles including halo cells

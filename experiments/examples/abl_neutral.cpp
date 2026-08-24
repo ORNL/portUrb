@@ -84,9 +84,6 @@ int main(int argc, char** argv) {
     modules::LES_Closure                          les_closure;
     modules::ColumnNudger                         col_nudge;
 
-    // No microphysics specified, so create a water_vapor tracer required by the dycore
-    coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
-    coupler.get_data_manager_readwrite().get<real,3>("water_vapor") = 0;
 
     custom_modules::sc_init   ( coupler );
     les_closure  .init        ( coupler );
@@ -154,4 +151,3 @@ int main(int argc, char** argv) {
   Kokkos::finalize();
   MPI_Finalize();
 }
-

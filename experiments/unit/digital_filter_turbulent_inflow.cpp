@@ -303,8 +303,6 @@ int main(int argc, char **argv) {
                                                                             static_cast<real>(0.7)*spacing);
     coupler.init(core::ParallelComm(MPI_COMM_WORLD),levels,
                  ny_glob,nx_glob,ny_glob*spacing,nx_glob*spacing);
-    coupler.add_tracer("water_vapor","water_vapor",true,true,true);
-    coupler.get_data_manager_readwrite().get<real,3>("water_vapor") = 0;
     custom_modules::sc_init(coupler);
     coupler.set_option<std::string>("bc_x1","precursor");
     coupler.set_option<std::string>("bc_x2","open");

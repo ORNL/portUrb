@@ -155,9 +155,8 @@ namespace modules {
       //   TKE is not included in the tracers array since it is handled separately
       real4d state , tracers;
       real3d tke;
-      convert_coupler_to_dynamics( coupler , state , tracers , tke );
+      auto num_tracers = convert_coupler_to_dynamics( coupler , state , tracers , tke );
       // auto mass1 = compute_mass( coupler , state , true );
-      auto num_tracers = tracers.extent(0);  // Number of tracer fields for LES (TKE is not included here)
       auto hy_r = dm.get<real const,1>("les_hy_dens_cells" );  // Get LES hydrostatic density profile
       auto hy_t = dm.get<real const,1>("les_hy_theta_cells");  // Get LES hydrostatic potential temperature profile
       // Convert potential temperature to perturbation potential temperature by removing hydrostatic profile
@@ -179,27 +178,32 @@ namespace modules {
         yakl::timer_stop("les_halo_exchange");
       #endif
       // Apply horizontal and vertical boundary conditions to halos
-      halo_bcs( coupler , state , tracers , tke );
+      halo_bcs( coupler , state , tracers , tke , num_tracers );
 
       // Allocate arrays to hold fluxes of all variables in all three directions
-      real3d flux_ru_x     ("flux_ru_x"                 ,nz  ,ny  ,nx+1);
-      real3d flux_rv_x     ("flux_rv_x"                 ,nz  ,ny  ,nx+1);
-      real3d flux_rw_x     ("flux_rw_x"                 ,nz  ,ny  ,nx+1);
-      real3d flux_rt_x     ("flux_rt_x"                 ,nz  ,ny  ,nx+1);
-      real3d flux_tke_x    ("flux_tke_x"                ,nz  ,ny  ,nx+1);
-      real4d flux_tracers_x("flux_tracers_x",num_tracers,nz  ,ny  ,nx+1);
-      real3d flux_ru_y     ("flux_ru_y"                 ,nz  ,ny+1,nx  );
-      real3d flux_rv_y     ("flux_rv_y"                 ,nz  ,ny+1,nx  );
-      real3d flux_rw_y     ("flux_rw_y"                 ,nz  ,ny+1,nx  );
-      real3d flux_rt_y     ("flux_rt_y"                 ,nz  ,ny+1,nx  );
-      real3d flux_tke_y    ("flux_tke_y"                ,nz  ,ny+1,nx  );
-      real4d flux_tracers_y("flux_tracers_y",num_tracers,nz  ,ny+1,nx  );
-      real3d flux_ru_z     ("flux_ru_z"                 ,nz+1,ny  ,nx  );
-      real3d flux_rv_z     ("flux_rv_z"                 ,nz+1,ny  ,nx  );
-      real3d flux_rw_z     ("flux_rw_z"                 ,nz+1,ny  ,nx  );
-      real3d flux_rt_z     ("flux_rt_z"                 ,nz+1,ny  ,nx  );
-      real3d flux_tke_z    ("flux_tke_z"                ,nz+1,ny  ,nx  );
-      real4d flux_tracers_z("flux_tracers_z",num_tracers,nz+1,ny  ,nx  );
+      real3d flux_ru_x ("flux_ru_x" ,nz  ,ny  ,nx+1);
+      real3d flux_rv_x ("flux_rv_x" ,nz  ,ny  ,nx+1);
+      real3d flux_rw_x ("flux_rw_x" ,nz  ,ny  ,nx+1);
+      real3d flux_rt_x ("flux_rt_x" ,nz  ,ny  ,nx+1);
+      real3d flux_tke_x("flux_tke_x",nz  ,ny  ,nx+1);
+      real4d flux_tracers_x;
+      real3d flux_ru_y ("flux_ru_y" ,nz  ,ny+1,nx  );
+      real3d flux_rv_y ("flux_rv_y" ,nz  ,ny+1,nx  );
+      real3d flux_rw_y ("flux_rw_y" ,nz  ,ny+1,nx  );
+      real3d flux_rt_y ("flux_rt_y" ,nz  ,ny+1,nx  );
+      real3d flux_tke_y("flux_tke_y",nz  ,ny+1,nx  );
+      real4d flux_tracers_y;
+      real3d flux_ru_z ("flux_ru_z" ,nz+1,ny  ,nx  );
+      real3d flux_rv_z ("flux_rv_z" ,nz+1,ny  ,nx  );
+      real3d flux_rw_z ("flux_rw_z" ,nz+1,ny  ,nx  );
+      real3d flux_rt_z ("flux_rt_z" ,nz+1,ny  ,nx  );
+      real3d flux_tke_z("flux_tke_z",nz+1,ny  ,nx  );
+      real4d flux_tracers_z;
+      if (num_tracers > 0) {
+        flux_tracers_x = real4d("flux_tracers_x",num_tracers,nz  ,ny  ,nx+1);
+        flux_tracers_y = real4d("flux_tracers_y",num_tracers,nz  ,ny+1,nx  );
+        flux_tracers_z = real4d("flux_tracers_z",num_tracers,nz+1,ny  ,nx  );
+      }
       // Allocate array to hold the TKE source terms
       real3d tke_source    ("tke_source"                ,nz  ,ny  ,nx  );
 
@@ -606,10 +610,10 @@ namespace modules {
     // state   : Output state array (with halos and density divided out of momenta and potential temperature)
     // tracers : Output tracers array (with halos and density divided out)
     // tke     : Output TKE array (with halos and density divided out)
-    void convert_coupler_to_dynamics( core::Coupler const &coupler ,
-                                      real4d              &state   ,
-                                      real4d              &tracers ,
-                                      real3d              &tke     ) const {
+    int convert_coupler_to_dynamics( core::Coupler const &coupler ,
+                                     real4d              &state   ,
+                                     real4d              &tracers ,
+                                     real3d              &tke     ) const {
       using yakl::SimpleBounds;
       auto nx           = coupler.get_nx();  // Number of local cells in x-direction (without halos)
       auto ny           = coupler.get_ny();  // Number of local cells in y-direction (without halos)
@@ -646,7 +650,8 @@ namespace modules {
       bool rho_v_exists = idWV >= 0;
       auto num_tracers = dm_tracers.size(); // Number of tracers to be diffused
       state   = real4d("state"  ,num_state  ,nz+2*hs,ny+2*hs,nx+2*hs); // Allocate state array with halos
-      tracers = real4d("tracers",num_tracers,nz+2*hs,ny+2*hs,nx+2*hs); // Allocate tracers array with halos
+      tracers = real4d();
+      if (num_tracers > 0) tracers = real4d("tracers",num_tracers,nz+2*hs,ny+2*hs,nx+2*hs);
       tke     = real3d("tke"                ,nz+2*hs,ny+2*hs,nx+2*hs); // Allocate TKE array with halos
       // Compute state, tracers, and TKE arrays from coupler's data
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
@@ -666,6 +671,7 @@ namespace modules {
         // Convert tracers to specific quantities
         for (int tr=0; tr < num_tracers; tr++) { tracers(tr,hs+k,hs+j,hs+i) = dm_tracers(tr,k,j,i)/rho; }
       });
+      return num_tracers;
     }
 
 
@@ -747,13 +753,13 @@ namespace modules {
     void halo_bcs( core::Coupler const & coupler ,
                    real4d        const & state   ,
                    real4d        const & tracers ,
-                   real3d        const & tke     ) const {
+                   real3d        const & tke     ,
+                   int                  num_tracers ) const {
       using yakl::SimpleBounds;
       auto nx             = coupler.get_nx();      // Number of local cells in x-direction (without halos)
       auto ny             = coupler.get_ny();      // Number of local cells in y-direction (without halos)
       auto nz             = coupler.get_nz();      // Number of cells in z-direction (without halos)
       auto dz             = coupler.get_dz();      // Get vertical grid spacing array (1-D array of size nz)
-      auto num_tracers    = tracers.extent(0);     // Number of tracers in the tracers array
       auto px             = coupler.get_px();      // Get processor x-coordinate in the processor grid
       auto py             = coupler.get_py();      // Get processor y-coordinate in the processor grid
       auto nproc_x        = coupler.get_nproc_x(); // Get number of processors in x-direction

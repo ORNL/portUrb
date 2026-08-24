@@ -159,7 +159,7 @@ namespace custom_modules {
     check.check_volume_weighted_mean("uvel", mean_u_min, mean_u_max);
     check.check_volume_weighted_mean("wvel", -mean_w_max, mean_w_max);
     check.check_field_max("TKE", tke_activity_min, 5);
-    check.check_field_range("water_vapor", 0, 1.e-14);
+    check.check_field_range_if_present("water_vapor", 0, 1.e-14);
     check.check_field_range("immersed_proportion", 0, 0);
     check.finish();
   }
@@ -186,7 +186,7 @@ namespace custom_modules {
     check.check_volume_weighted_mean("uvel", 5, 20);
     check.check_volume_weighted_mean("wvel", -0.5, 0.5);
     check.check_field_max("TKE", 0.01, 50);
-    check.check_field_range("water_vapor", 0, 1.e-14);
+    check.check_field_range_if_present("water_vapor", 0, 1.e-14);
     check.check_field_range("immersed_proportion", 0, 1);
     check.check_field_mean("immersed_proportion", 0.005, 0.25);
     check.check_field_max("immersed_proportion", 0.99, 1);
@@ -229,7 +229,7 @@ namespace custom_modules {
     check.check_volume_weighted_mean("uvel", 7, 12);
     check.check_volume_weighted_mean("wvel", -0.5, 0.5);
     check.check_field_max("TKE", 0.01, 20);
-    check.check_field_range("water_vapor", 0, 1.e-14);
+    check.check_field_range_if_present("water_vapor", 0, 1.e-14);
     check.check_field_range("immersed_proportion", 0, 0);
     check.finish();
   }
@@ -242,7 +242,7 @@ namespace custom_modules {
     check.check_volume_weighted_mean("uvel", 0.5 * hub_wind, 1.5 * hub_wind);
     check.check_volume_weighted_mean("wvel", -0.5, 0.5);
     check.check_field_max("TKE", turbine_active ? 0.01 : 1.e-6, 25);
-    check.check_field_range("water_vapor", 0, 1.e-14);
+    check.check_field_range_if_present("water_vapor", 0, 1.e-14);
     check.check_field_range("immersed_proportion", 0, 0);
     check.finish();
   }

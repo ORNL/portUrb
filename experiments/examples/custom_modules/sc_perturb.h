@@ -42,7 +42,6 @@ namespace custom_modules {
     auto dm_vvel  = dm.get<real,3>("vvel"       );
     auto dm_wvel  = dm.get<real,3>("wvel"       );
     auto dm_temp  = dm.get<real,3>("temperature");
-    auto dm_rho_v = dm.get<real,3>("water_vapor");
     auto dm_imm   = dm.get<real,3>("immersed_proportion");
 
     const int nqpoints = 9;
@@ -102,7 +101,6 @@ namespace custom_modules {
         yakl::Random rand(0,k*ny_glob*nx_glob + (j_beg+j)*nx_glob + (i_beg+i));
         real z = zmid(k);
         if (z <= 500) dm_temp (k,j,i) += rand.gen_uniform<real>(-0.1,0.1);
-        // if (z <= 500) dm_rho_v(k,j,i) += rand.gen_uniform<real>(-2.5e-5,2.5e-5)*dm_rho_d(k,j,i);
       });
 
     } else if (coupler.get_option<std::string>("init_data") == "ABL_neutral") {
@@ -196,4 +194,3 @@ namespace custom_modules {
   }
 
 }
-

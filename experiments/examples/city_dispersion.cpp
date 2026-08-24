@@ -86,9 +86,6 @@ int main(int argc, char** argv) {
     // modules::Time_Averager                        time_averager;
     modules::LES_Closure                       les_closure;
 
-    // No microphysics specified, so create a water_vapor tracer required by the dycore
-    coupler.add_tracer("water_vapor","water_vapor",true,true ,true);
-    coupler.get_data_manager_readwrite().get<real,3>("water_vapor") = 0;
 
     coupler.add_tracer("smoke","",true,false,true);
     coupler.get_data_manager_readwrite().get<real,3>("smoke") = 0;
@@ -175,4 +172,3 @@ int main(int argc, char** argv) {
   Kokkos::finalize();
   MPI_Finalize();
 }
-

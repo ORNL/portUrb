@@ -128,9 +128,6 @@ int main(int argc, char** argv) {
                          coupler_main.generate_levels_equal(nz,zlen) ,
                          ny_glob , nx_glob , ylen , xlen );
 
-      // No microphysics specified, so create a water_vapor tracer required by the dycore
-      coupler_main.add_tracer("water_vapor","water_vapor",true,true ,true);
-      coupler_main.get_data_manager_readwrite().get<real,3>("water_vapor") = 0;
 
       // Classes that can work on multiple couplers without issue (no internal state)
       modules::LES_Closure                       les_closure;

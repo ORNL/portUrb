@@ -42,7 +42,6 @@ namespace custom_modules {
     auto dm_vvel  = dm.get<real,3>("vvel"       );
     auto dm_wvel  = dm.get<real,3>("wvel"       );
     auto dm_temp  = dm.get<real,3>("temperature");
-    auto dm_rho_v = dm.get<real,3>("water_vapor");
 
     const int nqpoints = 9;
     SArray<real,nqpoints> qpoints;
@@ -130,4 +129,3 @@ namespace custom_modules {
   }
 
 }
-
