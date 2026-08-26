@@ -33,6 +33,10 @@ void check_output_metadata(core::Coupler const & coupler, std::string const & fi
   require(coupler,units == "m","x coordinate units metadata is incorrect");
   nc.readVariableAttribute(units,"uvel","units");
   require(coupler,units == "m/s","velocity units metadata is incorrect");
+  nc.readVariableAttribute(units,"density_dry_deviation","units");
+  require(coupler,units == "kg/m^3","dry-density deviation units metadata is incorrect");
+  nc.readVariableAttribute(units,"temperature_mean_column","units");
+  require(coupler,units == "K","temperature mean-column units metadata is incorrect");
   nc.readVariableAttribute(units,"water_vapor","units");
   require(coupler,units == "kg/m^3","tracer units metadata is incorrect");
   nc.readVariableAttribute(units,"C0","units");
@@ -60,8 +64,10 @@ void check_output_metadata(core::Coupler const & coupler, std::string const & fi
   real1d x("metadata_x",nx);
   nc.read_all(x,"x",{static_cast<MPI_Offset>(coupler.get_i_beg())});
   float3d density("metadata_density",nz,ny,nx);
-  nc.read_all(density,"density_dry",{0,static_cast<MPI_Offset>(coupler.get_j_beg()),
-                                     static_cast<MPI_Offset>(coupler.get_i_beg())});
+  nc.read_all(density,"density_dry_deviation",{0,static_cast<MPI_Offset>(coupler.get_j_beg()),
+                                                 static_cast<MPI_Offset>(coupler.get_i_beg())});
+  real1d density_mean("metadata_density_mean",nz);
+  nc.read_all(density_mean,"density_dry_mean_column",{0});
   float3d pressure("metadata_pressure",nz,ny,nx);
   nc.read_all(pressure,"anelastic_pressure_pert",{0,static_cast<MPI_Offset>(coupler.get_j_beg()),
                                                   static_cast<MPI_Offset>(coupler.get_i_beg())});
@@ -83,30 +89,31 @@ void check_output_metadata(core::Coupler const & coupler, std::string const & fi
 }
 
 void check_declared_derived_variables(core::Coupler const & coupler, std::string const & filename) {
-#ifdef PORTURB_HAS_ADIOS2
   core::FileIO file(coupler.get_parallel_comm().get_mpi_comm(),core::FileIO::default_backend());
   file.open(filename);
   std::string derived;
   file.readGlobalAttribute(derived,"declare_derived_variables");
   file.close();
-  require(coupler,derived.find("density:float64[z,y,x] = density_dry; ") != std::string::npos,
+  require(coupler,derived.find("density_dry:float32[z,y,x] = density_dry_mean_column[:,None,None] + "
+                               "density_dry_deviation; ") != std::string::npos,
+          "derived dry-density reconstruction is missing");
+  require(coupler,derived.find("temperature:float32[z,y,x] = temperature_mean_column[:,None,None] + "
+                               "temperature_deviation; ") != std::string::npos,
+          "derived temperature reconstruction is missing");
+  require(coupler,derived.find("density:float32[z,y,x] = density_dry; ") != std::string::npos,
           "non-mass-adding water vapor was included in derived total density");
-  require(coupler,derived.find("pressure:float64[z,y,x] = temperature * (density_dry * ") != std::string::npos,
+  require(coupler,derived.find("pressure:float32[z,y,x] = temperature * (density_dry * ") != std::string::npos,
           "derived pressure does not use the dycore equation of state");
   require(coupler,derived.find(" + water_vapor * ") != std::string::npos,
           "derived pressure omits water-vapor gas pressure");
-  require(coupler,derived.find("theta:float64[z,y,x] = (pressure / ") != std::string::npos,
+  require(coupler,derived.find("theta:float32[z,y,x] = (pressure / ") != std::string::npos,
           "derived potential temperature is missing");
-  require(coupler,derived.find("density_pert:float64[z,y,x] = density - hy_dens_cells[") != std::string::npos,
+  require(coupler,derived.find("density_pert:float32[z,y,x] = density - hy_dens_cells[") != std::string::npos,
           "derived density perturbation does not use the interior hydrostatic profile");
-  require(coupler,derived.find("pressure_pert:float64[z,y,x] = pressure - hy_pressure_cells[") != std::string::npos,
+  require(coupler,derived.find("pressure_pert:float32[z,y,x] = pressure - hy_pressure_cells[") != std::string::npos,
           "derived pressure perturbation is missing");
-  require(coupler,derived.find("theta_pert:float64[z,y,x] = theta - hy_theta_cells[") != std::string::npos,
+  require(coupler,derived.find("theta_pert:float32[z,y,x] = theta - hy_theta_cells[") != std::string::npos,
           "derived potential-temperature perturbation is missing");
-#else
-  (void) coupler;
-  (void) filename;
-#endif
 }
 
 void check_unmanaged_output_rejected(core::Coupler const & coupler) {
@@ -133,22 +140,24 @@ void check_native_compression(core::Coupler const & coupler, std::string const &
 #ifdef PORTURB_HAS_ADIOS2
   core::FileIO file(coupler.get_parallel_comm().get_mpi_comm(),core::FileIO::default_backend());
   file.open(filename);
-  require(coupler,file.variable_has_operations("density_dry"),
-          "large BP5 density variable does not contain a native ADIOS2 compression operation");
+  require(coupler,file.variable_has_operations("density_dry_deviation"),
+          "large BP5 density-deviation variable does not contain a native ADIOS2 compression operation");
 
   auto const nx = coupler.get_nx();
   auto const ny = coupler.get_ny();
   auto const nz = coupler.get_nz();
   float3d restored("compressed_density",nz,ny,nx);
-  file.read_all(restored,"density_dry",{0,static_cast<MPI_Offset>(coupler.get_j_beg()),
-                                         static_cast<MPI_Offset>(coupler.get_i_beg())});
+  file.read_all(restored,"density_dry_deviation",{0,static_cast<MPI_Offset>(coupler.get_j_beg()),
+                                                   static_cast<MPI_Offset>(coupler.get_i_beg())});
+  real1d density_mean("compressed_density_mean",nz);
+  file.read_all(density_mean,"density_dry_mean_column",{0});
   file.close();
 
-  auto expected = coupler.get_data_manager_readonly().get<real const,3>("density_dry").as<float>();
+  auto density = coupler.get_data_manager_readonly().get<real const,3>("density_dry");
   yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
-    restored(k,j,i) -= expected(k,j,i);
+    restored(k,j,i) -= static_cast<float>(density(k,j,i)-density_mean(k));
   });
-  require(coupler,max_abs(coupler,restored) == 0,"compressed BP5 density did not round trip exactly");
+  require(coupler,max_abs(coupler,restored) == 0,"compressed BP5 density deviation did not round trip exactly");
 #else
   (void) coupler;
   (void) filename;

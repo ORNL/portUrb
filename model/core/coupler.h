@@ -95,8 +95,7 @@ namespace core {
                              // Y: 0 = south;  1 = middle;  2 = north
                              // X: 0 = west ;  1 = center;  3 = east 
 
-#ifdef PORTURB_HAS_ADIOS2
-    // Give readers case-specific thermodynamic expressions through ordinary ADIOS2 metadata.
+    // Give readers case-specific thermodynamic expressions through ordinary file metadata.
     std::string declared_derived_variables() const {
       std::ostringstream density_expression;
       density_expression << "density_dry";
@@ -106,30 +105,37 @@ namespace core {
         if (tracer.name == "water_vapor") water_vapor_exists = true;
       }
 
+      std::ostringstream derived_variables;
+      derived_variables << std::setprecision(std::numeric_limits<real>::max_digits10);
+      derived_variables << "density_dry:float32[z,y,x] = "
+                        << "density_dry_mean_column[:,None,None] + density_dry_deviation; "
+                        << "temperature:float32[z,y,x] = "
+                        << "temperature_mean_column[:,None,None] + temperature_deviation";
+      if (!option_exists("dycore_hs") || !dm.entry_exists("hy_dens_cells") ||
+          !dm.entry_exists("hy_theta_cells") || !dm.entry_exists("hy_pressure_cells")) {
+        return derived_variables.str();
+      }
+
       auto const R_d   = get_option<real>("R_d");
       auto const R_v   = get_option<real>("R_v");
       auto const gamma = get_option<real>("gamma_d");
       auto const C0    = get_option<real>("C0");
       auto const hs    = get_option<int>("dycore_hs");
-
-      std::ostringstream derived_variables;
-      derived_variables << std::setprecision(std::numeric_limits<real>::max_digits10);
-      derived_variables << "dycore_hs:int32 = " << hs << "; "
-                        << "density:float64[z,y,x] = " << density_expression.str() << "; "
-                        << "pressure:float64[z,y,x] = temperature * (density_dry * " << R_d;
+      derived_variables << "; dycore_hs:int32 = " << hs << "; "
+                        << "density:float32[z,y,x] = " << density_expression.str() << "; "
+                        << "pressure:float32[z,y,x] = temperature * (density_dry * " << R_d;
       if (water_vapor_exists) derived_variables << " + water_vapor * " << R_v;
       derived_variables << "); "
-                        << "theta:float64[z,y,x] = (pressure / " << C0 << ")**(1.0 / " << gamma
+                        << "theta:float32[z,y,x] = (pressure / " << C0 << ")**(1.0 / " << gamma
                         << ") / density; "
-                        << "density_pert:float64[z,y,x] = density - "
+                        << "density_pert:float32[z,y,x] = density - "
                         << "hy_dens_cells[dycore_hs:dycore_hs+raw_dims[\"z\"],None,None]; "
-                        << "pressure_pert:float64[z,y,x] = pressure - "
+                        << "pressure_pert:float32[z,y,x] = pressure - "
                         << "hy_pressure_cells[dycore_hs:dycore_hs+raw_dims[\"z\"],None,None]; "
-                        << "theta_pert:float64[z,y,x] = theta - "
+                        << "theta_pert:float32[z,y,x] = theta - "
                         << "hy_theta_cells[dycore_hs:dycore_hs+raw_dims[\"z\"],None,None]";
       return derived_variables.str();
     }
-#endif
 
     static void add_output_attribute( std::vector<OutputAttribute> &attributes, OutputAttribute attribute,
                                       std::string const &variable_name ) {
@@ -1143,11 +1149,13 @@ namespace core {
       nc.create_var<double>( "y"   , {"y"} );               // Create y-coordinate variable
       nc.create_var<double>( "z"   , {"z"} );               // Create z-coordinate variable
       nc.create_var<double>( "zi"  , {"zi"} );              // Create z-interface coordinate variable
-      nc.create_var<float>( "density_dry"  , dimnames_3d ); // Create dry density variable
-      nc.create_var<float>( "uvel"         , dimnames_3d ); // Create u-velocity variable
-      nc.create_var<float>( "vvel"         , dimnames_3d ); // Create v-velocity variable
-      nc.create_var<float>( "wvel"         , dimnames_3d ); // Create w-velocity variable
-      nc.create_var<float>( "temperature"  , dimnames_3d ); // Create temperature variable
+      nc.create_var<double>("density_dry_mean_column" ,dimnames_column); // Create dry-density mean column
+      nc.create_var<float >("density_dry_deviation"   ,dimnames_3d    ); // Create dry-density deviation
+      nc.create_var<float >( "uvel"                    ,dimnames_3d    ); // Create u-velocity variable
+      nc.create_var<float >( "vvel"                    ,dimnames_3d    ); // Create v-velocity variable
+      nc.create_var<float >( "wvel"                    ,dimnames_3d    ); // Create w-velocity variable
+      nc.create_var<double>("temperature_mean_column" ,dimnames_column); // Create temperature mean column
+      nc.create_var<float >("temperature_deviation"   ,dimnames_3d    ); // Create temperature deviation
       auto tracer_names = get_tracer_names();
       // Create tracer variables
       for (int tr = 0; tr < num_tracers; tr++) { nc.create_var<float>( tracer_names.at(tr) , dimnames_3d ); }
@@ -1181,16 +1189,18 @@ namespace core {
       write_output_attributes(nc,"y"           ,{{"units",std::string("m")}});
       write_output_attributes(nc,"z"           ,{{"units",std::string("m")}});
       write_output_attributes(nc,"zi"          ,{{"units",std::string("m")}});
-      write_output_attributes(nc,"density_dry" ,{{"coordinates",std::string("z y x")},
-                                                   {"units",std::string("kg/m^3")}});
+      write_output_attributes(nc,"density_dry_mean_column",{{"units",std::string("kg/m^3")}});
+      write_output_attributes(nc,"density_dry_deviation",{{"coordinates",std::string("z y x")},
+                                                             {"units",std::string("kg/m^3")}});
       write_output_attributes(nc,"uvel"        ,{{"coordinates",std::string("z y x")},
                                                    {"units",std::string("m/s")}});
       write_output_attributes(nc,"vvel"        ,{{"coordinates",std::string("z y x")},
                                                    {"units",std::string("m/s")}});
       write_output_attributes(nc,"wvel"        ,{{"coordinates",std::string("z y x")},
                                                    {"units",std::string("m/s")}});
-      write_output_attributes(nc,"temperature" ,{{"coordinates",std::string("z y x")},
-                                                   {"units",std::string("K")}});
+      write_output_attributes(nc,"temperature_mean_column",{{"units",std::string("K")}});
+      write_output_attributes(nc,"temperature_deviation",{{"coordinates",std::string("z y x")},
+                                                             {"units",std::string("K")}});
       for (int tr = 0; tr < num_tracers; tr++) {
         write_output_attributes(nc,tracers.at(tr).name,{{"coordinates",std::string("z y x")},
                                                         {"units",tracers.at(tr).units}});
@@ -1200,12 +1210,7 @@ namespace core {
       }
       nc.writeGlobalAttribute(etime       ,"etime"       ); // Store elapsed time as file metadata
       nc.writeGlobalAttribute(file_counter,"file_counter"); // Store file counter as file metadata
-#ifdef PORTURB_HAS_ADIOS2
-      if (file_io_backend == "adios2" && option_exists("dycore_hs") && dm.entry_exists("hy_dens_cells") &&
-          dm.entry_exists("hy_theta_cells") && dm.entry_exists("hy_pressure_cells")) {
-        nc.writeGlobalAttribute(declared_derived_variables(),"declare_derived_variables");
-      }
-#endif
+      nc.writeGlobalAttribute(declared_derived_variables(),"declare_derived_variables");
       // Write registered options as global attributes while the file is still in define mode.
       for (auto const &name : output_options) {
         options.visit_option(name,[&] (auto const &value) {
@@ -1236,11 +1241,42 @@ namespace core {
       auto &dm = get_data_manager_readonly(); // Get a reference to the read-only DataManager
       std::vector<MPI_Offset> start_3d      = {0,j_beg,i_beg}; // Starting indices for 3D variables
       std::vector<MPI_Offset> start_surface = {  j_beg,i_beg}; // Starting indices for surface variables
-      nc.write_data_manager<real,3,float>(dm,"density_dry","density_dry",start_3d); // Write dry density
+      auto density_dry = dm.get<real const,3>("density_dry");
+      auto temperature = dm.get<real const,3>("temperature");
+      real2d mean_columns("output_mean_columns",2,nz);
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(2,nz) , KOKKOS_LAMBDA (int l, int k) {
+        mean_columns(l,k) = 0;
+        for (int j=0; j < ny; j++) {
+          for (int i=0; i < nx; i++) {
+            mean_columns(l,k) += l == 0 ? density_dry(k,j,i) : temperature(k,j,i);
+          }
+        }
+      });
+      mean_columns = par_comm.all_reduce(mean_columns,MPI_SUM,"output_mean_columns_Allreduce");
+      real const r_ncells = 1._fp / static_cast<real>(get_nx_glob()*get_ny_glob());
+      real1d density_dry_mean_column("density_dry_mean_column",nz);
+      real1d temperature_mean_column("temperature_mean_column",nz);
+      float3d density_dry_deviation("density_dry_deviation",nz,ny,nx);
+      float3d temperature_deviation("temperature_deviation",nz,ny,nx);
+      yakl::parallel_for( YAKL_AUTO_LABEL() , nz , KOKKOS_LAMBDA (int k) {
+        density_dry_mean_column(k) = mean_columns(0,k)*r_ncells;
+        temperature_mean_column(k) = mean_columns(1,k)*r_ncells;
+      });
+      yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
+        density_dry_deviation(k,j,i) = density_dry(k,j,i) - density_dry_mean_column(k);
+        temperature_deviation(k,j,i) = temperature(k,j,i) - temperature_mean_column(k);
+      });
+      nc.begin_indep_data();
+      if (is_mainproc()) {
+        nc.write(density_dry_mean_column,"density_dry_mean_column");
+        nc.write(temperature_mean_column,"temperature_mean_column");
+      }
+      nc.end_indep_data();
+      nc.write_all(density_dry_deviation,"density_dry_deviation",start_3d);
+      nc.write_all(temperature_deviation,"temperature_deviation",start_3d);
       nc.write_data_manager<real,3,float>(dm,"uvel"       ,"uvel"       ,start_3d); // Write u-velocity
       nc.write_data_manager<real,3,float>(dm,"vvel"       ,"vvel"       ,start_3d); // Write v-velocity
       nc.write_data_manager<real,3,float>(dm,"wvel"       ,"wvel"       ,start_3d); // Write w-velocity
-      nc.write_data_manager<real,3,float>(dm,"temperature","temperature",start_3d); // Write temperature
       // Write tracer variables to file
       for (int i=0; i < tracer_names.size(); i++) {
         nc.write_data_manager<real,3,float>(dm,tracer_names.at(i),tracer_names.at(i),start_3d);
@@ -1357,11 +1393,35 @@ namespace core {
         nc.read_all(field_double,name,start);
         field_double.template as<ValueType>().deep_copy_to(field);
       };
-      read_real32(dm.get<real,3>("density_dry"),"density_dry",start_3d); // Read dry density
+      if (nc.var_exists("density_dry_deviation")) {
+        auto field = dm.get<real,3>("density_dry");
+        auto mean_column = real1d("density_dry_mean_column_restart",get_nz());
+        auto deviation = float3d("density_dry_deviation_restart",get_nz(),get_ny(),get_nx());
+        nc.read_all(mean_column,"density_dry_mean_column",{0});
+        nc.read_all(deviation,"density_dry_deviation",start_3d);
+        yakl::parallel_for( YAKL_AUTO_LABEL() , yakl::SimpleBounds<3>(get_nz(),get_ny(),get_nx()) ,
+                                                KOKKOS_LAMBDA (int k, int j, int i) {
+          field(k,j,i) = mean_column(k) + deviation(k,j,i);
+        });
+      } else {
+        read_real32(dm.get<real,3>("density_dry"),"density_dry",start_3d); // Read legacy dry density
+      }
       read_real32(dm.get<real,3>("uvel"       ),"uvel"       ,start_3d); // Read u-velocity
       read_real32(dm.get<real,3>("vvel"       ),"vvel"       ,start_3d); // Read v-velocity
       read_real32(dm.get<real,3>("wvel"       ),"wvel"       ,start_3d); // Read w-velocity
-      read_real32(dm.get<real,3>("temperature"),"temperature",start_3d); // Read temperature
+      if (nc.var_exists("temperature_deviation")) {
+        auto field = dm.get<real,3>("temperature");
+        auto mean_column = real1d("temperature_mean_column_restart",get_nz());
+        auto deviation = float3d("temperature_deviation_restart",get_nz(),get_ny(),get_nx());
+        nc.read_all(mean_column,"temperature_mean_column",{0});
+        nc.read_all(deviation,"temperature_deviation",start_3d);
+        yakl::parallel_for( YAKL_AUTO_LABEL() , yakl::SimpleBounds<3>(get_nz(),get_ny(),get_nx()) ,
+                                                KOKKOS_LAMBDA (int k, int j, int i) {
+          field(k,j,i) = mean_column(k) + deviation(k,j,i);
+        });
+      } else {
+        read_real32(dm.get<real,3>("temperature"),"temperature",start_3d); // Read legacy temperature
+      }
       // Read tracer variables from file
       for (int i=0; i < tracer_names.size(); i++) {
         if (nc.var_exists(tracer_names.at(i))) {

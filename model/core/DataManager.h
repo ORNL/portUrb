@@ -20,6 +20,7 @@ namespace core {
 
     // This struct holds information about a single data entry
     template <class T> struct Entry {
+      using value_type = T;
       T *               ptr;        // Pointer to the allocated data
       size_t            bytes;      // Size of the allocated data in bytes
       std::vector<int>  dims;       // Dimensions of the data entry
@@ -279,5 +280,4 @@ namespace core {
   typedef DataManager<Kokkos::HostSpace> DataManagerHost;
 
 }
-
 

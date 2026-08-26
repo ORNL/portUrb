@@ -9,6 +9,7 @@
 #include "surface_flux.h"
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
+#include "restart_consistency.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -16,6 +17,12 @@ int main(int argc, char** argv) {
   yakl::init();
   {
     yakl::timer_start("main");
+
+    bool restart_check = false;
+    for (int i=1; i < argc; i++) {
+      if (std::string(argv[i]) == "--restart-check") restart_check = true;
+      else endrun((std::string("Unknown abl_neutral_fixed argument: ")+argv[i]).c_str());
+    }
 
     real        sim_time    = 30;
     int         nx_glob     = 32;
@@ -29,17 +36,20 @@ int main(int argc, char** argv) {
     real        out_freq    = sim_time + 1;
     real        inform_freq = 10;
     std::string out_prefix  = "ABL_neutral_fixed";
-    bool        is_restart  = false;
+    bool        is_restart  = restart_check;
     real        u_g         = 10;
     real        v_g         = 0 ;
     real        lat_g       = 43.289340204;
+    std::string const restart_extension = core::FileIO::default_backend() == "adios2" ? ".bp" : ".nc";
+    std::string const restart_file = out_prefix+"_00000001"+restart_extension;
+    std::string const snapshot_prefix = out_prefix+"_restart_reference";
 
     core::Coupler coupler;
     coupler.set_option<std::string>( "out_prefix"            , out_prefix    );
     coupler.set_option<std::string>( "init_data"             , "ABL_neutral" );
     coupler.set_option<real       >( "out_freq"              , out_freq      );
     coupler.set_option<bool       >( "is_restart"            , is_restart    );
-    coupler.set_option<std::string>( "restart_file"          , ""            );
+    coupler.set_option<std::string>( "restart_file"          , restart_file  );
     coupler.set_option<real       >( "latitude"              , 0.            );
     coupler.set_option<real       >( "roughness"             , 0.1           );
     coupler.set_option<real       >( "cfl"                   , 0.6           );
@@ -75,54 +85,59 @@ int main(int argc, char** argv) {
       etime = coupler.get_option<real>("elapsed_time");
       output_counter = core::Counter( out_freq    , etime-((int)(etime/out_freq   ))*out_freq    );
       inform_counter = core::Counter( inform_freq , etime-((int)(etime/inform_freq))*inform_freq );
+      std::map<std::string,std::string> const ignored_entries;
+      bool const restart_valid =
+          custom_modules::compare_data_manager_snapshot(coupler,snapshot_prefix,out_prefix,ignored_entries);
+      if (!restart_valid) endrun("DataManager restart consistency test failed");
     } else {
       coupler.write_output_file( out_prefix );
+
+      real dt = dtphys_in;
+      Kokkos::fence();
+      auto tm = std::chrono::high_resolution_clock::now();
+      while (etime < sim_time) {
+        // If dt <= 0, then set it to the dynamical core's max stable time step
+        if (dtphys_in <= 0.) { dt = dycore.compute_time_step(coupler)*dyn_cycle; }
+        // If we're about to go past the final time, then limit to time step to exactly hit the final time
+        if (etime + dt > sim_time) { dt = sim_time - etime; }
+
+        // Run modules
+        {
+          using core::Coupler;
+          coupler.track_max_wind();
+          auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
+          auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
+          auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,100,0.1);       };
+          auto run_surf_flux = [&] (Coupler &c) { sfc_flux.apply                   (c,dt);               };
+          auto run_les       = [&] (Coupler &c) { les_closure.apply                (c,dt);               };
+          auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate         (c,dt);               };
+          coupler.run_module( run_geo       , "geostrophic_forcing" );
+          coupler.run_module( run_dycore    , "dycore"              );
+          coupler.run_module( run_sponge    , "sponge"              );
+          coupler.run_module( run_surf_flux , "surface_fluxes"      );
+          coupler.run_module( run_les       , "les_closure"         );
+          coupler.run_module( run_tavg      , "time_averager"       );
+        }
+
+        // Update time step
+        etime += dt; // Advance elapsed time
+        coupler.set_option<real>("elapsed_time",etime);
+        if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
+          if (coupler.is_mainproc()) std::cout << "MaxWind [" << coupler.get_option<real>("coupler_max_wind") << "] , ";
+          coupler.inform_user();
+          inform_counter.reset();
+        }
+        if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
+          coupler.write_output_file( out_prefix , true );
+          time_averager.reset(coupler);
+          output_counter.reset();
+        }
+      } // End main simulation loop
+
+      coupler.write_output_file(out_prefix, true);
+      custom_modules::write_data_manager_snapshot(coupler,snapshot_prefix);
+      custom_modules::check_abl_neutral_solution(coupler, out_prefix);
     }
-
-    real dt = dtphys_in;
-    Kokkos::fence();
-    auto tm = std::chrono::high_resolution_clock::now();
-    while (etime < sim_time) {
-      // If dt <= 0, then set it to the dynamical core's max stable time step
-      if (dtphys_in <= 0.) { dt = dycore.compute_time_step(coupler)*dyn_cycle; }
-      // If we're about to go past the final time, then limit to time step to exactly hit the final time
-      if (etime + dt > sim_time) { dt = sim_time - etime; }
-
-      // Run modules
-      {
-        using core::Coupler;
-        coupler.track_max_wind();
-        auto run_geo       = [&] (Coupler &c) { modules::geostrophic_wind_forcing(c,dt,lat_g,u_g,v_g); };
-        auto run_dycore    = [&] (Coupler &c) { dycore.time_step                 (c,dt);               };
-        auto run_sponge    = [&] (Coupler &c) { modules::sponge_layer            (c,dt,100,0.1);       };
-        auto run_surf_flux = [&] (Coupler &c) { sfc_flux.apply                   (c,dt);               };
-        auto run_les       = [&] (Coupler &c) { les_closure.apply                (c,dt);               };
-        auto run_tavg      = [&] (Coupler &c) { time_averager.accumulate         (c,dt);               };
-        coupler.run_module( run_geo       , "geostrophic_forcing" );
-        coupler.run_module( run_dycore    , "dycore"              );
-        coupler.run_module( run_sponge    , "sponge"              );
-        coupler.run_module( run_surf_flux , "surface_fluxes"      );
-        coupler.run_module( run_les       , "les_closure"         );
-        coupler.run_module( run_tavg      , "time_averager"       );
-      }
-
-      // Update time step
-      etime += dt; // Advance elapsed time
-      coupler.set_option<real>("elapsed_time",etime);
-      if (inform_freq >= 0. && inform_counter.update_and_check(dt)) {
-        if (coupler.is_mainproc()) std::cout << "MaxWind [" << coupler.get_option<real>("coupler_max_wind") << "] , ";
-        coupler.inform_user();
-        inform_counter.reset();
-      }
-      if (out_freq    >= 0. && output_counter.update_and_check(dt)) {
-        coupler.write_output_file( out_prefix , true );
-        time_averager.reset(coupler);
-        output_counter.reset();
-      }
-    } // End main simulation loop
-
-    coupler.write_output_file(out_prefix, true);
-    custom_modules::check_abl_neutral_solution(coupler, out_prefix);
 
     yakl::timer_stop("main");
   }

@@ -107,6 +107,11 @@ namespace modules {
         core::MultiField<real,3> fields;
         fields.add_field(imm_theta);
         coupler.halo_exchange( fields , hs );
+        // The 3-D exchange intentionally skips vertical halos, so exchange their horizontal perimeters separately.
+        core::MultiField<real,2> vertical_halos;
+        vertical_halos.add_field(imm_theta.slice<2>(0    ,0,0));
+        vertical_halos.add_field(imm_theta.slice<2>(hs+nz,0,0));
+        coupler.halo_exchange( vertical_halos , hs );
       });
     }
     

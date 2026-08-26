@@ -10,6 +10,7 @@
 #include "geostrophic_wind_forcing.h"
 #include "sponge_layer.h"
 #include "microphysics_kessler.h"
+#include "restart_consistency.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
@@ -30,8 +31,9 @@ int main(int argc, char** argv) {
     int         dyn_cycle     = 1;
     real        out_freq      = sim_time + 1;
     real        inform_freq   = 10;
-    bool        is_restart    = false;
-    std::string restart_file  = "";
+    bool        is_restart    = custom_modules::restart_check_requested(argc,argv,out_prefix);
+    std::string restart_file  = custom_modules::restart_check_filename(out_prefix);
+    std::string snapshot_prefix = custom_modules::restart_check_snapshot_prefix(out_prefix);
     real        cfl           = 0.6;
     real        cs            = 350;
     real        buoy_theta    = false;
@@ -83,6 +85,10 @@ int main(int argc, char** argv) {
       etime = coupler.get_option<real>("elapsed_time");
       output_counter = core::Counter( out_freq    , etime-((int)(etime/out_freq   ))*out_freq    );
       inform_counter = core::Counter( inform_freq , etime-((int)(etime/inform_freq))*inform_freq );
+      std::map<std::string,std::string> const ignored_entries;
+      bool const restart_valid =
+          custom_modules::compare_data_manager_snapshot(coupler,snapshot_prefix,out_prefix,ignored_entries);
+      if (!restart_valid) endrun("DataManager restart consistency test failed");
     } else {
       coupler.write_output_file( out_prefix );
     }
@@ -122,8 +128,11 @@ int main(int argc, char** argv) {
       }
     } // End main simulation loop
 
-    coupler.write_output_file(out_prefix, true);
-    custom_modules::check_kessler_solution(coupler, out_prefix);
+    if (!is_restart) {
+      coupler.write_output_file(out_prefix, true);
+      custom_modules::write_data_manager_snapshot(coupler,snapshot_prefix);
+      custom_modules::check_kessler_solution(coupler, out_prefix);
+    }
 
     yakl::timer_stop("main");
   }

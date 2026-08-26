@@ -1367,6 +1367,10 @@ namespace modules {
         if (py == nproc_y-1) { // If we're at the north edge process of the domain
           dm.register_and_allocate<FLOC>("dycore_ghost_y2",{max_cycles,nstage,num_state+num_tracers+1,nz,hs,nx});
         }
+        if (dm.entry_exists("dycore_ghost_x1")) dm.get<FLOC,6>("dycore_ghost_x1") = 0;
+        if (dm.entry_exists("dycore_ghost_x2")) dm.get<FLOC,6>("dycore_ghost_x2") = 0;
+        if (dm.entry_exists("dycore_ghost_y1")) dm.get<FLOC,6>("dycore_ghost_y1") = 0;
+        if (dm.entry_exists("dycore_ghost_y2")) dm.get<FLOC,6>("dycore_ghost_y2") = 0;
       }
 
       // Compute the metric jacobian (dz/dzeta) where zeta is the k interface index

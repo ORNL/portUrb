@@ -69,7 +69,8 @@ import adios2_compressors as adios2
 
 with adios2.FileReader("ABL_neutral_00000000.bp") as reader:
     print(reader.available_variables())
-    density = reader.read("density_dry")
+    density = (reader.read("density_dry_mean_column")[:, None, None] +
+               reader.read("density_dry_deviation"))
     print(density.shape, density.min(), density.max())
 ```
 
@@ -78,11 +79,11 @@ contains the required native compressor, but it is not the portable portUrb
 analysis baseline. Installing `adios2-compressors` does not add compressor
 support to private ADIOS2 libraries embedded in applications such as ParaView.
 
-Each dycore BP5 file contains a global `declare_derived_variables` attribute
-that declares `density`, `pressure`, `theta`, and their hydrostatic
-perturbations. The expressions are generated from the simulation's actual
-thermodynamic constants and tracer `adds_mass` settings. Readers such as
-SlickView can create the calculated fields directly from this metadata.
+Each output file contains a global `declare_derived_variables` attribute that reconstructs
+`density_dry` and `temperature` from their double-precision mean columns and single-precision
+deviations. Dycore files also declare `density`, `pressure`, `theta`, and their hydrostatic
+perturbations using the simulation's actual thermodynamic constants and tracer `adds_mass`
+settings. Readers such as SlickView can create the calculated fields directly from this metadata.
 
 ## Core Classes to Understand
 

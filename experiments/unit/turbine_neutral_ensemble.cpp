@@ -12,12 +12,14 @@
 #include "Ensembler.h"
 #include "column_nudging.h"
 #include "fluctuation_scaling.h"
+#include "restart_consistency.h"
 
 int main(int argc, char** argv) {
   MPI_Init( &argc , &argv );
   Kokkos::initialize();
   yakl::init();
   {
+    bool const restart_check = custom_modules::restart_check_requested(argc,argv,"turbine_neutral_ensemble");
     std::string turbine_file      = "./inputs/NREL_5MW_126_RWT_amrwind.yaml";
     YAML::Node  node              = YAML::LoadFile(turbine_file);
     real        turbine_hubz      = node["hub_height"  ].as<real>();
@@ -61,8 +63,10 @@ int main(int argc, char** argv) {
     auto orig_cout_buf = std::cout.rdbuf();
     auto orig_cerr_buf = std::cerr.rdbuf();
     std::ofstream ostr(coupler_main.get_option<std::string>("ensemble_stdout")+std::string(".out"));
-    std::cout.rdbuf(ostr.rdbuf());
-    std::cerr.rdbuf(ostr.rdbuf());
+    if (!restart_check) {
+      std::cout.rdbuf(ostr.rdbuf());
+      std::cerr.rdbuf(ostr.rdbuf());
+    }
 
     // core::ParallelComm par_comm(MPI_COMM_WORLD);
     // coupler_main.set_option<real>("hub_height_wind_mag",12);
@@ -89,8 +93,10 @@ int main(int argc, char** argv) {
       real        inform_freq       = 10;
       std::string out_prefix        = coupler_main.get_option<std::string>("out_prefix");
       std::string out_prefix_prec   = out_prefix+std::string("_precursor");
-      std::string restart_file      = "";
-      std::string restart_file_prec = "";
+      std::string restart_file      = restart_check ? custom_modules::restart_check_filename(out_prefix) : "";
+      std::string restart_file_prec = restart_check ? custom_modules::restart_check_filename(out_prefix_prec) : "";
+      std::string snapshot_prefix = custom_modules::restart_check_snapshot_prefix(out_prefix);
+      std::string snapshot_prefix_prec = custom_modules::restart_check_snapshot_prefix(out_prefix_prec);
       bool        run_main          = true;
       real        hub_wind          = coupler_main.get_option<real>("hub_height_wind_mag");
       coupler_main.set_option<std::string>( "init_data"                , init_data         );
@@ -179,6 +185,13 @@ int main(int argc, char** argv) {
       real etime = coupler_main.get_option<real>("elapsed_time");
       core::Counter output_counter( out_freq    , etime );
       core::Counter inform_counter( inform_freq , etime );
+      bool restart_valid = true;
+      std::map<std::string,std::string> const ignored_entries = {
+        {"dycore_ghost_x1","transient precursor boundary buffer regenerated before use"},
+        {"dycore_ghost_x2","transient precursor boundary buffer regenerated before use"},
+        {"dycore_ghost_y1","transient precursor boundary buffer regenerated before use"},
+        {"dycore_ghost_y2","transient precursor boundary buffer regenerated before use"}
+      };
 
       // if restart, overwrite with restart data, and set the counters appropriately. Otherwise, write initial output
       if (restart_file != "" && restart_file != "null") {
@@ -186,6 +199,8 @@ int main(int argc, char** argv) {
         etime = coupler_main.get_option<real>("elapsed_time");
         output_counter = core::Counter( out_freq    , etime-((int)(etime/out_freq   ))*out_freq    );
         inform_counter = core::Counter( inform_freq , etime-((int)(etime/inform_freq))*inform_freq );
+        restart_valid = custom_modules::compare_data_manager_snapshot(coupler_main,snapshot_prefix,out_prefix,
+                                                                       ignored_entries) && restart_valid;
       } else {
         if (out_freq >= 0 && run_main) coupler_main.write_output_file( out_prefix );
       }
@@ -194,17 +209,22 @@ int main(int argc, char** argv) {
       if (restart_file_prec != "" && restart_file_prec != "null") {
         coupler_prec.set_option<std::string>("restart_file",restart_file_prec);
         coupler_prec.overwrite_with_restart();
-        auto &dm_prec = coupler_prec.get_data_manager_readonly();
-        auto &dm_main = coupler_main.get_data_manager_readwrite();
-        dm_prec.get<real const,3>("density_dry").deep_copy_to(dm_main.get<real,3>("density_dry"));
-        dm_prec.get<real const,3>("uvel"       ).deep_copy_to(dm_main.get<real,3>("uvel"       ));
-        dm_prec.get<real const,3>("vvel"       ).deep_copy_to(dm_main.get<real,3>("vvel"       ));
-        dm_prec.get<real const,3>("wvel"       ).deep_copy_to(dm_main.get<real,3>("wvel"       ));
-        dm_prec.get<real const,3>("temperature").deep_copy_to(dm_main.get<real,3>("temperature"));
-        dm_prec.get<real const,3>("TKE"        ).deep_copy_to(dm_main.get<real,3>("TKE"        ));
+        restart_valid = custom_modules::compare_data_manager_snapshot(coupler_prec,snapshot_prefix_prec,out_prefix_prec,
+                                                                       ignored_entries) && restart_valid;
+        if (!restart_check) {
+          auto &dm_prec = coupler_prec.get_data_manager_readonly();
+          auto &dm_main = coupler_main.get_data_manager_readwrite();
+          dm_prec.get<real const,3>("density_dry").deep_copy_to(dm_main.get<real,3>("density_dry"));
+          dm_prec.get<real const,3>("uvel"       ).deep_copy_to(dm_main.get<real,3>("uvel"       ));
+          dm_prec.get<real const,3>("vvel"       ).deep_copy_to(dm_main.get<real,3>("vvel"       ));
+          dm_prec.get<real const,3>("wvel"       ).deep_copy_to(dm_main.get<real,3>("wvel"       ));
+          dm_prec.get<real const,3>("temperature").deep_copy_to(dm_main.get<real,3>("temperature"));
+          dm_prec.get<real const,3>("TKE"        ).deep_copy_to(dm_main.get<real,3>("TKE"        ));
+        }
       } else {
         if (out_freq >= 0) coupler_prec.write_output_file( out_prefix_prec );
       }
+      if (!restart_valid) endrun("DataManager restart consistency test failed");
 
       // Begin main simulation loop over time steps
       real dt = dtphys_in;
@@ -266,12 +286,16 @@ int main(int argc, char** argv) {
           output_counter.reset();
         }
       } // End main simulation loop
-      if (run_main) {
-        coupler_main.write_output_file(out_prefix, true);
-        custom_modules::check_turbine_ensemble_solution(coupler_main, out_prefix, hub_wind, true);
+      if (!restart_check) {
+        if (run_main) {
+          coupler_main.write_output_file(out_prefix, true);
+          custom_modules::write_data_manager_snapshot(coupler_main,snapshot_prefix);
+          custom_modules::check_turbine_ensemble_solution(coupler_main, out_prefix, hub_wind, true);
+        }
+        coupler_prec.write_output_file(out_prefix_prec, true);
+        custom_modules::write_data_manager_snapshot(coupler_prec,snapshot_prefix_prec);
+        custom_modules::check_turbine_ensemble_solution(coupler_prec, out_prefix_prec, hub_wind, false);
       }
-      coupler_prec.write_output_file(out_prefix_prec, true);
-      custom_modules::check_turbine_ensemble_solution(coupler_prec, out_prefix_prec, hub_wind, false);
 
       yakl::timer_stop("main");
     } // if (par_comm.valid()) 
