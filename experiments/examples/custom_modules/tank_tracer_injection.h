@@ -5,13 +5,13 @@
 namespace custom_modules {
 
   template <class Dycore>
-  inline void register_tank_tracer_injection( core::Coupler const & coupler     ,
-                                              Dycore             & dycore       ,
-                                              real                 x0           ,
-                                              real                 y0           ,
-                                              real                 radius       ,
-                                              real                 tracer_in    ,
-                                              real                 wvel         ,
+  inline void register_tank_tracer_injection( core::Coupler const & coupler    ,
+                                              Dycore              & dycore     ,
+                                              real                 x0          ,
+                                              real                 y0          ,
+                                              real                 radius      ,
+                                              real                 tracer_in   ,
+                                              real                 wvel        ,
                                               std::string          tracer_name ) {
     using yakl::SimpleBounds;
     using FLOC      = typename Dycore::FLOC;
@@ -48,17 +48,18 @@ namespace custom_modules {
         int constexpr idT   = Dycore::idT;
 
         yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
-          real x = (i_beg+i+static_cast<real>(0.5))*dx;
-          real y = (j_beg+j+static_cast<real>(0.5))*dy;
+          real x = (i_beg+i+0.5)*dx;
+          real y = (j_beg+j+0.5)*dy;
           real r = std::sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0));
           if (r <= radius && immersed_prop(0,j,i) <= imm_th) {
-            FLOC w_in = static_cast<FLOC>(wvel*std::max(static_cast<real>(0),
-                                                        static_cast<real>(1)-(r/radius)*(r/radius)));
-            FLOC mass_flux = static_cast<FLOC>(hy_dens_edges(0))*w_in;
+            real shape        = std::max( 0. , 1.-(r/radius)*(r/radius) );
+            real tracer_shape = std::sqrt(shape);
+            real w_in         = wvel*shape;
+            real mass_flux    = hy_dens_edges(0)*w_in;
             flux_z(idR                         ,0,j,i) += mass_flux;
             flux_z(idW                         ,0,j,i) += mass_flux*w_in;
-            flux_z(idT                         ,0,j,i) += mass_flux*static_cast<FLOC>(hy_theta_edges(0));
-            flux_z(tracer_flux_offset+tracer_id,0,j,i) += mass_flux*static_cast<FLOC>(tracer_in);
+            flux_z(idT                         ,0,j,i) += mass_flux*hy_theta_edges(0);
+            flux_z(tracer_flux_offset+tracer_id,0,j,i) += mass_flux*1.25*tracer_shape*tracer_in;
           }
         });
       }

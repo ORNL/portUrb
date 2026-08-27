@@ -366,7 +366,13 @@ namespace modules {
 
 
 
-    KOKKOS_INLINE_FUNCTION static void stability_correction( real vk , real mag , real z0 , real th , real th0 ,
+    #if defined(KOKKOS_ENABLE_HIP)
+      KOKKOS_FUNCTION __noinline__
+      // __attribute__((optimize("O1")))
+    #else
+      KOKKOS_INLINE_FUNCTION
+    #endif
+    static void stability_correction( real vk , real mag , real z0 , real th , real th0 ,
                                                              real grav , real Czil , real nu , real dzloc ,
                                                              bool use_z0h , bool presc_ustar , bool presc_wpthp , real sfc_wpthp ,
                                                              real & ustar , real & thstar ) {

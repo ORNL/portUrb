@@ -16,6 +16,52 @@ add_subdirectory(${KOKKOS_HOME}                                    ${KOKKOS_BIN}
 include_directories(${Kokkos_INCLUDE_DIRS_RET})
 add_subdirectory(${YAKL_HOME}                                      ${YAKL_BIN}                         )
 
+if (Kokkos_ENABLE_HIP)
+  option(PORTURB_HIP_KERNEL_RESOURCE_REPORT
+         "Generate a per-executable AMD GPU kernel resource report"
+         ON)
+  if (PORTURB_HIP_KERNEL_RESOURCE_REPORT)
+    find_program(PORTURB_BASH bash REQUIRED)
+    find_program(PORTURB_ROC_OBJ_LS roc-obj-ls REQUIRED)
+    find_program(PORTURB_LLVM_NM llvm-nm
+                 HINTS "${ROCM_PATH}/llvm/bin" "$ENV{ROCM_PATH}/llvm/bin" REQUIRED)
+    find_program(PORTURB_LLVM_READOBJ llvm-readobj
+                 HINTS "${ROCM_PATH}/llvm/bin" "$ENV{ROCM_PATH}/llvm/bin" REQUIRED)
+    find_program(PORTURB_LLVM_SYMBOLIZER llvm-symbolizer
+                 HINTS "${ROCM_PATH}/llvm/bin" "$ENV{ROCM_PATH}/llvm/bin" REQUIRED)
+
+    set(PORTURB_HIP_RESOURCE_REPORT_SCRIPT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/hip_kernel_resources.sh"
+        CACHE INTERNAL "portUrb HIP kernel resource report script")
+
+    function(porturb_add_hip_kernel_resource_reports)
+      get_property(porturb_targets DIRECTORY "${CMAKE_SOURCE_DIR}" PROPERTY BUILDSYSTEM_TARGETS)
+      foreach(porturb_target IN LISTS porturb_targets)
+        get_target_property(porturb_target_type "${porturb_target}" TYPE)
+        if (porturb_target_type STREQUAL "EXECUTABLE")
+          target_compile_options("${porturb_target}" PRIVATE
+                                 $<$<COMPILE_LANGUAGE:CXX>:-gline-tables-only>)
+          add_custom_command(
+            TARGET "${porturb_target}" POST_BUILD
+            COMMAND "${PORTURB_BASH}" "${PORTURB_HIP_RESOURCE_REPORT_SCRIPT}"
+                    --executable "$<TARGET_FILE:${porturb_target}>"
+                    --output "$<TARGET_FILE_DIR:${porturb_target}>/${porturb_target}.hip_kernel_resources.txt"
+                    --source-root "${PORTURB_HOME}"
+                    --roc-obj-ls "${PORTURB_ROC_OBJ_LS}"
+                    --llvm-nm "${PORTURB_LLVM_NM}"
+                    --llvm-readobj "${PORTURB_LLVM_READOBJ}"
+                    --llvm-symbolizer "${PORTURB_LLVM_SYMBOLIZER}"
+            COMMENT "Writing ${porturb_target}.hip_kernel_resources.txt"
+            VERBATIM)
+        endif()
+      endforeach()
+    endfunction()
+
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+                   CALL porturb_add_hip_kernel_resource_reports)
+  endif()
+endif()
+
 set(YAML_CPP_BUILD_TOOLS   OFF CACHE BOOL "" FORCE)
 set(YAML_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)

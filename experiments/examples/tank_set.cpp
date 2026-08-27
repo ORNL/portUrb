@@ -29,10 +29,17 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real scale = 1./1250.;
-    real dx = 0.30*scale;
-    real u0 = 0.5624;
-    real turbulence_intensity = 0.10;
+    real scale                = 1./1250.;
+    real dx                   = 0.20*scale;
+    real u0                   = 0.5804;
+    real turbulence_intensity = 0.075;
+    real inj_width            = 4.5*scale;
+    real inj_conc             = 0.55;
+    real inj_wvel             = 0.54;
+    real roughness            = 5e-7;
+
+
+    real les_delta_multiplier = 0.05;
 
     modules::TriMesh mesh;
     mesh.load_file("/ccs/home/imn/330deg.obj");
@@ -72,7 +79,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "is_restart"                         , is_restart  );
     coupler.set_option<std::string>( "restart_file"                       , ""          );
     coupler.set_option<real       >( "latitude"                           , 0.          );
-    coupler.set_option<real       >( "roughness"                          , dx/100.     );
+    coupler.set_option<real       >( "roughness"                          , roughness   );
     coupler.set_option<real       >( "init_density"                       , 1           );
     coupler.set_option<real       >( "init_temperature"                   , 300         );
     coupler.set_option<real       >( "init_uvel"                          , u0          );
@@ -85,15 +92,17 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , false       );
     coupler.set_option<bool       >( "dycore_immersed_hypervis"           , false       );
     coupler.set_option<int        >( "dycore_max_cycles"                  , dyn_cycle+1 );
-    coupler.set_option<real       >( "kinematic_viscosity"                , 2.e-6       );
-    coupler.set_option<real       >( "les_closure_delta_multiplier"       , 0.3         );
+    coupler.set_option<real       >( "kinematic_viscosity"                , 1.e-6       );
+    coupler.set_option<real       >( "les_closure_delta_multiplier"       , les_delta_multiplier );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false       );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false       );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
-                  // coupler.generate_levels_const_low_high(zlen,dx,11.2*scale,16*scale,dx*4) ,
-                  coupler.generate_levels_equal(nz,zlen) ,
+                  coupler.generate_levels_const_low_high(zlen,dx,11.2*scale,16*scale,dx*4) ,
+                  // coupler.generate_levels_equal(nz,zlen) ,
                   ny_glob , nx_glob , ylen , xlen );
+
+    nz = coupler.get_nz();
 
     int nfaces = mesh.faces.extent(0);
     coupler.get_data_manager_readwrite().register_and_allocate<float>("mesh_faces",{nfaces,3,3});
@@ -119,7 +128,7 @@ int main(int argc, char** argv) {
     custom_modules::register_tank_tracer_injection( coupler , dycore ,
                                                     (offset_x1+disk_x/2)*scale ,
                                                     (offset_y1+disk_y/2)*scale ,
-                                                    2*scale , 1 , 0.78 , "tank_tracer" );
+                                                    inj_width , inj_conc , inj_wvel , "tank_tracer" );
     sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler , {"tank_tracer"});
     edge_sponge1 .set_column  ( coupler , {"density_dry","temperature"} );
@@ -187,7 +196,7 @@ int main(int argc, char** argv) {
         coupler.run_module( [&] (Coupler &c) { edge_sponge1.apply      (c,0,0.1,0,0);   } , "edge_sponge1"  );
         coupler.run_module( [&] (Coupler &c) { inflow.apply(c,dycore,dt); } , "digital_filter_inflow" );
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"         );
-        // coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
+        coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
         // coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );
         coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager"  );
       }

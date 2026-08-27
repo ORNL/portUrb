@@ -6,3 +6,8 @@ It's in this directory that you'll be doing most of your compilation and simulat
 * `launchers`: This directory contains all of the HPC batch scripts for a few different machines as examples of how to launch your experiments.
 * `machines`: This directory contains environment setup files for different HPC and laptop machines. In bash speak, you should `source` or `.` the appropriate file for your desired machine and configuration.
 * `postproc`: This directory contains examples post processing files (mostly in python) for processing NetCDF output files.
+
+On Kokkos HIP builds, each executable link also writes
+`<executable>.hip_kernel_resources.txt` in the executable directory. The fixed-width table reports the source file and line,
+launch or autotune configuration, VGPR count and spills, SGPR spills, and private-segment bytes per thread for every embedded
+AMD GPU kernel. Set `-DPORTURB_HIP_KERNEL_RESOURCE_REPORT=OFF` when configuring to disable these reports.
