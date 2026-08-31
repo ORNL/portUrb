@@ -30,12 +30,13 @@ int main(int argc, char** argv) {
     yakl::timer_start("main");
 
     real scale                = 1./1250.;
-    real dx                   = 0.20*scale;
+    real dx                   = 0.30*scale;
     real u0                   = 0.5804;
-    real turbulence_intensity = 0.075;
-    real inj_width            = 4.5*scale;
-    real inj_conc             = 0.55;
-    real inj_wvel             = 0.54;
+    real turbulence_intensity = 0.06;
+    real inj_conc_width       = 4.0*scale;
+    real inj_wvel_width       = 4.5*scale;
+    real inj_conc             = 0.65;
+    real inj_wvel             = 0.60;
     real roughness            = 5e-7;
 
 
@@ -128,7 +129,7 @@ int main(int argc, char** argv) {
     custom_modules::register_tank_tracer_injection( coupler , dycore ,
                                                     (offset_x1+disk_x/2)*scale ,
                                                     (offset_y1+disk_y/2)*scale ,
-                                                    inj_width , inj_conc , inj_wvel , "tank_tracer" );
+                                                    inj_conc_width , inj_wvel_width , inj_conc , inj_wvel , "tank_tracer" );
     sfc_flux     .init        ( coupler );
     time_averager.init        ( coupler , {"tank_tracer"});
     edge_sponge1 .set_column  ( coupler , {"density_dry","temperature"} );

@@ -41,7 +41,7 @@ namespace modules {
     typedef float FLOC; // Use single precision locally
 
     using FluxArray = yakl::Array<FLOC ****>;
-    using FluxAdditionCallback = std::function<void(core::Coupler const &,
+    using FluxAdditionCallback = std::function<void(core::Coupler       &,
                                                      real4d        const &,
                                                      real4d        const &,
                                                      FluxArray     const &,
