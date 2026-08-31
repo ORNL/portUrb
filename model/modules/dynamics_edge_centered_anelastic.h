@@ -141,9 +141,11 @@ namespace modules {
       config.multigrid_pre_smooth = coupler.get_option<int>("dycore_anelastic_multigrid_pre_smooth",1);
       config.multigrid_post_smooth = coupler.get_option<int>("dycore_anelastic_multigrid_post_smooth",1);
       config.multigrid_aggregate_size = coupler.get_option<int>("dycore_anelastic_multigrid_aggregate_size",8);
-      config.multigrid_max_levels = coupler.get_option<int>("dycore_anelastic_multigrid_max_levels",12);
+      config.multigrid_max_levels = coupler.get_option<int>("dycore_anelastic_multigrid_max_levels",24);
       config.multigrid_coarse_max_dofs =
           coupler.get_option<int>("dycore_anelastic_multigrid_coarse_max_dofs",256);
+      config.multigrid_coarse_smooth =
+          coupler.get_option<int>("dycore_anelastic_multigrid_coarse_smooth",16);
       config.multigrid_jacobi_weight =
           coupler.get_option<real>("dycore_anelastic_multigrid_jacobi_weight",2._fp/3._fp);
       return config;

@@ -40,8 +40,9 @@ namespace modules {
     int multigrid_pre_smooth            = 1;
     int multigrid_post_smooth           = 1;
     int multigrid_aggregate_size        = 8;
-    int multigrid_max_levels            = 12;
+    int multigrid_max_levels            = 24;
     int multigrid_coarse_max_dofs       = 256;
+    int multigrid_coarse_smooth         = 16;
     real multigrid_jacobi_weight        = 2._fp/3._fp;
   };
 
@@ -1339,6 +1340,7 @@ namespace modules {
         options.aggregate_size = config.multigrid_aggregate_size;
         options.max_levels = config.multigrid_max_levels;
         options.coarse_max_dofs = config.multigrid_coarse_max_dofs;
+        options.coarse_smooth = config.multigrid_coarse_smooth;
         options.jacobi_weight = static_cast<float>(config.multigrid_jacobi_weight);
         config.multigrid->initialize(coupler,options);
       } else if (preconditioner == "Schwarz") {

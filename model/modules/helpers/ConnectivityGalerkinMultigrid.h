@@ -76,6 +76,7 @@ private:
   mutable std::vector<Scalar> coarse_factor_;
   mutable std::vector<Scalar> coarse_rhs_;
   mutable Scalar factored_shift_ = std::numeric_limits<Scalar>::quiet_NaN();
+  bool direct_coarse_solve_ = false;
   MPI_Comm comm_ = MPI_COMM_NULL;
   int rank_ = 0;
   int nranks_ = 1;
@@ -83,6 +84,7 @@ private:
   int vcycles_ = 1;
   int pre_smooth_ = 1;
   int post_smooth_ = 1;
+  int coarse_smooth_ = 16;
   Scalar jacobi_weight_ = Scalar(2)/Scalar(3);
   bool initialized_ = false;
 
@@ -363,10 +365,15 @@ public:
 
 
   void factor_coarse_matrix(Scalar shift) const {
+    if (!direct_coarse_solve_) endrun("ERROR: requested a direct solve for an iterative multigrid coarse level");
     if (shift == factored_shift_) return;
     int const n = static_cast<int>(coarse_mass_.size());
+    size_t const n_size = static_cast<size_t>(n);
     coarse_factor_ = coarse_matrix_;
-    for (int row = 0; row < n; row++) coarse_factor_[row*n+row] += shift*coarse_mass_[row];
+    for (int row = 0; row < n; row++) {
+      size_t const diagonal_index = static_cast<size_t>(row)*n_size+row;
+      coarse_factor_[diagonal_index] += shift*coarse_mass_[row];
+    }
     if (shift == 0) {
       std::vector<int> component_sizes;
       for (int component : coarse_component_) {
@@ -377,26 +384,30 @@ public:
         int const component = coarse_component_[row];
         Scalar const correction = Scalar(1)/static_cast<Scalar>(component_sizes[component]);
         for (int column = 0; column < n; column++) {
-          if (coarse_component_[column] == component) coarse_factor_[row*n+column] += correction;
+          if (coarse_component_[column] == component) {
+            coarse_factor_[static_cast<size_t>(row)*n_size+column] += correction;
+          }
         }
       }
     }
     for (int column = 0; column < n; column++) {
-      Scalar diagonal = coarse_factor_[column*n+column];
+      size_t const column_offset = static_cast<size_t>(column)*n_size;
+      Scalar diagonal = coarse_factor_[column_offset+column];
       for (int inner = 0; inner < column; inner++) {
-        Scalar const value = coarse_factor_[column*n+inner];
+        Scalar const value = coarse_factor_[column_offset+inner];
         diagonal -= value*value;
       }
       if (!(diagonal > Scalar(100)*std::numeric_limits<Scalar>::epsilon())) {
         endrun("ERROR: multigrid coarse Galerkin matrix is not positive definite");
       }
-      coarse_factor_[column*n+column] = std::sqrt(diagonal);
+      coarse_factor_[column_offset+column] = std::sqrt(diagonal);
       for (int row = column+1; row < n; row++) {
-        Scalar value = coarse_factor_[row*n+column];
+        size_t const row_offset = static_cast<size_t>(row)*n_size;
+        Scalar value = coarse_factor_[row_offset+column];
         for (int inner = 0; inner < column; inner++) {
-          value -= coarse_factor_[row*n+inner]*coarse_factor_[column*n+inner];
+          value -= coarse_factor_[row_offset+inner]*coarse_factor_[column_offset+inner];
         }
-        coarse_factor_[row*n+column] = value/coarse_factor_[column*n+column];
+        coarse_factor_[row_offset+column] = value/coarse_factor_[column_offset+column];
       }
     }
     factored_shift_ = shift;
@@ -404,19 +415,31 @@ public:
 
 
   void coarse_solve(Level &level, Scalar shift) const {
+    if (!direct_coarse_solve_) {
+      // A fixed number of zero-initialized weighted-Jacobi steps is a symmetric polynomial coarse inverse. It keeps CG
+      // valid while avoiding a replicated O(n^2) matrix when decomposition boundaries or disconnected geometry prevent
+      // the hierarchy from reaching the requested direct-solve size.
+      level.x = 0;
+      smooth(level,coarse_smooth_,shift);
+      return;
+    }
     factor_coarse_matrix(shift);
     level.b.deep_copy_to(level.b_host);
     int const n = static_cast<int>(coarse_mass_.size());
     auto &rhs = coarse_rhs_;
+    size_t const n_size = static_cast<size_t>(n);
     MPI_Allgatherv(level.b_host.data(),level.nlocal,mpi_scalar_type(),rhs.data(),coarse_counts_.data(),
                    coarse_displs_.data(),mpi_scalar_type(),comm_);
     for (int row = 0; row < n; row++) {
-      for (int column = 0; column < row; column++) rhs[row] -= coarse_factor_[row*n+column]*rhs[column];
-      rhs[row] /= coarse_factor_[row*n+row];
+      size_t const row_offset = static_cast<size_t>(row)*n_size;
+      for (int column = 0; column < row; column++) rhs[row] -= coarse_factor_[row_offset+column]*rhs[column];
+      rhs[row] /= coarse_factor_[row_offset+row];
     }
     for (int row = n-1; row >= 0; row--) {
-      for (int column = row+1; column < n; column++) rhs[row] -= coarse_factor_[column*n+row]*rhs[column];
-      rhs[row] /= coarse_factor_[row*n+row];
+      for (int column = row+1; column < n; column++) {
+        rhs[row] -= coarse_factor_[static_cast<size_t>(column)*n_size+row]*rhs[column];
+      }
+      rhs[row] /= coarse_factor_[static_cast<size_t>(row)*n_size+row];
     }
     for (int row = 0; row < level.nlocal; row++) level.x_host(row) = rhs[level.offset+row];
     level.x_host.deep_copy_to(level.x);
@@ -460,8 +483,9 @@ public:
     int pre_smooth = 1;
     int post_smooth = 1;
     int aggregate_size = 8;
-    int max_levels = 12;
+    int max_levels = 24;
     int coarse_max_dofs = 256;
+    int coarse_smooth = 16;
     Scalar jacobi_weight = Scalar(2)/Scalar(3);
   };
 
@@ -474,6 +498,7 @@ public:
     if (options.vcycles <= 0 || options.pre_smooth < 0 || options.post_smooth < 0 ||
         options.pre_smooth != options.post_smooth ||
         options.aggregate_size < 2 || options.max_levels < 2 || options.coarse_max_dofs <= 0 ||
+        options.coarse_smooth <= 0 ||
         !(options.jacobi_weight > 0 && options.jacobi_weight < 1)) {
       endrun("ERROR: invalid connectivity Galerkin multigrid options; CG requires equal pre/post smoothing counts");
     }
@@ -483,6 +508,7 @@ public:
     vcycles_ = options.vcycles;
     pre_smooth_ = options.pre_smooth;
     post_smooth_ = options.post_smooth;
+    coarse_smooth_ = options.coarse_smooth;
     jacobi_weight_ = options.jacobi_weight;
 
     int const nx = coupler.get_nx();
@@ -599,43 +625,52 @@ public:
     MPI_Allgather(&coarse.nlocal,1,MPI_INT,coarse_counts_.data(),1,MPI_INT,comm_);
     coarse_displs_ = displacements(coarse_counts_);
     int const coarse_n = coarse.nglobal;
-    std::vector<Scalar> local_dense(coarse.nlocal*coarse_n,0);
     HostLevel const &coarse_host = host;
-    for (int row = 0; row < coarse.nlocal; row++) {
-      for (auto const &[column,value] : coarse_host.rows[row]) local_dense[row*coarse_n+column] += value;
-    }
-    std::vector<int> matrix_counts(nranks_);
-    std::vector<int> matrix_displs(nranks_);
-    for (int rank = 0; rank < nranks_; rank++) matrix_counts[rank] = coarse_counts_[rank]*coarse_n;
-    matrix_displs = displacements(matrix_counts);
-    coarse_matrix_.resize(coarse_n*coarse_n);
-    MPI_Allgatherv(local_dense.data(),local_dense.size(),mpi_scalar_type(),coarse_matrix_.data(),matrix_counts.data(),
-                   matrix_displs.data(),mpi_scalar_type(),comm_);
-    coarse_mass_.resize(coarse_n);
-    coarse_rhs_.resize(coarse_n);
-    MPI_Allgatherv(coarse_host.mass.data(),coarse.nlocal,mpi_scalar_type(),coarse_mass_.data(),coarse_counts_.data(),
-                   coarse_displs_.data(),mpi_scalar_type(),comm_);
-
-    coarse_component_.assign(coarse_n,-1);
-    int component = 0;
-    for (int seed = 0; seed < coarse_n; seed++) {
-      if (coarse_component_[seed] >= 0) continue;
-      std::queue<int> frontier;
-      coarse_component_[seed] = component;
-      frontier.push(seed);
-      while (!frontier.empty()) {
-        int const row = frontier.front();
-        frontier.pop();
-        for (int column = 0; column < coarse_n; column++) {
-          if (row == column || coarse_matrix_[row*coarse_n+column] >= 0 || coarse_component_[column] >= 0) continue;
-          coarse_component_[column] = component;
-          frontier.push(column);
-        }
+    // coarse_max_dofs is a hard memory-safety limit for the replicated dense matrix, not merely a coarsening target.
+    direct_coarse_solve_ = coarse_n <= options.coarse_max_dofs;
+    if (direct_coarse_solve_) {
+      size_t const coarse_n_size = static_cast<size_t>(coarse_n);
+      size_t const local_matrix_size = static_cast<size_t>(coarse.nlocal)*coarse_n_size;
+      std::vector<Scalar> local_dense(local_matrix_size,0);
+      for (int row = 0; row < coarse.nlocal; row++) {
+        size_t const row_offset = static_cast<size_t>(row)*coarse_n_size;
+        for (auto const &[column,value] : coarse_host.rows[row]) local_dense[row_offset+column] += value;
       }
-      component++;
+      std::vector<int> matrix_counts(nranks_);
+      std::vector<int> matrix_displs(nranks_);
+      for (int rank = 0; rank < nranks_; rank++) matrix_counts[rank] = coarse_counts_[rank]*coarse_n;
+      matrix_displs = displacements(matrix_counts);
+      coarse_matrix_.resize(coarse_n_size*coarse_n_size);
+      MPI_Allgatherv(local_dense.data(),static_cast<int>(local_dense.size()),mpi_scalar_type(),coarse_matrix_.data(),
+                     matrix_counts.data(),matrix_displs.data(),mpi_scalar_type(),comm_);
+      coarse_mass_.resize(coarse_n);
+      coarse_rhs_.resize(coarse_n);
+      MPI_Allgatherv(coarse_host.mass.data(),coarse.nlocal,mpi_scalar_type(),coarse_mass_.data(),
+                     coarse_counts_.data(),coarse_displs_.data(),mpi_scalar_type(),comm_);
+
+      coarse_component_.assign(coarse_n,-1);
+      int component = 0;
+      for (int seed = 0; seed < coarse_n; seed++) {
+        if (coarse_component_[seed] >= 0) continue;
+        std::queue<int> frontier;
+        coarse_component_[seed] = component;
+        frontier.push(seed);
+        while (!frontier.empty()) {
+          int const row = frontier.front();
+          frontier.pop();
+          size_t const row_offset = static_cast<size_t>(row)*coarse_n_size;
+          for (int column = 0; column < coarse_n; column++) {
+            if (row == column || coarse_matrix_[row_offset+column] >= 0 || coarse_component_[column] >= 0) continue;
+            coarse_component_[column] = component;
+            frontier.push(column);
+          }
+        }
+        component++;
+      }
     }
     coupler.set_option<int>("dycore_anelastic_multigrid_levels",levels_.size());
     coupler.set_option<int>("dycore_anelastic_multigrid_coarse_dofs",coarse_n);
+    coupler.set_option<bool>("dycore_anelastic_multigrid_direct_coarse_solve",direct_coarse_solve_);
     initialized_ = true;
   }
 

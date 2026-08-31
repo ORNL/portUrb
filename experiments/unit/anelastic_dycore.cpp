@@ -185,7 +185,8 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
               int cube_width = 2, int cube_k_beg = 2, bool run_invariance_checks = true,
               bool use_hydrostatic_profile = true, std::string const & preconditioner = "Jacobi",
               int schwarz_tile = 16, int schwarz_degree = 16, real sound_speed = 0,
-              bool check_compression = false, bool city_buildings = false) {
+              bool check_compression = false, bool city_buildings = false,
+              int multigrid_max_levels = 24, bool expect_direct_coarse_solve = true) {
   int const nx = n;
   int const ny = n;
   int const nz = n;
@@ -222,7 +223,10 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
       coupler.set_option<int>("dycore_anelastic_schwarz_chebyshev_degree",schwarz_degree);
     }
   }
-  if (preconditioner == "Multigrid") coupler.set_option<bool>("dycore_anelastic_use_cg",true);
+  if (preconditioner == "Multigrid") {
+    coupler.set_option<bool>("dycore_anelastic_use_cg",true);
+    coupler.set_option<int>("dycore_anelastic_multigrid_max_levels",multigrid_max_levels);
+  }
   coupler.set_option<real>("dycore_anelastic_gmres_rel_tol",1.e-4);
   if (flow == 2 || with_immersed) {
     coupler.set_option<int>("dycore_anelastic_gmres_restart",100);
@@ -334,8 +338,16 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     require(coupler,coupler.get_option<int>("dycore_anelastic_multigrid_levels") >= 2,
             name + ": multigrid hierarchy has fewer than two levels");
     int const coarse_dofs = coupler.get_option<int>("dycore_anelastic_multigrid_coarse_dofs");
-    require(coupler,coarse_dofs > 0 && coarse_dofs <= 256,
-            name + ": multigrid coarse solve did not honor its global size target");
+    bool const direct_coarse_solve =
+        coupler.get_option<bool>("dycore_anelastic_multigrid_direct_coarse_solve");
+    require(coupler,coarse_dofs > 0,name + ": multigrid coarse level is empty");
+    require(coupler,direct_coarse_solve == expect_direct_coarse_solve,
+            name + ": multigrid selected the wrong coarse solver");
+    if (expect_direct_coarse_solve) {
+      require(coupler,coarse_dofs <= 256,name + ": multigrid direct coarse solve exceeds its size target");
+    } else {
+      require(coupler,coarse_dofs > 256,name + ": multigrid iterative fallback was not forced by the test");
+    }
   }
   if (flow == 2 || with_immersed) require(coupler,residual <= 1.1e-4,name + ": linear solver residual is too large");
   real const screening_coefficient =
@@ -536,6 +548,7 @@ int main(int argc, char **argv) {
     if (multigrid_city_only) {
       run_case("anelastic_multigrid_city",2,true,24,1,2,0,false,false,"Multigrid",16,16,0,false,true);
       run_case("anelastic_multigrid_city_screened",2,true,24,1,2,0,false,false,"Multigrid",16,16,350,false,true);
+      run_case("anelastic_multigrid_city_shallow",2,true,24,1,2,0,false,false,"Multigrid",16,16,350,false,true,2,false);
     } else {
       run_case("anelastic_hydrostatic_rest",0,false);
       run_case("anelastic_uniform_periodic",1,false);
