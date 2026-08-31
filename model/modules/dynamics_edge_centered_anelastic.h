@@ -13,6 +13,7 @@ namespace modules {
 
   struct Dynamics_Euler_Stratified {
     mutable std::shared_ptr<ConnectivityGalerkinMultigrid<float>> anelastic_multigrid;
+    mutable std::shared_ptr<GeometricMultigrid<float>> anelastic_geometric_multigrid;
     // Order of accuracy (numerical convergence rate for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
       int static constexpr ord = 8;
@@ -148,6 +149,23 @@ namespace modules {
           coupler.get_option<int>("dycore_anelastic_multigrid_coarse_smooth",16);
       config.multigrid_jacobi_weight =
           coupler.get_option<real>("dycore_anelastic_multigrid_jacobi_weight",2._fp/3._fp);
+      config.geometric_multigrid = anelastic_geometric_multigrid;
+      config.geometric_multigrid_vcycles =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_vcycles",1);
+      config.geometric_multigrid_pre_smooth =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_pre_smooth",2);
+      config.geometric_multigrid_post_smooth =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_post_smooth",2);
+      config.geometric_multigrid_coarse_smooth =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_smooth",24);
+      config.geometric_multigrid_max_levels =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_max_levels",20);
+      config.geometric_multigrid_coarse_cells =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",32768);
+      config.geometric_multigrid_min_cells_per_rank =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",131072);
+      config.geometric_multigrid_jacobi_weight =
+          coupler.get_option<real>("dycore_anelastic_geometric_multigrid_jacobi_weight",2._fp/3._fp);
       return config;
     }
 
@@ -1592,6 +1610,9 @@ namespace modules {
       if (projection_config.preconditioner == "Multigrid") {
         anelastic_multigrid = std::make_shared<ConnectivityGalerkinMultigrid<float>>();
         projection_config.multigrid = anelastic_multigrid;
+      } else if (projection_config.preconditioner == "GeometricMultigrid") {
+        anelastic_geometric_multigrid = std::make_shared<GeometricMultigrid<float>>();
+        projection_config.geometric_multigrid = anelastic_geometric_multigrid;
       }
       initialize_acoustic_projection<ord>(coupler,projection_config);
 

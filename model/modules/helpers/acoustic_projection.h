@@ -7,6 +7,7 @@
 #include "GMRES.h"
 #include "ConjGrad.h"
 #include "ConnectivityGalerkinMultigrid.h"
+#include "GeometricMultigrid.h"
 #include <memory>
 #include <sstream>
 
@@ -44,6 +45,15 @@ namespace modules {
     int multigrid_coarse_max_dofs       = 256;
     int multigrid_coarse_smooth         = 16;
     real multigrid_jacobi_weight        = 2._fp/3._fp;
+    std::shared_ptr<GeometricMultigrid<float>> geometric_multigrid;
+    int geometric_multigrid_vcycles            = 1;
+    int geometric_multigrid_pre_smooth         = 2;
+    int geometric_multigrid_post_smooth        = 2;
+    int geometric_multigrid_coarse_smooth      = 24;
+    int geometric_multigrid_max_levels         = 20;
+    int geometric_multigrid_coarse_cells       = 32768;
+    int geometric_multigrid_min_cells_per_rank = 131072;
+    real geometric_multigrid_jacobi_weight     = 2._fp/3._fp;
   };
 
   namespace detail {
@@ -733,6 +743,17 @@ namespace modules {
         (void) comm;
       };
 
+      auto geometric_multigrid_preconditioner = [&] (yakl::Array<ProjectionScalar *> const & r_in,
+                                                       yakl::Array<ProjectionScalar *> const & z_out,
+                                                       MPI_Comm comm) {
+        if (!config.geometric_multigrid || !config.geometric_multigrid->initialized()) {
+          endrun("ERROR: anelastic geometric multigrid preconditioner was not initialized");
+        }
+        config.geometric_multigrid->apply(r_in,z_out,screening_inv_length_squared,dt_proj);
+        project_pressure(z_out.reshape(nz,ny,nx),z_out.reshape(nz,ny,nx));
+        (void) comm;
+      };
+
       YaklRestartedGMRES<ProjectionScalar> gmres;
       typename YaklRestartedGMRES<ProjectionScalar>::Options opts;
       opts.restart = config.gmres_restart;
@@ -904,7 +925,10 @@ namespace modules {
         cg_opts.abs_tol   = opts.abs_tol;
         cg_opts.verbose   = opts.verbose;
         typename YaklConjGrad<ProjectionScalar>::Result cg_result;
-        if (preconditioner == "Multigrid") {
+        if (preconditioner == "GeometricMultigrid") {
+          cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
+                               geometric_multigrid_preconditioner,compute_Ax_and_local_dot);
+        } else if (preconditioner == "Multigrid") {
           cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
                                multigrid_preconditioner,compute_Ax_and_local_dot);
         } else if (preconditioner == "Schwarz") {
@@ -921,7 +945,10 @@ namespace modules {
         solver_converged = cg_result.converged;
       } else {
         typename YaklRestartedGMRES<ProjectionScalar>::Result gmres_result;
-        if (preconditioner == "Multigrid") {
+        if (preconditioner == "GeometricMultigrid") {
+          gmres_result = gmres.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,opts,comm,nullptr,
+                                     geometric_multigrid_preconditioner);
+        } else if (preconditioner == "Multigrid") {
           gmres_result = gmres.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,opts,comm,nullptr,
                                      multigrid_preconditioner);
         } else if (preconditioner == "Schwarz") {
@@ -1327,11 +1354,26 @@ namespace modules {
       // this avoids both atomics and an asymmetric correction exchange at rank boundaries.
       std::string const &preconditioner = config.preconditioner;
       if (preconditioner != "none" && preconditioner != "Jacobi" && preconditioner != "Schwarz" &&
-          preconditioner != "Multigrid") {
-        endrun("ERROR: acoustic projection preconditioner must be none, Jacobi, Schwarz, or Multigrid");
+          preconditioner != "Multigrid" && preconditioner != "GeometricMultigrid") {
+        endrun("ERROR: acoustic projection preconditioner must be none, Jacobi, Schwarz, Multigrid, or "
+               "GeometricMultigrid");
       }
       coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
-      if (preconditioner == "Multigrid") {
+      if (preconditioner == "GeometricMultigrid") {
+        if (!config.geometric_multigrid) {
+          endrun("ERROR: anelastic geometric multigrid preconditioner has no persistent solver object");
+        }
+        typename GeometricMultigrid<float>::Options options;
+        options.vcycles = config.geometric_multigrid_vcycles;
+        options.pre_smooth = config.geometric_multigrid_pre_smooth;
+        options.post_smooth = config.geometric_multigrid_post_smooth;
+        options.coarse_smooth = config.geometric_multigrid_coarse_smooth;
+        options.max_levels = config.geometric_multigrid_max_levels;
+        options.coarse_cells = config.geometric_multigrid_coarse_cells;
+        options.min_cells_per_rank = config.geometric_multigrid_min_cells_per_rank;
+        options.jacobi_weight = static_cast<float>(config.geometric_multigrid_jacobi_weight);
+        config.geometric_multigrid->initialize(coupler,options);
+      } else if (preconditioner == "Multigrid") {
         if (!config.multigrid) endrun("ERROR: anelastic multigrid preconditioner has no persistent solver object");
         typename ConnectivityGalerkinMultigrid<float>::Options options;
         options.vcycles = config.multigrid_vcycles;

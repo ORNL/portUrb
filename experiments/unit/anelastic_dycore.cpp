@@ -213,7 +213,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",benchmark_case);
   coupler.set_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true);
   coupler.set_option<bool>("dycore_anelastic_screening",sound_speed > 0);
-  if (benchmark_case || preconditioner == "Multigrid") {
+  if (benchmark_case || preconditioner == "Multigrid" || preconditioner == "GeometricMultigrid") {
     coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
     coupler.set_option<bool>("dycore_anelastic_time_linear_solver",false);
     if (preconditioner == "Schwarz") {
@@ -226,6 +226,10 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   if (preconditioner == "Multigrid") {
     coupler.set_option<bool>("dycore_anelastic_use_cg",true);
     coupler.set_option<int>("dycore_anelastic_multigrid_max_levels",multigrid_max_levels);
+  } else if (preconditioner == "GeometricMultigrid") {
+    coupler.set_option<bool>("dycore_anelastic_use_cg",true);
+    coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",64);
+    coupler.set_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",64);
   }
   coupler.set_option<real>("dycore_anelastic_gmres_rel_tol",1.e-4);
   if (flow == 2 || with_immersed) {
@@ -348,6 +352,21 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     } else {
       require(coupler,coarse_dofs > 256,name + ": multigrid iterative fallback was not forced by the test");
     }
+  } else if (preconditioner == "GeometricMultigrid") {
+    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_linear_solver") == "CG",
+            name + ": geometric multigrid case did not use CG");
+    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_preconditioner") ==
+                    "GeometricMultigrid",
+            name + ": geometric multigrid case did not use the requested preconditioner");
+    require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_levels") >= 2,
+            name + ": geometric multigrid hierarchy has fewer than two levels");
+    require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells") > 0,
+            name + ": geometric multigrid coarse level is empty");
+    require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_ranks") == 1,
+            name + ": geometric multigrid did not agglomerate onto one coarse task");
+    require(coupler,coupler.get_option<std::string>("dycore_anelastic_geometric_multigrid_interpolation") ==
+                    "Quadratic",
+            name + ": geometric multigrid did not use quadratic interpolation");
   }
   if (flow == 2 || with_immersed) require(coupler,residual <= 1.1e-4,name + ": linear solver residual is too large");
   real const screening_coefficient =
@@ -543,12 +562,18 @@ int main(int argc, char **argv) {
   yakl::init();
   {
     bool const multigrid_city_only = argc > 1 && std::string(argv[1]) == "--multigrid-city-only";
-    int const schwarz_tile = argc > 1 && !multigrid_city_only ? std::stoi(argv[1]) : 16;
-    int const schwarz_degree = argc > 2 && !multigrid_city_only ? std::stoi(argv[2]) : 16;
+    bool const geometric_only = argc > 1 && std::string(argv[1]) == "--geometric-only";
+    int const schwarz_tile = argc > 1 && !multigrid_city_only && !geometric_only ? std::stoi(argv[1]) : 16;
+    int const schwarz_degree = argc > 2 && !multigrid_city_only && !geometric_only ? std::stoi(argv[2]) : 16;
     if (multigrid_city_only) {
       run_case("anelastic_multigrid_city",2,true,24,1,2,0,false,false,"Multigrid",16,16,0,false,true);
       run_case("anelastic_multigrid_city_screened",2,true,24,1,2,0,false,false,"Multigrid",16,16,350,false,true);
       run_case("anelastic_multigrid_city_shallow",2,true,24,1,2,0,false,false,"Multigrid",16,16,350,false,true,2,false);
+    } else if (geometric_only) {
+      run_case("anelastic_geometric_multigrid_pure_abl",2,false,24,1,2,0,false,true,
+               "GeometricMultigrid",16,16,0);
+      run_case("anelastic_geometric_multigrid_pure_abl_screened_odd_grid",2,false,25,1,2,0,false,true,
+               "GeometricMultigrid",16,16,350);
     } else {
       run_case("anelastic_hydrostatic_rest",0,false);
       run_case("anelastic_uniform_periodic",1,false);
