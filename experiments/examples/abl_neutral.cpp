@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_edge_centered.h"
+#include "dynamics_edge_centered_anelastic.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     real dx         = 5;
     real umax       = 15;
     real cfl        = 0.6;
-    real cs         = umax*2;
+    real cs         = 350; // umax*2;
     bool buoy_theta = true;
     bool rsst       = true;
     // real cs         = 10;
@@ -71,6 +71,42 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5        );
     coupler.set_option<bool       >( "surface_flux_predict_z0h"           , false         );
     coupler.set_option<bool       >( "surface_flux_prescribe_wpthetap"    , false         );
+
+
+
+    coupler.set_option<bool       >( "dycore_anelastic_projection_diagnostics"       , false                          );
+    coupler.set_option<bool       >( "dycore_anelastic_check_linearity"              , false                          );
+    coupler.set_option<bool       >( "dycore_anelastic_check_cg_compatibility"       , true                           );
+    coupler.set_option<bool       >( "dycore_anelastic_use_cg"                       , true                           );
+    coupler.set_option<bool       >( "dycore_anelastic_time_linear_solver"           , false                          );
+    coupler.set_option<bool       >( "dycore_anelastic_screening"                    , true                           );
+    coupler.set_option<real       >( "dycore_anelastic_projection_beta"              , 0.1                            );
+    coupler.set_option<real       >( "dycore_anelastic_projection_pressure_beta"     , 0                              );
+    // coupler.set_option<bool       >( "dycore_anelastic_use_jacobi_preconditioner"    , false                          );
+    coupler.set_option<std::string>( "dycore_anelastic_preconditioner"               , "GeometricMultigrid"                     );
+    coupler.set_option<int        >( "dycore_anelastic_gmres_restart"                , 30                             );
+    coupler.set_option<int        >( "dycore_anelastic_gmres_max_iters"              , 10000                          );
+    coupler.set_option<real       >( "dycore_anelastic_gmres_rel_tol"                , 1.e-4                          );
+    coupler.set_option<real       >( "dycore_anelastic_gmres_abs_tol"                , 0                              );
+    coupler.set_option<bool       >( "dycore_anelastic_gmres_verbose"                , false                          );
+    coupler.set_option<bool       >( "dycore_anelastic_gmres_reorthogonalize"        , true                           );
+    coupler.set_option<int        >( "dycore_anelastic_schwarz_tile_nx"              , 8                              );
+    coupler.set_option<int        >( "dycore_anelastic_schwarz_tile_ny"              , 8                              );
+    coupler.set_option<int        >( "dycore_anelastic_schwarz_overlap"              , 2                              );
+    coupler.set_option<int        >( "dycore_anelastic_schwarz_chebyshev_degree"     , 8                              );
+    coupler.set_option<real       >( "dycore_anelastic_schwarz_chebyshev_lambda_min" , 0.02                           );
+    coupler.set_option<real       >( "dycore_anelastic_schwarz_chebyshev_lambda_max" , 2                              );
+
+
+    coupler.set_option<int        >( "dycore_anelastic_gmres_max_iters"                        , 10000);
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_vcycles"            , 1);
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_pre_smooth"         , 2);
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_post_smooth"        , 2);
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_smooth"      , 24);
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_max_levels"         , 20);
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_cells"       , 65536);
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_min_cells_per_rank" , 131072);
+    coupler.set_option<real       >( "dycore_anelastic_geometric_multigrid_jacobi_weight"      , 2._fp/3._fp);
 
 
 
