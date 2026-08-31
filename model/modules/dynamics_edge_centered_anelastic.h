@@ -6,11 +6,13 @@
 #include "MultipleFields.h"
 #include "TransformMatrices.h"
 #include "acoustic_projection.h"
+#include <memory>
 
 namespace modules {
 
 
   struct Dynamics_Euler_Stratified {
+    mutable std::shared_ptr<ConnectivityGalerkinMultigrid<float>> anelastic_multigrid;
     // Order of accuracy (numerical convergence rate for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
       int static constexpr ord = 8;
@@ -134,6 +136,16 @@ namespace modules {
           coupler.get_option<real>("dycore_anelastic_schwarz_chebyshev_lambda_min",0.02);
       config.schwarz_chebyshev_lambda_max =
           coupler.get_option<real>("dycore_anelastic_schwarz_chebyshev_lambda_max",2);
+      config.multigrid = anelastic_multigrid;
+      config.multigrid_vcycles = coupler.get_option<int>("dycore_anelastic_multigrid_vcycles",1);
+      config.multigrid_pre_smooth = coupler.get_option<int>("dycore_anelastic_multigrid_pre_smooth",1);
+      config.multigrid_post_smooth = coupler.get_option<int>("dycore_anelastic_multigrid_post_smooth",1);
+      config.multigrid_aggregate_size = coupler.get_option<int>("dycore_anelastic_multigrid_aggregate_size",8);
+      config.multigrid_max_levels = coupler.get_option<int>("dycore_anelastic_multigrid_max_levels",12);
+      config.multigrid_coarse_max_dofs =
+          coupler.get_option<int>("dycore_anelastic_multigrid_coarse_max_dofs",256);
+      config.multigrid_jacobi_weight =
+          coupler.get_option<real>("dycore_anelastic_multigrid_jacobi_weight",2._fp/3._fp);
       return config;
     }
 
@@ -1574,7 +1586,12 @@ namespace modules {
       create_immersed_proportion_halos( coupler );
       compute_hydrostasis_edges       ( coupler );
 
-      initialize_acoustic_projection<ord>(coupler,acoustic_projection_config(coupler));
+      auto projection_config = acoustic_projection_config(coupler);
+      if (projection_config.preconditioner == "Multigrid") {
+        anelastic_multigrid = std::make_shared<ConnectivityGalerkinMultigrid<float>>();
+        projection_config.multigrid = anelastic_multigrid;
+      }
+      initialize_acoustic_projection<ord>(coupler,projection_config);
 
       // Projection pressure is a diagnostic constraint pressure, not thermodynamic EOS pressure. It is mean-zero only
       // for the unscreened operator, whose pressure has a constant nullspace.

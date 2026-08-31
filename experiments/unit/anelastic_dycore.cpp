@@ -185,7 +185,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
               int cube_width = 2, int cube_k_beg = 2, bool run_invariance_checks = true,
               bool use_hydrostatic_profile = true, std::string const & preconditioner = "Jacobi",
               int schwarz_tile = 16, int schwarz_degree = 16, real sound_speed = 0,
-              bool check_compression = false) {
+              bool check_compression = false, bool city_buildings = false) {
   int const nx = n;
   int const ny = n;
   int const nz = n;
@@ -212,7 +212,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",benchmark_case);
   coupler.set_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true);
   coupler.set_option<bool>("dycore_anelastic_screening",sound_speed > 0);
-  if (benchmark_case) {
+  if (benchmark_case || preconditioner == "Multigrid") {
     coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
     coupler.set_option<bool>("dycore_anelastic_time_linear_solver",false);
     if (preconditioner == "Schwarz") {
@@ -222,6 +222,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
       coupler.set_option<int>("dycore_anelastic_schwarz_chebyshev_degree",schwarz_degree);
     }
   }
+  if (preconditioner == "Multigrid") coupler.set_option<bool>("dycore_anelastic_use_cg",true);
   coupler.set_option<real>("dycore_anelastic_gmres_rel_tol",1.e-4);
   if (flow == 2 || with_immersed) {
     coupler.set_option<int>("dycore_anelastic_gmres_restart",100);
@@ -268,9 +269,18 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     w(k,j,i) = (flow == 2 ? 0.4_fp*std::sin(2*M_PI*x/xlen)*std::sin(M_PI*z/zlen) : 0) +
                  velocity_perturbation*rng.gen_uniform<real>(-1,1);
     q(k,j,i) = q0*rho(k,j,i);
-    imm(k,j,i) = with_immersed && k >= cube_k_beg && k < cube_k_beg+cube_width &&
-                 j_glob >= cube_j_beg && j_glob < cube_j_beg+cube_width &&
-                 i_glob >= cube_i_beg && i_glob < cube_i_beg+cube_width ? 1 : 0;
+    bool immersed = with_immersed && k >= cube_k_beg && k < cube_k_beg+cube_width &&
+                    j_glob >= cube_j_beg && j_glob < cube_j_beg+cube_width &&
+                    i_glob >= cube_i_beg && i_glob < cube_i_beg+cube_width;
+    if (city_buildings) {
+      bool const building_1 = k < 7  && i_glob >= 3  && i_glob < 8  && j_glob >= 3  && j_glob < 11;
+      bool const building_2 = k < 12 && i_glob >= 10 && i_glob < 16 && j_glob >= 5  && j_glob < 10;
+      bool const building_3 = k < 9  && i_glob >= 7  && i_glob < 13 && j_glob >= 15 && j_glob < 21;
+      bool const building_4 = k < 14 && i_glob >= 16 && i_glob < 22 && j_glob >= 13 && j_glob < 20;
+      bool const building_5 = k < 6  && i_glob >= 18 && i_glob < 23 && j_glob >= 3  && j_glob < 8;
+      immersed = building_1 || building_2 || building_3 || building_4 || building_5;
+    }
+    imm(k,j,i) = immersed ? 1 : 0;
   });
 
   modules::Dynamics_Euler_Stratified dycore;
@@ -316,6 +326,17 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   real const residual = coupler.get_option<real>("dycore_anelastic_last_linear_solver_rel_res");
   int const initial_solver_iters = coupler.get_option<int>("dycore_anelastic_last_linear_solver_iters");
   require(coupler,std::isfinite(residual),name + ": linear solver residual is invalid");
+  if (preconditioner == "Multigrid") {
+    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_linear_solver") == "CG",
+            name + ": multigrid case did not use CG");
+    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_preconditioner") == "Multigrid",
+            name + ": multigrid case did not use the requested preconditioner");
+    require(coupler,coupler.get_option<int>("dycore_anelastic_multigrid_levels") >= 2,
+            name + ": multigrid hierarchy has fewer than two levels");
+    int const coarse_dofs = coupler.get_option<int>("dycore_anelastic_multigrid_coarse_dofs");
+    require(coupler,coarse_dofs > 0 && coarse_dofs <= 256,
+            name + ": multigrid coarse solve did not honor its global size target");
+  }
   if (flow == 2 || with_immersed) require(coupler,residual <= 1.1e-4,name + ": linear solver residual is too large");
   real const screening_coefficient =
       coupler.get_option<real>("dycore_anelastic_last_screening_inverse_length_squared");
@@ -509,55 +530,61 @@ int main(int argc, char **argv) {
   Kokkos::initialize();
   yakl::init();
   {
-    int const schwarz_tile = argc > 1 ? std::stoi(argv[1]) : 16;
-    int const schwarz_degree = argc > 2 ? std::stoi(argv[2]) : 16;
-    run_case("anelastic_hydrostatic_rest",0,false);
-    run_case("anelastic_uniform_periodic",1,false);
-    run_case("anelastic_divergent_immersed",2,true);
-    real constexpr benchmark_grid_spacing = 100;
-    real constexpr benchmark_dt = benchmark_cfl*benchmark_grid_spacing/benchmark_max_wind;
-    std::array<real,7> const acoustic_lengths_in_cells = {12,16,24,32,48,64,0};
-    std::array<real,7> none_iterations;
-    std::array<real,7> schwarz_iterations;
-    for (int il = 0; il < acoustic_lengths_in_cells.size(); il++) {
-      real const acoustic_length_in_cells = acoustic_lengths_in_cells[il];
-      real const acoustic_length = acoustic_length_in_cells*benchmark_grid_spacing;
-      real const sound_speed = acoustic_length > 0 ? acoustic_length/benchmark_dt : 0;
-      std::string const suffix = acoustic_length > 0 ?
-          "csdt"+std::to_string(static_cast<int>(acoustic_length_in_cells))+"delta" : "off";
-      none_iterations[il] = run_case("anelastic_large_uniform_cube_none_"+suffix,1,true,128,benchmark_grid_spacing,
-                                     32,0,false,false,
-                                     "none",schwarz_tile,schwarz_degree,sound_speed,il == 0);
-      schwarz_iterations[il] = run_case("anelastic_large_uniform_cube_schwarz_"+suffix,1,true,128,
-                                        benchmark_grid_spacing,32,0,false,false,
-                                        "Schwarz",schwarz_tile,schwarz_degree,sound_speed);
-    }
-    for (int il = 1; il < acoustic_lengths_in_cells.size(); il++) {
-      if (none_iterations[il] < none_iterations[il-1]) {
-        endrun("ERROR: unpreconditioned screened iteration count did not increase monotonically with c_s*dt");
-      }
-      if (schwarz_iterations[il] < schwarz_iterations[il-1]) {
-        endrun("ERROR: Schwarz-preconditioned screened iteration count did not increase monotonically with c_s*dt");
-      }
-    }
-    if (none_iterations.back() <= none_iterations[acoustic_lengths_in_cells.size()-2] ||
-        schwarz_iterations.back() <= schwarz_iterations[acoustic_lengths_in_cells.size()-2]) {
-      endrun("ERROR: disabling screening did not increase both 128^3 iteration counts");
-    }
-    if (core::ParallelComm(MPI_COMM_WORLD).get_rank_id() == 0) {
-      std::cout << "128^3 finite-sound-speed iteration study (c_s*dt/delta, c_s, Mach_20, none, Schwarz):"
-                << std::endl;
+    bool const multigrid_city_only = argc > 1 && std::string(argv[1]) == "--multigrid-city-only";
+    int const schwarz_tile = argc > 1 && !multigrid_city_only ? std::stoi(argv[1]) : 16;
+    int const schwarz_degree = argc > 2 && !multigrid_city_only ? std::stoi(argv[2]) : 16;
+    if (multigrid_city_only) {
+      run_case("anelastic_multigrid_city",2,true,24,1,2,0,false,false,"Multigrid",16,16,0,false,true);
+      run_case("anelastic_multigrid_city_screened",2,true,24,1,2,0,false,false,"Multigrid",16,16,350,false,true);
+    } else {
+      run_case("anelastic_hydrostatic_rest",0,false);
+      run_case("anelastic_uniform_periodic",1,false);
+      run_case("anelastic_divergent_immersed",2,true);
+      real constexpr benchmark_grid_spacing = 100;
+      real constexpr benchmark_dt = benchmark_cfl*benchmark_grid_spacing/benchmark_max_wind;
+      std::array<real,7> const acoustic_lengths_in_cells = {12,16,24,32,48,64,0};
+      std::array<real,7> none_iterations;
+      std::array<real,7> schwarz_iterations;
       for (int il = 0; il < acoustic_lengths_in_cells.size(); il++) {
-        real const acoustic_length = acoustic_lengths_in_cells[il]*benchmark_grid_spacing;
+        real const acoustic_length_in_cells = acoustic_lengths_in_cells[il];
+        real const acoustic_length = acoustic_length_in_cells*benchmark_grid_spacing;
         real const sound_speed = acoustic_length > 0 ? acoustic_length/benchmark_dt : 0;
-        std::cout << "  ";
-        if (sound_speed > 0) {
-          std::cout << acoustic_lengths_in_cells[il] << ", " << sound_speed << ", "
-                    << benchmark_max_wind/sound_speed;
-        } else {
-          std::cout << "off, off, off";
+        std::string const suffix = acoustic_length > 0 ?
+            "csdt"+std::to_string(static_cast<int>(acoustic_length_in_cells))+"delta" : "off";
+        none_iterations[il] = run_case("anelastic_large_uniform_cube_none_"+suffix,1,true,128,
+                                       benchmark_grid_spacing,32,0,false,false,
+                                       "none",schwarz_tile,schwarz_degree,sound_speed,il == 0);
+        schwarz_iterations[il] = run_case("anelastic_large_uniform_cube_schwarz_"+suffix,1,true,128,
+                                          benchmark_grid_spacing,32,0,false,false,
+                                          "Schwarz",schwarz_tile,schwarz_degree,sound_speed);
+      }
+      for (int il = 1; il < acoustic_lengths_in_cells.size(); il++) {
+        if (none_iterations[il] < none_iterations[il-1]) {
+          endrun("ERROR: unpreconditioned screened iteration count did not increase monotonically with c_s*dt");
         }
-        std::cout << ", " << none_iterations[il] << ", " << schwarz_iterations[il] << std::endl;
+        if (schwarz_iterations[il] < schwarz_iterations[il-1]) {
+          endrun("ERROR: Schwarz-preconditioned screened iteration count did not increase monotonically with c_s*dt");
+        }
+      }
+      if (none_iterations.back() <= none_iterations[acoustic_lengths_in_cells.size()-2] ||
+          schwarz_iterations.back() <= schwarz_iterations[acoustic_lengths_in_cells.size()-2]) {
+        endrun("ERROR: disabling screening did not increase both 128^3 iteration counts");
+      }
+      if (core::ParallelComm(MPI_COMM_WORLD).get_rank_id() == 0) {
+        std::cout << "128^3 finite-sound-speed iteration study (c_s*dt/delta, c_s, Mach_20, none, Schwarz):"
+                  << std::endl;
+        for (int il = 0; il < acoustic_lengths_in_cells.size(); il++) {
+          real const acoustic_length = acoustic_lengths_in_cells[il]*benchmark_grid_spacing;
+          real const sound_speed = acoustic_length > 0 ? acoustic_length/benchmark_dt : 0;
+          std::cout << "  ";
+          if (sound_speed > 0) {
+            std::cout << acoustic_lengths_in_cells[il] << ", " << sound_speed << ", "
+                      << benchmark_max_wind/sound_speed;
+          } else {
+            std::cout << "off, off, off";
+          }
+          std::cout << ", " << none_iterations[il] << ", " << schwarz_iterations[il] << std::endl;
+        }
       }
     }
   }
