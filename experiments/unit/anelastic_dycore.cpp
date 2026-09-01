@@ -213,7 +213,8 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",benchmark_case);
   coupler.set_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true);
   coupler.set_option<bool>("dycore_anelastic_screening",sound_speed > 0);
-  if (benchmark_case || preconditioner == "Multigrid" || preconditioner == "GeometricMultigrid") {
+  if (benchmark_case || preconditioner == "Multigrid" || preconditioner == "GeometricMultigrid" ||
+      preconditioner == "TensorLineMultigrid") {
     coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
     coupler.set_option<bool>("dycore_anelastic_time_linear_solver",false);
     if (preconditioner == "Schwarz") {
@@ -230,6 +231,11 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     coupler.set_option<bool>("dycore_anelastic_use_cg",true);
     coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",64);
     coupler.set_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",64);
+  } else if (preconditioner == "TensorLineMultigrid") {
+    coupler.set_option<bool>("dycore_anelastic_use_cg",true);
+    coupler.set_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_nx",6);
+    coupler.set_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_ny",6);
+    coupler.set_option<int>("dycore_anelastic_tensor_line_multigrid_min_cells_per_rank",64);
   }
   coupler.set_option<real>("dycore_anelastic_gmres_rel_tol",1.e-4);
   if (flow == 2 || with_immersed) {
@@ -367,6 +373,22 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     require(coupler,coupler.get_option<std::string>("dycore_anelastic_geometric_multigrid_interpolation") ==
                     "Quadratic",
             name + ": geometric multigrid did not use quadratic interpolation");
+  } else if (preconditioner == "TensorLineMultigrid") {
+    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_linear_solver") == "CG",
+            name + ": tensor-line multigrid case did not use CG");
+    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_preconditioner") ==
+                    "TensorLineMultigrid",
+            name + ": tensor-line multigrid case did not use the requested preconditioner");
+    require(coupler,coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_levels") >= 2,
+            name + ": tensor-line multigrid hierarchy has fewer than two levels");
+    require(coupler,coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_ranks") == 1,
+            name + ": tensor-line multigrid did not aggregate onto one coarse task");
+    require(coupler,coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_nx") >= 6 &&
+                    coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_ny") >= 6,
+            name + ": tensor-line multigrid coarsened below its horizontal target");
+    require(coupler,coupler.get_option<std::string>("dycore_anelastic_tensor_line_multigrid_smoother") ==
+                    "HorizontalJacobiVerticalTridiagonal",
+            name + ": tensor-line multigrid did not select its block-line smoother");
   }
   if (flow == 2 || with_immersed) require(coupler,residual <= 1.1e-4,name + ": linear solver residual is too large");
   real const screening_coefficient =
@@ -563,8 +585,11 @@ int main(int argc, char **argv) {
   {
     bool const multigrid_city_only = argc > 1 && std::string(argv[1]) == "--multigrid-city-only";
     bool const geometric_only = argc > 1 && std::string(argv[1]) == "--geometric-only";
-    int const schwarz_tile = argc > 1 && !multigrid_city_only && !geometric_only ? std::stoi(argv[1]) : 16;
-    int const schwarz_degree = argc > 2 && !multigrid_city_only && !geometric_only ? std::stoi(argv[2]) : 16;
+    bool const tensor_line_only = argc > 1 && std::string(argv[1]) == "--tensor-line-only";
+    int const schwarz_tile = argc > 1 && !multigrid_city_only && !geometric_only && !tensor_line_only ?
+                             std::stoi(argv[1]) : 16;
+    int const schwarz_degree = argc > 2 && !multigrid_city_only && !geometric_only && !tensor_line_only ?
+                               std::stoi(argv[2]) : 16;
     if (multigrid_city_only) {
       run_case("anelastic_multigrid_city",2,true,24,1,2,0,false,false,"Multigrid",16,16,0,false,true);
       run_case("anelastic_multigrid_city_screened",2,true,24,1,2,0,false,false,"Multigrid",16,16,350,false,true);
@@ -574,6 +599,11 @@ int main(int argc, char **argv) {
                "GeometricMultigrid",16,16,0);
       run_case("anelastic_geometric_multigrid_pure_abl_screened_odd_grid",2,false,25,1,2,0,false,true,
                "GeometricMultigrid",16,16,350);
+    } else if (tensor_line_only) {
+      run_case("anelastic_tensor_line_multigrid_pure_abl",2,false,24,1,2,0,false,true,
+               "TensorLineMultigrid",16,16,0);
+      run_case("anelastic_tensor_line_multigrid_pure_abl_screened_odd_grid",2,false,25,1,2,0,false,true,
+               "TensorLineMultigrid",16,16,350);
     } else {
       run_case("anelastic_hydrostatic_rest",0,false);
       run_case("anelastic_uniform_periodic",1,false);

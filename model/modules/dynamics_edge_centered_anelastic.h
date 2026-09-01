@@ -14,6 +14,7 @@ namespace modules {
   struct Dynamics_Euler_Stratified {
     mutable std::shared_ptr<ConnectivityGalerkinMultigrid<float>> anelastic_multigrid;
     mutable std::shared_ptr<GeometricMultigrid<float>> anelastic_geometric_multigrid;
+    mutable std::shared_ptr<GeometricMultigrid<float>> anelastic_tensor_line_multigrid;
     // Order of accuracy (numerical convergence rate for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
       int static constexpr ord = 8;
@@ -166,6 +167,25 @@ namespace modules {
           coupler.get_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",131072);
       config.geometric_multigrid_jacobi_weight =
           coupler.get_option<real>("dycore_anelastic_geometric_multigrid_jacobi_weight",2._fp/3._fp);
+      config.tensor_line_multigrid = anelastic_tensor_line_multigrid;
+      config.tensor_line_multigrid_vcycles =
+          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_vcycles",1);
+      config.tensor_line_multigrid_pre_smooth =
+          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_pre_smooth",2);
+      config.tensor_line_multigrid_post_smooth =
+          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_post_smooth",2);
+      config.tensor_line_multigrid_coarse_smooth =
+          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_smooth",24);
+      config.tensor_line_multigrid_max_levels =
+          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_max_levels",20);
+      config.tensor_line_multigrid_coarse_nx =
+          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_nx",50);
+      config.tensor_line_multigrid_coarse_ny =
+          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_ny",50);
+      config.tensor_line_multigrid_min_cells_per_rank =
+          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_min_cells_per_rank",131072);
+      config.tensor_line_multigrid_jacobi_weight =
+          coupler.get_option<real>("dycore_anelastic_tensor_line_multigrid_jacobi_weight",2._fp/3._fp);
       return config;
     }
 
@@ -1613,6 +1633,9 @@ namespace modules {
       } else if (projection_config.preconditioner == "GeometricMultigrid") {
         anelastic_geometric_multigrid = std::make_shared<GeometricMultigrid<float>>();
         projection_config.geometric_multigrid = anelastic_geometric_multigrid;
+      } else if (projection_config.preconditioner == "TensorLineMultigrid") {
+        anelastic_tensor_line_multigrid = std::make_shared<GeometricMultigrid<float>>();
+        projection_config.tensor_line_multigrid = anelastic_tensor_line_multigrid;
       }
       initialize_acoustic_projection<ord>(coupler,projection_config);
 
