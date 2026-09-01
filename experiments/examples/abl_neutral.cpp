@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     // auto buoy_theta = config["buoy_theta"].as<bool>();
     // auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx         = 5;
+    real dx         = 8;
     real umax       = 15;
     real cfl        = 0.6;
     real cs         = 350; // umax*2;
@@ -33,10 +33,10 @@ int main(int argc, char** argv) {
     // bool buoy_theta = true;
     // bool rsst       = true;
 
-    real        sim_time    = 3600*10+1;
-    real        xlen        = 1000;
-    real        ylen        = 1000;
-    real        zlen        = 1000;
+    real        sim_time    = 101;
+    real        xlen        = 4096;
+    real        ylen        = 4096;
+    real        zlen        = 1024;
     int         nx_glob     = (int) std::round(xlen/dx);
     int         ny_glob     = (int) std::round(ylen/dx);
     int         nz          = (int) std::round(zlen/dx);
@@ -79,11 +79,10 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_anelastic_check_cg_compatibility"       , true                           );
     coupler.set_option<bool       >( "dycore_anelastic_use_cg"                       , true                           );
     coupler.set_option<bool       >( "dycore_anelastic_time_linear_solver"           , false                          );
-    coupler.set_option<bool       >( "dycore_anelastic_screening"                    , true                           );
+    coupler.set_option<bool       >( "dycore_anelastic_screening"                    , false                          );
     coupler.set_option<real       >( "dycore_anelastic_projection_beta"              , 0.1                            );
     coupler.set_option<real       >( "dycore_anelastic_projection_pressure_beta"     , 0                              );
-    // coupler.set_option<bool       >( "dycore_anelastic_use_jacobi_preconditioner"    , false                          );
-    coupler.set_option<std::string>( "dycore_anelastic_preconditioner"               , "GeometricMultigrid"                     );
+    coupler.set_option<std::string>( "dycore_anelastic_preconditioner"               , "GeometricMultigrid"           );
     coupler.set_option<int        >( "dycore_anelastic_gmres_restart"                , 30                             );
     coupler.set_option<int        >( "dycore_anelastic_gmres_max_iters"              , 10000                          );
     coupler.set_option<real       >( "dycore_anelastic_gmres_rel_tol"                , 1.e-4                          );
@@ -92,27 +91,29 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_anelastic_gmres_reorthogonalize"        , true                           );
     coupler.set_option<int        >( "dycore_anelastic_schwarz_tile_nx"              , 8                              );
     coupler.set_option<int        >( "dycore_anelastic_schwarz_tile_ny"              , 8                              );
-    coupler.set_option<int        >( "dycore_anelastic_schwarz_overlap"              , 2                              );
+    coupler.set_option<int        >( "dycore_anelastic_schwarz_overlap"              , 1                              );
     coupler.set_option<int        >( "dycore_anelastic_schwarz_chebyshev_degree"     , 8                              );
     coupler.set_option<real       >( "dycore_anelastic_schwarz_chebyshev_lambda_min" , 0.02                           );
     coupler.set_option<real       >( "dycore_anelastic_schwarz_chebyshev_lambda_max" , 2                              );
 
 
-    coupler.set_option<int        >( "dycore_anelastic_gmres_max_iters"                        , 10000);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_vcycles"            , 1);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_pre_smooth"         , 2);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_post_smooth"        , 2);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_smooth"      , 24);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_cells"       , 65536);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_min_cells_per_rank" , 131072);
-    coupler.set_option<real       >( "dycore_anelastic_geometric_multigrid_jacobi_weight"      , 2._fp/3._fp);
-    coupler.set_option<bool       >( "dycore_anelastic_geometric_multigrid_coarse_schwarz"     , true);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_applications", 6);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nx", 8);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_ny", 8);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nz", 4);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_overlap", 2);
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_local_iterations", 4);
+    coupler.set_option<int        >( "dycore_anelastic_gmres_max_iters"                                     , 10000       );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_vcycles"                         , 1           );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_pre_smooth"                      , 2           );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_post_smooth"                     , 2           );
+    coupler.set_option<bool       >( "dycore_anelastic_geometric_multigrid_coarse_schwarz"                  , false       );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_smooth"                   , 24          );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_applications"     , 6           );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_local_iterations" , 4           );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nx"          , 8           );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_ny"          , 8           );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nz"          , 4           );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_cells"                    , 65536       );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_min_cells_per_rank"              , 131072      );
+    coupler.set_option<real       >( "dycore_anelastic_geometric_multigrid_jacobi_weight"                   , 0.6         );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_overlap"          , 1           );
+    coupler.set_option<std::vector<int>>( "dycore_anelastic_geometric_multigrid_coarsening_factors", {2} );
+
 
 
 

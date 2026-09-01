@@ -578,6 +578,9 @@ namespace core {
       #ifdef PORTURB_FUNCTION_TIMER_BARRIER
         par_comm.barrier();
       #endif
+      #ifdef PORTURB_FUNCTION_TIMERS
+        yakl::timer_start(name);
+      #endif
       #ifdef PORTURB_NAN_CHECKS
         if (check_for_nan()) { std::cerr << "WARNING: NaNs before [" << name << "]" << std::endl; endrun(); }
       #endif
@@ -602,6 +605,9 @@ namespace core {
       #endif
       #ifdef PORTURB_FUNCTION_TIMER_BARRIER
         par_comm.barrier();
+      #endif
+      #ifdef PORTURB_FUNCTION_TIMERS
+        yakl::timer_stop(name);
       #endif
     }
 
