@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
     coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nz"          , 4           );
     coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_cells"                    , 65536       );
     coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_min_cells_per_rank"              , 131072      );
-    coupler.set_option<real       >( "dycore_anelastic_geometric_multigrid_jacobi_weight"                   , 0.6         );
+    coupler.set_option<real       >( "dycore_anelastic_geometric_multigrid_jacobi_weight"                   , 2./3.       );
     coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_schwarz_overlap"          , 1           );
     coupler.set_option<std::vector<int>>( "dycore_anelastic_geometric_multigrid_coarsening_factors", {2} );
 
