@@ -159,14 +159,14 @@ namespace modules {
           coupler.get_option<int>("dycore_anelastic_geometric_multigrid_post_smooth",2);
       config.geometric_multigrid_coarse_smooth =
           coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_smooth",24);
-      config.geometric_multigrid_max_levels =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_max_levels",20);
       config.geometric_multigrid_coarse_cells =
           coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",32768);
       config.geometric_multigrid_min_cells_per_rank =
           coupler.get_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",131072);
       config.geometric_multigrid_jacobi_weight =
           coupler.get_option<real>("dycore_anelastic_geometric_multigrid_jacobi_weight",2._fp/3._fp);
+      config.geometric_multigrid_coarsening_factors = coupler.get_option<std::vector<int>>(
+          "dycore_anelastic_geometric_multigrid_coarsening_factors",std::vector<int>{2});
       config.tensor_line_multigrid = anelastic_tensor_line_multigrid;
       config.tensor_line_multigrid_vcycles =
           coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_vcycles",1);
@@ -176,8 +176,6 @@ namespace modules {
           coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_post_smooth",2);
       config.tensor_line_multigrid_coarse_smooth =
           coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_smooth",24);
-      config.tensor_line_multigrid_max_levels =
-          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_max_levels",20);
       config.tensor_line_multigrid_coarse_nx =
           coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_nx",50);
       config.tensor_line_multigrid_coarse_ny =
@@ -186,6 +184,8 @@ namespace modules {
           coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_min_cells_per_rank",131072);
       config.tensor_line_multigrid_jacobi_weight =
           coupler.get_option<real>("dycore_anelastic_tensor_line_multigrid_jacobi_weight",2._fp/3._fp);
+      config.tensor_line_multigrid_coarsening_factors = coupler.get_option<std::vector<int>>(
+          "dycore_anelastic_tensor_line_multigrid_coarsening_factors",std::vector<int>{2});
       return config;
     }
 

@@ -42,6 +42,9 @@ public:
     int local_nx = 0;
     int local_ny = 0;
     int local_nz = 0;
+    int factor_x = 1;
+    int factor_y = 1;
+    int factor_z = 1;
     Device3d restrict_x;
     Device3d restrict_y;
     Device3d local_coarse;
@@ -80,7 +83,6 @@ public:
     Device3d x;
     Device3d b;
     Device3d residual;
-    Device3d Ax;
     Device3d x_next;
     Device3d line_cprime;
     Device3d line_rhs;
@@ -122,6 +124,7 @@ public:
   bool require_single_coarse_rank_ = false;
   int coarse_nx_ = 0;
   int coarse_ny_ = 0;
+  std::vector<int> coarsening_factors_ = {2};
   std::string metadata_prefix_ = "dycore_anelastic_geometric_multigrid";
   bool initialized_ = false;
 
@@ -140,43 +143,43 @@ public:
   }
 
 
-  KOKKOS_INLINE_FUNCTION static Scalar quadratic_weight(int fine_parity, int offset) {
-    if (fine_parity == 0) {
-      return offset == -1 ? Scalar(5)/Scalar(32) :
-             offset ==  0 ? Scalar(15)/Scalar(16) : -Scalar(3)/Scalar(32);
-    }
-    return offset == -1 ? -Scalar(3)/Scalar(32) :
-           offset ==  0 ?  Scalar(15)/Scalar(16) : Scalar(5)/Scalar(32);
+  KOKKOS_INLINE_FUNCTION static Scalar quadratic_weight(int fine_remainder, int factor, int offset) {
+    Scalar const position = (Scalar(fine_remainder)+Scalar(0.5))/Scalar(factor)-Scalar(0.5);
+    if (offset == -1) return Scalar(0.5)*position*(position-Scalar(1));
+    if (offset == 0) return Scalar(1)-position*position;
+    return Scalar(0.5)*position*(position+Scalar(1));
   }
 
 
-  KOKKOS_INLINE_FUNCTION static Scalar interpolation_weight(int fine, int coarse, int coarse_extent,
+  KOKKOS_INLINE_FUNCTION static Scalar interpolation_weight(int fine, int coarse, int coarse_extent, int factor,
                                                              bool periodic) {
-    int const parent = fine/2;
-    int const parity = fine%2;
+    int const parent = fine/factor;
+    int const remainder = fine%factor;
     Scalar weight = 0;
     for (int offset = -1; offset <= 1; offset++) {
       if (map_index(parent+offset,coarse_extent,periodic) == coarse) {
-        weight += quadratic_weight(parity,offset);
+        weight += quadratic_weight(remainder,factor,offset);
       }
     }
     return weight;
   }
 
 
-  static std::vector<Scalar> coarsen_dz(std::vector<Scalar> const &fine, bool coarsen) {
-    if (!coarsen) return fine;
-    std::vector<Scalar> coarse((fine.size()+1)/2,0);
+  static std::vector<Scalar> coarsen_dz(std::vector<Scalar> const &fine, int factor) {
+    if (factor == 1) return fine;
+    std::vector<Scalar> coarse((fine.size()+factor-1)/factor,0);
     for (int k = 0; k < coarse.size(); k++) {
-      coarse[k] = fine[2*k];
-      if (2*k+1 < fine.size()) coarse[k] += fine[2*k+1];
+      for (int remainder = 0; remainder < factor; remainder++) {
+        int const fine_k = factor*k+remainder;
+        if (fine_k < fine.size()) coarse[k] += fine[fine_k];
+      }
     }
     return coarse;
   }
 
 
-  static std::vector<Scalar> coarsen_widths(std::vector<Scalar> const &fine, bool coarsen) {
-    return coarsen_dz(fine,coarsen);
+  static std::vector<Scalar> coarsen_widths(std::vector<Scalar> const &fine, int factor) {
+    return coarsen_dz(fine,factor);
   }
 
 
@@ -184,14 +187,13 @@ public:
     level.x        = Device3d("geometric_multigrid_x"       ,level.nz,level.ny,level.nx);
     level.b        = Device3d("geometric_multigrid_b"       ,level.nz,level.ny,level.nx);
     level.residual = Device3d("geometric_multigrid_residual",level.nz,level.ny,level.nx);
-    level.Ax       = Device3d("geometric_multigrid_Ax"      ,level.nz,level.ny,level.nx);
+    level.x_next   = Device3d("geometric_multigrid_x_next"  ,level.nz,level.ny,level.nx);
     if (vertical_line_smoother_) {
-      level.x_next     = Device3d("tensor_line_multigrid_x_next"    ,level.nz,level.ny,level.nx);
       level.line_cprime = Device3d("tensor_line_multigrid_cprime"   ,level.nz,level.ny,level.nx);
       level.line_rhs    = Device3d("tensor_line_multigrid_line_rhs" ,level.nz,level.ny,level.nx);
       level.line_aux    = Device3d("tensor_line_multigrid_line_aux" ,level.nz,level.ny,level.nx);
-      level.x_next = 0;
     }
+    level.x_next = 0;
     level.send_west = Device2d("geometric_multigrid_send_west",level.nz,level.ny);
     level.send_east = Device2d("geometric_multigrid_send_east",level.nz,level.ny);
     level.recv_west = Device2d("geometric_multigrid_recv_west",level.nz,level.ny);
@@ -465,9 +467,74 @@ public:
   }
 
 
-  void matvec(Level &level, Device3d const &x, Device3d const &Ax, Scalar shift, int level_index) const {
-    level.x = x;
-    Exchange exchange = begin_exchange(level,level_index);
+  void smooth(Level &level, int iterations, Scalar shift, int level_index,
+              bool zero_initial_guess = false) const {
+    auto b = level.b;
+    auto recv_west = level.recv_west;
+    auto recv_east = level.recv_east;
+    auto recv_south = level.recv_south;
+    auto recv_north = level.recv_north;
+    auto z_minus = level.z_minus;
+    auto z_plus = level.z_plus;
+    auto x_minus = level.x_minus;
+    auto x_plus = level.x_plus;
+    auto y_minus = level.y_minus;
+    auto y_plus = level.y_plus;
+    Scalar const weight = jacobi_weight_;
+    int const nx = level.nx;
+    int const ny = level.ny;
+    int const nz = level.nz;
+    int const nproc_x = level.nproc_x;
+    int const nproc_y = level.nproc_y;
+    int const px = level.px;
+    int const py = level.py;
+    bool const periodic_x = level.periodic_x;
+    bool const periodic_y = level.periodic_y;
+    for (int iteration = 0; iteration < iterations; iteration++) {
+      auto x = level.x;
+      auto x_next = level.x_next;
+      bool const zero_guess = zero_initial_guess && iteration == 0;
+      auto update = KOKKOS_LAMBDA (int k, int j, int i) {
+        Scalar diagonal = shift+z_minus(k)+z_plus(k);
+        diagonal += x_minus(i)+x_plus(i)+y_minus(j)+y_plus(j);
+        if (diagonal > std::numeric_limits<Scalar>::min()) {
+          if (zero_guess) {
+            x_next(k,j,i) = weight*b(k,j,i)/diagonal;
+          } else {
+            Scalar const Ax = apply_cell(x,recv_west,recv_east,recv_south,recv_north,z_minus,z_plus,
+                                         x_minus,x_plus,y_minus,y_plus,nx,ny,nz,nproc_x,nproc_y,px,py,
+                                         periodic_x,periodic_y,k,j,i,shift);
+            x_next(k,j,i) = x(k,j,i)+weight*(b(k,j,i)-Ax)/diagonal;
+          }
+        } else {
+          x_next(k,j,i) = 0;
+        }
+      };
+      if (zero_guess || level.nranks == 1) {
+        yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),update);
+      } else {
+        Exchange exchange = begin_exchange(level,level_index);
+        if (nx > 2 && ny > 2) {
+          yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny-2,nx-2),
+                             KOKKOS_LAMBDA (int k, int jj, int ii) { update(k,jj+1,ii+1); });
+        }
+        finish_exchange(level,exchange);
+        yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),
+                           KOKKOS_LAMBDA (int k, int j, int i) {
+          if (i > 0 && i+1 < nx && j > 0 && j+1 < ny) return;
+          update(k,j,i);
+        });
+      }
+      level.x = x_next;
+      level.x_next = x;
+    }
+  }
+
+
+  void compute_residual(Level &level, Scalar shift, int level_index) const {
+    auto x = level.x;
+    auto b = level.b;
+    auto residual = level.residual;
     auto recv_west = level.recv_west;
     auto recv_east = level.recv_east;
     auto recv_south = level.recv_south;
@@ -487,49 +554,26 @@ public:
     int const py = level.py;
     bool const periodic_x = level.periodic_x;
     bool const periodic_y = level.periodic_y;
-    if (level.nx > 2 && level.ny > 2) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(level.nz,level.ny-2,level.nx-2),
-                         KOKKOS_LAMBDA (int k, int jj, int ii) {
-        int const j = jj+1;
-        int const i = ii+1;
-        Ax(k,j,i) = apply_cell(x,recv_west,recv_east,recv_south,recv_north,z_minus,z_plus,
-                               x_minus,x_plus,y_minus,y_plus,nx,ny,nz,nproc_x,nproc_y,px,py,
-                               periodic_x,periodic_y,k,j,i,shift);
-      });
+    auto calculate = KOKKOS_LAMBDA (int k, int j, int i) {
+      residual(k,j,i) = b(k,j,i)-apply_cell(x,recv_west,recv_east,recv_south,recv_north,z_minus,z_plus,
+                                            x_minus,x_plus,y_minus,y_plus,nx,ny,nz,nproc_x,nproc_y,px,py,
+                                            periodic_x,periodic_y,k,j,i,shift);
+    };
+    if (level.nranks == 1) {
+      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),calculate);
+      return;
+    }
+    Exchange exchange = begin_exchange(level,level_index);
+    if (nx > 2 && ny > 2) {
+      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny-2,nx-2),
+                         KOKKOS_LAMBDA (int k, int jj, int ii) { calculate(k,jj+1,ii+1); });
     }
     finish_exchange(level,exchange);
-    yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(level.nz,level.ny,level.nx),
+    yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),
                        KOKKOS_LAMBDA (int k, int j, int i) {
       if (i > 0 && i+1 < nx && j > 0 && j+1 < ny) return;
-      Ax(k,j,i) = apply_cell(x,recv_west,recv_east,recv_south,recv_north,z_minus,z_plus,
-                             x_minus,x_plus,y_minus,y_plus,nx,ny,nz,nproc_x,nproc_y,px,py,
-                             periodic_x,periodic_y,k,j,i,shift);
+      calculate(k,j,i);
     });
-  }
-
-
-  void smooth(Level &level, int iterations, Scalar shift, int level_index) const {
-    auto x = level.x;
-    auto b = level.b;
-    auto Ax = level.Ax;
-    auto z_minus = level.z_minus;
-    auto z_plus = level.z_plus;
-    auto x_minus = level.x_minus;
-    auto x_plus = level.x_plus;
-    auto y_minus = level.y_minus;
-    auto y_plus = level.y_plus;
-    Scalar const weight = jacobi_weight_;
-    for (int iteration = 0; iteration < iterations; iteration++) {
-      matvec(level,x,Ax,shift,level_index);
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(level.nz,level.ny,level.nx),
-                         KOKKOS_LAMBDA (int k, int j, int i) {
-        Scalar diagonal = shift+z_minus(k)+z_plus(k);
-        diagonal += x_minus(i)+x_plus(i)+y_minus(j)+y_plus(j);
-        if (diagonal > std::numeric_limits<Scalar>::min()) {
-          x(k,j,i) += weight*(b(k,j,i)-Ax(k,j,i))/diagonal;
-        }
-      });
-    }
   }
 
 
@@ -696,11 +740,14 @@ public:
 
   void apply_smoother(Level &level, int iterations, Scalar shift, int level_index,
                       bool zero_initial_guess = false) const {
+    if (zero_initial_guess && iterations == 0) {
+      level.x = 0;
+      return;
+    }
     if (vertical_line_smoother_) {
       smooth_vertical_lines(level,iterations,shift,level_index,zero_initial_guess);
     } else {
-      if (zero_initial_guess) level.x = 0;
-      smooth(level,iterations,shift,level_index);
+      smooth(level,iterations,shift,level_index,zero_initial_guess);
     }
   }
 
@@ -714,6 +761,7 @@ public:
       return;
     }
     int const nc = transition.local_nx;
+    int const factor = transition.factor_x;
     bool const periodic = transition.periodic_x;
     int const fine_nx = fine.nx;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,nc),
@@ -726,12 +774,12 @@ public:
           if (map_index(q+previous,nc,periodic) == p) duplicate = true;
         }
         if (duplicate) continue;
-        for (int parity = 0; parity < 2; parity++) {
-          int const i = 2*p+parity;
-          if (i < fine_nx) value += interpolation_weight(i,q,nc,periodic)*input(k,j,i);
+        for (int remainder = 0; remainder < factor; remainder++) {
+          int const i = factor*p+remainder;
+          if (i < fine_nx) value += interpolation_weight(i,q,nc,factor,periodic)*input(k,j,i);
         }
       }
-      output(k,j,q) = Scalar(0.5)*value;
+      output(k,j,q) = value/Scalar(factor);
     });
   }
 
@@ -746,6 +794,7 @@ public:
       return;
     }
     int const nc = transition.local_ny;
+    int const factor = transition.factor_y;
     bool const periodic = transition.periodic_y;
     int const fine_ny = fine.ny;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,nc,nx),
@@ -758,12 +807,12 @@ public:
           if (map_index(q+previous,nc,periodic) == p) duplicate = true;
         }
         if (duplicate) continue;
-        for (int parity = 0; parity < 2; parity++) {
-          int const j = 2*p+parity;
-          if (j < fine_ny) value += interpolation_weight(j,q,nc,periodic)*input(k,j,i);
+        for (int remainder = 0; remainder < factor; remainder++) {
+          int const j = factor*p+remainder;
+          if (j < fine_ny) value += interpolation_weight(j,q,nc,factor,periodic)*input(k,j,i);
         }
       }
-      output(k,q,i) = Scalar(0.5)*value;
+      output(k,q,i) = value/Scalar(factor);
     });
   }
 
@@ -779,6 +828,7 @@ public:
       return;
     }
     int const nc = transition.local_nz;
+    int const factor = transition.factor_z;
     bool const periodic = transition.periodic_z;
     int const fine_nz = fine.nz;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nc,ny,nx),
@@ -791,12 +841,12 @@ public:
           if (map_index(q+previous,nc,periodic) == p) duplicate = true;
         }
         if (duplicate) continue;
-        for (int parity = 0; parity < 2; parity++) {
-          int const k = 2*p+parity;
-          if (k < fine_nz) value += interpolation_weight(k,q,nc,periodic)*input(k,j,i);
+        for (int remainder = 0; remainder < factor; remainder++) {
+          int const k = factor*p+remainder;
+          if (k < fine_nz) value += interpolation_weight(k,q,nc,factor,periodic)*input(k,j,i);
         }
       }
-      output(q,j,i) = Scalar(0.5)*value;
+      output(q,j,i) = value/Scalar(factor);
     });
   }
 
@@ -812,13 +862,14 @@ public:
       return;
     }
     int const nc = transition.local_nz;
+    int const factor = transition.factor_z;
     bool const periodic = transition.periodic_z;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,ny,nx),
                        KOKKOS_LAMBDA (int k, int j, int i) {
-      int const parent = k/2;
+      int const parent = k/factor;
       Scalar value = 0;
       for (int offset = -1; offset <= 1; offset++) {
-        value += quadratic_weight(k%2,offset)*input(map_index(parent+offset,nc,periodic),j,i);
+        value += quadratic_weight(k%factor,factor,offset)*input(map_index(parent+offset,nc,periodic),j,i);
       }
       output(k,j,i) = value;
     });
@@ -835,13 +886,14 @@ public:
       return;
     }
     int const nc = transition.local_ny;
+    int const factor = transition.factor_y;
     bool const periodic = transition.periodic_y;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,nx),
                        KOKKOS_LAMBDA (int k, int j, int i) {
-      int const parent = j/2;
+      int const parent = j/factor;
       Scalar value = 0;
       for (int offset = -1; offset <= 1; offset++) {
-        value += quadratic_weight(j%2,offset)*input(k,map_index(parent+offset,nc,periodic),i);
+        value += quadratic_weight(j%factor,factor,offset)*input(k,map_index(parent+offset,nc,periodic),i);
       }
       output(k,j,i) = value;
     });
@@ -857,13 +909,14 @@ public:
       return;
     }
     int const nc = transition.local_nx;
+    int const factor = transition.factor_x;
     bool const periodic = transition.periodic_x;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,fine.nx),
                        KOKKOS_LAMBDA (int k, int j, int i) {
-      int const parent = i/2;
+      int const parent = i/factor;
       Scalar value = 0;
       for (int offset = -1; offset <= 1; offset++) {
-        value += quadratic_weight(i%2,offset)*input(k,j,map_index(parent+offset,nc,periodic));
+        value += quadratic_weight(i%factor,factor,offset)*input(k,j,map_index(parent+offset,nc,periodic));
       }
       output(k,j,i) += value;
     });
@@ -990,12 +1043,7 @@ public:
       return;
     }
     apply_smoother(level,pre_smooth_,shift,level_index,zero_initial_guess);
-    matvec(level,level.x,level.Ax,shift,level_index);
-    auto residual = level.residual;
-    auto b = level.b;
-    auto Ax = level.Ax;
-    yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(level.nz,level.ny,level.nx),
-                       KOKKOS_LAMBDA (int k, int j, int i) { residual(k,j,i) = b(k,j,i)-Ax(k,j,i); });
+    compute_residual(level,shift,level_index);
     Transition &transition = *level.transition;
     restrict_dimension_x(level,transition);
     restrict_dimension_y(level,transition);
@@ -1019,7 +1067,6 @@ public:
     int pre_smooth = 2;
     int post_smooth = 2;
     int coarse_smooth = 24;
-    int max_levels = 20;
     int coarse_cells = 32768;
     int min_cells_per_rank = 131072;
     Scalar jacobi_weight = Scalar(2)/Scalar(3);
@@ -1028,6 +1075,7 @@ public:
     bool require_single_coarse_rank = false;
     int coarse_nx = 0;
     int coarse_ny = 0;
+    std::vector<int> coarsening_factors = {2};
     std::string metadata_prefix = "dycore_anelastic_geometric_multigrid";
   };
 
@@ -1048,12 +1096,18 @@ public:
   void initialize(core::Coupler &coupler, Options const &options) {
     if (initialized_) endrun("ERROR: geometric multigrid initialized more than once");
     if (options.vcycles <= 0 || options.pre_smooth < 0 || options.post_smooth < 0 ||
-        options.pre_smooth != options.post_smooth || options.coarse_smooth <= 0 || options.max_levels < 2 ||
+        options.pre_smooth != options.post_smooth || options.coarse_smooth <= 0 ||
         options.coarse_cells <= 0 || options.min_cells_per_rank <= 0 ||
         (options.horizontal_only && (options.coarse_nx <= 0 || options.coarse_ny <= 0)) ||
         options.metadata_prefix.empty() ||
         !(options.jacobi_weight > 0 && options.jacobi_weight < 1)) {
       endrun("ERROR: invalid geometric multigrid options; CG requires equal pre/post smoothing counts");
+    }
+    if (options.coarsening_factors.empty()) {
+      endrun("ERROR: geometric multigrid coarsening_factors must not be empty");
+    }
+    for (int factor : options.coarsening_factors) {
+      if (factor < 2) endrun("ERROR: geometric multigrid coarsening factors must be at least two");
     }
     long long const total_cells = static_cast<long long>(coupler.get_nx_glob())*coupler.get_ny_glob()*coupler.get_nz();
     int const fluid_cells = coupler.get_option<int>("dycore_anelastic_fluid_count");
@@ -1088,6 +1142,7 @@ public:
     require_single_coarse_rank_ = options.require_single_coarse_rank;
     coarse_nx_ = options.coarse_nx;
     coarse_ny_ = options.coarse_ny;
+    coarsening_factors_ = options.coarsening_factors;
     metadata_prefix_ = options.metadata_prefix;
     auto dz_host_array = coupler.get_dz().createHostCopy();
     std::vector<Scalar> dz(coupler.get_nz());
@@ -1116,7 +1171,9 @@ public:
     levels_.push_back(std::move(fine));
 
     bool active = true;
-    for (int level_index = 0; level_index+1 < options.max_levels && active; level_index++) {
+    int level_index = 0;
+    int geometric_transition = 0;
+    while (active) {
       Level &level = *levels_.back();
       long long const global_cells = static_cast<long long>(level.nx_global)*level.ny_global*level.nz;
       bool const horizontal_target = horizontal_only_ && level.nx_global <= coarse_nx_ &&
@@ -1125,16 +1182,24 @@ public:
         break;
       }
 
-      bool const coarsen_x = horizontal_only_ ?
-          level.nx_global > coarse_nx_ && (level.nx_global+1)/2 >= coarse_nx_ : level.nx_global > 2;
-      bool const coarsen_y = horizontal_only_ ?
-          level.ny_global > coarse_ny_ && (level.ny_global+1)/2 >= coarse_ny_ : level.ny_global > 2;
-      bool const coarsen_z = !horizontal_only_ && level.nz > 2;
+      bool const geometric_target = horizontal_target || (!horizontal_only_ && global_cells <= options.coarse_cells);
+      int const requested_factor = coarsening_factors_[std::min<int>(geometric_transition,
+                                                                      coarsening_factors_.size()-1)];
+      bool const coarsen_x = !geometric_target && (horizontal_only_ ?
+          level.nx_global > coarse_nx_ && (level.nx_global+requested_factor-1)/requested_factor >= coarse_nx_ :
+          level.nx_global > 1);
+      bool const coarsen_y = !geometric_target && (horizontal_only_ ?
+          level.ny_global > coarse_ny_ && (level.ny_global+requested_factor-1)/requested_factor >= coarse_ny_ :
+          level.ny_global > 1);
+      bool const coarsen_z = !geometric_target && !horizontal_only_ && level.nz > 1;
       if (!coarsen_x && !coarsen_y && !coarsen_z && level.nranks == 1) break;
 
-      int const local_nx = coarsen_x ? (level.nx+1)/2 : level.nx;
-      int const local_ny = coarsen_y ? (level.ny+1)/2 : level.ny;
-      int const local_nz = coarsen_z ? (level.nz+1)/2 : level.nz;
+      int const factor_x = coarsen_x ? requested_factor : 1;
+      int const factor_y = coarsen_y ? requested_factor : 1;
+      int const factor_z = coarsen_z ? requested_factor : 1;
+      int const local_nx = (level.nx+factor_x-1)/factor_x;
+      int const local_ny = (level.ny+factor_y-1)/factor_y;
+      int const local_nz = (level.nz+factor_z-1)/factor_z;
       long long const local_cells = static_cast<long long>(local_nx)*local_ny*local_nz;
       long long cells_per_rank = 0;
       MPI_Allreduce(&local_cells,&cells_per_rank,1,MPI_LONG_LONG,MPI_MIN,level.comm);
@@ -1156,9 +1221,12 @@ public:
           if (group_y == 1 && level.nproc_y > 1) group_y = 2;
         }
       }
-      if (horizontal_only_ && !coarsen_x && !coarsen_y && level.nranks > 1) {
+      if (!coarsen_x && !coarsen_y && !coarsen_z && level.nranks > 1) {
         if (level.nproc_x > 1) group_x = 2;
         if (level.nproc_y > 1) group_y = 2;
+      }
+      if (!coarsen_x && !coarsen_y && !coarsen_z && group_x == 1 && group_y == 1) {
+        endrun("ERROR: geometric multigrid hierarchy construction made no progress");
       }
 
       auto transition = std::make_unique<Transition>();
@@ -1175,6 +1243,9 @@ public:
       transition->local_nx = local_nx;
       transition->local_ny = local_ny;
       transition->local_nz = local_nz;
+      transition->factor_x = factor_x;
+      transition->factor_y = factor_y;
+      transition->factor_z = factor_z;
       transition->restrict_x = Device3d("geometric_multigrid_restrict_x",level.nz,level.ny,local_nx);
       transition->restrict_y = Device3d("geometric_multigrid_restrict_y",level.nz,local_ny,local_nx);
       if (coarsen_z) {
@@ -1190,8 +1261,8 @@ public:
       std::vector<int> dimensions(2*level.nranks);
       int local_dimensions[2] = {local_nx,local_ny};
       MPI_Allgather(local_dimensions,2,MPI_INT,dimensions.data(),2,MPI_INT,level.comm);
-      std::vector<Scalar> local_dx = coarsen_widths(level.dx_host,coarsen_x);
-      std::vector<Scalar> local_dy = coarsen_widths(level.dy_host,coarsen_y);
+      std::vector<Scalar> local_dx = coarsen_widths(level.dx_host,factor_x);
+      std::vector<Scalar> local_dy = coarsen_widths(level.dy_host,factor_y);
       std::vector<int> x_counts(level.nranks);
       std::vector<int> y_counts(level.nranks);
       std::vector<int> x_displacements(level.nranks,0);
@@ -1277,9 +1348,11 @@ public:
         coarse->dy_host.insert(coarse->dy_host.end(),gathered_dy.begin()+y_displacements[rank],
                                gathered_dy.begin()+y_displacements[rank]+y_counts[rank]);
       }
-      coarse->dz_host = coarsen_dz(level.dz_host,coarsen_z);
+      coarse->dz_host = coarsen_dz(level.dz_host,factor_z);
       allocate_level(*coarse);
       levels_.push_back(std::move(coarse));
+      if (coarsen_x || coarsen_y || coarsen_z) geometric_transition++;
+      level_index++;
     }
 
     int metadata[5] = {0,0,0,0,0};
@@ -1293,7 +1366,7 @@ public:
     }
     MPI_Bcast(metadata,5,MPI_INT,0,root_comm_);
     if (require_single_coarse_rank_ && metadata[2] != 1) {
-      endrun("ERROR: tensor-line multigrid exhausted max_levels before aggregating its coarse grid onto one task");
+      endrun("ERROR: geometric multigrid failed to aggregate its coarse grid onto one task");
     }
     coupler.set_option<int>(metadata_prefix_+"_levels",metadata[0]);
     coupler.set_option<int>(metadata_prefix_+"_coarse_cells",metadata[1]);
@@ -1301,6 +1374,7 @@ public:
     coupler.set_option<int>(metadata_prefix_+"_coarse_nx",metadata[3]);
     coupler.set_option<int>(metadata_prefix_+"_coarse_ny",metadata[4]);
     coupler.set_option<int>(metadata_prefix_+"_coarse_columns",metadata[3]*metadata[4]);
+    coupler.set_option<std::vector<int>>(metadata_prefix_+"_coarsening_factors",coarsening_factors_);
     #ifdef PORTURB_GPU_AWARE_MPI
       coupler.set_option<bool>(metadata_prefix_+"_gpu_aware_mpi",true);
     #else

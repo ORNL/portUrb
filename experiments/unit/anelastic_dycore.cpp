@@ -231,6 +231,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     coupler.set_option<bool>("dycore_anelastic_use_cg",true);
     coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",64);
     coupler.set_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",64);
+    coupler.set_option<std::vector<int>>("dycore_anelastic_geometric_multigrid_coarsening_factors",{2,3});
   } else if (preconditioner == "TensorLineMultigrid") {
     coupler.set_option<bool>("dycore_anelastic_use_cg",true);
     coupler.set_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_nx",6);
@@ -373,6 +374,9 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     require(coupler,coupler.get_option<std::string>("dycore_anelastic_geometric_multigrid_interpolation") ==
                     "Quadratic",
             name + ": geometric multigrid did not use quadratic interpolation");
+    require(coupler,coupler.get_option<std::vector<int>>(
+                        "dycore_anelastic_geometric_multigrid_coarsening_factors") == std::vector<int>({2,3}),
+            name + ": geometric multigrid did not retain its per-level coarsening factors");
   } else if (preconditioner == "TensorLineMultigrid") {
     require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_linear_solver") == "CG",
             name + ": tensor-line multigrid case did not use CG");

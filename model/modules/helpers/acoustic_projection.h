@@ -50,20 +50,20 @@ namespace modules {
     int geometric_multigrid_pre_smooth         = 2;
     int geometric_multigrid_post_smooth        = 2;
     int geometric_multigrid_coarse_smooth      = 24;
-    int geometric_multigrid_max_levels         = 20;
     int geometric_multigrid_coarse_cells       = 32768;
     int geometric_multigrid_min_cells_per_rank = 131072;
     real geometric_multigrid_jacobi_weight     = 2._fp/3._fp;
+    std::vector<int> geometric_multigrid_coarsening_factors = {2};
     std::shared_ptr<GeometricMultigrid<float>> tensor_line_multigrid;
     int tensor_line_multigrid_vcycles            = 1;
     int tensor_line_multigrid_pre_smooth         = 2;
     int tensor_line_multigrid_post_smooth        = 2;
     int tensor_line_multigrid_coarse_smooth      = 24;
-    int tensor_line_multigrid_max_levels         = 20;
     int tensor_line_multigrid_coarse_nx          = 50;
     int tensor_line_multigrid_coarse_ny          = 50;
     int tensor_line_multigrid_min_cells_per_rank = 131072;
     real tensor_line_multigrid_jacobi_weight     = 2._fp/3._fp;
+    std::vector<int> tensor_line_multigrid_coarsening_factors = {2};
   };
 
   namespace detail {
@@ -1396,7 +1396,6 @@ namespace modules {
         options.pre_smooth = config.tensor_line_multigrid_pre_smooth;
         options.post_smooth = config.tensor_line_multigrid_post_smooth;
         options.coarse_smooth = config.tensor_line_multigrid_coarse_smooth;
-        options.max_levels = config.tensor_line_multigrid_max_levels;
         options.coarse_cells = 1;
         options.min_cells_per_rank = config.tensor_line_multigrid_min_cells_per_rank;
         options.jacobi_weight = static_cast<float>(config.tensor_line_multigrid_jacobi_weight);
@@ -1405,6 +1404,7 @@ namespace modules {
         options.require_single_coarse_rank = true;
         options.coarse_nx = config.tensor_line_multigrid_coarse_nx;
         options.coarse_ny = config.tensor_line_multigrid_coarse_ny;
+        options.coarsening_factors = config.tensor_line_multigrid_coarsening_factors;
         options.metadata_prefix = "dycore_anelastic_tensor_line_multigrid";
         config.tensor_line_multigrid->initialize(coupler,options);
       } else if (preconditioner == "GeometricMultigrid") {
@@ -1416,10 +1416,11 @@ namespace modules {
         options.pre_smooth = config.geometric_multigrid_pre_smooth;
         options.post_smooth = config.geometric_multigrid_post_smooth;
         options.coarse_smooth = config.geometric_multigrid_coarse_smooth;
-        options.max_levels = config.geometric_multigrid_max_levels;
         options.coarse_cells = config.geometric_multigrid_coarse_cells;
         options.min_cells_per_rank = config.geometric_multigrid_min_cells_per_rank;
         options.jacobi_weight = static_cast<float>(config.geometric_multigrid_jacobi_weight);
+        options.require_single_coarse_rank = true;
+        options.coarsening_factors = config.geometric_multigrid_coarsening_factors;
         config.geometric_multigrid->initialize(coupler,options);
       } else if (preconditioner == "Multigrid") {
         if (!config.multigrid) endrun("ERROR: anelastic multigrid preconditioner has no persistent solver object");
