@@ -165,6 +165,20 @@ namespace modules {
           coupler.get_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",131072);
       config.geometric_multigrid_jacobi_weight =
           coupler.get_option<real>("dycore_anelastic_geometric_multigrid_jacobi_weight",2._fp/3._fp);
+      config.geometric_multigrid_coarse_schwarz =
+          coupler.get_option<bool>("dycore_anelastic_geometric_multigrid_coarse_schwarz",true);
+      config.geometric_multigrid_coarse_schwarz_applications =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_applications",6);
+      config.geometric_multigrid_coarse_schwarz_tile_nx =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nx",8);
+      config.geometric_multigrid_coarse_schwarz_tile_ny =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_ny",8);
+      config.geometric_multigrid_coarse_schwarz_tile_nz =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nz",4);
+      config.geometric_multigrid_coarse_schwarz_overlap =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_overlap",2);
+      config.geometric_multigrid_coarse_schwarz_local_iterations =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_local_iterations",4);
       config.geometric_multigrid_coarsening_factors = coupler.get_option<std::vector<int>>(
           "dycore_anelastic_geometric_multigrid_coarsening_factors",std::vector<int>{2});
       config.tensor_line_multigrid = anelastic_tensor_line_multigrid;

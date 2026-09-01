@@ -229,7 +229,8 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     coupler.set_option<int>("dycore_anelastic_multigrid_max_levels",multigrid_max_levels);
   } else if (preconditioner == "GeometricMultigrid") {
     coupler.set_option<bool>("dycore_anelastic_use_cg",true);
-    coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",64);
+    // The odd case stops at 13^3, exercising truncated 8x8x4 Schwarz patches on every axis.
+    coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",n%2 == 0 ? 64 : 2200);
     coupler.set_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",64);
     coupler.set_option<std::vector<int>>("dycore_anelastic_geometric_multigrid_coarsening_factors",{2,3});
   } else if (preconditioner == "TensorLineMultigrid") {
@@ -377,6 +378,20 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     require(coupler,coupler.get_option<std::vector<int>>(
                         "dycore_anelastic_geometric_multigrid_coarsening_factors") == std::vector<int>({2,3}),
             name + ": geometric multigrid did not retain its per-level coarsening factors");
+    require(coupler,coupler.get_option<std::string>(
+                        "dycore_anelastic_geometric_multigrid_coarse_smoother") == "TeamAdditiveSchwarz",
+            name + ": geometric multigrid did not select the team additive Schwarz coarse smoother");
+    require(coupler,coupler.get_option<int>(
+                        "dycore_anelastic_geometric_multigrid_coarse_schwarz_applications") == 6 &&
+                    coupler.get_option<int>(
+                        "dycore_anelastic_geometric_multigrid_coarse_schwarz_local_iterations") == 4 &&
+                    coupler.get_option<int>(
+                        "dycore_anelastic_geometric_multigrid_coarse_schwarz_overlap") == 2,
+            name + ": geometric multigrid selected the wrong coarse Schwarz configuration");
+    require(coupler,coupler.get_option<std::vector<int>>(
+                        "dycore_anelastic_geometric_multigrid_coarse_schwarz_tile") ==
+                        std::vector<int>({8,8,4}),
+            name + ": geometric multigrid selected the wrong coarse Schwarz tile");
   } else if (preconditioner == "TensorLineMultigrid") {
     require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_linear_solver") == "CG",
             name + ": tensor-line multigrid case did not use CG");

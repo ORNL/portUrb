@@ -53,6 +53,13 @@ namespace modules {
     int geometric_multigrid_coarse_cells       = 32768;
     int geometric_multigrid_min_cells_per_rank = 131072;
     real geometric_multigrid_jacobi_weight     = 2._fp/3._fp;
+    bool geometric_multigrid_coarse_schwarz    = true;
+    int geometric_multigrid_coarse_schwarz_applications = 6;
+    int geometric_multigrid_coarse_schwarz_tile_nx = 8;
+    int geometric_multigrid_coarse_schwarz_tile_ny = 8;
+    int geometric_multigrid_coarse_schwarz_tile_nz = 4;
+    int geometric_multigrid_coarse_schwarz_overlap = 2;
+    int geometric_multigrid_coarse_schwarz_local_iterations = 4;
     std::vector<int> geometric_multigrid_coarsening_factors = {2};
     std::shared_ptr<GeometricMultigrid<float>> tensor_line_multigrid;
     int tensor_line_multigrid_vcycles            = 1;
@@ -1419,6 +1426,13 @@ namespace modules {
         options.coarse_cells = config.geometric_multigrid_coarse_cells;
         options.min_cells_per_rank = config.geometric_multigrid_min_cells_per_rank;
         options.jacobi_weight = static_cast<float>(config.geometric_multigrid_jacobi_weight);
+        options.coarse_schwarz = config.geometric_multigrid_coarse_schwarz;
+        options.coarse_schwarz_applications = config.geometric_multigrid_coarse_schwarz_applications;
+        options.coarse_schwarz_tile_nx = config.geometric_multigrid_coarse_schwarz_tile_nx;
+        options.coarse_schwarz_tile_ny = config.geometric_multigrid_coarse_schwarz_tile_ny;
+        options.coarse_schwarz_tile_nz = config.geometric_multigrid_coarse_schwarz_tile_nz;
+        options.coarse_schwarz_overlap = config.geometric_multigrid_coarse_schwarz_overlap;
+        options.coarse_schwarz_local_iterations = config.geometric_multigrid_coarse_schwarz_local_iterations;
         options.require_single_coarse_rank = true;
         options.coarsening_factors = config.geometric_multigrid_coarsening_factors;
         config.geometric_multigrid->initialize(coupler,options);

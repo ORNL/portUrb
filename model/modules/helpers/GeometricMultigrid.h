@@ -16,6 +16,7 @@ template <class Scalar>
 class GeometricMultigrid {
 public:
   using Device3d = yakl::Array<Scalar ***>;
+  using Device4d = yakl::Array<Scalar ****>;
   using Device2d = yakl::Array<Scalar **>;
   using Host3d = yakl::Array<Scalar ***,Kokkos::HostSpace>;
   using Host2d = yakl::Array<Scalar **,Kokkos::HostSpace>;
@@ -87,6 +88,13 @@ public:
     Device3d line_cprime;
     Device3d line_rhs;
     Device3d line_aux;
+    Device4d schwarz_correction;
+    int schwarz_tiles_x = 0;
+    int schwarz_tiles_y = 0;
+    int schwarz_tiles_z = 0;
+    int schwarz_work_nx = 0;
+    int schwarz_work_ny = 0;
+    int schwarz_work_nz = 0;
     Device2d send_west;
     Device2d send_east;
     Device2d recv_west;
@@ -119,6 +127,13 @@ public:
   int post_smooth_ = 2;
   int coarse_smooth_ = 24;
   Scalar jacobi_weight_ = Scalar(2)/Scalar(3);
+  bool coarse_schwarz_ = false;
+  int coarse_schwarz_applications_ = 6;
+  int coarse_schwarz_tile_nx_ = 8;
+  int coarse_schwarz_tile_ny_ = 8;
+  int coarse_schwarz_tile_nz_ = 4;
+  int coarse_schwarz_overlap_ = 2;
+  int coarse_schwarz_local_iterations_ = 4;
   bool vertical_line_smoother_ = false;
   bool horizontal_only_ = false;
   bool require_single_coarse_rank_ = false;
@@ -140,6 +155,63 @@ public:
   KOKKOS_INLINE_FUNCTION static int map_index(int index, int extent, bool periodic) {
     if (periodic) return (index%extent+extent)%extent;
     return index < 0 ? 0 : (index >= extent ? extent-1 : index);
+  }
+
+
+  KOKKOS_INLINE_FUNCTION static int patch_axis_count(int extent, int core, int overlap) {
+    if (extent <= core+2*overlap) return 1;
+    return (extent+core-1)/core;
+  }
+
+
+  KOKKOS_INLINE_FUNCTION static int patch_axis_start(int tile, int extent, int core, int overlap,
+                                                      bool periodic) {
+    if (patch_axis_count(extent,core,overlap) == 1) return 0;
+    int const core_start = tile*core;
+    return periodic ? core_start-overlap : (core_start > overlap ? core_start-overlap : 0);
+  }
+
+
+  KOKKOS_INLINE_FUNCTION static int patch_axis_length(int tile, int extent, int core, int overlap,
+                                                       bool periodic) {
+    if (patch_axis_count(extent,core,overlap) == 1) return extent;
+    int const core_start = tile*core;
+    int const core_length = core_start+core <= extent ? core : extent-core_start;
+    int const left = periodic || core_start >= overlap ? overlap : core_start;
+    int const cells_right = extent-(core_start+core_length);
+    int const right = periodic || cells_right >= overlap ? overlap : cells_right;
+    return left+core_length+right;
+  }
+
+
+  KOKKOS_INLINE_FUNCTION static int patch_axis_global(int local, int start, int extent, bool periodic) {
+    int const coordinate = start+local;
+    return periodic ? (coordinate%extent+extent)%extent : coordinate;
+  }
+
+
+  KOKKOS_INLINE_FUNCTION static int patch_axis_local(int global, int tile, int extent, int core, int overlap,
+                                                      bool periodic) {
+    if (patch_axis_count(extent,core,overlap) == 1) return global;
+    int const start = patch_axis_start(tile,extent,core,overlap,periodic);
+    int const length = patch_axis_length(tile,extent,core,overlap,periodic);
+    if (!periodic) return global >= start && global < start+length ? global-start : -1;
+    for (int shift = -1; shift <= 1; shift++) {
+      int const unwrapped = global+shift*extent;
+      if (unwrapped >= start && unwrapped < start+length) return unwrapped-start;
+    }
+    return -1;
+  }
+
+
+  KOKKOS_INLINE_FUNCTION static int patch_axis_coverage(int global, int extent, int core, int overlap,
+                                                         bool periodic) {
+    int const count = patch_axis_count(extent,core,overlap);
+    int coverage = 0;
+    for (int tile = 0; tile < count; tile++) {
+      if (patch_axis_local(global,tile,extent,core,overlap,periodic) >= 0) coverage++;
+    }
+    return coverage;
   }
 
 
@@ -276,6 +348,20 @@ public:
     level.z_plus = z_plus_host.createDeviceCopy();
     level.x = 0;
     level.b = 0;
+  }
+
+
+  void allocate_coarse_schwarz(Level &level) const {
+    level.schwarz_tiles_x = patch_axis_count(level.nx,coarse_schwarz_tile_nx_,coarse_schwarz_overlap_);
+    level.schwarz_tiles_y = patch_axis_count(level.ny,coarse_schwarz_tile_ny_,coarse_schwarz_overlap_);
+    level.schwarz_tiles_z = patch_axis_count(level.nz,coarse_schwarz_tile_nz_,coarse_schwarz_overlap_);
+    level.schwarz_work_nx = std::min(level.nx,coarse_schwarz_tile_nx_+2*coarse_schwarz_overlap_);
+    level.schwarz_work_ny = std::min(level.ny,coarse_schwarz_tile_ny_+2*coarse_schwarz_overlap_);
+    level.schwarz_work_nz = std::min(level.nz,coarse_schwarz_tile_nz_+2*coarse_schwarz_overlap_);
+    int const num_tiles = level.schwarz_tiles_x*level.schwarz_tiles_y*level.schwarz_tiles_z;
+    level.schwarz_correction = Device4d("geometric_multigrid_coarse_schwarz_correction",num_tiles,
+                                        level.schwarz_work_nz,level.schwarz_work_ny,level.schwarz_work_nx);
+    level.schwarz_correction = 0;
   }
 
 
@@ -574,6 +660,169 @@ public:
       if (i > 0 && i+1 < nx && j > 0 && j+1 < ny) return;
       calculate(k,j,i);
     });
+  }
+
+
+  // Symmetric weighted additive Schwarz on the one-rank terminal level. Each team solves one overlapped patch with
+  // fixed local Jacobi steps in scratch memory. Applying the square root of the partition-of-unity weight on both
+  // restriction and prolongation makes every patch contribution symmetric positive semidefinite for outer CG.
+  void smooth_coarse_schwarz(Level &level, int applications, Scalar shift,
+                             bool zero_initial_guess = false) const {
+    using TeamPolicy = Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>;
+    using Member = typename TeamPolicy::member_type;
+    using ScratchSpace = typename Member::scratch_memory_space;
+    using ScratchView = Kokkos::View<Scalar *,ScratchSpace,Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
+
+    int const nx = level.nx;
+    int const ny = level.ny;
+    int const nz = level.nz;
+    int const tile_nx = coarse_schwarz_tile_nx_;
+    int const tile_ny = coarse_schwarz_tile_ny_;
+    int const tile_nz = coarse_schwarz_tile_nz_;
+    int const overlap = coarse_schwarz_overlap_;
+    int const tiles_x = level.schwarz_tiles_x;
+    int const tiles_y = level.schwarz_tiles_y;
+    int const tiles_z = level.schwarz_tiles_z;
+    int const work_nx = level.schwarz_work_nx;
+    int const work_ny = level.schwarz_work_ny;
+    int const work_nz = level.schwarz_work_nz;
+    int const work_cells = work_nx*work_ny*work_nz;
+    int const num_tiles = tiles_x*tiles_y*tiles_z;
+    int const local_iterations = coarse_schwarz_local_iterations_;
+    bool const periodic_x = level.periodic_x;
+    bool const periodic_y = level.periodic_y;
+    bool const periodic_z = level.periodic_z;
+    Scalar const jacobi_weight = jacobi_weight_;
+    auto b = level.b;
+    auto correction = level.schwarz_correction;
+    auto recv_west = level.recv_west;
+    auto recv_east = level.recv_east;
+    auto recv_south = level.recv_south;
+    auto recv_north = level.recv_north;
+    auto x_minus = level.x_minus;
+    auto x_plus = level.x_plus;
+    auto y_minus = level.y_minus;
+    auto y_plus = level.y_plus;
+    auto z_minus = level.z_minus;
+    auto z_plus = level.z_plus;
+
+    TeamPolicy policy(num_tiles,Kokkos::AUTO());
+    policy.set_scratch_size(0,Kokkos::PerTeam(3*ScratchView::shmem_size(work_cells)));
+    for (int application = 0; application < applications; application++) {
+      bool const zero_guess = zero_initial_guess && application == 0;
+      auto x = level.x;
+      Kokkos::parallel_for("geometric_multigrid_coarse_schwarz_patch",policy,
+                           KOKKOS_LAMBDA (Member const &team) {
+        ScratchView rhs(team.team_scratch(0),work_cells);
+        ScratchView iterate_0(team.team_scratch(0),work_cells);
+        ScratchView iterate_1(team.team_scratch(0),work_cells);
+        int const patch = team.league_rank();
+        int const tile_x = patch%tiles_x;
+        int const tile_y = (patch/tiles_x)%tiles_y;
+        int const tile_z = patch/(tiles_x*tiles_y);
+        int const start_x = patch_axis_start(tile_x,nx,tile_nx,overlap,periodic_x);
+        int const start_y = patch_axis_start(tile_y,ny,tile_ny,overlap,periodic_y);
+        int const start_z = patch_axis_start(tile_z,nz,tile_nz,overlap,periodic_z);
+        int const length_x = patch_axis_length(tile_x,nx,tile_nx,overlap,periodic_x);
+        int const length_y = patch_axis_length(tile_y,ny,tile_ny,overlap,periodic_y);
+        int const length_z = patch_axis_length(tile_z,nz,tile_nz,overlap,periodic_z);
+
+        Kokkos::parallel_for(Kokkos::TeamThreadRange(team,work_cells),[&] (int local) {
+          int const ii = local%work_nx;
+          int const jj = (local/work_nx)%work_ny;
+          int const kk = local/(work_nx*work_ny);
+          bool const valid = ii < length_x && jj < length_y && kk < length_z;
+          rhs(local) = 0;
+          iterate_0(local) = 0;
+          iterate_1(local) = 0;
+          correction(patch,kk,jj,ii) = 0;
+          if (!valid) return;
+          int const i = patch_axis_global(ii,start_x,nx,periodic_x);
+          int const j = patch_axis_global(jj,start_y,ny,periodic_y);
+          int const k = patch_axis_global(kk,start_z,nz,periodic_z);
+          int const coverage_x = patch_axis_coverage(i,nx,tile_nx,overlap,periodic_x);
+          int const coverage_y = patch_axis_coverage(j,ny,tile_ny,overlap,periodic_y);
+          int const coverage_z = patch_axis_coverage(k,nz,tile_nz,overlap,periodic_z);
+          Scalar const partition_weight = Scalar(1)/Kokkos::sqrt(Scalar(coverage_x*coverage_y*coverage_z));
+          Scalar const Ax = zero_guess ? Scalar(0) : apply_cell(
+              x,recv_west,recv_east,recv_south,recv_north,z_minus,z_plus,x_minus,x_plus,y_minus,y_plus,
+              nx,ny,nz,1,1,0,0,periodic_x,periodic_y,k,j,i,shift);
+          rhs(local) = partition_weight*(b(k,j,i)-Ax);
+        });
+        team.team_barrier();
+
+        for (int iteration = 0; iteration < local_iterations; iteration++) {
+          Kokkos::parallel_for(Kokkos::TeamThreadRange(team,work_cells),[&] (int local) {
+            int const ii = local%work_nx;
+            int const jj = (local/work_nx)%work_ny;
+            int const kk = local/(work_nx*work_ny);
+            if (ii >= length_x || jj >= length_y || kk >= length_z) return;
+            int const i = patch_axis_global(ii,start_x,nx,periodic_x);
+            int const j = patch_axis_global(jj,start_y,ny,periodic_y);
+            int const k = patch_axis_global(kk,start_z,nz,periodic_z);
+            auto const &current = iteration%2 == 0 ? iterate_0 : iterate_1;
+            auto const &next = iteration%2 == 0 ? iterate_1 : iterate_0;
+            Scalar const center = current(local);
+            Scalar diagonal = shift+x_minus(i)+x_plus(i)+y_minus(j)+y_plus(j)+z_minus(k)+z_plus(k);
+            Scalar Ax = diagonal*center;
+            int const local_xm = ii > 0 ? local-1 : (tiles_x == 1 && periodic_x ? local+length_x-1 : -1);
+            int const local_xp = ii+1 < length_x ? local+1 :
+                                 (tiles_x == 1 && periodic_x ? local-(length_x-1) : -1);
+            int const local_ym = jj > 0 ? local-work_nx :
+                                 (tiles_y == 1 && periodic_y ? local+(length_y-1)*work_nx : -1);
+            int const local_yp = jj+1 < length_y ? local+work_nx :
+                                 (tiles_y == 1 && periodic_y ? local-(length_y-1)*work_nx : -1);
+            int const local_zm = kk > 0 ? local-work_nx*work_ny :
+                                 (tiles_z == 1 && periodic_z ? local+(length_z-1)*work_nx*work_ny : -1);
+            int const local_zp = kk+1 < length_z ? local+work_nx*work_ny :
+                                 (tiles_z == 1 && periodic_z ? local-(length_z-1)*work_nx*work_ny : -1);
+            if (local_xm >= 0) Ax -= x_minus(i)*current(local_xm);
+            if (local_xp >= 0) Ax -= x_plus (i)*current(local_xp);
+            if (local_ym >= 0) Ax -= y_minus(j)*current(local_ym);
+            if (local_yp >= 0) Ax -= y_plus (j)*current(local_yp);
+            if (local_zm >= 0) Ax -= z_minus(k)*current(local_zm);
+            if (local_zp >= 0) Ax -= z_plus (k)*current(local_zp);
+            next(local) = diagonal > std::numeric_limits<Scalar>::min() ?
+                          center+jacobi_weight*(rhs(local)-Ax)/diagonal : Scalar(0);
+          });
+          team.team_barrier();
+        }
+
+        Kokkos::parallel_for(Kokkos::TeamThreadRange(team,work_cells),[&] (int local) {
+          int const ii = local%work_nx;
+          int const jj = (local/work_nx)%work_ny;
+          int const kk = local/(work_nx*work_ny);
+          if (ii >= length_x || jj >= length_y || kk >= length_z) return;
+          correction(patch,kk,jj,ii) = local_iterations%2 == 0 ? iterate_0(local) : iterate_1(local);
+        });
+      });
+
+      auto x_next = level.x_next;
+      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
+        int const coverage_x = patch_axis_coverage(i,nx,tile_nx,overlap,periodic_x);
+        int const coverage_y = patch_axis_coverage(j,ny,tile_ny,overlap,periodic_y);
+        int const coverage_z = patch_axis_coverage(k,nz,tile_nz,overlap,periodic_z);
+        Scalar const partition_weight = Scalar(1)/Kokkos::sqrt(Scalar(coverage_x*coverage_y*coverage_z));
+        Scalar update = 0;
+        for (int tile_z_index = 0; tile_z_index < tiles_z; tile_z_index++) {
+          int const kk = patch_axis_local(k,tile_z_index,nz,tile_nz,overlap,periodic_z);
+          if (kk < 0) continue;
+          for (int tile_y_index = 0; tile_y_index < tiles_y; tile_y_index++) {
+            int const jj = patch_axis_local(j,tile_y_index,ny,tile_ny,overlap,periodic_y);
+            if (jj < 0) continue;
+            for (int tile_x_index = 0; tile_x_index < tiles_x; tile_x_index++) {
+              int const ii = patch_axis_local(i,tile_x_index,nx,tile_nx,overlap,periodic_x);
+              if (ii < 0) continue;
+              int const patch = tile_x_index+tiles_x*(tile_y_index+tiles_y*tile_z_index);
+              update += partition_weight*correction(patch,kk,jj,ii);
+            }
+          }
+        }
+        x_next(k,j,i) = (zero_guess ? Scalar(0) : x(k,j,i))+update;
+      });
+      level.x = x_next;
+      level.x_next = x;
+    }
   }
 
 
@@ -1039,7 +1288,11 @@ public:
   void vcycle(int level_index, Scalar shift, bool zero_initial_guess = false) const {
     Level &level = *levels_[level_index];
     if (!level.transition) {
-      apply_smoother(level,coarse_smooth_,shift,level_index,zero_initial_guess);
+      if (coarse_schwarz_) {
+        smooth_coarse_schwarz(level,coarse_schwarz_applications_,shift,zero_initial_guess);
+      } else {
+        apply_smoother(level,coarse_smooth_,shift,level_index,zero_initial_guess);
+      }
       return;
     }
     apply_smoother(level,pre_smooth_,shift,level_index,zero_initial_guess);
@@ -1070,6 +1323,13 @@ public:
     int coarse_cells = 32768;
     int min_cells_per_rank = 131072;
     Scalar jacobi_weight = Scalar(2)/Scalar(3);
+    bool coarse_schwarz = false;
+    int coarse_schwarz_applications = 6;
+    int coarse_schwarz_tile_nx = 8;
+    int coarse_schwarz_tile_ny = 8;
+    int coarse_schwarz_tile_nz = 4;
+    int coarse_schwarz_overlap = 2;
+    int coarse_schwarz_local_iterations = 4;
     bool vertical_line_smoother = false;
     bool horizontal_only = false;
     bool require_single_coarse_rank = false;
@@ -1098,6 +1358,10 @@ public:
     if (options.vcycles <= 0 || options.pre_smooth < 0 || options.post_smooth < 0 ||
         options.pre_smooth != options.post_smooth || options.coarse_smooth <= 0 ||
         options.coarse_cells <= 0 || options.min_cells_per_rank <= 0 ||
+        (options.coarse_schwarz && (options.coarse_schwarz_applications <= 0 ||
+                                    options.coarse_schwarz_tile_nx <= 0 || options.coarse_schwarz_tile_ny <= 0 ||
+                                    options.coarse_schwarz_tile_nz <= 0 || options.coarse_schwarz_overlap < 0 ||
+                                    options.coarse_schwarz_local_iterations <= 0)) ||
         (options.horizontal_only && (options.coarse_nx <= 0 || options.coarse_ny <= 0)) ||
         options.metadata_prefix.empty() ||
         !(options.jacobi_weight > 0 && options.jacobi_weight < 1)) {
@@ -1137,6 +1401,13 @@ public:
     post_smooth_ = options.post_smooth;
     coarse_smooth_ = options.coarse_smooth;
     jacobi_weight_ = options.jacobi_weight;
+    coarse_schwarz_ = options.coarse_schwarz;
+    coarse_schwarz_applications_ = options.coarse_schwarz_applications;
+    coarse_schwarz_tile_nx_ = options.coarse_schwarz_tile_nx;
+    coarse_schwarz_tile_ny_ = options.coarse_schwarz_tile_ny;
+    coarse_schwarz_tile_nz_ = options.coarse_schwarz_tile_nz;
+    coarse_schwarz_overlap_ = options.coarse_schwarz_overlap;
+    coarse_schwarz_local_iterations_ = options.coarse_schwarz_local_iterations;
     vertical_line_smoother_ = options.vertical_line_smoother;
     horizontal_only_ = options.horizontal_only;
     require_single_coarse_rank_ = options.require_single_coarse_rank;
@@ -1355,6 +1626,13 @@ public:
       level_index++;
     }
 
+    if (coarse_schwarz_ && active) {
+      if (levels_.back()->nranks != 1) {
+        endrun("ERROR: coarse additive Schwarz requires terminal geometric multigrid aggregation onto one task");
+      }
+      allocate_coarse_schwarz(*levels_.back());
+    }
+
     int metadata[5] = {0,0,0,0,0};
     if (coupler.get_myrank() == 0) {
       Level const &coarse = *levels_.back();
@@ -1383,6 +1661,18 @@ public:
     coupler.set_option<std::string>(metadata_prefix_+"_interpolation","Quadratic");
     coupler.set_option<std::string>(metadata_prefix_+"_smoother",
                                     vertical_line_smoother_ ? "HorizontalJacobiVerticalTridiagonal" : "Jacobi");
+    coupler.set_option<std::string>(metadata_prefix_+"_coarse_smoother",
+                                    coarse_schwarz_ ? "TeamAdditiveSchwarz" :
+                                    (vertical_line_smoother_ ? "HorizontalJacobiVerticalTridiagonal" : "Jacobi"));
+    if (coarse_schwarz_) {
+      coupler.set_option<int>(metadata_prefix_+"_coarse_schwarz_applications",coarse_schwarz_applications_);
+      coupler.set_option<int>(metadata_prefix_+"_coarse_schwarz_local_iterations",
+                              coarse_schwarz_local_iterations_);
+      coupler.set_option<int>(metadata_prefix_+"_coarse_schwarz_overlap",coarse_schwarz_overlap_);
+      coupler.set_option<std::vector<int>>(metadata_prefix_+"_coarse_schwarz_tile",
+                                           {coarse_schwarz_tile_nx_,coarse_schwarz_tile_ny_,
+                                            coarse_schwarz_tile_nz_});
+    }
     initialized_ = true;
   }
 
