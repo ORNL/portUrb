@@ -404,6 +404,7 @@ public:
     auto send_north = level.send_north;
     int const nx = level.nx;
     int const ny = level.ny;
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_halo_pack");
     if (level.nproc_x > 1) {
       yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<2>(level.nz,level.ny),
                          KOKKOS_LAMBDA (int k, int j) {
@@ -418,6 +419,7 @@ public:
         send_north(k,i) = x(k,ny-1,i);
       });
     }
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_halo_pack");
 
     int const west = level.nproc_x > 1 ? neighbor(level,-1,0) : MPI_PROC_NULL;
     int const east = level.nproc_x > 1 ? neighbor(level, 1,0) : MPI_PROC_NULL;
@@ -425,6 +427,7 @@ public:
     int const north = level.nproc_y > 1 ? neighbor(level,0, 1) : MPI_PROC_NULL;
     int const tag = 100+4*level_index;
     Exchange exchange;
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_halo_post");
     #ifdef PORTURB_GPU_AWARE_MPI
       Kokkos::fence();
       post_receive(exchange,level.recv_west.data(),level.recv_west.size(),west,tag+1,mpi_scalar_type(),level.comm);
@@ -461,13 +464,17 @@ public:
       post_send(exchange,level.send_north_host.data(),level.send_north_host.size(),north,tag+3,
                 mpi_scalar_type(),level.comm);
     #endif
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_halo_post");
     return exchange;
   }
 
 
   static void finish_exchange(Level &level, Exchange &exchange) {
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_halo_wait");
     if (exchange.count > 0) MPI_Waitall(exchange.count,exchange.requests.data(),MPI_STATUSES_IGNORE);
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_halo_wait");
     #ifndef PORTURB_GPU_AWARE_MPI
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_halo_receive_stage");
       if (level.nproc_x > 1) {
         level.recv_west_host.deep_copy_to(level.recv_west);
         level.recv_east_host.deep_copy_to(level.recv_east);
@@ -476,6 +483,7 @@ public:
         level.recv_south_host.deep_copy_to(level.recv_south);
         level.recv_north_host.deep_copy_to(level.recv_north);
       }
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_halo_receive_stage");
     #endif
   }
 
@@ -555,6 +563,7 @@ public:
 
   void smooth(Level &level, int iterations, Scalar shift, int level_index,
               bool zero_initial_guess = false) const {
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_jacobi_smooth");
     auto b = level.b;
     auto recv_west = level.recv_west;
     auto recv_east = level.recv_east;
@@ -614,10 +623,12 @@ public:
       level.x = x_next;
       level.x_next = x;
     }
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_jacobi_smooth");
   }
 
 
   void compute_residual(Level &level, Scalar shift, int level_index) const {
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_residual");
     auto x = level.x;
     auto b = level.b;
     auto residual = level.residual;
@@ -647,6 +658,7 @@ public:
     };
     if (level.nranks == 1) {
       yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),calculate);
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_residual");
       return;
     }
     Exchange exchange = begin_exchange(level,level_index);
@@ -660,6 +672,7 @@ public:
       if (i > 0 && i+1 < nx && j > 0 && j+1 < ny) return;
       calculate(k,j,i);
     });
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_residual");
   }
 
 
@@ -1191,13 +1204,17 @@ public:
 
 
   void gather_restricted(Level &fine, Level *coarse, int level_index) const {
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_gather");
     Transition &transition = *fine.transition;
     int const tag = 1000+level_index;
     #ifdef PORTURB_GPU_AWARE_MPI
       Kokkos::fence();
       if (!transition.leader) {
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_gather_mpi");
         MPI_Send(transition.local_coarse.data(),transition.local_coarse.size(),mpi_scalar_type(),
                  transition.leader_rank,tag,fine.comm);
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_gather_mpi");
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_gather");
         return;
       }
       std::vector<MPI_Request> requests;
@@ -1209,15 +1226,20 @@ public:
           MPI_Irecv(block.device.data(),block.device.size(),mpi_scalar_type(),block.rank,tag,fine.comm,&requests.back());
         }
       }
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_gather_mpi");
       if (!requests.empty()) MPI_Waitall(requests.size(),requests.data(),MPI_STATUSES_IGNORE);
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_gather_mpi");
       for (auto &block : transition.blocks) {
         if (block.rank != fine.rank) copy_block_to_level(block.device,coarse->b,block.ox,block.oy);
       }
     #else
       transition.local_coarse.deep_copy_to(transition.local_host);
       if (!transition.leader) {
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_gather_mpi");
         MPI_Send(transition.local_host.data(),transition.local_host.size(),mpi_scalar_type(),
                  transition.leader_rank,tag,fine.comm);
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_gather_mpi");
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_gather");
         return;
       }
       std::vector<MPI_Request> requests;
@@ -1229,7 +1251,9 @@ public:
           MPI_Irecv(block.host.data(),block.host.size(),mpi_scalar_type(),block.rank,tag,fine.comm,&requests.back());
         }
       }
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_gather_mpi");
       if (!requests.empty()) MPI_Waitall(requests.size(),requests.data(),MPI_STATUSES_IGNORE);
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_gather_mpi");
       for (auto &block : transition.blocks) {
         if (block.rank != fine.rank) {
           block.host.deep_copy_to(block.device);
@@ -1237,16 +1261,21 @@ public:
         }
       }
     #endif
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_gather");
   }
 
 
   void scatter_correction(Level &fine, Level *coarse, int level_index) const {
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_scatter");
     Transition &transition = *fine.transition;
     int const tag = 2000+level_index;
     #ifdef PORTURB_GPU_AWARE_MPI
       if (!transition.leader) {
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_scatter_mpi");
         MPI_Recv(transition.local_coarse.data(),transition.local_coarse.size(),mpi_scalar_type(),
                  transition.leader_rank,tag,fine.comm,MPI_STATUS_IGNORE);
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_scatter_mpi");
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_scatter");
         return;
       }
       std::vector<MPI_Request> requests;
@@ -1260,12 +1289,17 @@ public:
         requests.emplace_back();
         MPI_Isend(block.device.data(),block.device.size(),mpi_scalar_type(),block.rank,tag,fine.comm,&requests.back());
       }
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_scatter_mpi");
       if (!requests.empty()) MPI_Waitall(requests.size(),requests.data(),MPI_STATUSES_IGNORE);
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_scatter_mpi");
     #else
       if (!transition.leader) {
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_scatter_mpi");
         MPI_Recv(transition.local_host.data(),transition.local_host.size(),mpi_scalar_type(),
                  transition.leader_rank,tag,fine.comm,MPI_STATUS_IGNORE);
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_scatter_mpi");
         transition.local_host.deep_copy_to(transition.local_coarse);
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_scatter");
         return;
       }
       std::vector<MPI_Request> requests;
@@ -1280,37 +1314,50 @@ public:
         requests.emplace_back();
         MPI_Isend(block.host.data(),block.host.size(),mpi_scalar_type(),block.rank,tag,fine.comm,&requests.back());
       }
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_aggregation_scatter_mpi");
       if (!requests.empty()) MPI_Waitall(requests.size(),requests.data(),MPI_STATUSES_IGNORE);
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_scatter_mpi");
     #endif
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_aggregation_scatter");
   }
 
 
   void vcycle(int level_index, Scalar shift, bool zero_initial_guess = false) const {
     Level &level = *levels_[level_index];
     if (!level.transition) {
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_coarse_solve");
       if (coarse_schwarz_) {
         smooth_coarse_schwarz(level,coarse_schwarz_applications_,shift,zero_initial_guess);
       } else {
         apply_smoother(level,coarse_smooth_,shift,level_index,zero_initial_guess);
       }
+      if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_coarse_solve");
       return;
     }
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_pre_smooth");
     apply_smoother(level,pre_smooth_,shift,level_index,zero_initial_guess);
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_pre_smooth");
     compute_residual(level,shift,level_index);
     Transition &transition = *level.transition;
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_restriction");
     restrict_dimension_x(level,transition);
     restrict_dimension_y(level,transition);
     if (transition.coarsen_z) restrict_dimension_z(level,transition);
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_restriction");
     Level *coarse = transition.leader ? levels_[level_index+1].get() : nullptr;
     gather_restricted(level,coarse,level_index);
     if (transition.leader) {
       vcycle(level_index+1,shift,true);
     }
     scatter_correction(level,coarse,level_index);
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_prolongation");
     if (transition.coarsen_z) prolong_dimension_z(level,transition);
     prolong_dimension_y(level,transition);
     prolong_dimension_x(level,transition);
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_prolongation");
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_post_smooth");
     apply_smoother(level,post_smooth_,shift,level_index);
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_post_smooth");
   }
 
 
@@ -1679,6 +1726,7 @@ public:
 
   void apply(yakl::Array<Scalar *> const &r, yakl::Array<Scalar *> const &z,
              Scalar screening_inverse_length_squared, Scalar dt) const {
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_apply");
     if (!initialized_) endrun("ERROR: applying an uninitialized geometric multigrid preconditioner");
     if (r.size() != fine_size_ || z.size() != fine_size_) {
       endrun("ERROR: geometric multigrid input/output size does not match the initialized fine grid");
@@ -1703,6 +1751,7 @@ public:
       int const cell = i+nx*(j+ny*k);
       z(cell) = fine_x(k,j,i);
     });
+    if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_apply");
   }
 };
 

@@ -937,6 +937,7 @@ namespace modules {
       }
       std::string const &preconditioner = config.preconditioner;
       if (use_cg) {
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_start("anelastic_pcg_solve");
         YaklConjGrad<ProjectionScalar> cg;
         typename YaklConjGrad<ProjectionScalar>::Workspace cg_workspace{
           dm.get_collapsed<ProjectionScalar>("dycore_anelastic_cg_r"),
@@ -972,6 +973,7 @@ namespace modules {
           cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
                                nullptr,compute_Ax_and_local_dot);
         }
+        if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("anelastic_pcg_solve");
         solver_iters = cg_result.iters;
         solver_converged = cg_result.converged;
       } else {
