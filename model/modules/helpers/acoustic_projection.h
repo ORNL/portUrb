@@ -751,6 +751,7 @@ namespace modules {
       bool const cg_check = config.check_cg_compatibility;
       bool use_cg = config.use_conjugate_gradient;
       if constexpr (yakl::kokkos_debug) {
+        // The projection LHS is fixed, so compatibility only needs to be established by the first enabled solve.
         bool const cg_checked = coupler.get_option<bool>("dycore_anelastic_cg_compatibility_checked",false);
         if (cg_check && !cg_checked) {
         ProjectionScalar cg_symmetry_error = std::numeric_limits<ProjectionScalar>::infinity();
@@ -831,7 +832,8 @@ namespace modules {
 
       bool const linearity_check = config.check_linearity;
       if constexpr (yakl::kokkos_debug) {
-        if (linearity_check) {
+        bool const linearity_checked = coupler.get_option<bool>("dycore_anelastic_linearity_checked",false);
+        if (linearity_check && !linearity_checked) {
         auto x = pressure.collapse().createDeviceObject();
         auto y = pressure.collapse().createDeviceObject();
         auto z = pressure.collapse().createDeviceObject();
@@ -860,6 +862,7 @@ namespace modules {
             std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(z),MPI_SUM));
         ProjectionScalar const rel = den > 0 ? err/den : err;
         coupler.set_option<real>("dycore_anelastic_last_linearity_error",static_cast<real>(rel));
+        coupler.set_option<bool>("dycore_anelastic_linearity_checked",true);
         if (coupler.is_mainproc()) std::cout << "Anelastic projection linearity relative error: " << rel << std::endl;
         if (rel > ProjectionScalar(1.e3)*std::numeric_limits<ProjectionScalar>::epsilon()) {
           endrun("ERROR: anelastic projection operator is nonlinear");
@@ -1185,6 +1188,7 @@ namespace modules {
       coupler.set_option<real>("dycore_anelastic_cg_seconds_min",std::numeric_limits<real>::max());
       coupler.set_option<real>("dycore_anelastic_cg_seconds_max",0);
       coupler.set_option<bool>("dycore_anelastic_cg_compatibility_checked",false);
+      coupler.set_option<bool>("dycore_anelastic_linearity_checked",false);
       coupler.set_option<bool>("dycore_anelastic_use_cg",config.use_conjugate_gradient);
 
       // When enabled, screening uses the acoustic propagation length dycore_cs*dt for each projection solve.

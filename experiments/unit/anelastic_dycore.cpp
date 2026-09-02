@@ -208,8 +208,10 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<real>("cfl",benchmark_cfl);
   coupler.set_option<std::string>("dycore_time_stepper","ssprk3");
   coupler.set_option<bool>("dycore_anelastic_projection_diagnostics",true);
-  coupler.set_option<bool>("dycore_anelastic_check_linearity",flow == 2 && run_invariance_checks);
-  coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",benchmark_case);
+  coupler.set_option<bool>("dycore_anelastic_check_linearity",
+                           flow == 2 && (run_invariance_checks || preconditioner == "GeometricMultigrid"));
+  coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",
+                           benchmark_case || preconditioner == "GeometricMultigrid");
   coupler.set_option<bool>("dycore_anelastic_screening",sound_speed > 0);
   coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
   coupler.set_option<bool>("dycore_anelastic_time_linear_solver",false);
@@ -292,6 +294,30 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   dycore.convert_coupler_to_dynamics(coupler,state,tracers);
   dycore.enforce_immersed_boundaries(coupler,state,tracers);
   dycore.compute_tendencies(coupler,state,state_tend,tracers,tracer_tend,dt,0,0);
+  if constexpr (yakl::kokkos_debug) {
+    bool const check_linearity = coupler.get_option<bool>("dycore_anelastic_check_linearity");
+    bool const check_cg = coupler.get_option<bool>("dycore_anelastic_check_cg_compatibility");
+    if (check_linearity) {
+      require(coupler,coupler.get_option<bool>("dycore_anelastic_linearity_checked"),
+              name + ": projection linearity was not checked on the first solve");
+    }
+    if (check_cg) {
+      require(coupler,coupler.get_option<bool>("dycore_anelastic_cg_compatibility_checked"),
+              name + ": CG compatibility was not checked on the first solve");
+    }
+    if (check_linearity && check_cg) {
+      real const linearity_error = coupler.get_option<real>("dycore_anelastic_last_linearity_error");
+      real const symmetry_error = coupler.get_option<real>("dycore_anelastic_last_cg_symmetry_error");
+      coupler.set_option<real>("dycore_anelastic_last_linearity_error",-1);
+      coupler.set_option<real>("dycore_anelastic_last_cg_symmetry_error",-1);
+      dycore.compute_tendencies(coupler,state,state_tend,tracers,tracer_tend,dt,0,0);
+      require(coupler,coupler.get_option<real>("dycore_anelastic_last_linearity_error") == -1 &&
+                      coupler.get_option<real>("dycore_anelastic_last_cg_symmetry_error") == -1,
+              name + ": projection diagnostics were repeated after their first solve");
+      coupler.set_option<real>("dycore_anelastic_last_linearity_error",linearity_error);
+      coupler.set_option<real>("dycore_anelastic_last_cg_symmetry_error",symmetry_error);
+    }
+  }
   real benchmark_seconds_mean = 0;
   real benchmark_iterations_mean = 0;
   if (benchmark_case) {
