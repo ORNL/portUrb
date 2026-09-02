@@ -185,8 +185,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
               int cube_width = 2, int cube_k_beg = 2, bool run_invariance_checks = true,
               bool use_hydrostatic_profile = true, std::string const & preconditioner = "Jacobi",
               int schwarz_tile = 16, int schwarz_degree = 16, real sound_speed = 0,
-              bool check_compression = false, bool city_buildings = false,
-              int multigrid_max_levels = 24, bool expect_direct_coarse_solve = true) {
+              bool check_compression = false, bool stretched_vertical = false) {
   int const nx = n;
   int const ny = n;
   int const nz = n;
@@ -211,40 +210,31 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<bool>("dycore_anelastic_projection_diagnostics",true);
   coupler.set_option<bool>("dycore_anelastic_check_linearity",flow == 2 && run_invariance_checks);
   coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",benchmark_case);
-  coupler.set_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true);
   coupler.set_option<bool>("dycore_anelastic_screening",sound_speed > 0);
-  if (benchmark_case || preconditioner == "Multigrid" || preconditioner == "GeometricMultigrid" ||
-      preconditioner == "TensorLineMultigrid") {
-    coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
-    coupler.set_option<bool>("dycore_anelastic_time_linear_solver",false);
-    if (preconditioner == "Schwarz") {
-      coupler.set_option<int>("dycore_anelastic_schwarz_tile_nx",schwarz_tile);
-      coupler.set_option<int>("dycore_anelastic_schwarz_tile_ny",schwarz_tile);
-      coupler.set_option<int>("dycore_anelastic_schwarz_overlap",2);
-      coupler.set_option<int>("dycore_anelastic_schwarz_chebyshev_degree",schwarz_degree);
-    }
+  coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
+  coupler.set_option<bool>("dycore_anelastic_time_linear_solver",false);
+  if (preconditioner == "Schwarz") {
+    coupler.set_option<int>("dycore_anelastic_schwarz_tile_nx",schwarz_tile);
+    coupler.set_option<int>("dycore_anelastic_schwarz_tile_ny",schwarz_tile);
+    coupler.set_option<int>("dycore_anelastic_schwarz_overlap",2);
+    coupler.set_option<int>("dycore_anelastic_schwarz_chebyshev_degree",schwarz_degree);
   }
-  if (preconditioner == "Multigrid") {
+  if (preconditioner == "GeometricMultigrid") {
     coupler.set_option<bool>("dycore_anelastic_use_cg",true);
-    coupler.set_option<int>("dycore_anelastic_multigrid_max_levels",multigrid_max_levels);
-  } else if (preconditioner == "GeometricMultigrid") {
-    coupler.set_option<bool>("dycore_anelastic_use_cg",true);
-    // The odd case stops at 13^3, exercising truncated 8x8x4 Schwarz patches on every axis.
     coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",n%2 == 0 ? 64 : 2200);
     coupler.set_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",64);
-    coupler.set_option<std::vector<int>>("dycore_anelastic_geometric_multigrid_coarsening_factors",{2,3});
-  } else if (preconditioner == "TensorLineMultigrid") {
-    coupler.set_option<bool>("dycore_anelastic_use_cg",true);
-    coupler.set_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_nx",6);
-    coupler.set_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_ny",6);
-    coupler.set_option<int>("dycore_anelastic_tensor_line_multigrid_min_cells_per_rank",64);
+    coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarsening_factor_x",2);
+    coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarsening_factor_y",3);
+    coupler.set_option<real>("dycore_anelastic_geometric_multigrid_coarsening_factor_z",1.5_fp);
   }
   coupler.set_option<real>("dycore_anelastic_gmres_rel_tol",1.e-4);
   if (flow == 2 || with_immersed) {
     coupler.set_option<int>("dycore_anelastic_gmres_restart",100);
     coupler.set_option<int>("dycore_anelastic_gmres_max_iters",benchmark_case ? 800 : 400);
   }
-  coupler.init(core::ParallelComm(MPI_COMM_WORLD),coupler.generate_levels_equal(nz,zlen),ny,nx,ylen,xlen);
+  auto const zint = stretched_vertical ? coupler.generate_levels_exp(nz,zlen,0.7_fp*grid_spacing) :
+                                         coupler.generate_levels_equal(nz,zlen);
+  coupler.init(core::ParallelComm(MPI_COMM_WORLD),zint,ny,nx,ylen,xlen);
   coupler.add_tracer("water_vapor","water_vapor",true,false,true);
   custom_modules::sc_init(coupler);
   coupler.set_option<std::string>("bc_x1","periodic");
@@ -263,7 +253,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   auto imm = dm.get<real,3>("immersed_proportion");
   auto const dx = coupler.get_dx();
   auto const dy = coupler.get_dy();
-  auto const dz = coupler.get_dz();
+  auto const zmid = coupler.get_zmid();
   auto const i_beg = coupler.get_i_beg();
   auto const j_beg = coupler.get_j_beg();
   auto const nx_local = coupler.get_nx();
@@ -276,7 +266,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     int const j_glob = j_beg+j;
     real const x = (i_beg+i+0.5_fp)*dx;
     real const y = (j_beg+j+0.5_fp)*dy;
-    real const z = (k+0.5_fp)*dz(k);
+    real const z = zmid(k);
     yakl::Random rng(0,3*(k*ny*nx + j_glob*nx + i_glob));
     u(k,j,i) = (flow == 1 ? mean_u : (flow == 2 ? std::sin(2*M_PI*x/xlen) : 0)) +
                  velocity_perturbation*rng.gen_uniform<real>(-1,1);
@@ -288,14 +278,6 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     bool immersed = with_immersed && k >= cube_k_beg && k < cube_k_beg+cube_width &&
                     j_glob >= cube_j_beg && j_glob < cube_j_beg+cube_width &&
                     i_glob >= cube_i_beg && i_glob < cube_i_beg+cube_width;
-    if (city_buildings) {
-      bool const building_1 = k < 7  && i_glob >= 3  && i_glob < 8  && j_glob >= 3  && j_glob < 11;
-      bool const building_2 = k < 12 && i_glob >= 10 && i_glob < 16 && j_glob >= 5  && j_glob < 10;
-      bool const building_3 = k < 9  && i_glob >= 7  && i_glob < 13 && j_glob >= 15 && j_glob < 21;
-      bool const building_4 = k < 14 && i_glob >= 16 && i_glob < 22 && j_glob >= 13 && j_glob < 20;
-      bool const building_5 = k < 6  && i_glob >= 18 && i_glob < 23 && j_glob >= 3  && j_glob < 8;
-      immersed = building_1 || building_2 || building_3 || building_4 || building_5;
-    }
     imm(k,j,i) = immersed ? 1 : 0;
   });
 
@@ -342,25 +324,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   real const residual = coupler.get_option<real>("dycore_anelastic_last_linear_solver_rel_res");
   int const initial_solver_iters = coupler.get_option<int>("dycore_anelastic_last_linear_solver_iters");
   require(coupler,std::isfinite(residual),name + ": linear solver residual is invalid");
-  if (preconditioner == "Multigrid") {
-    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_linear_solver") == "CG",
-            name + ": multigrid case did not use CG");
-    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_preconditioner") == "Multigrid",
-            name + ": multigrid case did not use the requested preconditioner");
-    require(coupler,coupler.get_option<int>("dycore_anelastic_multigrid_levels") >= 2,
-            name + ": multigrid hierarchy has fewer than two levels");
-    int const coarse_dofs = coupler.get_option<int>("dycore_anelastic_multigrid_coarse_dofs");
-    bool const direct_coarse_solve =
-        coupler.get_option<bool>("dycore_anelastic_multigrid_direct_coarse_solve");
-    require(coupler,coarse_dofs > 0,name + ": multigrid coarse level is empty");
-    require(coupler,direct_coarse_solve == expect_direct_coarse_solve,
-            name + ": multigrid selected the wrong coarse solver");
-    if (expect_direct_coarse_solve) {
-      require(coupler,coarse_dofs <= 256,name + ": multigrid direct coarse solve exceeds its size target");
-    } else {
-      require(coupler,coarse_dofs > 256,name + ": multigrid iterative fallback was not forced by the test");
-    }
-  } else if (preconditioner == "GeometricMultigrid") {
+  if (preconditioner == "GeometricMultigrid") {
     require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_linear_solver") == "CG",
             name + ": geometric multigrid case did not use CG");
     require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_preconditioner") ==
@@ -370,44 +334,28 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
             name + ": geometric multigrid hierarchy has fewer than two levels");
     require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells") > 0,
             name + ": geometric multigrid coarse level is empty");
+    require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_nz") > 0,
+            name + ": geometric multigrid coarse vertical extent is empty");
+    if (stretched_vertical) {
+      require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_nz") ==
+                      static_cast<int>(std::round(n/1.5_fp)),
+              name + ": geometric multigrid did not round the non-integral vertical coarsening extent");
+    }
     require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_ranks") == 1,
             name + ": geometric multigrid did not agglomerate onto one coarse task");
     require(coupler,coupler.get_option<std::string>("dycore_anelastic_geometric_multigrid_interpolation") ==
                     "Quadratic",
             name + ": geometric multigrid did not use quadratic interpolation");
-    require(coupler,coupler.get_option<std::vector<int>>(
-                        "dycore_anelastic_geometric_multigrid_coarsening_factors") == std::vector<int>({2,3}),
-            name + ": geometric multigrid did not retain its per-level coarsening factors");
-    require(coupler,coupler.get_option<std::string>(
-                        "dycore_anelastic_geometric_multigrid_coarse_smoother") == "TeamAdditiveSchwarz",
-            name + ": geometric multigrid did not select the team additive Schwarz coarse smoother");
     require(coupler,coupler.get_option<int>(
-                        "dycore_anelastic_geometric_multigrid_coarse_schwarz_applications") == 6 &&
+                        "dycore_anelastic_geometric_multigrid_coarsening_factor_x") == 2 &&
                     coupler.get_option<int>(
-                        "dycore_anelastic_geometric_multigrid_coarse_schwarz_local_iterations") == 4 &&
-                    coupler.get_option<int>(
-                        "dycore_anelastic_geometric_multigrid_coarse_schwarz_overlap") == 2,
-            name + ": geometric multigrid selected the wrong coarse Schwarz configuration");
-    require(coupler,coupler.get_option<std::vector<int>>(
-                        "dycore_anelastic_geometric_multigrid_coarse_schwarz_tile") ==
-                        std::vector<int>({8,8,4}),
-            name + ": geometric multigrid selected the wrong coarse Schwarz tile");
-  } else if (preconditioner == "TensorLineMultigrid") {
-    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_linear_solver") == "CG",
-            name + ": tensor-line multigrid case did not use CG");
-    require(coupler,coupler.get_option<std::string>("dycore_anelastic_last_preconditioner") ==
-                    "TensorLineMultigrid",
-            name + ": tensor-line multigrid case did not use the requested preconditioner");
-    require(coupler,coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_levels") >= 2,
-            name + ": tensor-line multigrid hierarchy has fewer than two levels");
-    require(coupler,coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_ranks") == 1,
-            name + ": tensor-line multigrid did not aggregate onto one coarse task");
-    require(coupler,coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_nx") >= 6 &&
-                    coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_ny") >= 6,
-            name + ": tensor-line multigrid coarsened below its horizontal target");
-    require(coupler,coupler.get_option<std::string>("dycore_anelastic_tensor_line_multigrid_smoother") ==
-                    "HorizontalJacobiVerticalTridiagonal",
-            name + ": tensor-line multigrid did not select its block-line smoother");
+                        "dycore_anelastic_geometric_multigrid_coarsening_factor_y") == 3 &&
+                    coupler.get_option<real>(
+                        "dycore_anelastic_geometric_multigrid_coarsening_factor_z") == 1.5_fp,
+            name + ": geometric multigrid did not retain its directional coarsening factors");
+    require(coupler,coupler.get_option<std::string>(
+                        "dycore_anelastic_geometric_multigrid_coarse_smoother") == "Jacobi",
+            name + ": geometric multigrid did not select the Jacobi coarse smoother");
   }
   if (flow == 2 || with_immersed) require(coupler,residual <= 1.1e-4,name + ": linear solver residual is too large");
   real const screening_coefficient =
@@ -602,27 +550,14 @@ int main(int argc, char **argv) {
   Kokkos::initialize();
   yakl::init();
   {
-    bool const multigrid_city_only = argc > 1 && std::string(argv[1]) == "--multigrid-city-only";
     bool const geometric_only = argc > 1 && std::string(argv[1]) == "--geometric-only";
-    bool const tensor_line_only = argc > 1 && std::string(argv[1]) == "--tensor-line-only";
-    int const schwarz_tile = argc > 1 && !multigrid_city_only && !geometric_only && !tensor_line_only ?
-                             std::stoi(argv[1]) : 16;
-    int const schwarz_degree = argc > 2 && !multigrid_city_only && !geometric_only && !tensor_line_only ?
-                               std::stoi(argv[2]) : 16;
-    if (multigrid_city_only) {
-      run_case("anelastic_multigrid_city",2,true,24,1,2,0,false,false,"Multigrid",16,16,0,false,true);
-      run_case("anelastic_multigrid_city_screened",2,true,24,1,2,0,false,false,"Multigrid",16,16,350,false,true);
-      run_case("anelastic_multigrid_city_shallow",2,true,24,1,2,0,false,false,"Multigrid",16,16,350,false,true,2,false);
-    } else if (geometric_only) {
+    int const schwarz_tile = argc > 1 && !geometric_only ? std::stoi(argv[1]) : 16;
+    int const schwarz_degree = argc > 2 && !geometric_only ? std::stoi(argv[2]) : 16;
+    if (geometric_only) {
       run_case("anelastic_geometric_multigrid_pure_abl",2,false,24,1,2,0,false,true,
                "GeometricMultigrid",16,16,0);
       run_case("anelastic_geometric_multigrid_pure_abl_screened_odd_grid",2,false,25,1,2,0,false,true,
-               "GeometricMultigrid",16,16,350);
-    } else if (tensor_line_only) {
-      run_case("anelastic_tensor_line_multigrid_pure_abl",2,false,24,1,2,0,false,true,
-               "TensorLineMultigrid",16,16,0);
-      run_case("anelastic_tensor_line_multigrid_pure_abl_screened_odd_grid",2,false,25,1,2,0,false,true,
-               "TensorLineMultigrid",16,16,350);
+               "GeometricMultigrid",16,16,350,false,true);
     } else {
       run_case("anelastic_hydrostatic_rest",0,false);
       run_case("anelastic_uniform_periodic",1,false);

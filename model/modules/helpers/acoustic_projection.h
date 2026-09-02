@@ -6,7 +6,6 @@
 #include "TransformMatrices.h"
 #include "GMRES.h"
 #include "ConjGrad.h"
-#include "ConnectivityGalerkinMultigrid.h"
 #include "GeometricMultigrid.h"
 #include <memory>
 #include <sstream>
@@ -36,15 +35,6 @@ namespace modules {
     int schwarz_chebyshev_degree        = 8;
     real schwarz_chebyshev_lambda_min   = 0.02;
     real schwarz_chebyshev_lambda_max   = 2;
-    std::shared_ptr<ConnectivityGalerkinMultigrid<float>> multigrid;
-    int multigrid_vcycles               = 1;
-    int multigrid_pre_smooth            = 1;
-    int multigrid_post_smooth           = 1;
-    int multigrid_aggregate_size        = 8;
-    int multigrid_max_levels            = 24;
-    int multigrid_coarse_max_dofs       = 256;
-    int multigrid_coarse_smooth         = 16;
-    real multigrid_jacobi_weight        = 2._fp/3._fp;
     std::shared_ptr<GeometricMultigrid<float>> geometric_multigrid;
     int geometric_multigrid_vcycles            = 1;
     int geometric_multigrid_pre_smooth         = 2;
@@ -53,24 +43,9 @@ namespace modules {
     int geometric_multigrid_coarse_cells       = 32768;
     int geometric_multigrid_min_cells_per_rank = 131072;
     real geometric_multigrid_jacobi_weight     = 2._fp/3._fp;
-    bool geometric_multigrid_coarse_schwarz    = true;
-    int geometric_multigrid_coarse_schwarz_applications = 6;
-    int geometric_multigrid_coarse_schwarz_tile_nx = 8;
-    int geometric_multigrid_coarse_schwarz_tile_ny = 8;
-    int geometric_multigrid_coarse_schwarz_tile_nz = 4;
-    int geometric_multigrid_coarse_schwarz_overlap = 2;
-    int geometric_multigrid_coarse_schwarz_local_iterations = 4;
-    std::vector<int> geometric_multigrid_coarsening_factors = {2};
-    std::shared_ptr<GeometricMultigrid<float>> tensor_line_multigrid;
-    int tensor_line_multigrid_vcycles            = 1;
-    int tensor_line_multigrid_pre_smooth         = 2;
-    int tensor_line_multigrid_post_smooth        = 2;
-    int tensor_line_multigrid_coarse_smooth      = 24;
-    int tensor_line_multigrid_coarse_nx          = 50;
-    int tensor_line_multigrid_coarse_ny          = 50;
-    int tensor_line_multigrid_min_cells_per_rank = 131072;
-    real tensor_line_multigrid_jacobi_weight     = 2._fp/3._fp;
-    std::vector<int> tensor_line_multigrid_coarsening_factors = {2};
+    int geometric_multigrid_coarsening_factor_x = 2;
+    int geometric_multigrid_coarsening_factor_y = 2;
+    real geometric_multigrid_coarsening_factor_z = 2;
   };
 
   namespace detail {
@@ -750,16 +725,6 @@ namespace modules {
         (void) comm;
       };
 
-      auto multigrid_preconditioner = [&] (yakl::Array<ProjectionScalar *> const & r_in,
-                                            yakl::Array<ProjectionScalar *> const & z_out, MPI_Comm comm) {
-        if (!config.multigrid || !config.multigrid->initialized()) {
-          endrun("ERROR: anelastic multigrid preconditioner was not initialized");
-        }
-        config.multigrid->apply(r_in,z_out,screening_inv_length_squared,dt_proj);
-        project_pressure(z_out.reshape(nz,ny,nx),z_out.reshape(nz,ny,nx));
-        (void) comm;
-      };
-
       auto geometric_multigrid_preconditioner = [&] (yakl::Array<ProjectionScalar *> const & r_in,
                                                        yakl::Array<ProjectionScalar *> const & z_out,
                                                        MPI_Comm comm) {
@@ -767,17 +732,6 @@ namespace modules {
           endrun("ERROR: anelastic geometric multigrid preconditioner was not initialized");
         }
         config.geometric_multigrid->apply(r_in,z_out,screening_inv_length_squared,dt_proj);
-        project_pressure(z_out.reshape(nz,ny,nx),z_out.reshape(nz,ny,nx));
-        (void) comm;
-      };
-
-      auto tensor_line_multigrid_preconditioner = [&] (yakl::Array<ProjectionScalar *> const & r_in,
-                                                        yakl::Array<ProjectionScalar *> const & z_out,
-                                                        MPI_Comm comm) {
-        if (!config.tensor_line_multigrid || !config.tensor_line_multigrid->initialized()) {
-          endrun("ERROR: anelastic tensor-line multigrid preconditioner was not initialized");
-        }
-        config.tensor_line_multigrid->apply(r_in,z_out,screening_inv_length_squared,dt_proj);
         project_pressure(z_out.reshape(nz,ny,nx),z_out.reshape(nz,ny,nx));
         (void) comm;
       };
@@ -954,15 +908,9 @@ namespace modules {
         cg_opts.abs_tol   = opts.abs_tol;
         cg_opts.verbose   = opts.verbose;
         typename YaklConjGrad<ProjectionScalar>::Result cg_result;
-        if (preconditioner == "TensorLineMultigrid") {
-          cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
-                               tensor_line_multigrid_preconditioner,compute_Ax_and_local_dot);
-        } else if (preconditioner == "GeometricMultigrid") {
+        if (preconditioner == "GeometricMultigrid") {
           cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
                                geometric_multigrid_preconditioner,compute_Ax_and_local_dot);
-        } else if (preconditioner == "Multigrid") {
-          cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
-                               multigrid_preconditioner,compute_Ax_and_local_dot);
         } else if (preconditioner == "Schwarz") {
           cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
                                schwarz_preconditioner,compute_Ax_and_local_dot);
@@ -978,15 +926,9 @@ namespace modules {
         solver_converged = cg_result.converged;
       } else {
         typename YaklRestartedGMRES<ProjectionScalar>::Result gmres_result;
-        if (preconditioner == "TensorLineMultigrid") {
-          gmres_result = gmres.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,opts,comm,nullptr,
-                                     tensor_line_multigrid_preconditioner);
-        } else if (preconditioner == "GeometricMultigrid") {
+        if (preconditioner == "GeometricMultigrid") {
           gmres_result = gmres.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,opts,comm,nullptr,
                                      geometric_multigrid_preconditioner);
-        } else if (preconditioner == "Multigrid") {
-          gmres_result = gmres.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,opts,comm,nullptr,
-                                     multigrid_preconditioner);
         } else if (preconditioner == "Schwarz") {
           gmres_result = gmres.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,opts,comm,nullptr,
                                      schwarz_preconditioner);
@@ -1385,38 +1327,13 @@ namespace modules {
       coupler.set_option<bool>("dycore_anelastic_use_jacobi_preconditioner",
                                config.preconditioner == "Jacobi");
 
-      // Set up globally anchored horizontal Schwarz tiles. Each rank stores only the tiles whose overlapped support
-      // intersects its owned cells. At application time those tiles are evaluated redundantly from a wide MPI halo;
-      // this avoids both atomics and an asymmetric correction exchange at rank boundaries.
       std::string const &preconditioner = config.preconditioner;
       if (preconditioner != "none" && preconditioner != "Jacobi" && preconditioner != "Schwarz" &&
-          preconditioner != "Multigrid" && preconditioner != "GeometricMultigrid" &&
-          preconditioner != "TensorLineMultigrid") {
-        endrun("ERROR: acoustic projection preconditioner must be none, Jacobi, Schwarz, Multigrid, "
-               "GeometricMultigrid, or TensorLineMultigrid");
+          preconditioner != "GeometricMultigrid") {
+        endrun("ERROR: acoustic projection preconditioner must be none, Jacobi, Schwarz, or GeometricMultigrid");
       }
       coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
-      if (preconditioner == "TensorLineMultigrid") {
-        if (!config.tensor_line_multigrid) {
-          endrun("ERROR: anelastic tensor-line multigrid preconditioner has no persistent solver object");
-        }
-        typename GeometricMultigrid<float>::Options options;
-        options.vcycles = config.tensor_line_multigrid_vcycles;
-        options.pre_smooth = config.tensor_line_multigrid_pre_smooth;
-        options.post_smooth = config.tensor_line_multigrid_post_smooth;
-        options.coarse_smooth = config.tensor_line_multigrid_coarse_smooth;
-        options.coarse_cells = 1;
-        options.min_cells_per_rank = config.tensor_line_multigrid_min_cells_per_rank;
-        options.jacobi_weight = static_cast<float>(config.tensor_line_multigrid_jacobi_weight);
-        options.vertical_line_smoother = true;
-        options.horizontal_only = true;
-        options.require_single_coarse_rank = true;
-        options.coarse_nx = config.tensor_line_multigrid_coarse_nx;
-        options.coarse_ny = config.tensor_line_multigrid_coarse_ny;
-        options.coarsening_factors = config.tensor_line_multigrid_coarsening_factors;
-        options.metadata_prefix = "dycore_anelastic_tensor_line_multigrid";
-        config.tensor_line_multigrid->initialize(coupler,options);
-      } else if (preconditioner == "GeometricMultigrid") {
+      if (preconditioner == "GeometricMultigrid") {
         if (!config.geometric_multigrid) {
           endrun("ERROR: anelastic geometric multigrid preconditioner has no persistent solver object");
         }
@@ -1428,29 +1345,13 @@ namespace modules {
         options.coarse_cells = config.geometric_multigrid_coarse_cells;
         options.min_cells_per_rank = config.geometric_multigrid_min_cells_per_rank;
         options.jacobi_weight = static_cast<float>(config.geometric_multigrid_jacobi_weight);
-        options.coarse_schwarz = config.geometric_multigrid_coarse_schwarz;
-        options.coarse_schwarz_applications = config.geometric_multigrid_coarse_schwarz_applications;
-        options.coarse_schwarz_tile_nx = config.geometric_multigrid_coarse_schwarz_tile_nx;
-        options.coarse_schwarz_tile_ny = config.geometric_multigrid_coarse_schwarz_tile_ny;
-        options.coarse_schwarz_tile_nz = config.geometric_multigrid_coarse_schwarz_tile_nz;
-        options.coarse_schwarz_overlap = config.geometric_multigrid_coarse_schwarz_overlap;
-        options.coarse_schwarz_local_iterations = config.geometric_multigrid_coarse_schwarz_local_iterations;
-        options.require_single_coarse_rank = true;
-        options.coarsening_factors = config.geometric_multigrid_coarsening_factors;
+        options.coarsening_factor_x = config.geometric_multigrid_coarsening_factor_x;
+        options.coarsening_factor_y = config.geometric_multigrid_coarsening_factor_y;
+        options.coarsening_factor_z = config.geometric_multigrid_coarsening_factor_z;
         config.geometric_multigrid->initialize(coupler,options);
-      } else if (preconditioner == "Multigrid") {
-        if (!config.multigrid) endrun("ERROR: anelastic multigrid preconditioner has no persistent solver object");
-        typename ConnectivityGalerkinMultigrid<float>::Options options;
-        options.vcycles = config.multigrid_vcycles;
-        options.pre_smooth = config.multigrid_pre_smooth;
-        options.post_smooth = config.multigrid_post_smooth;
-        options.aggregate_size = config.multigrid_aggregate_size;
-        options.max_levels = config.multigrid_max_levels;
-        options.coarse_max_dofs = config.multigrid_coarse_max_dofs;
-        options.coarse_smooth = config.multigrid_coarse_smooth;
-        options.jacobi_weight = static_cast<float>(config.multigrid_jacobi_weight);
-        config.multigrid->initialize(coupler,options);
       } else if (preconditioner == "Schwarz") {
+        // Each rank stores globally anchored horizontal tiles whose overlapped support intersects its owned cells.
+        // The tiles are evaluated redundantly from a wide MPI halo, avoiding atomics and asymmetric corrections.
         int const tile_nx = config.schwarz_tile_nx;
         int const tile_ny = config.schwarz_tile_ny;
         int const overlap = config.schwarz_overlap;
