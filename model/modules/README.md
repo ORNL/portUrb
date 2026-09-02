@@ -2,6 +2,16 @@
 
 For more information on a module, please see the individual module source file (`*.h`) itself and the comments therein. Some are classes that implement an `init` and a custom-named run function name. Some only implement a custom-named run function. Most accept the coupler object and time step size in their run functions, but some accept additional parameters.
 
+The edge-centered anelastic dycore's PCG implementation uses cell-volume-proportional Krylov products and residual
+norms. Its pressure-nullspace projection uses the same weights. Geometric multigrid uses the corresponding restriction
+`R = Vc^{-1} P^T Vf`, so nonuniform vertical grids retain the weighted symmetry required by PCG. The weights are
+normalized by the first vertical cell width, giving unit weights on uniform grids.
+
+Geometric multigrid supports extents that are not divisible by the requested coarsening factor. It uses
+`ceil(N/factor)` equal-width coarse cells over the same physical domain, physical-coordinate quadratic prolongation,
+and the corresponding volume-weighted-adjoint restriction. The `anelastic_geometric_multigrid_mpi` CTest runs an odd
+grid on four MPI ranks so restriction and prolongation cross uneven horizontal rank boundaries.
+
 Also, check out the `portUrb/experiments/examples` directory `*.cpp` files for examples of how to use the modules below.
 
 * `helpers/`: Contains helper files, mainly for the dynamical core (`dynamics_cell_centered.h`) for reconstruction (`TransformMatrices.h`), Weighted Essentially Non-Oscillatory reconstruction (`WenoLimiter.h`), and sagemath code to generate code for the reconstruction and WENO source files.

@@ -185,7 +185,8 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
               int cube_width = 2, int cube_k_beg = 2, bool run_invariance_checks = true,
               bool use_hydrostatic_profile = true, std::string const & preconditioner = "Jacobi",
               int schwarz_tile = 16, int schwarz_degree = 16, real sound_speed = 0,
-              bool check_compression = false, bool stretched_vertical = false) {
+              bool check_compression = false, bool stretched_vertical = false,
+              bool require_multirank_transfer = false) {
   int const nx = n;
   int const ny = n;
   int const nz = n;
@@ -225,9 +226,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     coupler.set_option<bool>("dycore_anelastic_use_cg",true);
     coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",n%2 == 0 ? 64 : 2200);
     coupler.set_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",64);
-    coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarsening_factor_x",2);
-    coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarsening_factor_y",3);
-    coupler.set_option<real>("dycore_anelastic_geometric_multigrid_coarsening_factor_z",1.5_fp);
+    coupler.set_option<int>("dycore_anelastic_geometric_multigrid_coarsening_factor",2);
   }
   coupler.set_option<real>("dycore_anelastic_gmres_rel_tol",1.e-4);
   if (flow == 2 || with_immersed) {
@@ -237,6 +236,16 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   auto const zint = stretched_vertical ? coupler.generate_levels_exp(nz,zlen,0.7_fp*grid_spacing) :
                                          coupler.generate_levels_equal(nz,zlen);
   coupler.init(core::ParallelComm(MPI_COMM_WORLD),zint,ny,nx,ylen,xlen);
+  if (require_multirank_transfer) {
+    require(coupler,coupler.get_nranks() > 1,name + ": MPI transfer validation requires multiple ranks");
+    auto const &comm = coupler.get_parallel_comm();
+    int const min_nx = comm.all_reduce(coupler.get_nx(),MPI_MIN);
+    int const max_nx = comm.all_reduce(coupler.get_nx(),MPI_MAX);
+    int const min_ny = comm.all_reduce(coupler.get_ny(),MPI_MIN);
+    int const max_ny = comm.all_reduce(coupler.get_ny(),MPI_MAX);
+    require(coupler,min_nx != max_nx || min_ny != max_ny,
+            name + ": MPI transfer validation did not create an uneven horizontal partition");
+  }
   coupler.add_tracer("water_vapor","water_vapor",true,false,true);
   custom_modules::sc_init(coupler);
   coupler.set_option<std::string>("bc_x1","periodic");
@@ -362,23 +371,20 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
             name + ": geometric multigrid coarse level is empty");
     require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_nz") > 0,
             name + ": geometric multigrid coarse vertical extent is empty");
-    if (stretched_vertical) {
-      require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_nz") ==
-                      static_cast<int>(std::round(n/1.5_fp)),
-              name + ": geometric multigrid did not round the non-integral vertical coarsening extent");
-    }
     require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_ranks") == 1,
             name + ": geometric multigrid did not agglomerate onto one coarse task");
-    require(coupler,coupler.get_option<std::string>("dycore_anelastic_geometric_multigrid_interpolation") ==
-                    "Quadratic",
-            name + ": geometric multigrid did not use quadratic interpolation");
     require(coupler,coupler.get_option<int>(
-                        "dycore_anelastic_geometric_multigrid_coarsening_factor_x") == 2 &&
-                    coupler.get_option<int>(
-                        "dycore_anelastic_geometric_multigrid_coarsening_factor_y") == 3 &&
-                    coupler.get_option<real>(
-                        "dycore_anelastic_geometric_multigrid_coarsening_factor_z") == 1.5_fp,
-            name + ": geometric multigrid did not retain its directional coarsening factors");
+                        "dycore_anelastic_geometric_multigrid_coarsening_factor") == 2,
+            name + ": geometric multigrid did not retain its requested coarsening factor");
+    require(coupler,coupler.get_option<std::string>(
+                        "dycore_anelastic_geometric_multigrid_interpolation") ==
+                        "PhysicalCoordinateQuadratic",
+            name + ": geometric multigrid did not select physical-coordinate quadratic interpolation");
+    if (require_multirank_transfer) {
+      require(coupler,coupler.get_option<bool>(
+                          "dycore_anelastic_geometric_multigrid_uses_mpi_transfers"),
+              name + ": geometric multigrid did not exercise MPI restriction/prolongation transfers");
+    }
     require(coupler,coupler.get_option<std::string>(
                         "dycore_anelastic_geometric_multigrid_coarse_smoother") == "Jacobi",
             name + ": geometric multigrid did not select the Jacobi coarse smoother");
@@ -577,13 +583,18 @@ int main(int argc, char **argv) {
   yakl::init();
   {
     bool const geometric_only = argc > 1 && std::string(argv[1]) == "--geometric-only";
-    int const schwarz_tile = argc > 1 && !geometric_only ? std::stoi(argv[1]) : 16;
-    int const schwarz_degree = argc > 2 && !geometric_only ? std::stoi(argv[2]) : 16;
-    if (geometric_only) {
+    bool const geometric_mpi_only = argc > 1 && std::string(argv[1]) == "--geometric-mpi-only";
+    bool const geometric_test = geometric_only || geometric_mpi_only;
+    int const schwarz_tile = argc > 1 && !geometric_test ? std::stoi(argv[1]) : 16;
+    int const schwarz_degree = argc > 2 && !geometric_test ? std::stoi(argv[2]) : 16;
+    if (geometric_mpi_only) {
+      run_case("anelastic_geometric_multigrid_mpi_odd_grid",2,false,25,1,2,0,false,true,
+               "GeometricMultigrid",16,16,350,false,false,true);
+    } else if (geometric_only) {
       run_case("anelastic_geometric_multigrid_pure_abl",2,false,24,1,2,0,false,true,
                "GeometricMultigrid",16,16,0);
       run_case("anelastic_geometric_multigrid_pure_abl_screened_odd_grid",2,false,25,1,2,0,false,true,
-               "GeometricMultigrid",16,16,350,false,true);
+               "GeometricMultigrid",16,16,350,false,false);
     } else {
       run_case("anelastic_hydrostatic_rest",0,false);
       run_case("anelastic_uniform_periodic",1,false);

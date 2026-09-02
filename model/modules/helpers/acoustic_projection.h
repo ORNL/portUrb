@@ -43,9 +43,7 @@ namespace modules {
     int geometric_multigrid_coarse_cells       = 32768;
     int geometric_multigrid_min_cells_per_rank = 131072;
     real geometric_multigrid_jacobi_weight     = 2._fp/3._fp;
-    int geometric_multigrid_coarsening_factor_x = 2;
-    int geometric_multigrid_coarsening_factor_y = 2;
-    real geometric_multigrid_coarsening_factor_z = 2;
+    int geometric_multigrid_coarsening_factor = 2;
   };
 
   namespace detail {
@@ -57,6 +55,16 @@ namespace modules {
     using ProjectionScalar = float;
     using Projection3d = yakl::Array<ProjectionScalar ***>;
     using Projection4d = yakl::Array<ProjectionScalar ****>;
+
+    struct VerticalCellWeight {
+      real1d dz;
+      ProjectionScalar scale;
+      int horizontal_cells;
+
+      KOKKOS_INLINE_FUNCTION ProjectionScalar operator()(int index) const {
+        return scale*static_cast<ProjectionScalar>(dz(index/horizontal_cells));
+      }
+    };
 
     int static constexpr hs   = ord/2;
     int static constexpr idPP = 0;
@@ -192,7 +200,11 @@ namespace modules {
       auto const fluid_mask = dm.get<int const,3>("dycore_anelastic_fluid_mask");
       auto const inv_diagonal_dtless =
           dm.get<float const,3>("dycore_anelastic_projection_inv_diagonal_dtless");
-      int const fluid_count = coupler.get_option<int>("dycore_anelastic_fluid_count");
+      ProjectionScalar const vertical_weight_scale = static_cast<ProjectionScalar>(
+          coupler.get_option<real>("dycore_anelastic_vertical_inner_product_scale"));
+      ProjectionScalar const fluid_volume_weight = static_cast<ProjectionScalar>(
+          coupler.get_option<real>("dycore_anelastic_fluid_volume_weight"));
+      VerticalCellWeight const volume_weight{dz,vertical_weight_scale,nx*ny};
       ProjectionScalar const dt_proj = static_cast<ProjectionScalar>(dt);
       ProjectionScalar const dx_proj = static_cast<ProjectionScalar>(dx);
       ProjectionScalar const dy_proj = static_cast<ProjectionScalar>(dy);
@@ -250,18 +262,19 @@ namespace modules {
       // representative, while screening removes that constant nullspace. Applying the appropriate linear restriction to
       // every matrix input and output preserves the linearity required by Krylov solvers.
       auto project_pressure = [&] (Projection3d const & input, Projection3d const & output) {
-        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          projection_work(k,j,i) = fluid_mask(k,j,i) == 1 ? input(k,j,i) : 0;
-        });
         if (screening_enabled) {
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-            output(k,j,i) = projection_work(k,j,i);
+            output(k,j,i) = fluid_mask(k,j,i) == 1 ? input(k,j,i) : 0;
           });
           return ProjectionScalar(0);
         }
+        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+          projection_work(k,j,i) = fluid_mask(k,j,i) == 1 ?
+              vertical_weight_scale*static_cast<ProjectionScalar>(dz(k))*input(k,j,i) : 0;
+        });
         ProjectionScalar const sum =
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
-        ProjectionScalar const mean = sum/static_cast<ProjectionScalar>(fluid_count);
+        ProjectionScalar const mean = sum/fluid_volume_weight;
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
           output(k,j,i) = fluid_mask(k,j,i) == 1 ? input(k,j,i)-mean : 0;
         });
@@ -559,7 +572,7 @@ namespace modules {
       auto compute_Ax_and_local_dot = [&] (yakl::Array<ProjectionScalar *> const & x_in,
                                            yakl::Array<ProjectionScalar *> const & Ax_out, MPI_Comm comm) {
         compute_Ax(x_in,Ax_out,comm);
-        return YaklConjGrad<ProjectionScalar>::local_dot(x_in,Ax_out);
+        return YaklConjGrad<ProjectionScalar>::local_dot(x_in,Ax_out,volume_weight);
       };
 
       // The cached diagonal is for the unscreened unit-timestep operator. Add the timestep-dependent screening term
@@ -776,7 +789,7 @@ namespace modules {
         project_pressure(checker,checker);
         auto dot_fields = [&] (Projection3d const & a, Projection3d const & b) {
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-            projection_work(k,j,i) = a(k,j,i)*b(k,j,i);
+            projection_work(k,j,i) = vertical_weight_scale*static_cast<ProjectionScalar>(dz(k))*a(k,j,i)*b(k,j,i);
           });
           return coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
         };
@@ -787,7 +800,8 @@ namespace modules {
                                                  (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy +
                                                  (hv_z(k+1,j,i)-hv_z(k,j,i))/
                                                  static_cast<ProjectionScalar>(dz(k));
-            projection_work(k,j,i) = mode(k,j,i)*pressure_hv;
+            projection_work(k,j,i) = vertical_weight_scale*static_cast<ProjectionScalar>(dz(k))*
+                                     mode(k,j,i)*pressure_hv;
           });
           return coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
         };
@@ -853,8 +867,9 @@ namespace modules {
         yakl::parallel_for(YAKL_AUTO_LABEL(), n, KOKKOS_LAMBDA (int i) {
           ProjectionScalar const diff =
               Az(i)-(ProjectionScalar(0.37)*Ax(i)-ProjectionScalar(0.21)*Ay(i));
-          work(i) = diff*diff;
-          z(i) = Az(i)*Az(i);
+          ProjectionScalar const volume = volume_weight(i);
+          work(i) = volume*diff*diff;
+          z(i) = volume*Az(i)*Az(i);
         });
         ProjectionScalar const err =
             std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(work),MPI_SUM));
@@ -877,7 +892,8 @@ namespace modules {
         norm_work = Projection3d("anelastic_projection_norm",nz,ny,nx);
         if (diagnostics) {
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-            norm_work(k,j,i) = pressure_rhs(k,j,i)*pressure_rhs(k,j,i);
+            norm_work(k,j,i) = vertical_weight_scale*static_cast<ProjectionScalar>(dz(k))*
+                               pressure_rhs(k,j,i)*pressure_rhs(k,j,i);
           });
           pre_div_l2 = std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM));
         }
@@ -913,16 +929,16 @@ namespace modules {
         typename YaklConjGrad<ProjectionScalar>::Result cg_result;
         if (preconditioner == "GeometricMultigrid") {
           cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
-                               geometric_multigrid_preconditioner,compute_Ax_and_local_dot);
+                               geometric_multigrid_preconditioner,compute_Ax_and_local_dot,volume_weight);
         } else if (preconditioner == "Schwarz") {
           cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
-                               schwarz_preconditioner,compute_Ax_and_local_dot);
+                               schwarz_preconditioner,compute_Ax_and_local_dot,volume_weight);
         } else if (preconditioner == "Jacobi") {
           cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
-                               jacobi_preconditioner,compute_Ax_and_local_dot);
+                               jacobi_preconditioner,compute_Ax_and_local_dot,volume_weight);
         } else {
           cg_result = cg.solve(pressure.collapse(),pressure_rhs.collapse(),compute_Ax,cg_workspace,cg_opts,comm,
-                               nullptr,compute_Ax_and_local_dot);
+                               nullptr,compute_Ax_and_local_dot,volume_weight);
         }
         if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("anelastic_pcg_solve");
         solver_iters = cg_result.iters;
@@ -959,17 +975,19 @@ namespace modules {
       project_pressure(pressure,pressure);
       if constexpr (yakl::kokkos_debug) {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          norm_work(k,j,i) = fluid_mask(k,j,i) == 1 ? pressure(k,j,i) : 0;
+          norm_work(k,j,i) = fluid_mask(k,j,i) == 1 ? vertical_weight_scale*
+              static_cast<ProjectionScalar>(dz(k))*pressure(k,j,i) : 0;
         });
         ProjectionScalar const final_pressure_sum =
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM);
         coupler.set_option<real>("dycore_anelastic_last_pressure_mean",
-                                 static_cast<real>(final_pressure_sum/static_cast<ProjectionScalar>(fluid_count)));
+                                 static_cast<real>(final_pressure_sum/fluid_volume_weight));
       }
       if constexpr (yakl::kokkos_debug) {
         if (cg_check) {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          norm_work(k,j,i) = fluid_mask(k,j,i) == 1 ? pressure(k,j,i)*pressure(k,j,i) : 0;
+          norm_work(k,j,i) = fluid_mask(k,j,i) == 1 ? vertical_weight_scale*
+              static_cast<ProjectionScalar>(dz(k))*pressure(k,j,i)*pressure(k,j,i) : 0;
         });
         ProjectionScalar const pressure_norm_sq =
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM);
@@ -982,15 +1000,16 @@ namespace modules {
             if ((mode & 4) != 0) parity += k;
             ProjectionScalar const checker_value = parity%2 == 0 ? 1 : -1;
             bool const is_fluid = fluid_mask(k,j,i) == 1;
-            projection_work(k,j,i) = is_fluid ? checker_value : 0;
-            norm_work(k,j,i) = is_fluid ? pressure(k,j,i)*checker_value : 0;
+            ProjectionScalar const volume = vertical_weight_scale*static_cast<ProjectionScalar>(dz(k));
+            projection_work(k,j,i) = is_fluid ? volume*checker_value : 0;
+            norm_work(k,j,i) = is_fluid ? volume*pressure(k,j,i)*checker_value : 0;
           });
           ProjectionScalar const checker_sum =
               coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
           ProjectionScalar const pressure_checker_dot =
               coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM);
-          ProjectionScalar const checker_norm_sq = static_cast<ProjectionScalar>(fluid_count)-
-              checker_sum*checker_sum/static_cast<ProjectionScalar>(fluid_count);
+          ProjectionScalar const checker_norm_sq = fluid_volume_weight-
+              checker_sum*checker_sum/fluid_volume_weight;
           ProjectionScalar const denominator = std::sqrt(pressure_norm_sq*checker_norm_sq);
           ProjectionScalar const correlation = denominator > 0 ? std::abs(pressure_checker_dot)/denominator : 0;
           max_checker_correlation = std::max(max_checker_correlation,correlation);
@@ -1016,8 +1035,9 @@ namespace modules {
         yakl::parallel_for(YAKL_AUTO_LABEL(), residual.size(), KOKKOS_LAMBDA (int i) {
           ProjectionScalar const r = bflat(i)-Ax(i);
           bool const is_fluid = mask_flat(i) == 1;
-          residual(i) = is_fluid ? r*r : 0;
-          Ax(i) = is_fluid ? bflat(i)*bflat(i) : 0;
+          ProjectionScalar const volume = use_cg ? volume_weight(i) : ProjectionScalar(1);
+          residual(i) = is_fluid ? volume*r*r : 0;
+          Ax(i) = is_fluid ? volume*bflat(i)*bflat(i) : 0;
           norm_work_flat(i) = is_fluid ? 0 : std::abs(r);
         });
         ProjectionScalar const immersed_residual_max =
@@ -1029,8 +1049,9 @@ namespace modules {
         yakl::parallel_for(YAKL_AUTO_LABEL(), residual.size(), KOKKOS_LAMBDA (int i) {
           ProjectionScalar const r = bflat(i)-Ax(i);
           bool const is_fluid = mask_flat(i) == 1;
-          residual(i) = is_fluid ? r*r : 0;
-          Ax(i) = is_fluid ? bflat(i)*bflat(i) : 0;
+          ProjectionScalar const volume = use_cg ? volume_weight(i) : ProjectionScalar(1);
+          residual(i) = is_fluid ? volume*r*r : 0;
+          Ax(i) = is_fluid ? volume*bflat(i)*bflat(i) : 0;
         });
       }
       ProjectionScalar const true_abs =
@@ -1084,7 +1105,7 @@ namespace modules {
               (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
               (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
               (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
-          norm_work(k,j,i) = divergence*divergence;
+          norm_work(k,j,i) = vertical_weight_scale*static_cast<ProjectionScalar>(dz(k))*divergence*divergence;
         });
         ProjectionScalar const post_div_l2 =
             std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM));
@@ -1095,7 +1116,7 @@ namespace modules {
               (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
           ProjectionScalar const constraint = divergence+
               dt_proj*screening_inv_length_squared*pressure(k,j,i);
-          norm_work(k,j,i) = constraint*constraint;
+          norm_work(k,j,i) = vertical_weight_scale*static_cast<ProjectionScalar>(dz(k))*constraint*constraint;
         });
         ProjectionScalar const screened_constraint_l2 =
             std::sqrt(coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM));
@@ -1179,6 +1200,27 @@ namespace modules {
       int const fluid_count = coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(fluid_mask),MPI_SUM);
       if (fluid_count == 0) endrun("ERROR: anelastic projection has no fluid cells");
       coupler.set_option<int>("dycore_anelastic_fluid_count",fluid_count);
+      auto dz_host = dz.createHostCopy();
+      for (int k = 0; k < nz; k++) {
+        if (!(std::isfinite(dz_host(k)) && dz_host(k) > 0)) {
+          endrun("ERROR: anelastic projection requires finite positive vertical cell widths");
+        }
+      }
+      // Horizontal cell area is constant, so dz/dz(0) is proportional to cell volume while retaining unit weights for
+      // a uniform column. Cache the fixed global fluid weight to keep pressure projections free of setup reductions.
+      real const vertical_weight_scale = 1/dz_host(0);
+      Projection3d fluid_volume_work("anelastic_fluid_volume_work",nz,ny,nx);
+      yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+        fluid_volume_work(k,j,i) = fluid_mask(k,j,i) == 1 ?
+            static_cast<ProjectionScalar>(vertical_weight_scale*dz(k)) : 0;
+      });
+      ProjectionScalar const fluid_volume_weight = coupler.get_parallel_comm().all_reduce(
+          yakl::intrinsics::sum(fluid_volume_work),MPI_SUM);
+      if (!(std::isfinite(fluid_volume_weight) && fluid_volume_weight > 0)) {
+        endrun("ERROR: anelastic projection has invalid fluid-cell volume weights");
+      }
+      coupler.set_option<real>("dycore_anelastic_vertical_inner_product_scale",vertical_weight_scale);
+      coupler.set_option<real>("dycore_anelastic_fluid_volume_weight",static_cast<real>(fluid_volume_weight));
       coupler.set_option<int>("dycore_anelastic_cg_solve_count",0);
       coupler.set_option<real>("dycore_anelastic_cg_iteration_sum",0);
       coupler.set_option<real>("dycore_anelastic_cg_iteration_sum_squares",0);
@@ -1349,9 +1391,7 @@ namespace modules {
         options.coarse_cells = config.geometric_multigrid_coarse_cells;
         options.min_cells_per_rank = config.geometric_multigrid_min_cells_per_rank;
         options.jacobi_weight = static_cast<float>(config.geometric_multigrid_jacobi_weight);
-        options.coarsening_factor_x = config.geometric_multigrid_coarsening_factor_x;
-        options.coarsening_factor_y = config.geometric_multigrid_coarsening_factor_y;
-        options.coarsening_factor_z = config.geometric_multigrid_coarsening_factor_z;
+        options.coarsening_factor = config.geometric_multigrid_coarsening_factor;
         config.geometric_multigrid->initialize(coupler,options);
       } else if (preconditioner == "Schwarz") {
         // Each rank stores globally anchored horizontal tiles whose overlapped support intersects its owned cells.

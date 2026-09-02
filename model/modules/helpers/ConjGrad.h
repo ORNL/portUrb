@@ -36,9 +36,15 @@
 // on r.z; it does not form the generally nonsymmetric right-preconditioned operator A*M^{-1}.
 //
 // All vector arithmetic and local reductions execute on the GPU. Global dot products
-// reduce directly into a scalar without materializing an elementwise-product array.
+// reduce directly into a scalar without materializing an elementwise-product array. A
+// caller-supplied per-entry weight makes the recurrence valid for finite-volume operators
+// that are self-adjoint in a volume-weighted rather than Euclidean inner product.
 template <class Scalar = float> requires std::is_floating_point_v<Scalar>
 struct YaklConjGrad {
+
+  struct UnitWeight {
+    KOKKOS_INLINE_FUNCTION Scalar operator()(int) const { return Scalar(1); }
+  };
 
   struct Options {
     int  max_iters = 200;
@@ -74,13 +80,15 @@ struct YaklConjGrad {
 
   // Global dot product a.b. Kokkos performs the complete local reduction without a
   // full-size product workspace or an extra device-memory pass.
+  template <class Weight = UnitWeight>
   static Scalar dot( yakl::Array<Scalar *> const & a ,
                      yakl::Array<Scalar *> const & b ,
-                     MPI_Comm                      comm ) {
+                     MPI_Comm                      comm,
+                     Weight                        weight = {} ) {
     Scalar loc = 0;
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_local_dot_reduce");
     Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,a.size()),
-                            KOKKOS_LAMBDA (int i, Scalar &sum) { sum += a(i)*b(i); },loc);
+                            KOKKOS_LAMBDA (int i, Scalar &sum) { sum += weight(i)*a(i)*b(i); },loc);
     if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("cg_local_dot_reduce");
     Scalar glob;
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_mpi_allreduce_dot");
@@ -90,48 +98,56 @@ struct YaklConjGrad {
   }
 
 
-  static Scalar norm( yakl::Array<Scalar *> const & a , MPI_Comm comm ) {
-    return std::sqrt(dot(a,a,comm));
+  template <class Weight = UnitWeight>
+  static Scalar norm( yakl::Array<Scalar *> const & a , MPI_Comm comm, Weight weight = {} ) {
+    return std::sqrt(dot(a,a,comm,weight));
   }
 
 
+  template <class Weight = UnitWeight>
   static void local_norm_dot( yakl::Array<Scalar *> const & r ,
                               yakl::Array<Scalar *> const & z ,
                               Scalar                         & rr,
-                              Scalar                         & rz ) {
+                              Scalar                         & rz,
+                              Weight                           weight = {} ) {
     rr = 0;
     rz = 0;
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_local_norm_dot_reduce");
     Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,r.size()),
                             KOKKOS_LAMBDA (int i, Scalar &rr_sum, Scalar &rz_sum) {
-      rr_sum += r(i)*r(i);
-      rz_sum += r(i)*z(i);
+      Scalar const volume = weight(i);
+      rr_sum += volume*r(i)*r(i);
+      rz_sum += volume*r(i)*z(i);
     },Kokkos::Sum<Scalar>(rr),Kokkos::Sum<Scalar>(rz));
     if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("cg_local_norm_dot_reduce");
   }
 
 
+  template <class Weight = UnitWeight>
   static Scalar local_dot( yakl::Array<Scalar *> const & a ,
-                           yakl::Array<Scalar *> const & b ) {
+                           yakl::Array<Scalar *> const & b ,
+                           Weight                        weight = {} ) {
     Scalar result = 0;
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_local_dot_reduce");
     Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,a.size()),
-                            KOKKOS_LAMBDA (int i, Scalar &sum) { sum += a(i)*b(i); },result);
+                            KOKKOS_LAMBDA (int i, Scalar &sum) { sum += weight(i)*a(i)*b(i); },result);
     if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("cg_local_dot_reduce");
     return result;
   }
 
 
+  template <class Weight = UnitWeight>
   static Scalar form_residual( yakl::Array<Scalar *> const & b  ,
                                yakl::Array<Scalar *> const & Ax ,
-                               yakl::Array<Scalar *> const & r  ) {
+                               yakl::Array<Scalar *> const & r  ,
+                               Weight                        weight = {} ) {
     Scalar result = 0;
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_form_residual_reduce");
     Kokkos::parallel_reduce(YAKL_AUTO_LABEL(),Kokkos::RangePolicy<>(0,b.size()),
                             KOKKOS_LAMBDA (int i, Scalar &sum) {
       Scalar const ri = b(i)-Ax(i);
       r(i) = ri;
-      sum += ri*ri;
+      sum += weight(i)*ri*ri;
     },result);
     if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("cg_form_residual_reduce");
     return result;
@@ -191,7 +207,8 @@ struct YaklConjGrad {
   }
 
 
-  template <class ApplyA, class RightPreconditioner = std::nullptr_t, class ApplyAAndDot = std::nullptr_t>
+  template <class ApplyA, class RightPreconditioner = std::nullptr_t, class ApplyAAndDot = std::nullptr_t,
+            class Weight = UnitWeight>
   Result solve( yakl::Array<Scalar *> const & x       , // initial guess (in) / solution (out)
                 yakl::Array<Scalar *> const & b       , // right hand side
                 ApplyA                        apply_A , // apply_A(x_in,Ax_out,comm) -> Ax_out = A*x_in
@@ -199,7 +216,8 @@ struct YaklConjGrad {
                 Options               const & opts    ,
                 MPI_Comm                      comm = MPI_COMM_WORLD,
                 RightPreconditioner           right_preconditioner = nullptr,
-                ApplyAAndDot                  apply_A_and_dot = nullptr ) const {
+                ApplyAAndDot                  apply_A_and_dot = nullptr,
+                Weight                        weight = {} ) const {
     auto len_loc = x.size();
     int  rank;
     MPI_Comm_rank(comm,&rank);
@@ -216,13 +234,13 @@ struct YaklConjGrad {
 
     Result result;
 
-    Scalar const bnorm = norm(b,comm);
+    Scalar const bnorm = norm(b,comm,weight);
 
     // Form r0 and its norm in one GPU reduction kernel.
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_apply_operator");
     apply_A(x,Ap,comm);
     if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("cg_apply_operator");
-    Scalar const loc0 = form_residual(b,Ap,r);
+    Scalar const loc0 = form_residual(b,Ap,r,weight);
     Scalar beta0_sq;
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_mpi_allreduce_residual");
     MPI_Allreduce(&loc0,&beta0_sq,1,mpi_real_type(),MPI_SUM,comm);
@@ -262,7 +280,7 @@ struct YaklConjGrad {
         if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_apply_operator");
         apply_A(input,output,comm);
         if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("cg_apply_operator");
-        return local_dot(input,output);
+        return local_dot(input,output,weight);
       } else {
         if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_apply_operator_and_dot");
         Scalar const result = apply_A_and_dot(input,output,comm);
@@ -278,7 +296,7 @@ struct YaklConjGrad {
       Scalar const delta_loc = apply_A_with_local_dot(u,Ap);
       Scalar rr_loc;
       Scalar gamma_loc;
-      local_norm_dot(r,u,rr_loc,gamma_loc);
+      local_norm_dot(r,u,rr_loc,gamma_loc,weight);
       Scalar loc[3] = {rr_loc,gamma_loc,delta_loc};
       Scalar glob[3];
       if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_mpi_allreduce_recurrence");
@@ -298,7 +316,7 @@ struct YaklConjGrad {
       if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_apply_operator");
       apply_A(x,Ap,comm);
       if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("cg_apply_operator");
-      Scalar const true_loc = form_residual(b,Ap,r);
+      Scalar const true_loc = form_residual(b,Ap,r,weight);
       Scalar true_sq;
       if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_mpi_allreduce_residual");
       MPI_Allreduce(&true_loc,&true_sq,1,mpi_real_type(),MPI_SUM,comm);
@@ -324,7 +342,7 @@ struct YaklConjGrad {
       Scalar const delta_loc = apply_A_with_local_dot(u,Ap);
       Scalar rr_loc;
       Scalar gamma_loc;
-      local_norm_dot(r,u,rr_loc,gamma_loc);
+      local_norm_dot(r,u,rr_loc,gamma_loc,weight);
       Scalar loc[3] = {rr_loc,gamma_loc,delta_loc};
       Scalar glob[3];
       if constexpr (yakl::yakl_auto_profile) yakl::timer_start("cg_mpi_allreduce_recurrence");

@@ -105,9 +105,7 @@ int main(int argc, char** argv) {
     coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarse_cells"                    , 65536       );
     coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_min_cells_per_rank"              , 131072      );
     coupler.set_option<real       >( "dycore_anelastic_geometric_multigrid_jacobi_weight"                   , 2./3.       );
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarsening_factor_x"             , 2           );
-    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarsening_factor_y"             , 2           );
-    coupler.set_option<real       >( "dycore_anelastic_geometric_multigrid_coarsening_factor_z"             , 2           );
+    coupler.set_option<int        >( "dycore_anelastic_geometric_multigrid_coarsening_factor"               , 2           );
 
 
 

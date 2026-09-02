@@ -135,12 +135,13 @@ namespace modules {
       config.geometric_multigrid_coarse_cells                    = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_cells"            ,32768      );
       config.geometric_multigrid_min_cells_per_rank              = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_min_cells_per_rank"      ,131072     );
       config.geometric_multigrid_jacobi_weight                   = coupler.get_option<real       >("dycore_anelastic_geometric_multigrid_jacobi_weight"           ,2._fp/3._fp);
-      config.geometric_multigrid_coarsening_factor_x =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarsening_factor_x",2);
-      config.geometric_multigrid_coarsening_factor_y =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarsening_factor_y",2);
-      config.geometric_multigrid_coarsening_factor_z =
-          coupler.get_option<real>("dycore_anelastic_geometric_multigrid_coarsening_factor_z",2);
+      if (coupler.option_exists("dycore_anelastic_geometric_multigrid_coarsening_factor_x") ||
+          coupler.option_exists("dycore_anelastic_geometric_multigrid_coarsening_factor_y") ||
+          coupler.option_exists("dycore_anelastic_geometric_multigrid_coarsening_factor_z")) {
+        endrun("ERROR: use dycore_anelastic_geometric_multigrid_coarsening_factor; directional factors were removed");
+      }
+      config.geometric_multigrid_coarsening_factor =
+          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarsening_factor",2);
       return config;
     }
 

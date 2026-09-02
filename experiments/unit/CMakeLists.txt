@@ -58,6 +58,13 @@ process_integration_target(turbine_neutral_ensemble)
 process_integration_target(turbine_simple)
 process_target(anelastic_dycore)
 add_test(NAME anelastic_geometric_multigrid COMMAND anelastic_dycore --geometric-only)
+add_test(NAME anelastic_geometric_multigrid_mpi
+         COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${MPIEXEC_PREFLAGS}
+                 $<TARGET_FILE:anelastic_dycore> --geometric-mpi-only ${MPIEXEC_POSTFLAGS})
+set_tests_properties(anelastic_geometric_multigrid_mpi PROPERTIES
+                     PROCESSORS 4
+                     RUN_SERIAL TRUE
+                     ENVIRONMENT "GATOR_INITIAL_MB=512")
 process_target(digital_filter_turbulent_inflow)
 process_zero_tracer_target(zero_tracer_cell_centered dynamics_cell_centered.h)
 process_zero_tracer_target(zero_tracer_edge_centered dynamics_edge_centered.h)
