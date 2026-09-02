@@ -106,100 +106,64 @@ namespace modules {
 
     AcousticProjectionConfig acoustic_projection_config(core::Coupler const &coupler) const {
       AcousticProjectionConfig config;
-      config.diagnostics = coupler.get_option<bool>("dycore_anelastic_projection_diagnostics",false);
-      config.check_linearity = coupler.get_option<bool>("dycore_anelastic_check_linearity",false);
-      config.check_cg_compatibility =
-          coupler.get_option<bool>("dycore_anelastic_check_cg_compatibility",true);
-      config.use_conjugate_gradient =
-          coupler.get_option<bool>("dycore_anelastic_use_cg",config.check_cg_compatibility);
-      config.time_linear_solver = coupler.get_option<bool>("dycore_anelastic_time_linear_solver",false);
-      config.screening = coupler.get_option<bool>("dycore_anelastic_screening",false);
-      config.sound_speed = coupler.get_option<real>("dycore_cs",350);
-      config.momentum_hyperviscosity = coupler.get_option<real>("dycore_anelastic_projection_beta",0.1);
-      config.pressure_hyperviscosity =
-          coupler.get_option<real>("dycore_anelastic_projection_pressure_beta",0);
-      bool const use_jacobi = coupler.get_option<bool>("dycore_anelastic_use_jacobi_preconditioner",true);
-      config.preconditioner = coupler.get_option<std::string>("dycore_anelastic_preconditioner",
-                                                              use_jacobi ? "Jacobi" : "none");
-      config.gmres_restart = coupler.get_option<int>("dycore_anelastic_gmres_restart",30);
-      config.linear_solver_max_iterations = coupler.get_option<int>("dycore_anelastic_gmres_max_iters",200);
-      config.linear_solver_relative_tolerance =
-          coupler.get_option<real>("dycore_anelastic_gmres_rel_tol",1.e-6);
-      config.linear_solver_absolute_tolerance = coupler.get_option<real>("dycore_anelastic_gmres_abs_tol",0);
-      config.linear_solver_verbose = coupler.get_option<bool>("dycore_anelastic_gmres_verbose",false);
-      config.gmres_reorthogonalize =
-          coupler.get_option<bool>("dycore_anelastic_gmres_reorthogonalize",true);
-      config.schwarz_tile_nx = coupler.get_option<int>("dycore_anelastic_schwarz_tile_nx",8);
-      config.schwarz_tile_ny = coupler.get_option<int>("dycore_anelastic_schwarz_tile_ny",8);
-      config.schwarz_overlap = coupler.get_option<int>("dycore_anelastic_schwarz_overlap",2);
-      config.schwarz_chebyshev_degree =
-          coupler.get_option<int>("dycore_anelastic_schwarz_chebyshev_degree",8);
-      config.schwarz_chebyshev_lambda_min =
-          coupler.get_option<real>("dycore_anelastic_schwarz_chebyshev_lambda_min",0.02);
-      config.schwarz_chebyshev_lambda_max =
-          coupler.get_option<real>("dycore_anelastic_schwarz_chebyshev_lambda_max",2);
-      config.multigrid = anelastic_multigrid;
-      config.multigrid_vcycles = coupler.get_option<int>("dycore_anelastic_multigrid_vcycles",1);
-      config.multigrid_pre_smooth = coupler.get_option<int>("dycore_anelastic_multigrid_pre_smooth",1);
-      config.multigrid_post_smooth = coupler.get_option<int>("dycore_anelastic_multigrid_post_smooth",1);
-      config.multigrid_aggregate_size = coupler.get_option<int>("dycore_anelastic_multigrid_aggregate_size",8);
-      config.multigrid_max_levels = coupler.get_option<int>("dycore_anelastic_multigrid_max_levels",24);
-      config.multigrid_coarse_max_dofs =
-          coupler.get_option<int>("dycore_anelastic_multigrid_coarse_max_dofs",256);
-      config.multigrid_coarse_smooth =
-          coupler.get_option<int>("dycore_anelastic_multigrid_coarse_smooth",16);
-      config.multigrid_jacobi_weight =
-          coupler.get_option<real>("dycore_anelastic_multigrid_jacobi_weight",2._fp/3._fp);
-      config.geometric_multigrid = anelastic_geometric_multigrid;
-      config.geometric_multigrid_vcycles =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_vcycles",1);
-      config.geometric_multigrid_pre_smooth =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_pre_smooth",2);
-      config.geometric_multigrid_post_smooth =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_post_smooth",2);
-      config.geometric_multigrid_coarse_smooth =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_smooth",24);
-      config.geometric_multigrid_coarse_cells =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_cells",32768);
-      config.geometric_multigrid_min_cells_per_rank =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_min_cells_per_rank",131072);
-      config.geometric_multigrid_jacobi_weight =
-          coupler.get_option<real>("dycore_anelastic_geometric_multigrid_jacobi_weight",2._fp/3._fp);
-      config.geometric_multigrid_coarse_schwarz =
-          coupler.get_option<bool>("dycore_anelastic_geometric_multigrid_coarse_schwarz",true);
-      config.geometric_multigrid_coarse_schwarz_applications =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_applications",6);
-      config.geometric_multigrid_coarse_schwarz_tile_nx =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nx",8);
-      config.geometric_multigrid_coarse_schwarz_tile_ny =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_ny",8);
-      config.geometric_multigrid_coarse_schwarz_tile_nz =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nz",4);
-      config.geometric_multigrid_coarse_schwarz_overlap =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_overlap",2);
-      config.geometric_multigrid_coarse_schwarz_local_iterations =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_schwarz_local_iterations",4);
-      config.geometric_multigrid_coarsening_factors = coupler.get_option<std::vector<int>>(
-          "dycore_anelastic_geometric_multigrid_coarsening_factors",std::vector<int>{2});
-      config.tensor_line_multigrid = anelastic_tensor_line_multigrid;
-      config.tensor_line_multigrid_vcycles =
-          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_vcycles",1);
-      config.tensor_line_multigrid_pre_smooth =
-          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_pre_smooth",2);
-      config.tensor_line_multigrid_post_smooth =
-          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_post_smooth",2);
-      config.tensor_line_multigrid_coarse_smooth =
-          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_smooth",24);
-      config.tensor_line_multigrid_coarse_nx =
-          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_nx",50);
-      config.tensor_line_multigrid_coarse_ny =
-          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_coarse_ny",50);
-      config.tensor_line_multigrid_min_cells_per_rank =
-          coupler.get_option<int>("dycore_anelastic_tensor_line_multigrid_min_cells_per_rank",131072);
-      config.tensor_line_multigrid_jacobi_weight =
-          coupler.get_option<real>("dycore_anelastic_tensor_line_multigrid_jacobi_weight",2._fp/3._fp);
-      config.tensor_line_multigrid_coarsening_factors = coupler.get_option<std::vector<int>>(
-          "dycore_anelastic_tensor_line_multigrid_coarsening_factors",std::vector<int>{2});
+      config.diagnostics                                         = coupler.get_option<bool       >("dycore_anelastic_projection_diagnostics"      ,false);
+      config.check_linearity                                     = coupler.get_option<bool       >("dycore_anelastic_check_linearity"             ,false);
+      config.check_cg_compatibility                              = coupler.get_option<bool       >("dycore_anelastic_check_cg_compatibility"      ,true );
+      config.use_conjugate_gradient                              = coupler.get_option<bool       >("dycore_anelastic_use_cg"                      ,config.check_cg_compatibility);
+      config.time_linear_solver                                  = coupler.get_option<bool       >("dycore_anelastic_time_linear_solver"          ,false);
+      config.screening                                           = coupler.get_option<bool       >("dycore_anelastic_screening"                   ,false);
+      config.sound_speed                                         = coupler.get_option<real       >("dycore_cs"                                    ,350  );
+      config.momentum_hyperviscosity                             = coupler.get_option<real       >("dycore_anelastic_projection_beta"             ,0.1  );
+      config.pressure_hyperviscosity                             = coupler.get_option<real       >("dycore_anelastic_projection_pressure_beta"    ,0    );
+      bool const use_jacobi                                      = coupler.get_option<bool       >("dycore_anelastic_use_jacobi_preconditioner"   ,true );
+      config.preconditioner                                      = coupler.get_option<std::string>("dycore_anelastic_preconditioner"              , use_jacobi ? "Jacobi" : "none");
+      config.gmres_restart                                       = coupler.get_option<int        >("dycore_anelastic_gmres_restart"               ,30   );
+      config.linear_solver_max_iterations                        = coupler.get_option<int        >("dycore_anelastic_gmres_max_iters"             ,200  );
+      config.linear_solver_relative_tolerance                    = coupler.get_option<real       >("dycore_anelastic_gmres_rel_tol"               ,1.e-6);
+      config.linear_solver_absolute_tolerance                    = coupler.get_option<real       >("dycore_anelastic_gmres_abs_tol"               ,0    );
+      config.linear_solver_verbose                               = coupler.get_option<bool       >("dycore_anelastic_gmres_verbose"               ,false);
+      config.gmres_reorthogonalize                               = coupler.get_option<bool       >("dycore_anelastic_gmres_reorthogonalize"       ,true );
+      config.schwarz_tile_nx                                     = coupler.get_option<int        >("dycore_anelastic_schwarz_tile_nx"             ,8    );
+      config.schwarz_tile_ny                                     = coupler.get_option<int        >("dycore_anelastic_schwarz_tile_ny"             ,8    );
+      config.schwarz_overlap                                     = coupler.get_option<int        >("dycore_anelastic_schwarz_overlap"             ,2    );
+      config.schwarz_chebyshev_degree                            = coupler.get_option<int        >("dycore_anelastic_schwarz_chebyshev_degree"    ,8    );
+      config.schwarz_chebyshev_lambda_min                        = coupler.get_option<real       >("dycore_anelastic_schwarz_chebyshev_lambda_min",0.02 );
+      config.schwarz_chebyshev_lambda_max                        = coupler.get_option<real       >("dycore_anelastic_schwarz_chebyshev_lambda_max",2    );
+      config.multigrid                                           = anelastic_multigrid;
+      config.multigrid_vcycles                                   = coupler.get_option<int        >("dycore_anelastic_multigrid_vcycles"        ,1          );
+      config.multigrid_pre_smooth                                = coupler.get_option<int        >("dycore_anelastic_multigrid_pre_smooth"     ,1          );
+      config.multigrid_post_smooth                               = coupler.get_option<int        >("dycore_anelastic_multigrid_post_smooth"    ,1          );
+      config.multigrid_aggregate_size                            = coupler.get_option<int        >("dycore_anelastic_multigrid_aggregate_size" ,8          );
+      config.multigrid_max_levels                                = coupler.get_option<int        >("dycore_anelastic_multigrid_max_levels"     ,24         );
+      config.multigrid_coarse_max_dofs                           = coupler.get_option<int        >("dycore_anelastic_multigrid_coarse_max_dofs",256        );
+      config.multigrid_coarse_smooth                             = coupler.get_option<int        >("dycore_anelastic_multigrid_coarse_smooth"  ,16         );
+      config.multigrid_jacobi_weight                             = coupler.get_option<real       >("dycore_anelastic_multigrid_jacobi_weight"  ,2._fp/3._fp);
+      config.geometric_multigrid                                 = anelastic_geometric_multigrid;
+      config.geometric_multigrid_vcycles                         = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_vcycles"                        ,1          );
+      config.geometric_multigrid_pre_smooth                      = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_pre_smooth"                     ,2          );
+      config.geometric_multigrid_post_smooth                     = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_post_smooth"                    ,2          );
+      config.geometric_multigrid_coarse_smooth                   = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_smooth"                  ,24         );
+      config.geometric_multigrid_coarse_cells                    = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_cells"                   ,32768      );
+      config.geometric_multigrid_min_cells_per_rank              = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_min_cells_per_rank"             ,131072     );
+      config.geometric_multigrid_jacobi_weight                   = coupler.get_option<real       >("dycore_anelastic_geometric_multigrid_jacobi_weight"                  ,2._fp/3._fp);
+      config.geometric_multigrid_coarse_schwarz                  = coupler.get_option<bool       >("dycore_anelastic_geometric_multigrid_coarse_schwarz"                 ,true       );
+      config.geometric_multigrid_coarse_schwarz_applications     = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_schwarz_applications"    ,6          );
+      config.geometric_multigrid_coarse_schwarz_tile_nx          = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nx"         ,8          );
+      config.geometric_multigrid_coarse_schwarz_tile_ny          = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_ny"         ,8          );
+      config.geometric_multigrid_coarse_schwarz_tile_nz          = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_schwarz_tile_nz"         ,4          );
+      config.geometric_multigrid_coarse_schwarz_overlap          = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_schwarz_overlap"         ,2          );
+      config.geometric_multigrid_coarse_schwarz_local_iterations = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_schwarz_local_iterations",4          );
+      config.geometric_multigrid_coarsening_factors              = coupler.get_option<std::vector<int>>( "dycore_anelastic_geometric_multigrid_coarsening_factors"       ,std::vector<int>{2});
+      config.tensor_line_multigrid                               = anelastic_tensor_line_multigrid;
+      config.tensor_line_multigrid_vcycles                       = coupler.get_option<int        >("dycore_anelastic_tensor_line_multigrid_vcycles"                 ,1          );
+      config.tensor_line_multigrid_pre_smooth                    = coupler.get_option<int        >("dycore_anelastic_tensor_line_multigrid_pre_smooth"              ,2          );
+      config.tensor_line_multigrid_post_smooth                   = coupler.get_option<int        >("dycore_anelastic_tensor_line_multigrid_post_smooth"             ,2          );
+      config.tensor_line_multigrid_coarse_smooth                 = coupler.get_option<int        >("dycore_anelastic_tensor_line_multigrid_coarse_smooth"           ,24         );
+      config.tensor_line_multigrid_coarse_nx                     = coupler.get_option<int        >("dycore_anelastic_tensor_line_multigrid_coarse_nx"               ,50         );
+      config.tensor_line_multigrid_coarse_ny                     = coupler.get_option<int        >("dycore_anelastic_tensor_line_multigrid_coarse_ny"               ,50         );
+      config.tensor_line_multigrid_min_cells_per_rank            = coupler.get_option<int        >("dycore_anelastic_tensor_line_multigrid_min_cells_per_rank"      ,131072     );
+      config.tensor_line_multigrid_jacobi_weight                 = coupler.get_option<real       >("dycore_anelastic_tensor_line_multigrid_jacobi_weight"           ,2._fp/3._fp);
+      config.tensor_line_multigrid_coarsening_factors            = coupler.get_option<std::vector<int>>( "dycore_anelastic_tensor_line_multigrid_coarsening_factors",std::vector<int>{2});
       return config;
     }
 
