@@ -6,6 +6,7 @@
 #include "MultipleFields.h"
 #include "TransformMatrices.h"
 #include "acoustic_projection.h"
+#include <limits>
 #include <memory>
 
 namespace modules {
@@ -29,8 +30,56 @@ namespace modules {
     int  static constexpr idV = 2;  // v-momentum
     int  static constexpr idW = 3;  // w-momentum
     int  static constexpr idT = 4;  // Density * potential temperature
+    int  static constexpr pressure_history_points = 4;
 
     typedef float FLOC; // Use single precision locally
+
+
+    // Replace the rolling pressure guess with the optimized four-point pressure prediction for this RK stage.
+    void extrapolate_anelastic_pressure(core::Coupler &coupler, int istage) const {
+      using yakl::SimpleBounds;
+      auto const nx = coupler.get_nx();
+      auto const ny = coupler.get_ny();
+      auto const nz = coupler.get_nz();
+      auto &dm = coupler.get_data_manager_readwrite();
+      auto pressure = dm.get<real,3>("anelastic_pressure_pert");
+      auto history = dm.get<real const,4>("anelastic_pressure_history");
+      SArray<real,pressure_history_points> weights;
+      if (istage == 0) {
+        weights(0) =  1.14493120; weights(1) =  0.10567310;
+        weights(2) = -0.14613981; weights(3) = -0.10446450;
+      } else if (istage == 1) {
+        weights(0) =  1.02141822; weights(1) =  0.45447933;
+        weights(2) = -0.13987999; weights(3) = -0.33601756;
+      } else {
+        weights(0) =  0.95966173; weights(1) =  0.62888245;
+        weights(2) = -0.13675008; weights(3) = -0.45179410;
+      }
+      yakl::parallel_for(YAKL_AUTO_LABEL(),SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
+        pressure(k,j,i) = weights(0)*history(0,k,j,i) + weights(1)*history(1,k,j,i) +
+                          weights(2)*history(2,k,j,i) + weights(3)*history(3,k,j,i);
+      });
+    }
+
+
+    // Keep completed-step pressure solutions newest-first. Shifting avoids a rolling-index lookup in every stage kernel.
+    void store_anelastic_pressure_history(core::Coupler &coupler, real dt) const {
+      using yakl::SimpleBounds;
+      auto const nx = coupler.get_nx();
+      auto const ny = coupler.get_ny();
+      auto const nz = coupler.get_nz();
+      auto &dm = coupler.get_data_manager_readwrite();
+      auto pressure = dm.get<real const,3>("anelastic_pressure_pert");
+      auto history = dm.get<real,4>("anelastic_pressure_history");
+      yakl::parallel_for(YAKL_AUTO_LABEL(),SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
+        for (int m=pressure_history_points-1; m > 0; m--) history(m,k,j,i) = history(m-1,k,j,i);
+        history(0,k,j,i) = pressure(k,j,i);
+      });
+      int const count = coupler.get_option<int>("dycore_anelastic_pressure_history_count");
+      coupler.set_option<int>("dycore_anelastic_pressure_history_count",
+                              std::min(pressure_history_points,count+1));
+      coupler.set_option<real>("dycore_anelastic_pressure_history_dt",dt);
+    }
 
 
     // Increase precursor ghost-cell storage when the current sub-cycle exceeds its capacity
@@ -207,13 +256,14 @@ namespace modules {
 
     // Max CFL: 0.72
     // This CFL is smaller than normal because dimensions are split within each RK stage
-    // This is the linearly third-order, non-linearly second-order quasi-Runge-Kutta method used by WRF
+    // This is the linearly third-order, non-linearly second-order linrk3 method
     // coupler : Coupler instance
     // state   : State array from the dynamical core
     // tracers : Tracer array from the dynamical core
     // dt_dyn  : Dynamical core time step to use for this sub-step
     // icycle  : Current sub-cycle index (from 0 to ncycles-1)
-    // Advances the solution in state and tracers by dt_dyn using the linRK3 method
+    // Advances the solution in state and tracers by dt_dyn using linrk3
+    // Uses ordinary stage projections for four startup steps, then predicts stage pressure and projects only stage three
     // The icycle number is used for proper ghost cell exchanges between precursor and forced simulations
     void time_step_rk3( core::Coupler & coupler ,
                         real4d const  & state   ,
@@ -240,13 +290,25 @@ namespace modules {
         tracers_tmp  = real4d("tracers_tmp" ,num_tracers,nz,ny,nx);
         tracers_tend = real4d("tracers_tend",num_tracers,nz,ny,nx);
       }
+      int pressure_history_count = coupler.get_option<int>("dycore_anelastic_pressure_history_count");
+      real const pressure_history_dt = coupler.get_option<real>("dycore_anelastic_pressure_history_dt");
+      real const dt_scale = std::max(1._fp,std::max(std::abs(dt_dyn),std::abs(pressure_history_dt)));
+      if (pressure_history_count > 0 &&
+          std::abs(dt_dyn-pressure_history_dt) > 16*std::numeric_limits<real>::epsilon()*dt_scale) {
+        pressure_history_count = 0;
+        coupler.set_option<int>("dycore_anelastic_pressure_history_count",0);
+      }
+      bool const pressure_history_ready = pressure_history_count == pressure_history_points;
 
       // Set immersed boundaries in state and tracers to hydrostasis at rest
       enforce_immersed_boundaries( coupler , state , tracers );
 
       // Stage 1
-      // Compute time derivatives of the state and tracers using a time steyp of dt/3
-      compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/3,0,icycle);
+      // Compute time derivatives of the state and tracers using a time step of dt/3
+      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,0);
+      compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn/3,0,icycle,
+                         pressure_history_ready ? AcousticProjectionMode::PredictorOnly :
+                                                  AcousticProjectionMode::FullProjection);
       // Apply tendencies for the first stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -261,7 +323,10 @@ namespace modules {
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/2
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,1,icycle);
+      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,1);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,1,icycle,
+                         pressure_history_ready ? AcousticProjectionMode::PredictorOnly :
+                                                  AcousticProjectionMode::FullProjection);
       // Apply tendencies for the second stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -276,7 +341,10 @@ namespace modules {
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt/1
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,2,icycle);
+      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,2);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn,2,icycle,
+                         pressure_history_ready ? AcousticProjectionMode::PredictorAndProjection :
+                                                  AcousticProjectionMode::FullProjection);
       // Apply tendencies for the third stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -292,6 +360,7 @@ namespace modules {
 
       // Set immersed boundaries in state and tracers to hydrostasis at rest
       enforce_immersed_boundaries( coupler , state , tracers );
+      store_anelastic_pressure_history(coupler,dt_dyn);
 
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("time_step_rk_3_3");
@@ -302,13 +371,13 @@ namespace modules {
 
     // Max CFL: 0.99
     // This CFL is smaller than normal because dimensions are split within each RK stage
-    // This is the linearly fourth-order, non-linearly second-order quasi-Runge-Kutta method used by WRF
+    // This is the linearly fourth-order, non-linearly second-order linrk4 method
     // coupler : Coupler instance
     // state   : State array from the dynamical core
     // tracers : Tracer array from the dynamical core
     // dt_dyn  : Dynamical core time step to use for this sub-step
     // icycle  : Current sub-cycle index (from 0 to ncycles-1)
-    // Advances the solution in state and tracers by dt_dyn using the linRK3 method
+    // Advances the solution in state and tracers by dt_dyn using linrk4
     // The icycle number is used for proper ghost cell exchanges between precursor and forced simulations
     void time_step_rk4( core::Coupler & coupler ,
                         real4d const  & state   ,
@@ -418,7 +487,7 @@ namespace modules {
     // tracers : Tracer array from the dynamical core
     // dt_dyn  : Dynamical core time step to use for this sub-step
     // icycle  : Current sub-cycle index (from 0 to ncycles-1)
-    // Advances the solution in state and tracers by dt_dyn using the linRK3 method
+    // Advances the solution in state and tracers by dt_dyn using ssprk3
     // The icycle number is used for proper ghost cell exchanges between precursor and forced simulations
     void time_step_ssprk3( core::Coupler & coupler ,
                            real4d const  & state   ,
@@ -597,7 +666,8 @@ namespace modules {
                              real4d        const & tracers_tend ,
                              real                  dt           ,
                              int                   istage       ,
-                             int                   icycle       ) const {
+                             int                   icycle       ,
+                             AcousticProjectionMode projection_mode = AcousticProjectionMode::FullProjection) const {
       using yakl::SimpleBounds;
       if (dt <= 0) endrun("ERROR: anelastic tendency forcing interval must be positive");
 
@@ -841,7 +911,8 @@ namespace modules {
         momentum_in(2,k,j,i) = rho*star(2,k,j,i);
       });
       auto pressure = dm.get<real,3>("anelastic_pressure_pert");
-      acoustic_projection<ord>(coupler,momentum_in,momentum_out,pressure,dt,acoustic_projection_config(coupler));
+      acoustic_projection<ord>(coupler,momentum_in,momentum_out,pressure,dt,acoustic_projection_config(coupler),
+                               projection_mode);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
         real const rho = rho_h(hs+k);
         state_tend(idR,k,j,i) = 0;
@@ -1589,6 +1660,13 @@ namespace modules {
       dm.get<real,3>("anelastic_pressure_pert") = 0;
       coupler.register_output_variable<real>("anelastic_pressure_pert",core::Coupler::DIMS_3D,
                                              {{"units",std::string("Pa")}});
+      bool const pressure_history_enabled = time_stepper == "linrk3";
+      if (pressure_history_enabled) {
+        dm.register_and_allocate<real>("anelastic_pressure_history",{pressure_history_points,nz,ny,nx});
+        dm.get<real,4>("anelastic_pressure_history") = 0;
+        coupler.set_option<int>("dycore_anelastic_pressure_history_count",0);
+        coupler.set_option<real>("dycore_anelastic_pressure_history_dt",0);
+      }
 
       // Register immersed_proportion as an output and restart variable
       coupler.register_output_variable<real>( "immersed_proportion" , core::Coupler::DIMS_3D      );
@@ -1610,6 +1688,13 @@ namespace modules {
         nc.create_var<real>( "hy_dens_cells"     , {"z_halo"});    // Define hydrostatic density variable
         nc.create_var<real>( "hy_theta_cells"    , {"z_halo"});    // Define hydrostatic potential temperature variable
         nc.create_var<real>( "hy_pressure_cells" , {"z_halo"});    // Define hydrostatic pressure variable
+        if (pressure_history_enabled) {
+          nc.create_dim("anelastic_pressure_history_point",pressure_history_points);
+          nc.create_var<real>("anelastic_pressure_history",
+                              {"anelastic_pressure_history_point","z","y","x"});
+          nc.create_var<int>("dycore_anelastic_pressure_history_count",{});
+          nc.create_var<real>("dycore_anelastic_pressure_history_dt",{});
+        }
         nc.writeVariableAttribute(std::string("m")       ,"z_halo"            ,"units");
         nc.writeVariableAttribute(std::string("z_halo")  ,"hy_dens_cells"     ,"coordinates");
         nc.writeVariableAttribute(std::string("kg/m^3")  ,"hy_dens_cells"     ,"units");
@@ -1617,6 +1702,10 @@ namespace modules {
         nc.writeVariableAttribute(std::string("K")       ,"hy_theta_cells"    ,"units");
         nc.writeVariableAttribute(std::string("z_halo")  ,"hy_pressure_cells" ,"coordinates");
         nc.writeVariableAttribute(std::string("Pa")      ,"hy_pressure_cells" ,"units");
+        if (pressure_history_enabled) {
+          nc.writeVariableAttribute(std::string("z y x"),"anelastic_pressure_history","coordinates");
+          nc.writeVariableAttribute(std::string("Pa"),"anelastic_pressure_history","units");
+        }
         nc.writeGlobalAttribute(hs,"dycore_hs");
         // nc.create_var<real>( "theta_pert"        , {"z","y","x"}); // Define potential temperature perturbation variable
         // nc.create_var<real>( "pressure_pert"     , {"z","y","x"}); // Define pressure perturbation variable
@@ -1637,7 +1726,17 @@ namespace modules {
         if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_dens_cells"    ,"hy_dens_cells"    );
         if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_theta_cells"   ,"hy_theta_cells"   );
         if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_pressure_cells","hy_pressure_cells");
+        if (pressure_history_enabled && coupler.is_mainproc()) {
+          nc.write(coupler.get_option<int>("dycore_anelastic_pressure_history_count"),
+                   "dycore_anelastic_pressure_history_count");
+          nc.write(coupler.get_option<real>("dycore_anelastic_pressure_history_dt"),
+                   "dycore_anelastic_pressure_history_dt");
+        }
         nc.end_indep_data(); // Exit independent data mode to write 3-D perturbation arrays
+        if (pressure_history_enabled) {
+          nc.write_data_manager<real,4>(dm,"anelastic_pressure_history","anelastic_pressure_history",
+                                        {0,0,(MPI_Offset)j_beg,(MPI_Offset)i_beg});
+        }
         // // Allocate state and tracer arrays, and convert coupler data to dynamics format to compute perturbations
         // real4d state  ("state"  ,num_state  ,nz,ny,nx);
         // real4d tracers("tracers",num_tracers,nz,ny,nx);
@@ -1673,6 +1772,34 @@ namespace modules {
         nc.read_all(dm.get<real,1>("hy_dens_cells"    ),"hy_dens_cells"    ,{0});
         nc.read_all(dm.get<real,1>("hy_theta_cells"   ),"hy_theta_cells"   ,{0});
         nc.read_all(dm.get<real,1>("hy_pressure_cells"),"hy_pressure_cells",{0});
+        if (pressure_history_enabled && nc.var_exists("anelastic_pressure_history") &&
+            nc.var_exists("dycore_anelastic_pressure_history_count") &&
+            nc.var_exists("dycore_anelastic_pressure_history_dt")) {
+          nc.read_all(dm.get<real,4>("anelastic_pressure_history"),"anelastic_pressure_history",
+                      {0,0,(MPI_Offset)coupler.get_j_beg(),(MPI_Offset)coupler.get_i_beg()});
+          int pressure_history_count = 0;
+          real pressure_history_dt = 0;
+          nc.begin_indep_data();
+          if (coupler.is_mainproc()) {
+            nc.read(pressure_history_count,"dycore_anelastic_pressure_history_count");
+            nc.read(pressure_history_dt,"dycore_anelastic_pressure_history_dt");
+          }
+          nc.end_indep_data();
+          coupler.get_parallel_comm().broadcast(pressure_history_count);
+          coupler.get_parallel_comm().broadcast(pressure_history_dt);
+          if (pressure_history_count < 0 || pressure_history_count > pressure_history_points) {
+            endrun("ERROR: invalid anelastic pressure-history count in restart file");
+          }
+          if (pressure_history_count > 0 && (!std::isfinite(pressure_history_dt) || pressure_history_dt <= 0)) {
+            endrun("ERROR: invalid anelastic pressure-history timestep in restart file");
+          }
+          coupler.set_option<int>("dycore_anelastic_pressure_history_count",pressure_history_count);
+          coupler.set_option<real>("dycore_anelastic_pressure_history_dt",pressure_history_dt);
+        } else if (pressure_history_enabled) {
+          dm.get<real,4>("anelastic_pressure_history") = 0;
+          coupler.set_option<int>("dycore_anelastic_pressure_history_count",0);
+          coupler.set_option<real>("dycore_anelastic_pressure_history_dt",0);
+        }
         create_immersed_proportion_halos( coupler );
         compute_hydrostasis_edges       ( coupler );
       } );
