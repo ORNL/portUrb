@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
     coupler.set_option<std::string>( "dycore_anelastic_preconditioner"                          , "GeometricMultigrid");
     coupler.set_option<int        >( "dycore_anelastic_gmres_restart"                           , 30     );
     coupler.set_option<int        >( "dycore_anelastic_gmres_max_iters"                         , 200    );
-    coupler.set_option<real       >( "dycore_anelastic_gmres_rel_tol"                           , 1.e-6  );
+    coupler.set_option<real       >( "dycore_anelastic_gmres_rel_tol"                           , 1.e-4  );
     coupler.set_option<real       >( "dycore_anelastic_gmres_abs_tol"                           , 0      );
     coupler.set_option<bool       >( "dycore_anelastic_gmres_verbose"                           , false  );
     coupler.set_option<bool       >( "dycore_anelastic_gmres_reorthogonalize"                   , true   );
