@@ -31,13 +31,12 @@ namespace modules {
     int  static constexpr idW = 3;  // w-momentum
     int  static constexpr idT = 4;  // Density * potential temperature
     int  static constexpr pressure_history_points = 5;
-    enum class PressureHistoryScheme { Linrk3, Ssprk3 };
 
     typedef float FLOC; // Use single precision locally
 
 
     // Replace the rolling pressure guess with the optimized five-point pressure prediction for this RK stage.
-    void extrapolate_anelastic_pressure(core::Coupler &coupler, int istage, PressureHistoryScheme scheme) const {
+    void extrapolate_anelastic_pressure(core::Coupler &coupler, int istage) const {
       using yakl::SimpleBounds;
       auto const nx = coupler.get_nx();
       auto const ny = coupler.get_ny();
@@ -49,9 +48,6 @@ namespace modules {
       if (istage == 0) {
         weights(0) =  1.16086956; weights(1) = -0.05432249; weights(2) =  0.02712035;
         weights(3) = -0.03475150; weights(4) = -0.09891593;
-      } else if (istage == 1 && scheme == PressureHistoryScheme::Ssprk3) {
-        weights(0) = -0.02121688; weights(1) =  2.25210860; weights(2) = -0.49823688;
-        weights(3) = -0.17498453; weights(4) = -0.55767031;
       } else if (istage == 1) {
         weights(0) =  0.76684075; weights(1) =  0.71448788; weights(2) = -0.14799872;
         weights(3) = -0.08149584; weights(4) = -0.25183406;
@@ -64,20 +60,6 @@ namespace modules {
                           weights(2)*history(2,k,j,i) + weights(3)*history(3,k,j,i) +
                           weights(4)*history(4,k,j,i);
       });
-    }
-
-
-    // Pressure-history extrapolation requires five completed solves at one unchanged dynamical timestep.
-    bool anelastic_pressure_history_ready(core::Coupler &coupler, real dt) const {
-      int pressure_history_count = coupler.get_option<int>("dycore_anelastic_pressure_history_count");
-      real const pressure_history_dt = coupler.get_option<real>("dycore_anelastic_pressure_history_dt");
-      real const dt_scale = std::max(1._fp,std::max(std::abs(dt),std::abs(pressure_history_dt)));
-      if (pressure_history_count > 0 &&
-          std::abs(dt-pressure_history_dt) > 16*std::numeric_limits<real>::epsilon()*dt_scale) {
-        pressure_history_count = 0;
-        coupler.set_option<int>("dycore_anelastic_pressure_history_count",0);
-      }
-      return pressure_history_count == pressure_history_points;
     }
 
 
@@ -309,18 +291,22 @@ namespace modules {
         tracers_tmp  = real4d("tracers_tmp" ,num_tracers,nz,ny,nx);
         tracers_tend = real4d("tracers_tend",num_tracers,nz,ny,nx);
       }
-      bool const pressure_extrapolation_enabled =
-          coupler.get_option<bool>("dycore_anelastic_pressure_extrapolation",true) &&
-          dm.entry_exists("anelastic_pressure_history");
-      bool const pressure_history_ready = pressure_extrapolation_enabled &&
-                                          anelastic_pressure_history_ready(coupler,dt_dyn);
+      int pressure_history_count = coupler.get_option<int>("dycore_anelastic_pressure_history_count");
+      real const pressure_history_dt = coupler.get_option<real>("dycore_anelastic_pressure_history_dt");
+      real const dt_scale = std::max(1._fp,std::max(std::abs(dt_dyn),std::abs(pressure_history_dt)));
+      if (pressure_history_count > 0 &&
+          std::abs(dt_dyn-pressure_history_dt) > 16*std::numeric_limits<real>::epsilon()*dt_scale) {
+        pressure_history_count = 0;
+        coupler.set_option<int>("dycore_anelastic_pressure_history_count",0);
+      }
+      bool const pressure_history_ready = pressure_history_count == pressure_history_points;
 
       // Set immersed boundaries in state and tracers to hydrostasis at rest
       enforce_immersed_boundaries( coupler , state , tracers );
 
       // Stage 1
       // Compute time derivatives of the state and tracers using a time step of dt/3
-      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,0,PressureHistoryScheme::Linrk3);
+      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,0);
       compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn/3,0,icycle,
                          pressure_history_ready ? AcousticProjectionMode::PredictorOnly :
                                                   AcousticProjectionMode::FullProjection);
@@ -338,7 +324,7 @@ namespace modules {
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/2
-      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,1,PressureHistoryScheme::Linrk3);
+      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,1);
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,1,icycle,
                          pressure_history_ready ? AcousticProjectionMode::PredictorOnly :
                                                   AcousticProjectionMode::FullProjection);
@@ -356,7 +342,7 @@ namespace modules {
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt/1
-      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,2,PressureHistoryScheme::Linrk3);
+      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,2);
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn,2,icycle,
                          pressure_history_ready ? AcousticProjectionMode::PredictorAndProjection :
                                                   AcousticProjectionMode::FullProjection);
@@ -375,7 +361,7 @@ namespace modules {
 
       // Set immersed boundaries in state and tracers to hydrostasis at rest
       enforce_immersed_boundaries( coupler , state , tracers );
-      if (pressure_extrapolation_enabled) store_anelastic_pressure_history(coupler,dt_dyn);
+      store_anelastic_pressure_history(coupler,dt_dyn);
 
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("time_step_rk_3_3");
@@ -503,7 +489,6 @@ namespace modules {
     // dt_dyn  : Dynamical core time step to use for this sub-step
     // icycle  : Current sub-cycle index (from 0 to ncycles-1)
     // Advances the solution in state and tracers by dt_dyn using ssprk3
-    // Uses ordinary stage projections for five startup steps, then predicts stage pressure and projects only stage three
     // The icycle number is used for proper ghost cell exchanges between precursor and forced simulations
     void time_step_ssprk3( core::Coupler & coupler ,
                            real4d const  & state   ,
@@ -530,21 +515,13 @@ namespace modules {
         tracers_tmp  = real4d("tracers_tmp" ,num_tracers,nz,ny,nx);
         tracers_tend = real4d("tracers_tend",num_tracers,nz,ny,nx);
       }
-      bool const pressure_extrapolation_enabled =
-          coupler.get_option<bool>("dycore_anelastic_pressure_extrapolation",true) &&
-          dm.entry_exists("anelastic_pressure_history");
-      bool const pressure_history_ready = pressure_extrapolation_enabled &&
-                                          anelastic_pressure_history_ready(coupler,dt_dyn);
 
       // Set immersed boundaries in state and tracers to hydrostasis at rest
       enforce_immersed_boundaries( coupler , state , tracers );
 
       // Stage 1
-      // Compute time derivatives of the state and tracers using a time step of dt
-      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,0,PressureHistoryScheme::Ssprk3);
-      compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn,0,icycle,
-                         pressure_history_ready ? AcousticProjectionMode::PredictorOnly :
-                                                  AcousticProjectionMode::FullProjection);
+      // Compute time derivatives of the state and tracers using a time steyp of dt
+      compute_tendencies(coupler,state,state_tend,tracers,tracers_tend,dt_dyn,0,icycle);
       // Apply tendencies for the first stage for state and tracers
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -559,10 +536,7 @@ namespace modules {
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/4
-      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,1,PressureHistoryScheme::Ssprk3);
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/4.,1,icycle,
-                         pressure_history_ready ? AcousticProjectionMode::PredictorOnly :
-                                                  AcousticProjectionMode::FullProjection);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/4.,1,icycle);
       // Apply tendencies for the second stage for state and tracers
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -581,10 +555,7 @@ namespace modules {
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt*2/3
-      if (pressure_history_ready) extrapolate_anelastic_pressure(coupler,2,PressureHistoryScheme::Ssprk3);
-      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn*2./3.,2,icycle,
-                         pressure_history_ready ? AcousticProjectionMode::PredictorAndProjection :
-                                                  AcousticProjectionMode::FullProjection);
+      compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn*2./3.,2,icycle);
       // Apply tendencies for the third stage for state and tracers
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
                                                         KOKKOS_LAMBDA (int l, int k, int j, int i) {
@@ -604,7 +575,6 @@ namespace modules {
 
       // Set immersed boundaries in state and tracers to hydrostasis at rest
       enforce_immersed_boundaries( coupler , state , tracers );
-      if (pressure_extrapolation_enabled) store_anelastic_pressure_history(coupler,dt_dyn);
 
       #ifdef YAKL_AUTO_PROFILE
         yakl::timer_stop("time_step_rk_3_3");
@@ -1691,11 +1661,7 @@ namespace modules {
       dm.get<real,3>("anelastic_pressure_pert") = 0;
       coupler.register_output_variable<real>("anelastic_pressure_pert",core::Coupler::DIMS_3D,
                                              {{"units",std::string("Pa")}});
-      bool const pressure_extrapolation_enabled =
-          coupler.get_option<bool>("dycore_anelastic_pressure_extrapolation",true);
-      coupler.set_option<bool>("dycore_anelastic_pressure_extrapolation",pressure_extrapolation_enabled);
-      bool const pressure_history_enabled = pressure_extrapolation_enabled &&
-                                            (time_stepper == "linrk3" || time_stepper == "ssprk3");
+      bool const pressure_history_enabled = time_stepper == "linrk3";
       if (pressure_history_enabled) {
         dm.register_and_allocate<real>("anelastic_pressure_history",{pressure_history_points,nz,ny,nx});
         dm.get<real,4>("anelastic_pressure_history") = 0;
