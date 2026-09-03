@@ -30,12 +30,12 @@ namespace modules {
     int  static constexpr idV = 2;  // v-momentum
     int  static constexpr idW = 3;  // w-momentum
     int  static constexpr idT = 4;  // Density * potential temperature
-    int  static constexpr pressure_history_points = 4;
+    int  static constexpr pressure_history_points = 5;
 
     typedef float FLOC; // Use single precision locally
 
 
-    // Replace the rolling pressure guess with the optimized four-point pressure prediction for this RK stage.
+    // Replace the rolling pressure guess with the optimized five-point pressure prediction for this RK stage.
     void extrapolate_anelastic_pressure(core::Coupler &coupler, int istage) const {
       using yakl::SimpleBounds;
       auto const nx = coupler.get_nx();
@@ -46,18 +46,19 @@ namespace modules {
       auto history = dm.get<real const,4>("anelastic_pressure_history");
       SArray<real,pressure_history_points> weights;
       if (istage == 0) {
-        weights(0) =  1.14493120; weights(1) =  0.10567310;
-        weights(2) = -0.14613981; weights(3) = -0.10446450;
+        weights(0) =  1.16086956; weights(1) = -0.05432249; weights(2) =  0.02712035;
+        weights(3) = -0.03475150; weights(4) = -0.09891593;
       } else if (istage == 1) {
-        weights(0) =  1.02141822; weights(1) =  0.45447933;
-        weights(2) = -0.13987999; weights(3) = -0.33601756;
+        weights(0) =  0.76684075; weights(1) =  0.71448788; weights(2) = -0.14799872;
+        weights(3) = -0.08149584; weights(4) = -0.25183406;
       } else {
-        weights(0) =  0.95966173; weights(1) =  0.62888245;
-        weights(2) = -0.13675008; weights(3) = -0.45179410;
+        weights(0) =  0.56982634; weights(1) =  1.09889306; weights(2) = -0.23555826;
+        weights(3) = -0.10486802; weights(4) = -0.32829312;
       }
       yakl::parallel_for(YAKL_AUTO_LABEL(),SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
         pressure(k,j,i) = weights(0)*history(0,k,j,i) + weights(1)*history(1,k,j,i) +
-                          weights(2)*history(2,k,j,i) + weights(3)*history(3,k,j,i);
+                          weights(2)*history(2,k,j,i) + weights(3)*history(3,k,j,i) +
+                          weights(4)*history(4,k,j,i);
       });
     }
 
@@ -263,7 +264,7 @@ namespace modules {
     // dt_dyn  : Dynamical core time step to use for this sub-step
     // icycle  : Current sub-cycle index (from 0 to ncycles-1)
     // Advances the solution in state and tracers by dt_dyn using linrk3
-    // Uses ordinary stage projections for four startup steps, then predicts stage pressure and projects only stage three
+    // Uses ordinary stage projections for five startup steps, then predicts stage pressure and projects only stage three
     // The icycle number is used for proper ghost cell exchanges between precursor and forced simulations
     void time_step_rk3( core::Coupler & coupler ,
                         real4d const  & state   ,
@@ -1692,6 +1693,7 @@ namespace modules {
           nc.create_dim("anelastic_pressure_history_point",pressure_history_points);
           nc.create_var<real>("anelastic_pressure_history",
                               {"anelastic_pressure_history_point","z","y","x"});
+          nc.create_var<int>("dycore_anelastic_pressure_history_points",{});
           nc.create_var<int>("dycore_anelastic_pressure_history_count",{});
           nc.create_var<real>("dycore_anelastic_pressure_history_dt",{});
         }
@@ -1727,6 +1729,7 @@ namespace modules {
         if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_theta_cells"   ,"hy_theta_cells"   );
         if (coupler.is_mainproc()) nc.write_data_manager<real,1>(dm,"hy_pressure_cells","hy_pressure_cells");
         if (pressure_history_enabled && coupler.is_mainproc()) {
+          nc.write(pressure_history_points,"dycore_anelastic_pressure_history_points");
           nc.write(coupler.get_option<int>("dycore_anelastic_pressure_history_count"),
                    "dycore_anelastic_pressure_history_count");
           nc.write(coupler.get_option<real>("dycore_anelastic_pressure_history_dt"),
@@ -1772,11 +1775,22 @@ namespace modules {
         nc.read_all(dm.get<real,1>("hy_dens_cells"    ),"hy_dens_cells"    ,{0});
         nc.read_all(dm.get<real,1>("hy_theta_cells"   ),"hy_theta_cells"   ,{0});
         nc.read_all(dm.get<real,1>("hy_pressure_cells"),"hy_pressure_cells",{0});
-        if (pressure_history_enabled && nc.var_exists("anelastic_pressure_history") &&
-            nc.var_exists("dycore_anelastic_pressure_history_count") &&
-            nc.var_exists("dycore_anelastic_pressure_history_dt")) {
-          nc.read_all(dm.get<real,4>("anelastic_pressure_history"),"anelastic_pressure_history",
-                      {0,0,(MPI_Offset)coupler.get_j_beg(),(MPI_Offset)coupler.get_i_beg()});
+        bool pressure_history_restart_valid = pressure_history_enabled &&
+                                              nc.var_exists("anelastic_pressure_history") &&
+                                              nc.var_exists("dycore_anelastic_pressure_history_points") &&
+                                              nc.var_exists("dycore_anelastic_pressure_history_count") &&
+                                              nc.var_exists("dycore_anelastic_pressure_history_dt");
+        int pressure_history_file_points = 0;
+        if (pressure_history_restart_valid) {
+          nc.begin_indep_data();
+          if (coupler.is_mainproc()) {
+            nc.read(pressure_history_file_points,"dycore_anelastic_pressure_history_points");
+          }
+          nc.end_indep_data();
+          coupler.get_parallel_comm().broadcast(pressure_history_file_points);
+          pressure_history_restart_valid = pressure_history_file_points == pressure_history_points;
+        }
+        if (pressure_history_restart_valid) {
           int pressure_history_count = 0;
           real pressure_history_dt = 0;
           nc.begin_indep_data();
@@ -1787,6 +1801,8 @@ namespace modules {
           nc.end_indep_data();
           coupler.get_parallel_comm().broadcast(pressure_history_count);
           coupler.get_parallel_comm().broadcast(pressure_history_dt);
+          nc.read_all(dm.get<real,4>("anelastic_pressure_history"),"anelastic_pressure_history",
+                      {0,0,(MPI_Offset)coupler.get_j_beg(),(MPI_Offset)coupler.get_i_beg()});
           if (pressure_history_count < 0 || pressure_history_count > pressure_history_points) {
             endrun("ERROR: invalid anelastic pressure-history count in restart file");
           }
