@@ -104,44 +104,38 @@ namespace modules {
 
     AcousticProjectionConfig acoustic_projection_config(core::Coupler const &coupler) const {
       AcousticProjectionConfig config;
-      config.diagnostics                                         = coupler.get_option<bool       >("dycore_anelastic_projection_diagnostics"      ,false);
-      config.check_linearity                                     = coupler.get_option<bool       >("dycore_anelastic_check_linearity"             ,false);
-      config.check_cg_compatibility                              = coupler.get_option<bool       >("dycore_anelastic_check_cg_compatibility"      ,true );
-      config.use_conjugate_gradient                              = coupler.get_option<bool       >("dycore_anelastic_use_cg"                      ,config.check_cg_compatibility);
-      config.time_linear_solver                                  = coupler.get_option<bool       >("dycore_anelastic_time_linear_solver"          ,false);
-      config.screening                                           = coupler.get_option<bool       >("dycore_anelastic_screening"                   ,false);
-      config.sound_speed                                         = coupler.get_option<real       >("dycore_cs"                                    ,350  );
-      config.momentum_hyperviscosity                             = coupler.get_option<real       >("dycore_anelastic_projection_beta"             ,0.1  );
-      config.pressure_hyperviscosity                             = coupler.get_option<real       >("dycore_anelastic_projection_pressure_beta"    ,0    );
-      bool const use_jacobi                                      = coupler.get_option<bool       >("dycore_anelastic_use_jacobi_preconditioner"   ,true );
-      config.preconditioner                                      = coupler.get_option<std::string>("dycore_anelastic_preconditioner"              , use_jacobi ? "Jacobi" : "none");
-      config.gmres_restart                                       = coupler.get_option<int        >("dycore_anelastic_gmres_restart"               ,30   );
-      config.linear_solver_max_iterations                        = coupler.get_option<int        >("dycore_anelastic_gmres_max_iters"             ,200  );
-      config.linear_solver_relative_tolerance                    = coupler.get_option<real       >("dycore_anelastic_gmres_rel_tol"               ,1.e-6);
-      config.linear_solver_absolute_tolerance                    = coupler.get_option<real       >("dycore_anelastic_gmres_abs_tol"               ,0    );
-      config.linear_solver_verbose                               = coupler.get_option<bool       >("dycore_anelastic_gmres_verbose"               ,false);
-      config.gmres_reorthogonalize                               = coupler.get_option<bool       >("dycore_anelastic_gmres_reorthogonalize"       ,true );
-      config.schwarz_tile_nx                                     = coupler.get_option<int        >("dycore_anelastic_schwarz_tile_nx"             ,8    );
-      config.schwarz_tile_ny                                     = coupler.get_option<int        >("dycore_anelastic_schwarz_tile_ny"             ,8    );
-      config.schwarz_overlap                                     = coupler.get_option<int        >("dycore_anelastic_schwarz_overlap"             ,2    );
-      config.schwarz_chebyshev_degree                            = coupler.get_option<int        >("dycore_anelastic_schwarz_chebyshev_degree"    ,8    );
-      config.schwarz_chebyshev_lambda_min                        = coupler.get_option<real       >("dycore_anelastic_schwarz_chebyshev_lambda_min",0.02 );
-      config.schwarz_chebyshev_lambda_max                        = coupler.get_option<real       >("dycore_anelastic_schwarz_chebyshev_lambda_max",2    );
-      config.geometric_multigrid                                 = anelastic_geometric_multigrid;
-      config.geometric_multigrid_vcycles                         = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_vcycles"                 ,1          );
-      config.geometric_multigrid_pre_smooth                      = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_pre_smooth"              ,2          );
-      config.geometric_multigrid_post_smooth                     = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_post_smooth"             ,2          );
-      config.geometric_multigrid_coarse_smooth                   = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_smooth"           ,24         );
-      config.geometric_multigrid_coarse_cells                    = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_cells"            ,32768      );
-      config.geometric_multigrid_min_cells_per_rank              = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_min_cells_per_rank"      ,131072     );
-      config.geometric_multigrid_jacobi_weight                   = coupler.get_option<real       >("dycore_anelastic_geometric_multigrid_jacobi_weight"           ,2._fp/3._fp);
-      if (coupler.option_exists("dycore_anelastic_geometric_multigrid_coarsening_factor_x") ||
-          coupler.option_exists("dycore_anelastic_geometric_multigrid_coarsening_factor_y") ||
-          coupler.option_exists("dycore_anelastic_geometric_multigrid_coarsening_factor_z")) {
-        endrun("ERROR: use dycore_anelastic_geometric_multigrid_coarsening_factor; directional factors were removed");
-      }
-      config.geometric_multigrid_coarsening_factor =
-          coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarsening_factor",2);
+      config.diagnostics                            = coupler.get_option<bool       >("dycore_anelastic_projection_diagnostics"      ,false);
+      config.check_linearity                        = coupler.get_option<bool       >("dycore_anelastic_check_linearity"             ,false);
+      config.check_cg_compatibility                 = coupler.get_option<bool       >("dycore_anelastic_check_cg_compatibility"      ,true );
+      config.use_conjugate_gradient                 = coupler.get_option<bool       >("dycore_anelastic_use_cg"                      ,config.check_cg_compatibility);
+      config.time_linear_solver                     = coupler.get_option<bool       >("dycore_anelastic_time_linear_solver"          ,false);
+      config.screening                              = coupler.get_option<bool       >("dycore_anelastic_screening"                   ,false);
+      config.sound_speed                            = coupler.get_option<real       >("dycore_cs"                                    ,350  );
+      config.momentum_hyperviscosity                = coupler.get_option<real       >("dycore_anelastic_projection_beta"             ,0.1  );
+      config.pressure_hyperviscosity                = coupler.get_option<real       >("dycore_anelastic_projection_pressure_beta"    ,0    );
+      bool const use_jacobi                         = coupler.get_option<bool       >("dycore_anelastic_use_jacobi_preconditioner"   ,true );
+      config.preconditioner                         = coupler.get_option<std::string>("dycore_anelastic_preconditioner"              , use_jacobi ? "Jacobi" : "none");
+      config.gmres_restart                          = coupler.get_option<int        >("dycore_anelastic_gmres_restart"               ,30   );
+      config.linear_solver_max_iterations           = coupler.get_option<int        >("dycore_anelastic_gmres_max_iters"             ,200  );
+      config.linear_solver_relative_tolerance       = coupler.get_option<real       >("dycore_anelastic_gmres_rel_tol"               ,1.e-6);
+      config.linear_solver_absolute_tolerance       = coupler.get_option<real       >("dycore_anelastic_gmres_abs_tol"               ,0    );
+      config.linear_solver_verbose                  = coupler.get_option<bool       >("dycore_anelastic_gmres_verbose"               ,false);
+      config.gmres_reorthogonalize                  = coupler.get_option<bool       >("dycore_anelastic_gmres_reorthogonalize"       ,true );
+      config.schwarz_tile_nx                        = coupler.get_option<int        >("dycore_anelastic_schwarz_tile_nx"             ,8    );
+      config.schwarz_tile_ny                        = coupler.get_option<int        >("dycore_anelastic_schwarz_tile_ny"             ,8    );
+      config.schwarz_overlap                        = coupler.get_option<int        >("dycore_anelastic_schwarz_overlap"             ,2    );
+      config.schwarz_chebyshev_degree               = coupler.get_option<int        >("dycore_anelastic_schwarz_chebyshev_degree"    ,8    );
+      config.schwarz_chebyshev_lambda_min           = coupler.get_option<real       >("dycore_anelastic_schwarz_chebyshev_lambda_min",0.02 );
+      config.schwarz_chebyshev_lambda_max           = coupler.get_option<real       >("dycore_anelastic_schwarz_chebyshev_lambda_max",2    );
+      config.geometric_multigrid                    = anelastic_geometric_multigrid;
+      config.geometric_multigrid_vcycles            = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_vcycles"           ,1          );
+      config.geometric_multigrid_pre_smooth         = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_pre_smooth"        ,2          );
+      config.geometric_multigrid_post_smooth        = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_post_smooth"       ,2          );
+      config.geometric_multigrid_coarse_smooth      = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_smooth"     ,24         );
+      config.geometric_multigrid_coarse_cells       = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarse_cells"      ,32768      );
+      config.geometric_multigrid_min_cells_per_rank = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_min_cells_per_rank",131072     );
+      config.geometric_multigrid_jacobi_weight      = coupler.get_option<real       >("dycore_anelastic_geometric_multigrid_jacobi_weight"     ,2._fp/3._fp);
+      config.geometric_multigrid_coarsening_factor  = coupler.get_option<int        >("dycore_anelastic_geometric_multigrid_coarsening_factor" ,2          );
       return config;
     }
 
