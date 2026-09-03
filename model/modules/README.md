@@ -7,15 +7,17 @@ norms. Its pressure-nullspace projection uses the same weights. Geometric multig
 `R = Vc^{-1} P^T Vf`, so nonuniform vertical grids retain the weighted symmetry required by PCG. The weights are
 normalized by the first vertical cell width, giving unit weights on uniform grids.
 
-Geometric multigrid supports extents that are not divisible by the requested coarsening factor. It uses
+Geometric multigrid supports extents that are not divisible by the requested coarsening factor. Every geometric
+transition applies the same integral factor in x, y, and z to preserve grid-spacing anisotropy, using
 `ceil(N_local/factor)` coarse cells within each MPI subdomain, physical-coordinate quadratic prolongation, and the
 corresponding volume-weighted-adjoint restriction. Horizontal restriction and prolongation are subdomain-local and
 therefore require no MPI exchange. Levels with the same active MPI ranks pass their restricted fields and coarse
-corrections directly without gather, scatter, or copy kernels. Rank aggregation concatenates local coarse fields only
-when it removes MPI tasks, and every resulting coarse operator remains globally connected. Halo communication is
-completed before a single whole-level stencil kernel instead of splitting interior and boundary work for overlap. The
-`anelastic_geometric_multigrid_mpi` CTest runs an odd grid on four MPI ranks to validate uneven local extents and rank
-aggregation.
+corrections directly without gather, scatter, or copy kernels. When a geometric transition reaches the coarse-grid
+target, it also aggregates all remaining ranks so a separate duplicate-geometry aggregation level is not constructed.
+Rank aggregation concatenates local coarse fields only when it removes MPI tasks, and every resulting coarse operator
+remains globally connected. Halo communication is completed before a single whole-level stencil kernel instead of
+splitting interior and boundary work for overlap. The `anelastic_geometric_multigrid_mpi` CTest runs an odd grid on four
+MPI ranks to validate uneven local extents and rank aggregation.
 
 Also, check out the `portUrb/experiments/examples` directory `*.cpp` files for examples of how to use the modules below.
 

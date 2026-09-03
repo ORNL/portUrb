@@ -387,6 +387,12 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
       require(coupler,coupler.get_option<std::string>(
                           "dycore_anelastic_geometric_multigrid_transfer_scope") == "SubdomainLocal",
               name + ": geometric multigrid did not select subdomain-local restriction/prolongation");
+      require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_levels") == 2,
+              name + ": terminal aggregation was not folded into the final geometric transition");
+      require(coupler,coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_nx") == 13 &&
+                      coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_ny") == 13 &&
+                      coupler.get_option<int>("dycore_anelastic_geometric_multigrid_coarse_nz") == 13,
+              name + ": equal-factor coarsening did not produce the expected 13 x 13 x 13 coarse grid");
     }
     require(coupler,coupler.get_option<std::string>(
                         "dycore_anelastic_geometric_multigrid_coarse_smoother") == "Jacobi",

@@ -302,38 +302,6 @@ public:
   }
 
 
-  // Choose integer semi-coarsening factors that make the next global grid as close to cubical in cell counts as
-  // possible. Among equally isotropic choices, prefer the one that removes the most cells.
-  static std::array<int,3> choose_coarsening_factors(int nx, int ny, int nz, int requested_factor) {
-    std::array<int,3> best = {1,1,1};
-    double best_aspect = std::numeric_limits<double>::max();
-    int best_product = 0;
-    for (int fz = 1; fz <= requested_factor; fz++) {
-      if (fz > 1 && coarsened_extent(nz,fz) == nz) continue;
-      for (int fy = 1; fy <= requested_factor; fy++) {
-        if (fy > 1 && coarsened_extent(ny,fy) == ny) continue;
-        for (int fx = 1; fx <= requested_factor; fx++) {
-          if (fx > 1 && coarsened_extent(nx,fx) == nx) continue;
-          if (fx == 1 && fy == 1 && fz == 1) continue;
-          int const next_nx = coarsened_extent(nx,fx);
-          int const next_ny = coarsened_extent(ny,fy);
-          int const next_nz = coarsened_extent(nz,fz);
-          int const minimum = std::min({next_nx,next_ny,next_nz});
-          int const maximum = std::max({next_nx,next_ny,next_nz});
-          double const aspect = static_cast<double>(maximum)/minimum;
-          int const product = fx*fy*fz;
-          if (aspect < best_aspect || (aspect == best_aspect && product > best_product)) {
-            best = {fx,fy,fz};
-            best_aspect = aspect;
-            best_product = product;
-          }
-        }
-      }
-    }
-    return best;
-  }
-
-
   void allocate_level(Level &level) const {
     level.x        = Device3d("geometric_multigrid_x"       ,level.nz,level.ny,level.nx);
     level.b        = Device3d("geometric_multigrid_b"       ,level.nz,level.ny,level.nx);
@@ -1137,27 +1105,37 @@ public:
       if (level.nranks == 1 && global_cells <= options.coarse_cells) break;
 
       bool const geometric_target = global_cells <= options.coarse_cells;
-      auto const factors = geometric_target ? std::array<int,3>{1,1,1} :
-                                              choose_coarsening_factors(level.nx_global,level.ny_global,level.nz,
-                                                                        coarsening_factor_);
-      bool const coarsen_x = factors[0] > 1;
-      bool const coarsen_y = factors[1] > 1;
-      bool const coarsen_z = factors[2] > 1;
-      if (!coarsen_x && !coarsen_y && !coarsen_z && level.nranks == 1) break;
+      bool const coarsen = !geometric_target && level.nx_global > 1 && level.ny_global > 1 && level.nz > 1;
+      if (!coarsen && level.nranks == 1) break;
 
-      int const factor_x = factors[0];
-      int const factor_y = factors[1];
-      int const factor_z = factors[2];
+      int const factor_x = coarsen ? coarsening_factor_ : 1;
+      int const factor_y = coarsen ? coarsening_factor_ : 1;
+      int const factor_z = coarsen ? coarsening_factor_ : 1;
+      bool const coarsen_x = coarsen;
+      bool const coarsen_y = coarsen;
+      bool const coarsen_z = coarsen;
       int const local_nx = coarsened_extent(level.nx,factor_x);
       int const local_ny = coarsened_extent(level.ny,factor_y);
       int const local_nz = coarsened_extent(level.nz,factor_z);
+      std::vector<int> dimensions(2*level.nranks);
+      int const local_dimensions[2] = {local_nx,local_ny};
+      MPI_Allgather(local_dimensions,2,MPI_INT,dimensions.data(),2,MPI_INT,level.comm);
+      int coarse_nx_global = 0;
+      int coarse_ny_global = 0;
+      for (int px = 0; px < level.nproc_x; px++) coarse_nx_global += dimensions[2*px];
+      for (int py = 0; py < level.nproc_y; py++) coarse_ny_global += dimensions[2*py*level.nproc_x+1];
+      long long const next_global_cells = static_cast<long long>(coarse_nx_global)*coarse_ny_global*local_nz;
       long long const local_cells = static_cast<long long>(local_nx)*local_ny*local_nz;
       long long cells_per_rank = 0;
       MPI_Allreduce(&local_cells,&cells_per_rank,1,MPI_LONG_LONG,MPI_MIN,level.comm);
       int group_x = 1;
       int group_y = 1;
-      cells_per_rank *= group_x*group_y;
-      if (cells_per_rank < options.min_cells_per_rank) {
+      // If this geometric transition reaches the terminal target, aggregate all remaining ranks during the same
+      // transition. This avoids constructing a duplicate-geometry level solely for rank aggregation.
+      if (level.nranks > 1 && (!coarsen || next_global_cells <= options.coarse_cells)) {
+        group_x = level.nproc_x;
+        group_y = level.nproc_y;
+      } else if (cells_per_rank < options.min_cells_per_rank) {
         bool const can_group_x = group_x == 1 && level.nproc_x > 1;
         bool const can_group_y = group_y == 1 && level.nproc_y > 1;
         if (can_group_x && (!can_group_y || level.nproc_x >= level.nproc_y)) {
@@ -1171,10 +1149,6 @@ public:
           if (group_x == 1 && level.nproc_x > 1) group_x = 2;
           if (group_y == 1 && level.nproc_y > 1) group_y = 2;
         }
-      }
-      if (!coarsen_x && !coarsen_y && !coarsen_z && level.nranks > 1) {
-        if (level.nproc_x > 1) group_x = 2;
-        if (level.nproc_y > 1) group_y = 2;
       }
       if (!coarsen_x && !coarsen_y && !coarsen_z && group_x == 1 && group_y == 1) {
         endrun("ERROR: geometric multigrid hierarchy construction made no progress");
@@ -1229,9 +1203,6 @@ public:
         transition->local_host = Host3d("geometric_multigrid_local_host",local_nz,local_ny,local_nx);
       }
 
-      std::vector<int> dimensions(2*level.nranks);
-      int local_dimensions[2] = {local_nx,local_ny};
-      MPI_Allgather(local_dimensions,2,MPI_INT,dimensions.data(),2,MPI_INT,level.comm);
       auto const local_dx = coarsen_widths(level.dx_host,factor_x);
       auto const local_dy = coarsen_widths(level.dy_host,factor_y);
       std::vector<int> x_counts(level.nranks);
@@ -1254,14 +1225,10 @@ public:
                      y_displacements.data(),mpi_scalar_type(),level.comm);
       int coarse_nx = 0;
       int coarse_ny = 0;
-      int coarse_nx_global = 0;
-      int coarse_ny_global = 0;
       int const group_end_x = std::min(leader_px+group_x,level.nproc_x);
       int const group_end_y = std::min(leader_py+group_y,level.nproc_y);
       for (int px = leader_px; px < group_end_x; px++) coarse_nx += dimensions[2*(leader_py*level.nproc_x+px)];
       for (int py = leader_py; py < group_end_y; py++) coarse_ny += dimensions[2*(py*level.nproc_x+leader_px)+1];
-      for (int px = 0; px < level.nproc_x; px++) coarse_nx_global += dimensions[2*px];
-      for (int py = 0; py < level.nproc_y; py++) coarse_ny_global += dimensions[2*py*level.nproc_x+1];
       if (transition->leader && transition->aggregates_ranks) {
         int oy = 0;
         for (int py = leader_py; py < group_end_y; py++) {
