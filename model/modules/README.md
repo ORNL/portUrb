@@ -7,14 +7,6 @@ norms. Its pressure-nullspace projection uses the same weights. Geometric multig
 `R = Vc^{-1} P^T Vf`, so nonuniform vertical grids retain the weighted symmetry required by PCG. The weights are
 normalized by the first vertical cell width, giving unit weights on uniform grids.
 
-For the `linrk3` sequence with stage fractions 1/3, 1/2, and 1, the anelastic dycore performs ordinary
-projected RK steps until four completed-step pressure solutions are available. It then extrapolates pressure from those
-four newest-first history points at each stage and performs one residual projection in the final stage. Both the pressure
-history, its valid-point count, and the associated dynamical timestep are written to output/restart files, so a restarted
-run resumes the same integration path without repeating startup steps. Because the optimized weights assume equally
-spaced history, a change in the dynamical timestep starts a new four-step ordinary-RK history. Other RK methods retain
-projection at every stage.
-
 Geometric multigrid supports extents that are not divisible by the requested coarsening factor. Every geometric
 transition applies the same integral factor in x, y, and z to preserve grid-spacing anisotropy, using
 `ceil(N_local/factor)` coarse cells within each MPI subdomain, physical-coordinate quadratic prolongation, and the

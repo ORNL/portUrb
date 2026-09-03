@@ -187,13 +187,13 @@ namespace modules {
 
     // Max CFL: 0.72
     // This CFL is smaller than normal because dimensions are split within each RK stage
-    // This is the linearly third-order, non-linearly second-order linrk3 method
+    // This is the linearly third-order, non-linearly second-order quasi-Runge-Kutta method used by WRF
     // coupler : Coupler instance
     // state   : State array from the dynamical core
     // tracers : Tracer array from the dynamical core
     // dt_dyn  : Dynamical core time step to use for this sub-step
     // icycle  : Current sub-cycle index (from 0 to ncycles-1)
-    // Advances the solution in state and tracers by dt_dyn using linrk3
+    // Advances the solution in state and tracers by dt_dyn using the linRK3 method
     // The icycle number is used for proper ghost cell exchanges between precursor and forced simulations
     void time_step_rk3( core::Coupler & coupler ,
                         real4d const  & state   ,
@@ -282,13 +282,13 @@ namespace modules {
 
     // Max CFL: 0.99
     // This CFL is smaller than normal because dimensions are split within each RK stage
-    // This is the linearly fourth-order, non-linearly second-order linrk4 method
+    // This is the linearly fourth-order, non-linearly second-order quasi-Runge-Kutta method used by WRF
     // coupler : Coupler instance
     // state   : State array from the dynamical core
     // tracers : Tracer array from the dynamical core
     // dt_dyn  : Dynamical core time step to use for this sub-step
     // icycle  : Current sub-cycle index (from 0 to ncycles-1)
-    // Advances the solution in state and tracers by dt_dyn using linrk4
+    // Advances the solution in state and tracers by dt_dyn using the linRK3 method
     // The icycle number is used for proper ghost cell exchanges between precursor and forced simulations
     void time_step_rk4( core::Coupler & coupler ,
                         real4d const  & state   ,
@@ -398,7 +398,7 @@ namespace modules {
     // tracers : Tracer array from the dynamical core
     // dt_dyn  : Dynamical core time step to use for this sub-step
     // icycle  : Current sub-cycle index (from 0 to ncycles-1)
-    // Advances the solution in state and tracers by dt_dyn using ssprk3
+    // Advances the solution in state and tracers by dt_dyn using the linRK3 method
     // The icycle number is used for proper ghost cell exchanges between precursor and forced simulations
     void time_step_ssprk3( core::Coupler & coupler ,
                            real4d const  & state   ,

@@ -46,8 +46,6 @@ namespace modules {
     int geometric_multigrid_coarsening_factor = 2;
   };
 
-  enum class AcousticProjectionMode { FullProjection, PredictorOnly, PredictorAndProjection };
-
   namespace detail {
 
   // Implementation details for the public function-based acoustic projection API.
@@ -180,7 +178,7 @@ namespace modules {
 
     static void apply(core::Coupler &coupler, float4d const &momentum_in,
                       float4d const &momentum_out, real3d const &pressure_io, real dt,
-                      AcousticProjectionConfig const &config, AcousticProjectionMode mode) {
+                      AcousticProjectionConfig const &config) {
       using yakl::SimpleBounds;
       auto const nx          = coupler.get_nx();
       auto const ny          = coupler.get_ny();
@@ -245,7 +243,6 @@ namespace modules {
       using Projection3d = yakl::Array<ProjectionScalar ***>;
       using Projection4d = yakl::Array<ProjectionScalar ****>;
       Projection3d pressure          ("anelastic_projection_pressure"          ,nz,ny,nx);
-      Projection3d pressure_predictor;
       Projection3d pressure_rhs      ("anelastic_projection_rhs"               ,nz,ny,nx);
       Projection3d pressure_projected("anelastic_projection_pressure_projected",nz,ny,nx);
       Projection3d projection_work   ("anelastic_projection_work"              ,nz,ny,nx);
@@ -285,15 +282,7 @@ namespace modules {
       };
       // The previous projection is a rolling initial guess, not a prognostic RK variable. Reapply the pressure-space
       // constraints to remove roundoff drift from previous solves. Immersed geometry is fixed after initialization.
-      // Extrapolated pressure is a linear combination of already projected history, so it needs no additional reduction.
-      if (mode == AcousticProjectionMode::FullProjection) project_pressure(pressure,pressure);
-      if (mode == AcousticProjectionMode::PredictorAndProjection) {
-        pressure_predictor = Projection3d("anelastic_projection_pressure_predictor",nz,ny,nx);
-        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          pressure_predictor(k,j,i) = pressure(k,j,i);
-          pressure(k,j,i) = 0;
-        });
-      }
+      project_pressure(pressure,pressure);
 
       ProjectionScalar const projection_beta =
           static_cast<ProjectionScalar>(config.momentum_hyperviscosity);
@@ -537,20 +526,6 @@ namespace modules {
         }
       };
 
-      if (mode == AcousticProjectionMode::PredictorOnly) {
-        compute_momentum_from_pressure(pressure,momentum_work,true);
-        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          momentum_out(0,k,j,i) = momentum_work(idRU,k,j,i);
-          momentum_out(1,k,j,i) = momentum_work(idRV,k,j,i);
-          momentum_out(2,k,j,i) = momentum_work(idRW,k,j,i);
-        });
-        return;
-      }
-
-      if (mode == AcousticProjectionMode::PredictorAndProjection) {
-        compute_momentum_from_pressure(pressure_predictor,momentum_work,true);
-      }
-
       compute_mass_fluxes(momentum_rhs);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
         ProjectionScalar const divergence = (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
@@ -559,29 +534,6 @@ namespace modules {
                                             static_cast<ProjectionScalar>(dz(k));
         pressure_rhs(k,j,i) = fluid_mask(k,j,i) == 1 ? -divergence : 0;
       });
-      if (mode == AcousticProjectionMode::PredictorAndProjection) {
-        // Solve only for the correction: rhs_delta = rhs-A(pressure_predictor). Using the same compact pressure-flux
-        // operator as compute_Ax makes the residual projection algebraically identical to a full pressure solve.
-        compute_pressure_corrected_mass_fluxes(pressure_predictor,false);
-        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          ProjectionScalar const pressure_momentum_divergence =
-              (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
-              (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
-              (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k));
-          ProjectionScalar const pressure_hv = pressure_hv_enabled ?
-              (hv_x(k,j,i+1)-hv_x(k,j,i))*r_dx +
-              (hv_y(k,j+1,i)-hv_y(k,j,i))*r_dy +
-              (hv_z(k+1,j,i)-hv_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
-          if (fluid_mask(k,j,i) == 1) {
-            pressure_rhs(k,j,i) -= pressure_momentum_divergence+pressure_hv+
-                                   dt_proj*screening_inv_length_squared*pressure_predictor(k,j,i);
-          }
-          momentum_rhs(idPP,k,j,i) = 0;
-          momentum_rhs(idRU,k,j,i) = momentum_work(idRU,k,j,i);
-          momentum_rhs(idRV,k,j,i) = momentum_work(idRV,k,j,i);
-          momentum_rhs(idRW,k,j,i) = momentum_work(idRW,k,j,i);
-        });
-      }
       ProjectionScalar const pressure_rhs_mean = project_pressure(pressure_rhs,pressure_rhs);
       if constexpr (yakl::kokkos_debug) {
         coupler.set_option<real>("dycore_anelastic_last_pressure_rhs_mean",pressure_rhs_mean);
@@ -1023,10 +975,8 @@ namespace modules {
       project_pressure(pressure,pressure);
       if constexpr (yakl::kokkos_debug) {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          ProjectionScalar const pressure_total = mode == AcousticProjectionMode::PredictorAndProjection ?
-              pressure_predictor(k,j,i)+pressure(k,j,i) : pressure(k,j,i);
           norm_work(k,j,i) = fluid_mask(k,j,i) == 1 ? vertical_weight_scale*
-              static_cast<ProjectionScalar>(dz(k))*pressure_total : 0;
+              static_cast<ProjectionScalar>(dz(k))*pressure(k,j,i) : 0;
         });
         ProjectionScalar const final_pressure_sum =
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM);
@@ -1036,27 +986,23 @@ namespace modules {
       if constexpr (yakl::kokkos_debug) {
         if (cg_check) {
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          ProjectionScalar const pressure_total = mode == AcousticProjectionMode::PredictorAndProjection ?
-              pressure_predictor(k,j,i)+pressure(k,j,i) : pressure(k,j,i);
           norm_work(k,j,i) = fluid_mask(k,j,i) == 1 ? vertical_weight_scale*
-              static_cast<ProjectionScalar>(dz(k))*pressure_total*pressure_total : 0;
+              static_cast<ProjectionScalar>(dz(k))*pressure(k,j,i)*pressure(k,j,i) : 0;
         });
         ProjectionScalar const pressure_norm_sq =
             coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(norm_work),MPI_SUM);
         ProjectionScalar max_checker_correlation = 0;
-        for (int checker_mode = 1; checker_mode < 8; checker_mode++) {
+        for (int mode = 1; mode < 8; mode++) {
           yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
             int parity = 0;
-            if ((checker_mode & 1) != 0) parity += static_cast<int>(i_beg)+i;
-            if ((checker_mode & 2) != 0) parity += static_cast<int>(j_beg)+j;
-            if ((checker_mode & 4) != 0) parity += k;
+            if ((mode & 1) != 0) parity += static_cast<int>(i_beg)+i;
+            if ((mode & 2) != 0) parity += static_cast<int>(j_beg)+j;
+            if ((mode & 4) != 0) parity += k;
             ProjectionScalar const checker_value = parity%2 == 0 ? 1 : -1;
             bool const is_fluid = fluid_mask(k,j,i) == 1;
             ProjectionScalar const volume = vertical_weight_scale*static_cast<ProjectionScalar>(dz(k));
-            ProjectionScalar const pressure_total = mode == AcousticProjectionMode::PredictorAndProjection ?
-                pressure_predictor(k,j,i)+pressure(k,j,i) : pressure(k,j,i);
             projection_work(k,j,i) = is_fluid ? volume*checker_value : 0;
-            norm_work(k,j,i) = is_fluid ? volume*pressure_total*checker_value : 0;
+            norm_work(k,j,i) = is_fluid ? volume*pressure(k,j,i)*checker_value : 0;
           });
           ProjectionScalar const checker_sum =
               coupler.get_parallel_comm().all_reduce(yakl::intrinsics::sum(projection_work),MPI_SUM);
@@ -1076,15 +1022,9 @@ namespace modules {
         }
         }
       }
-      if (mode == AcousticProjectionMode::PredictorAndProjection) {
-        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          pressure_io(k,j,i) = static_cast<real>(pressure_predictor(k,j,i)+pressure(k,j,i));
-        });
-      } else {
-        yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
-          pressure_io(k,j,i) = static_cast<real>(pressure(k,j,i));
-        });
-      }
+      yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
+        pressure_io(k,j,i) = static_cast<real>(pressure(k,j,i));
+      });
       // Reapply the complete operator, including pressure hyperviscosity, for the authoritative final residual.
       compute_Ax(pressure.collapse(),Ax,comm);
       auto residual = projection_work.collapse();
@@ -1174,10 +1114,8 @@ namespace modules {
               (ru_x(k,j,i+1)-ru_x(k,j,i))*r_dx +
               (rv_y(k,j+1,i)-rv_y(k,j,i))*r_dy +
               (rw_z(k+1,j,i)-rw_z(k,j,i))/static_cast<ProjectionScalar>(dz(k)) : 0;
-          ProjectionScalar const pressure_total = mode == AcousticProjectionMode::PredictorAndProjection ?
-              pressure_predictor(k,j,i)+pressure(k,j,i) : pressure(k,j,i);
           ProjectionScalar const constraint = divergence+
-              dt_proj*screening_inv_length_squared*pressure_total;
+              dt_proj*screening_inv_length_squared*pressure(k,j,i);
           norm_work(k,j,i) = vertical_weight_scale*static_cast<ProjectionScalar>(dz(k))*constraint*constraint;
         });
         ProjectionScalar const screened_constraint_l2 =
@@ -1645,8 +1583,7 @@ namespace modules {
   template <int ord>
   void acoustic_projection(core::Coupler &coupler, float4d const &momentum_in,
                            float4d const &momentum_out, real3d const &pressure, real dt,
-                           AcousticProjectionConfig const &config,
-                           AcousticProjectionMode mode = AcousticProjectionMode::FullProjection) {
+                           AcousticProjectionConfig const &config) {
     auto const nz = coupler.get_nz();
     auto const ny = coupler.get_ny();
     auto const nx = coupler.get_nx();
@@ -1660,7 +1597,7 @@ namespace modules {
     if (!momentum_shape_valid || !pressure_shape_valid) {
       endrun("ERROR: acoustic projection input/output dimensions do not match the Coupler grid");
     }
-    detail::AcousticProjectionImpl<ord>::apply(coupler,momentum_in,momentum_out,pressure,dt,config,mode);
+    detail::AcousticProjectionImpl<ord>::apply(coupler,momentum_in,momentum_out,pressure,dt,config);
   }
 
   template <int ord>
