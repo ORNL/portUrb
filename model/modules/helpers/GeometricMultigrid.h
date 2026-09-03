@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iomanip>
 #include <memory>
 #include <vector>
 
@@ -1296,7 +1297,25 @@ public:
     }
 
     int metadata[6] = {0,0,0,0,0,0};
-    if (coupler.get_myrank() == 0) {
+    if (coupler.is_mainproc()) {
+      auto const output_flags = std::cout.flags();
+      char const output_fill = std::cout.fill();
+      std::cout << "Geometric multigrid hierarchy:\n"
+                << "  Level | Global nx | Global ny | Global nz | Tasks x | Tasks y | Tasks\n"
+                << "  ------+-----------+-----------+-----------+---------+---------+------\n";
+      for (int l = 0; l < static_cast<int>(levels_.size()); l++) {
+        Level const &level = *levels_[l];
+        std::cout << "  " << std::right << std::setw(5) << l
+                  << " | " << std::setw(9) << level.nx_global
+                  << " | " << std::setw(9) << level.ny_global
+                  << " | " << std::setw(9) << level.nz
+                  << " | " << std::setw(7) << level.nproc_x
+                  << " | " << std::setw(7) << level.nproc_y
+                  << " | " << std::setw(5) << level.nranks << '\n';
+      }
+      std::cout.flags(output_flags);
+      std::cout.fill(output_fill);
+
       Level const &coarse = *levels_.back();
       metadata[0] = levels_.size();
       metadata[1] = coarse.nx_global*coarse.ny_global*coarse.nz;
