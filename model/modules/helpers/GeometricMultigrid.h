@@ -11,11 +11,11 @@
 namespace modules {
 
 
-// Structured, matrix-free geometric multigrid for a pure-fluid pressure projection. The hierarchy uses physical-
-// coordinate quadratic cell-centered interpolation and its volume-weighted adjoint, so a symmetric V-cycle remains
-// suitable for finite-volume CG on nonuniform grids. Uniform directions remain uniform when their extents are not
-// divisible by the coarsening factor. Horizontal rank agglomeration keeps coarse grids large enough for GPUs and
-// removes MPI tasks as the grid shrinks.
+// Structured, matrix-free geometric multigrid for a pure-fluid pressure projection. Each MPI rank uses a subdomain-
+// local physical-coordinate quadratic interpolation and its volume-weighted adjoint. The resulting block-diagonal
+// transfer remains symmetric while avoiding communication during restriction and prolongation. Unchanged MPI rank
+// sets pass arrays directly between levels; rank agglomeration gathers only when it removes tasks. Halo exchanges are
+// completed before one whole-level stencil launch to favor low GPU launch latency over attempted MPI overlap.
 template <class Scalar>
 class GeometricMultigrid {
 public:
@@ -45,18 +45,6 @@ public:
     Device1d restrict_weights;
   };
 
-  struct TransferHalo {
-    int width = 0;
-    Device3d send_lower;
-    Device3d send_upper;
-    Device3d recv_lower;
-    Device3d recv_upper;
-    Host3d send_lower_host;
-    Host3d send_upper_host;
-    Host3d recv_lower_host;
-    Host3d recv_upper_host;
-  };
-
   struct Transition {
     bool coarsen_x = false;
     bool coarsen_y = false;
@@ -65,22 +53,17 @@ public:
     bool periodic_y = false;
     bool periodic_z = false;
     bool leader = false;
+    bool aggregates_ranks = false;
     int leader_rank = -1;
     int local_nx = 0;
     int local_ny = 0;
     int local_nz = 0;
-    int coarse_begin_x = 0;
-    int coarse_begin_y = 0;
     int factor_x = 1;
     int factor_y = 1;
     int factor_z = 1;
     TransferMap map_x;
     TransferMap map_y;
     TransferMap map_z;
-    TransferHalo restrict_x_halo;
-    TransferHalo restrict_y_halo;
-    TransferHalo prolong_x_halo;
-    TransferHalo prolong_y_halo;
     Device3d restrict_x;
     Device3d restrict_y;
     Device3d local_coarse;
@@ -102,8 +85,6 @@ public:
     int py = 0;
     int rank = 0;
     int nranks = 1;
-    int global_begin_x = 0;
-    int global_begin_y = 0;
     bool periodic_x = false;
     bool periodic_y = false;
     bool periodic_z = false;
@@ -112,8 +93,6 @@ public:
     std::vector<Scalar> dx_host;
     std::vector<Scalar> dy_host;
     std::vector<Scalar> dz_host;
-    std::vector<Scalar> dx_global_host;
-    std::vector<Scalar> dy_global_host;
     yakl::Array<Scalar *> x_minus;
     yakl::Array<Scalar *> x_plus;
     yakl::Array<Scalar *> y_minus;
@@ -157,7 +136,6 @@ public:
   int coarse_smooth_ = 24;
   Scalar jacobi_weight_ = Scalar(2)/Scalar(3);
   int coarsening_factor_ = 2;
-  bool uses_mpi_transfers_ = false;
   bool initialized_ = false;
 
 
@@ -177,11 +155,6 @@ public:
 
   static int coarsened_extent(int fine_extent, int factor) {
     return (fine_extent+factor-1)/factor;
-  }
-
-
-  static int coarsened_begin(int fine_begin, int factor) {
-    return (fine_begin+factor-1)/factor;
   }
 
 
@@ -240,44 +213,8 @@ public:
   }
 
 
-  static int distance_to_owned_interval(int relative, int count) {
-    if (relative < 0) return -relative;
-    if (relative >= count) return relative-count+1;
-    return 0;
-  }
-
-
-  static int nearest_periodic_relative(int index, int begin, int count, int global_extent,
-                                       bool periodic) {
-    int relative = index-begin;
-    if (!periodic) return relative;
-
-    // Select the periodic image nearest the complete owned interval [0,count), not nearest its lower end.
-    // The latter maps upper-halo points to the opposite side on uneven MPI partitions.
-    int distance = distance_to_owned_interval(relative,count);
-    int const plus = relative+global_extent;
-    int const plus_distance = distance_to_owned_interval(plus,count);
-    if (plus_distance < distance) {
-      relative = plus;
-      distance = plus_distance;
-    }
-    int const minus = index-begin-global_extent;
-    int const minus_distance = distance_to_owned_interval(minus,count);
-    if (minus_distance < distance) relative = minus;
-    return relative;
-  }
-
-
-  static int local_relative(int index, int begin, int count, int global_extent, bool periodic) {
-    if (begin == 0 && count == global_extent) return index;
-    return nearest_periodic_relative(index,begin,count,global_extent,periodic);
-  }
-
-
   static void initialize_transfer(std::vector<Scalar> const &fine_widths, int factor, bool periodic,
-                                  int fine_begin, int fine_count, int coarse_begin, int coarse_count,
-                                  std::string const &label, TransferMap &map,
-                                  int &restrict_halo_width, int &prolong_halo_width) {
+                                  std::string const &label, TransferMap &map) {
     int const nf = fine_widths.size();
     auto const coarse_widths = coarsen_widths(fine_widths,factor);
     int const nc = coarse_widths.size();
@@ -286,21 +223,21 @@ public:
     Scalar domain_length = 0;
     for (auto const width : fine_widths) domain_length += width;
 
-    std::vector<int> global_indices(3*nf);
-    std::vector<Scalar> global_weights(3*nf,0);
+    std::vector<int> interpolation_indices(3*nf);
+    std::vector<Scalar> interpolation_weights(3*nf,0);
     for (int i = 0; i < nf; i++) {
       int const parent = nearest_center(coarse_centers,fine_centers[i]);
       if (nc == 1) {
-        global_indices[3*i] = 0;
-        global_weights[3*i] = 1;
-        global_indices[3*i+1] = 0;
-        global_indices[3*i+2] = 0;
+        interpolation_indices[3*i] = 0;
+        interpolation_weights[3*i] = 1;
+        interpolation_indices[3*i+1] = 0;
+        interpolation_indices[3*i+2] = 0;
         continue;
       }
       Scalar coordinates[3];
       for (int entry = 0; entry < 3; entry++) {
         int const raw = parent+entry-1;
-        global_indices[3*i+entry] = map_index(raw,nc,periodic);
+        interpolation_indices[3*i+entry] = map_index(raw,nc,periodic);
         if (raw < 0) {
           coordinates[entry] = periodic ? coarse_centers[nc-1]-domain_length : -coarse_centers[0];
         } else if (raw >= nc) {
@@ -317,44 +254,36 @@ public:
             weight *= (fine_centers[i]-coordinates[other])/(coordinates[entry]-coordinates[other]);
           }
         }
-        global_weights[3*i+entry] = weight;
+        interpolation_weights[3*i+entry] = weight;
       }
     }
 
-    yakl::Array<int **,Kokkos::HostSpace> prolong_indices_host(label+"_prolong_indices_host",fine_count,3);
-    yakl::Array<Scalar **,Kokkos::HostSpace> prolong_weights_host(label+"_prolong_weights_host",fine_count,3);
-    prolong_halo_width = 0;
-    for (int local = 0; local < fine_count; local++) {
-      int const global = fine_begin+local;
+    yakl::Array<int **,Kokkos::HostSpace> prolong_indices_host(label+"_prolong_indices_host",nf,3);
+    yakl::Array<Scalar **,Kokkos::HostSpace> prolong_weights_host(label+"_prolong_weights_host",nf,3);
+    for (int i = 0; i < nf; i++) {
       for (int entry = 0; entry < 3; entry++) {
-        int const relative = local_relative(global_indices[3*global+entry],coarse_begin,coarse_count,nc,periodic);
-        prolong_indices_host(local,entry) = relative;
-        prolong_weights_host(local,entry) = global_weights[3*global+entry];
-        prolong_halo_width = std::max(prolong_halo_width,std::max(-relative,relative-coarse_count+1));
+        prolong_indices_host(i,entry) = interpolation_indices[3*i+entry];
+        prolong_weights_host(i,entry) = interpolation_weights[3*i+entry];
       }
     }
 
-    std::vector<std::vector<std::pair<int,Scalar>>> transpose(coarse_count);
-    restrict_halo_width = 0;
-    for (int global = 0; global < nf; global++) {
+    std::vector<std::vector<std::pair<int,Scalar>>> transpose(nc);
+    for (int i = 0; i < nf; i++) {
       for (int entry = 0; entry < 3; entry++) {
-        Scalar const weight = global_weights[3*global+entry];
+        Scalar const weight = interpolation_weights[3*i+entry];
         if (weight == 0) continue;
-        int const coarse_global = global_indices[3*global+entry];
-        if (coarse_global < coarse_begin || coarse_global >= coarse_begin+coarse_count) continue;
-        int const relative = local_relative(global,fine_begin,fine_count,nf,periodic);
+        int const coarse = interpolation_indices[3*i+entry];
         // R = Vc^{-1} P^T Vf in this direction. Tensoring these maps produces the full cell-volume adjoint.
-        Scalar const restriction_weight = weight*fine_widths[global]/coarse_widths[coarse_global];
-        transpose[coarse_global-coarse_begin].emplace_back(relative,restriction_weight);
-        restrict_halo_width = std::max(restrict_halo_width,std::max(-relative,relative-fine_count+1));
+        Scalar const restriction_weight = weight*fine_widths[i]/coarse_widths[coarse];
+        transpose[coarse].emplace_back(i,restriction_weight);
       }
     }
-    yakl::Array<int *,Kokkos::HostSpace> restrict_offsets_host(label+"_restrict_offsets_host",coarse_count+1);
+    yakl::Array<int *,Kokkos::HostSpace> restrict_offsets_host(label+"_restrict_offsets_host",nc+1);
     restrict_offsets_host(0) = 0;
-    for (int q = 0; q < coarse_count; q++) {
+    for (int q = 0; q < nc; q++) {
       restrict_offsets_host(q+1) = restrict_offsets_host(q)+transpose[q].size();
     }
-    int const num_entries = restrict_offsets_host(coarse_count);
+    int const num_entries = restrict_offsets_host(nc);
     yakl::Array<int *,Kokkos::HostSpace> restrict_indices_host(label+"_restrict_indices_host",num_entries);
     yakl::Array<Scalar *,Kokkos::HostSpace> restrict_weights_host(label+"_restrict_weights_host",num_entries);
     int position = 0;
@@ -402,23 +331,6 @@ public:
       }
     }
     return best;
-  }
-
-
-  static void allocate_transfer_halo(TransferHalo &halo, int width, int nz, int ny, int nx,
-                                     bool x_direction, std::string const &label) {
-    halo.width = width;
-    if (width == 0) return;
-    int const halo_ny = x_direction ? ny : width;
-    int const halo_nx = x_direction ? width : nx;
-    halo.send_lower = Device3d(label+"_send_lower",nz,halo_ny,halo_nx);
-    halo.send_upper = Device3d(label+"_send_upper",nz,halo_ny,halo_nx);
-    halo.recv_lower = Device3d(label+"_recv_lower",nz,halo_ny,halo_nx);
-    halo.recv_upper = Device3d(label+"_recv_upper",nz,halo_ny,halo_nx);
-    halo.send_lower_host = Host3d(label+"_send_lower_host",nz,halo_ny,halo_nx);
-    halo.send_upper_host = Host3d(label+"_send_upper_host",nz,halo_ny,halo_nx);
-    halo.recv_lower_host = Host3d(label+"_recv_lower_host",nz,halo_ny,halo_nx);
-    halo.recv_upper_host = Host3d(label+"_recv_upper_host",nz,halo_ny,halo_nx);
   }
 
 
@@ -544,79 +456,6 @@ public:
   }
 
 
-  static void exchange_transfer_halo(Level const &level, Device3d const &input, TransferHalo &halo,
-                                     bool x_direction, int tag) {
-    int const width = halo.width;
-    if (width == 0) return;
-    int const nx = input.extent(2);
-    int const ny = input.extent(1);
-    int const nz = input.extent(0);
-    int const local_extent = x_direction ? nx : ny;
-    if (width > local_extent) {
-      endrun("ERROR: geometric multigrid transfer halo is wider than the local MPI subdomain");
-    }
-    auto send_lower = halo.send_lower;
-    auto send_upper = halo.send_upper;
-    if (x_direction) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,width),
-                         KOKKOS_LAMBDA (int k, int j, int i) {
-        send_lower(k,j,i) = input(k,j,i);
-        send_upper(k,j,i) = input(k,j,nx-width+i);
-      });
-    } else {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,width,nx),
-                         KOKKOS_LAMBDA (int k, int j, int i) {
-        send_lower(k,j,i) = input(k,j,i);
-        send_upper(k,j,i) = input(k,ny-width+j,i);
-      });
-    }
-    int const lower = x_direction ? neighbor(level,-1,0) : neighbor(level,0,-1);
-    int const upper = x_direction ? neighbor(level, 1,0) : neighbor(level,0, 1);
-    Exchange exchange;
-    #ifdef PORTURB_GPU_AWARE_MPI
-      Kokkos::fence();
-      post_receive(exchange,halo.recv_lower.data(),halo.recv_lower.size(),lower,tag+1,mpi_scalar_type(),level.comm);
-      post_receive(exchange,halo.recv_upper.data(),halo.recv_upper.size(),upper,tag,mpi_scalar_type(),level.comm);
-      post_send(exchange,halo.send_lower.data(),halo.send_lower.size(),lower,tag,mpi_scalar_type(),level.comm);
-      post_send(exchange,halo.send_upper.data(),halo.send_upper.size(),upper,tag+1,mpi_scalar_type(),level.comm);
-    #else
-      halo.send_lower.deep_copy_to(halo.send_lower_host);
-      halo.send_upper.deep_copy_to(halo.send_upper_host);
-      post_receive(exchange,halo.recv_lower_host.data(),halo.recv_lower_host.size(),lower,tag+1,
-                   mpi_scalar_type(),level.comm);
-      post_receive(exchange,halo.recv_upper_host.data(),halo.recv_upper_host.size(),upper,tag,
-                   mpi_scalar_type(),level.comm);
-      post_send(exchange,halo.send_lower_host.data(),halo.send_lower_host.size(),lower,tag,
-                mpi_scalar_type(),level.comm);
-      post_send(exchange,halo.send_upper_host.data(),halo.send_upper_host.size(),upper,tag+1,
-                mpi_scalar_type(),level.comm);
-    #endif
-    if (exchange.count > 0) MPI_Waitall(exchange.count,exchange.requests.data(),MPI_STATUSES_IGNORE);
-    #ifndef PORTURB_GPU_AWARE_MPI
-      halo.recv_lower_host.deep_copy_to(halo.recv_lower);
-      halo.recv_upper_host.deep_copy_to(halo.recv_upper);
-    #endif
-  }
-
-
-  KOKKOS_INLINE_FUNCTION static Scalar transfer_value_x(Device3d const &input, Device3d const &recv_lower,
-                                                         Device3d const &recv_upper, int width,
-                                                         int k, int j, int i) {
-    if (i < 0) return recv_lower(k,j,width+i);
-    if (i >= input.extent(2)) return recv_upper(k,j,i-input.extent(2));
-    return input(k,j,i);
-  }
-
-
-  KOKKOS_INLINE_FUNCTION static Scalar transfer_value_y(Device3d const &input, Device3d const &recv_lower,
-                                                         Device3d const &recv_upper, int width,
-                                                         int k, int j, int i) {
-    if (j < 0) return recv_lower(k,width+j,i);
-    if (j >= input.extent(1)) return recv_upper(k,j-input.extent(1),i);
-    return input(k,j,i);
-  }
-
-
 public:
   // NVCC requires member functions enclosing extended device lambdas to be publicly nameable.
   Exchange begin_exchange(Level &level, int level_index) const {
@@ -628,18 +467,23 @@ public:
     int const nx = level.nx;
     int const ny = level.ny;
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_halo_pack");
-    if (level.nproc_x > 1) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<2>(level.nz,level.ny),
-                         KOKKOS_LAMBDA (int k, int j) {
-        send_west(k,j) = x(k,j,0);
-        send_east(k,j) = x(k,j,nx-1);
-      });
-    }
-    if (level.nproc_y > 1) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<2>(level.nz,level.nx),
-                         KOKKOS_LAMBDA (int k, int i) {
-        send_south(k,i) = x(k,0,i);
-        send_north(k,i) = x(k,ny-1,i);
+    int const x_count = level.nproc_x > 1 ? level.nz*level.ny : 0;
+    int const y_count = level.nproc_y > 1 ? level.nz*level.nx : 0;
+    if (x_count+y_count > 0) {
+      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<1>(x_count+y_count),
+                         KOKKOS_LAMBDA (int index) {
+        if (index < x_count) {
+          int const k = index/ny;
+          int const j = index-k*ny;
+          send_west(k,j) = x(k,j,0);
+          send_east(k,j) = x(k,j,nx-1);
+        } else {
+          int const local_index = index-x_count;
+          int const k = local_index/nx;
+          int const i = local_index-k*nx;
+          send_south(k,i) = x(k,0,i);
+          send_north(k,i) = x(k,ny-1,i);
+        }
       });
     }
     if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_halo_pack");
@@ -832,16 +676,8 @@ public:
         yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),update);
       } else {
         Exchange exchange = begin_exchange(level,level_index);
-        if (nx > 2 && ny > 2) {
-          yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny-2,nx-2),
-                             KOKKOS_LAMBDA (int k, int jj, int ii) { update(k,jj+1,ii+1); });
-        }
         finish_exchange(level,exchange);
-        yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),
-                           KOKKOS_LAMBDA (int k, int j, int i) {
-          if (i > 0 && i+1 < nx && j > 0 && j+1 < ny) return;
-          update(k,j,i);
-        });
+        yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),update);
       }
       level.x = x_next;
       level.x_next = x;
@@ -885,16 +721,8 @@ public:
       return;
     }
     Exchange exchange = begin_exchange(level,level_index);
-    if (nx > 2 && ny > 2) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny-2,nx-2),
-                         KOKKOS_LAMBDA (int k, int jj, int ii) { calculate(k,jj+1,ii+1); });
-    }
     finish_exchange(level,exchange);
-    yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),
-                       KOKKOS_LAMBDA (int k, int j, int i) {
-      if (i > 0 && i+1 < nx && j > 0 && j+1 < ny) return;
-      calculate(k,j,i);
-    });
+    yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(nz,ny,nx),calculate);
     if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_residual");
   }
 
@@ -909,69 +737,43 @@ public:
   }
 
 
-  static void restrict_dimension_x(Level const &fine, Transition &transition, int level_index) {
-    auto input = fine.residual;
+  static void restrict_dimension_x(Level const &fine, Transition &transition, Device3d const &input) {
     auto output = transition.restrict_x;
-    if (!transition.coarsen_x) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,fine.nx),
-                         KOKKOS_LAMBDA (int k, int j, int i) { output(k,j,i) = input(k,j,i); });
-      return;
-    }
-    if (fine.nproc_x > 1) exchange_transfer_halo(fine,input,transition.restrict_x_halo,true,2000+8*level_index);
     auto offsets = transition.map_x.restrict_offsets;
     auto indices = transition.map_x.restrict_indices;
     auto weights = transition.map_x.restrict_weights;
-    auto recv_lower = transition.restrict_x_halo.recv_lower;
-    auto recv_upper = transition.restrict_x_halo.recv_upper;
-    int const width = transition.restrict_x_halo.width;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,transition.local_nx),
                        KOKKOS_LAMBDA (int k, int j, int q) {
       Scalar value = 0;
       for (int entry = offsets(q); entry < offsets(q+1); entry++) {
-        value += weights(entry)*transfer_value_x(input,recv_lower,recv_upper,width,k,j,indices(entry));
+        value += weights(entry)*input(k,j,indices(entry));
       }
       output(k,j,q) = value;
     });
   }
 
 
-  static void restrict_dimension_y(Level const &fine, Transition &transition, int level_index) {
-    auto input = transition.restrict_x;
+  static void restrict_dimension_y(Level const &fine, Transition &transition, Device3d const &input) {
     auto output = transition.restrict_y;
     int const nx = transition.local_nx;
-    if (!transition.coarsen_y) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,nx),
-                         KOKKOS_LAMBDA (int k, int j, int i) { output(k,j,i) = input(k,j,i); });
-      return;
-    }
-    if (fine.nproc_y > 1) exchange_transfer_halo(fine,input,transition.restrict_y_halo,false,2002+8*level_index);
     auto offsets = transition.map_y.restrict_offsets;
     auto indices = transition.map_y.restrict_indices;
     auto weights = transition.map_y.restrict_weights;
-    auto recv_lower = transition.restrict_y_halo.recv_lower;
-    auto recv_upper = transition.restrict_y_halo.recv_upper;
-    int const width = transition.restrict_y_halo.width;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,transition.local_ny,nx),
                        KOKKOS_LAMBDA (int k, int q, int i) {
       Scalar value = 0;
       for (int entry = offsets(q); entry < offsets(q+1); entry++) {
-        value += weights(entry)*transfer_value_y(input,recv_lower,recv_upper,width,k,indices(entry),i);
+        value += weights(entry)*input(k,indices(entry),i);
       }
       output(k,q,i) = value;
     });
   }
 
 
-  static void restrict_dimension_z(Level const &fine, Transition &transition) {
-    auto input = transition.restrict_y;
+  static void restrict_dimension_z(Level const &fine, Transition &transition, Device3d const &input) {
     auto output = transition.local_coarse;
     int const nx = transition.local_nx;
     int const ny = transition.local_ny;
-    if (!transition.coarsen_z) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,ny,nx),
-                         KOKKOS_LAMBDA (int k, int j, int i) { output(k,j,i) = input(k,j,i); });
-      return;
-    }
     auto offsets = transition.map_z.restrict_offsets;
     auto indices = transition.map_z.restrict_indices;
     auto weights = transition.map_z.restrict_weights;
@@ -986,16 +788,10 @@ public:
   }
 
 
-  static void prolong_dimension_z(Level const &fine, Transition &transition) {
-    auto input = transition.local_coarse;
+  static void prolong_dimension_z(Level const &fine, Transition &transition, Device3d const &input) {
     auto output = transition.prolong_z;
     int const nx = transition.local_nx;
     int const ny = transition.local_ny;
-    if (!transition.coarsen_z) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,ny,nx),
-                         KOKKOS_LAMBDA (int k, int j, int i) { output(k,j,i) = input(k,j,i); });
-      return;
-    }
     auto indices = transition.map_z.prolong_indices;
     auto weights = transition.map_z.prolong_weights;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,ny,nx),
@@ -1009,51 +805,36 @@ public:
   }
 
 
-  static void prolong_dimension_y(Level const &fine, Transition &transition, int level_index) {
-    auto input = transition.prolong_z;
+  static void prolong_dimension_y(Level const &fine, Transition &transition, Device3d const &input) {
     auto output = transition.prolong_y;
     int const nx = transition.local_nx;
-    if (!transition.coarsen_y) {
-      yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,nx),
-                         KOKKOS_LAMBDA (int k, int j, int i) { output(k,j,i) = input(k,j,i); });
-      return;
-    }
-    if (fine.nproc_y > 1) exchange_transfer_halo(fine,input,transition.prolong_y_halo,false,2004+8*level_index);
     auto indices = transition.map_y.prolong_indices;
     auto weights = transition.map_y.prolong_weights;
-    auto recv_lower = transition.prolong_y_halo.recv_lower;
-    auto recv_upper = transition.prolong_y_halo.recv_upper;
-    int const width = transition.prolong_y_halo.width;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,nx),
                        KOKKOS_LAMBDA (int k, int j, int i) {
       Scalar value = 0;
       for (int entry = 0; entry < 3; entry++) {
-        value += weights(j,entry)*transfer_value_y(input,recv_lower,recv_upper,width,k,indices(j,entry),i);
+        value += weights(j,entry)*input(k,indices(j,entry),i);
       }
       output(k,j,i) = value;
     });
   }
 
 
-  static void prolong_dimension_x(Level &fine, Transition &transition, int level_index) {
-    auto input = transition.prolong_y;
+  static void prolong_dimension_x(Level &fine, Transition &transition, Device3d const &input) {
     auto output = fine.x;
     if (!transition.coarsen_x) {
       yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,fine.nx),
                          KOKKOS_LAMBDA (int k, int j, int i) { output(k,j,i) += input(k,j,i); });
       return;
     }
-    if (fine.nproc_x > 1) exchange_transfer_halo(fine,input,transition.prolong_x_halo,true,2006+8*level_index);
     auto indices = transition.map_x.prolong_indices;
     auto weights = transition.map_x.prolong_weights;
-    auto recv_lower = transition.prolong_x_halo.recv_lower;
-    auto recv_upper = transition.prolong_x_halo.recv_upper;
-    int const width = transition.prolong_x_halo.width;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,fine.nx),
                        KOKKOS_LAMBDA (int k, int j, int i) {
       Scalar value = 0;
       for (int entry = 0; entry < 3; entry++) {
-        value += weights(i,entry)*transfer_value_x(input,recv_lower,recv_upper,width,k,j,indices(i,entry));
+        value += weights(i,entry)*input(k,j,indices(i,entry));
       }
       output(k,j,i) += value;
     });
@@ -1211,20 +992,46 @@ public:
     compute_residual(level,shift,level_index);
     Transition &transition = *level.transition;
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_restriction");
-    restrict_dimension_x(level,transition,level_index);
-    restrict_dimension_y(level,transition,level_index);
-    if (transition.coarsen_z) restrict_dimension_z(level,transition);
+    Device3d restricted = level.residual;
+    if (transition.coarsen_x) {
+      restrict_dimension_x(level,transition,restricted);
+      restricted = transition.restrict_x;
+    }
+    if (transition.coarsen_y) {
+      restrict_dimension_y(level,transition,restricted);
+      restricted = transition.restrict_y;
+    }
+    if (transition.coarsen_z) {
+      restrict_dimension_z(level,transition,restricted);
+      restricted = transition.local_coarse;
+    }
     if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_restriction");
     Level *coarse = transition.leader ? levels_[level_index+1].get() : nullptr;
-    gather_restricted(level,coarse,level_index);
+    if (transition.aggregates_ranks) {
+      gather_restricted(level,coarse,level_index);
+    } else {
+      coarse->b = restricted;
+    }
     if (transition.leader) {
       vcycle(level_index+1,shift,true);
     }
-    scatter_correction(level,coarse,level_index);
+    Device3d correction;
+    if (transition.aggregates_ranks) {
+      scatter_correction(level,coarse,level_index);
+      correction = transition.local_coarse;
+    } else {
+      correction = coarse->x;
+    }
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_prolongation");
-    if (transition.coarsen_z) prolong_dimension_z(level,transition);
-    prolong_dimension_y(level,transition,level_index);
-    prolong_dimension_x(level,transition,level_index);
+    if (transition.coarsen_z) {
+      prolong_dimension_z(level,transition,correction);
+      correction = transition.prolong_z;
+    }
+    if (transition.coarsen_y) {
+      prolong_dimension_y(level,transition,correction);
+      correction = transition.prolong_y;
+    }
+    prolong_dimension_x(level,transition,correction);
     if constexpr (yakl::yakl_auto_profile) yakl::timer_stop("geometric_multigrid_prolongation");
     if constexpr (yakl::yakl_auto_profile) yakl::timer_start("geometric_multigrid_post_smooth");
     apply_smoother(level,post_smooth_,shift,level_index);
@@ -1313,16 +1120,12 @@ public:
     fine->comm = root_comm_;
     fine->rank = coupler.get_myrank();
     fine->nranks = coupler.get_nranks();
-    fine->global_begin_x = coupler.get_i_beg();
-    fine->global_begin_y = coupler.get_j_beg();
     fine->periodic_x = bc_x1 == "periodic";
     fine->periodic_y = bc_y1 == "periodic";
     fine->periodic_z = bc_z1 == "periodic";
     fine->dx_host.assign(fine->nx,static_cast<Scalar>(coupler.get_dx()));
     fine->dy_host.assign(fine->ny,static_cast<Scalar>(coupler.get_dy()));
     fine->dz_host = dz;
-    fine->dx_global_host.assign(fine->nx_global,static_cast<Scalar>(coupler.get_dx()));
-    fine->dy_global_host.assign(fine->ny_global,static_cast<Scalar>(coupler.get_dy()));
     allocate_level(*fine);
     levels_.push_back(std::move(fine));
 
@@ -1340,24 +1143,13 @@ public:
       bool const coarsen_x = factors[0] > 1;
       bool const coarsen_y = factors[1] > 1;
       bool const coarsen_z = factors[2] > 1;
-      uses_mpi_transfers_ = uses_mpi_transfers_ ||
-                            (coarsen_x && level.nproc_x > 1) ||
-                            (coarsen_y && level.nproc_y > 1);
       if (!coarsen_x && !coarsen_y && !coarsen_z && level.nranks == 1) break;
 
       int const factor_x = factors[0];
       int const factor_y = factors[1];
       int const factor_z = factors[2];
-      int const coarse_begin_x = coarsen_x ? coarsened_begin(level.global_begin_x,factor_x) :
-                                             level.global_begin_x;
-      int const coarse_begin_y = coarsen_y ? coarsened_begin(level.global_begin_y,factor_y) :
-                                             level.global_begin_y;
-      int const coarse_end_x = coarsen_x ? coarsened_begin(level.global_begin_x+level.nx,factor_x) :
-                                           level.global_begin_x+level.nx;
-      int const coarse_end_y = coarsen_y ? coarsened_begin(level.global_begin_y+level.ny,factor_y) :
-                                           level.global_begin_y+level.ny;
-      int const local_nx = coarse_end_x-coarse_begin_x;
-      int const local_ny = coarse_end_y-coarse_begin_y;
+      int const local_nx = coarsened_extent(level.nx,factor_x);
+      int const local_ny = coarsened_extent(level.ny,factor_y);
       int const local_nz = coarsened_extent(level.nz,factor_z);
       long long const local_cells = static_cast<long long>(local_nx)*local_ny*local_nz;
       long long cells_per_rank = 0;
@@ -1392,74 +1184,85 @@ public:
       transition->coarsen_x = coarsen_x;
       transition->coarsen_y = coarsen_y;
       transition->coarsen_z = coarsen_z;
-      transition->periodic_x = level.periodic_x;
-      transition->periodic_y = level.periodic_y;
+      // Distributed transfer operators end at subdomain boundaries. Once a direction resides on one rank, its true
+      // periodicity is recovered by the same local map.
+      transition->periodic_x = level.periodic_x && level.nproc_x == 1;
+      transition->periodic_y = level.periodic_y && level.nproc_y == 1;
       transition->periodic_z = level.periodic_z;
       transition->leader = level.px%group_x == 0 && level.py%group_y == 0;
+      transition->aggregates_ranks = group_x > 1 || group_y > 1;
       int const leader_px = (level.px/group_x)*group_x;
       int const leader_py = (level.py/group_y)*group_y;
       transition->leader_rank = leader_py*level.nproc_x+leader_px;
       transition->local_nx = local_nx;
       transition->local_ny = local_ny;
       transition->local_nz = local_nz;
-      transition->coarse_begin_x = coarse_begin_x;
-      transition->coarse_begin_y = coarse_begin_y;
       transition->factor_x = factor_x;
       transition->factor_y = factor_y;
       transition->factor_z = factor_z;
-      transition->restrict_x = Device3d("geometric_multigrid_restrict_x",level.nz,level.ny,local_nx);
-      transition->restrict_y = Device3d("geometric_multigrid_restrict_y",level.nz,local_ny,local_nx);
-      int restrict_halo_width = 0;
-      int prolong_halo_width = 0;
       if (coarsen_x) {
-        initialize_transfer(level.dx_global_host,factor_x,level.periodic_x,level.global_begin_x,level.nx,
-                            coarse_begin_x,local_nx,"geometric_multigrid_x",transition->map_x,
-                            restrict_halo_width,prolong_halo_width);
-        if (restrict_halo_width > 2*factor_x || prolong_halo_width > 1) {
-          endrun("ERROR: geometric multigrid x transfer exceeded its MPI halo");
-        }
-        allocate_transfer_halo(transition->restrict_x_halo,level.nproc_x > 1 ? 2*factor_x : 0,
-                               level.nz,level.ny,level.nx,true,"geometric_multigrid_restrict_x_halo");
-        allocate_transfer_halo(transition->prolong_x_halo,level.nproc_x > 1 ? 1 : 0,
-                               level.nz,level.ny,local_nx,true,"geometric_multigrid_prolong_x_halo");
+        transition->restrict_x = Device3d("geometric_multigrid_restrict_x",level.nz,level.ny,local_nx);
+        initialize_transfer(level.dx_host,factor_x,transition->periodic_x,
+                            "geometric_multigrid_x",transition->map_x);
       }
       if (coarsen_y) {
-        initialize_transfer(level.dy_global_host,factor_y,level.periodic_y,level.global_begin_y,level.ny,
-                            coarse_begin_y,local_ny,"geometric_multigrid_y",transition->map_y,
-                            restrict_halo_width,prolong_halo_width);
-        if (restrict_halo_width > 2*factor_y || prolong_halo_width > 1) {
-          endrun("ERROR: geometric multigrid y transfer exceeded its MPI halo");
-        }
-        allocate_transfer_halo(transition->restrict_y_halo,level.nproc_y > 1 ? 2*factor_y : 0,
-                               level.nz,level.ny,local_nx,false,"geometric_multigrid_restrict_y_halo");
-        allocate_transfer_halo(transition->prolong_y_halo,level.nproc_y > 1 ? 1 : 0,
-                               level.nz,local_ny,local_nx,false,"geometric_multigrid_prolong_y_halo");
+        transition->restrict_y = Device3d("geometric_multigrid_restrict_y",level.nz,local_ny,local_nx);
+        initialize_transfer(level.dy_host,factor_y,transition->periodic_y,
+                            "geometric_multigrid_y",transition->map_y);
       }
       if (coarsen_z) {
         transition->local_coarse = Device3d("geometric_multigrid_local_coarse",local_nz,local_ny,local_nx);
         transition->prolong_z = Device3d("geometric_multigrid_prolong_z",level.nz,local_ny,local_nx);
-        initialize_transfer(level.dz_host,factor_z,level.periodic_z,0,level.nz,0,local_nz,
-                            "geometric_multigrid_z",transition->map_z,
-                            restrict_halo_width,prolong_halo_width);
-      } else {
+        initialize_transfer(level.dz_host,factor_z,level.periodic_z,
+                            "geometric_multigrid_z",transition->map_z);
+      } else if (coarsen_y) {
         transition->local_coarse = transition->restrict_y;
-        transition->prolong_z = transition->local_coarse;
+      } else if (coarsen_x) {
+        transition->local_coarse = transition->restrict_x;
+      } else {
+        transition->local_coarse = level.residual;
       }
-      transition->prolong_y = Device3d("geometric_multigrid_prolong_y",level.nz,level.ny,local_nx);
-      transition->local_host = Host3d("geometric_multigrid_local_host",local_nz,local_ny,local_nx);
+      if (coarsen_y) {
+        transition->prolong_y = Device3d("geometric_multigrid_prolong_y",level.nz,level.ny,local_nx);
+      }
+      if (transition->aggregates_ranks) {
+        transition->local_host = Host3d("geometric_multigrid_local_host",local_nz,local_ny,local_nx);
+      }
 
       std::vector<int> dimensions(2*level.nranks);
       int local_dimensions[2] = {local_nx,local_ny};
       MPI_Allgather(local_dimensions,2,MPI_INT,dimensions.data(),2,MPI_INT,level.comm);
+      auto const local_dx = coarsen_widths(level.dx_host,factor_x);
+      auto const local_dy = coarsen_widths(level.dy_host,factor_y);
+      std::vector<int> x_counts(level.nranks);
+      std::vector<int> y_counts(level.nranks);
+      std::vector<int> x_displacements(level.nranks,0);
+      std::vector<int> y_displacements(level.nranks,0);
+      for (int rank = 0; rank < level.nranks; rank++) {
+        x_counts[rank] = dimensions[2*rank];
+        y_counts[rank] = dimensions[2*rank+1];
+        if (rank > 0) {
+          x_displacements[rank] = x_displacements[rank-1]+x_counts[rank-1];
+          y_displacements[rank] = y_displacements[rank-1]+y_counts[rank-1];
+        }
+      }
+      std::vector<Scalar> gathered_dx(x_displacements.back()+x_counts.back());
+      std::vector<Scalar> gathered_dy(y_displacements.back()+y_counts.back());
+      MPI_Allgatherv(local_dx.data(),local_dx.size(),mpi_scalar_type(),gathered_dx.data(),x_counts.data(),
+                     x_displacements.data(),mpi_scalar_type(),level.comm);
+      MPI_Allgatherv(local_dy.data(),local_dy.size(),mpi_scalar_type(),gathered_dy.data(),y_counts.data(),
+                     y_displacements.data(),mpi_scalar_type(),level.comm);
       int coarse_nx = 0;
       int coarse_ny = 0;
-      int const coarse_nx_global = coarsened_extent(level.nx_global,factor_x);
-      int const coarse_ny_global = coarsened_extent(level.ny_global,factor_y);
+      int coarse_nx_global = 0;
+      int coarse_ny_global = 0;
       int const group_end_x = std::min(leader_px+group_x,level.nproc_x);
       int const group_end_y = std::min(leader_py+group_y,level.nproc_y);
       for (int px = leader_px; px < group_end_x; px++) coarse_nx += dimensions[2*(leader_py*level.nproc_x+px)];
       for (int py = leader_py; py < group_end_y; py++) coarse_ny += dimensions[2*(py*level.nproc_x+leader_px)+1];
-      if (transition->leader) {
+      for (int px = 0; px < level.nproc_x; px++) coarse_nx_global += dimensions[2*px];
+      for (int py = 0; py < level.nproc_y; py++) coarse_ny_global += dimensions[2*py*level.nproc_x+1];
+      if (transition->leader && transition->aggregates_ranks) {
         int oy = 0;
         for (int py = leader_py; py < group_end_y; py++) {
           int ox = 0;
@@ -1483,8 +1286,11 @@ public:
       }
       level.transition = std::move(transition);
 
-      MPI_Comm next_comm = MPI_COMM_NULL;
-      MPI_Comm_split(level.comm,level.transition->leader ? 0 : MPI_UNDEFINED,level.rank,&next_comm);
+      MPI_Comm next_comm = level.comm;
+      if (level.transition->aggregates_ranks) {
+        next_comm = MPI_COMM_NULL;
+        MPI_Comm_split(level.comm,level.transition->leader ? 0 : MPI_UNDEFINED,level.rank,&next_comm);
+      }
       if (!level.transition->leader) {
         active = false;
         break;
@@ -1500,20 +1306,22 @@ public:
       coarse->px = level.px/group_x;
       coarse->py = level.py/group_y;
       coarse->comm = next_comm;
-      coarse->owns_comm = true;
+      coarse->owns_comm = level.transition->aggregates_ranks;
       MPI_Comm_rank(next_comm,&coarse->rank);
       MPI_Comm_size(next_comm,&coarse->nranks);
-      coarse->global_begin_x = coarse_begin_x;
-      coarse->global_begin_y = coarse_begin_y;
       coarse->periodic_x = level.periodic_x;
       coarse->periodic_y = level.periodic_y;
       coarse->periodic_z = level.periodic_z;
-      coarse->dx_global_host = coarsen_widths(level.dx_global_host,factor_x);
-      coarse->dy_global_host = coarsen_widths(level.dy_global_host,factor_y);
-      coarse->dx_host.assign(coarse->dx_global_host.begin()+coarse->global_begin_x,
-                             coarse->dx_global_host.begin()+coarse->global_begin_x+coarse->nx);
-      coarse->dy_host.assign(coarse->dy_global_host.begin()+coarse->global_begin_y,
-                             coarse->dy_global_host.begin()+coarse->global_begin_y+coarse->ny);
+      for (int px = leader_px; px < group_end_x; px++) {
+        int const rank = leader_py*level.nproc_x+px;
+        coarse->dx_host.insert(coarse->dx_host.end(),gathered_dx.begin()+x_displacements[rank],
+                               gathered_dx.begin()+x_displacements[rank]+x_counts[rank]);
+      }
+      for (int py = leader_py; py < group_end_y; py++) {
+        int const rank = py*level.nproc_x+leader_px;
+        coarse->dy_host.insert(coarse->dy_host.end(),gathered_dy.begin()+y_displacements[rank],
+                               gathered_dy.begin()+y_displacements[rank]+y_counts[rank]);
+      }
       coarse->dz_host = coarsen_widths(level.dz_host,factor_z);
       allocate_level(*coarse);
       levels_.push_back(std::move(coarse));
@@ -1531,9 +1339,6 @@ public:
       metadata[5] = coarse.nz;
     }
     MPI_Bcast(metadata,6,MPI_INT,0,root_comm_);
-    int local_uses_mpi_transfers = uses_mpi_transfers_ ? 1 : 0;
-    int global_uses_mpi_transfers = 0;
-    MPI_Allreduce(&local_uses_mpi_transfers,&global_uses_mpi_transfers,1,MPI_INT,MPI_MAX,root_comm_);
     if (metadata[2] != 1) {
       endrun("ERROR: geometric multigrid failed to aggregate its coarse grid onto one task");
     }
@@ -1546,7 +1351,8 @@ public:
     coupler.set_option<int>(metadata_prefix+"_coarse_nz",metadata[5]);
     coupler.set_option<int>(metadata_prefix+"_coarse_columns",metadata[3]*metadata[4]);
     coupler.set_option<int>(metadata_prefix+"_coarsening_factor",coarsening_factor_);
-    coupler.set_option<bool>(metadata_prefix+"_uses_mpi_transfers",global_uses_mpi_transfers != 0);
+    coupler.set_option<bool>(metadata_prefix+"_uses_mpi_transfers",false);
+    coupler.set_option<std::string>(metadata_prefix+"_transfer_scope","SubdomainLocal");
     #ifdef PORTURB_GPU_AWARE_MPI
       coupler.set_option<bool>(metadata_prefix+"_gpu_aware_mpi",true);
     #else
@@ -1579,7 +1385,9 @@ public:
       fine_x(k,j,i) = 0;
       z(cell) = 0;
     });
-    for (int cycle = 0; cycle < vcycles_; cycle++) vcycle(0,screening_inverse_length_squared);
+    for (int cycle = 0; cycle < vcycles_; cycle++) {
+      vcycle(0,screening_inverse_length_squared,cycle == 0);
+    }
     fine_x = fine.x;
     yakl::parallel_for(YAKL_AUTO_LABEL(),yakl::SimpleBounds<3>(fine.nz,fine.ny,fine.nx),
                        KOKKOS_LAMBDA (int k, int j, int i) {

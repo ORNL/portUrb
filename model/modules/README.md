@@ -8,9 +8,14 @@ norms. Its pressure-nullspace projection uses the same weights. Geometric multig
 normalized by the first vertical cell width, giving unit weights on uniform grids.
 
 Geometric multigrid supports extents that are not divisible by the requested coarsening factor. It uses
-`ceil(N/factor)` equal-width coarse cells over the same physical domain, physical-coordinate quadratic prolongation,
-and the corresponding volume-weighted-adjoint restriction. The `anelastic_geometric_multigrid_mpi` CTest runs an odd
-grid on four MPI ranks so restriction and prolongation cross uneven horizontal rank boundaries.
+`ceil(N_local/factor)` coarse cells within each MPI subdomain, physical-coordinate quadratic prolongation, and the
+corresponding volume-weighted-adjoint restriction. Horizontal restriction and prolongation are subdomain-local and
+therefore require no MPI exchange. Levels with the same active MPI ranks pass their restricted fields and coarse
+corrections directly without gather, scatter, or copy kernels. Rank aggregation concatenates local coarse fields only
+when it removes MPI tasks, and every resulting coarse operator remains globally connected. Halo communication is
+completed before a single whole-level stencil kernel instead of splitting interior and boundary work for overlap. The
+`anelastic_geometric_multigrid_mpi` CTest runs an odd grid on four MPI ranks to validate uneven local extents and rank
+aggregation.
 
 Also, check out the `portUrb/experiments/examples` directory `*.cpp` files for examples of how to use the modules below.
 

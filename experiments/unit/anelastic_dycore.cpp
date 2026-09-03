@@ -186,7 +186,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
               bool use_hydrostatic_profile = true, std::string const & preconditioner = "Jacobi",
               int schwarz_tile = 16, int schwarz_degree = 16, real sound_speed = 0,
               bool check_compression = false, bool stretched_vertical = false,
-              bool require_multirank_transfer = false) {
+              bool require_multirank_hierarchy = false) {
   int const nx = n;
   int const ny = n;
   int const nz = n;
@@ -236,15 +236,15 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   auto const zint = stretched_vertical ? coupler.generate_levels_exp(nz,zlen,0.7_fp*grid_spacing) :
                                          coupler.generate_levels_equal(nz,zlen);
   coupler.init(core::ParallelComm(MPI_COMM_WORLD),zint,ny,nx,ylen,xlen);
-  if (require_multirank_transfer) {
-    require(coupler,coupler.get_nranks() > 1,name + ": MPI transfer validation requires multiple ranks");
+  if (require_multirank_hierarchy) {
+    require(coupler,coupler.get_nranks() > 1,name + ": MPI hierarchy validation requires multiple ranks");
     auto const &comm = coupler.get_parallel_comm();
     int const min_nx = comm.all_reduce(coupler.get_nx(),MPI_MIN);
     int const max_nx = comm.all_reduce(coupler.get_nx(),MPI_MAX);
     int const min_ny = comm.all_reduce(coupler.get_ny(),MPI_MIN);
     int const max_ny = comm.all_reduce(coupler.get_ny(),MPI_MAX);
     require(coupler,min_nx != max_nx || min_ny != max_ny,
-            name + ": MPI transfer validation did not create an uneven horizontal partition");
+            name + ": MPI hierarchy validation did not create an uneven horizontal partition");
   }
   coupler.add_tracer("water_vapor","water_vapor",true,false,true);
   custom_modules::sc_init(coupler);
@@ -380,10 +380,13 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
                         "dycore_anelastic_geometric_multigrid_interpolation") ==
                         "PhysicalCoordinateQuadratic",
             name + ": geometric multigrid did not select physical-coordinate quadratic interpolation");
-    if (require_multirank_transfer) {
-      require(coupler,coupler.get_option<bool>(
+    if (require_multirank_hierarchy) {
+      require(coupler,!coupler.get_option<bool>(
                           "dycore_anelastic_geometric_multigrid_uses_mpi_transfers"),
-              name + ": geometric multigrid did not exercise MPI restriction/prolongation transfers");
+              name + ": geometric multigrid unexpectedly communicated during restriction/prolongation");
+      require(coupler,coupler.get_option<std::string>(
+                          "dycore_anelastic_geometric_multigrid_transfer_scope") == "SubdomainLocal",
+              name + ": geometric multigrid did not select subdomain-local restriction/prolongation");
     }
     require(coupler,coupler.get_option<std::string>(
                         "dycore_anelastic_geometric_multigrid_coarse_smoother") == "Jacobi",
