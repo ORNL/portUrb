@@ -13,6 +13,7 @@ namespace modules {
 
   struct Dynamics_Euler_Stratified {
     mutable std::shared_ptr<GeometricMultigrid<float>> anelastic_geometric_multigrid;
+    mutable AcousticProjectionConfig proj_config;
     // Order of accuracy (numerical convergence rate for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
       int static constexpr ord = 8;
@@ -246,6 +247,7 @@ namespace modules {
 
       // Stage 1
       // Compute time derivatives of the state and tracers using a time steyp of dt/3
+      this->proj_config.linear_solver_relative_tolerance = 1.e-2;
       compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/3,0,icycle);
       // Apply tendencies for the first stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
@@ -261,6 +263,7 @@ namespace modules {
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/2
+      this->proj_config.linear_solver_relative_tolerance = 1.e-2;
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,1,icycle);
       // Apply tendencies for the second stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
@@ -276,6 +279,7 @@ namespace modules {
 
       // Stage 3
       // Compute time derivatives of the state and tracers using a time step of dt/1
+      this->proj_config.linear_solver_relative_tolerance = coupler.get_option<real>("dycore_anelastic_gmres_rel_tol",1.e-6);
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/1,2,icycle);
       // Apply tendencies for the third stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
@@ -841,7 +845,7 @@ namespace modules {
         momentum_in(2,k,j,i) = rho*star(2,k,j,i);
       });
       auto pressure = dm.get<real,3>("anelastic_pressure_pert");
-      acoustic_projection<ord>(coupler,momentum_in,momentum_out,pressure,dt,acoustic_projection_config(coupler));
+      acoustic_projection<ord>(coupler,momentum_in,momentum_out,pressure,dt,proj_config);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
         real const rho = rho_h(hs+k);
         state_tend(idR,k,j,i) = 0;
@@ -1576,12 +1580,12 @@ namespace modules {
       create_immersed_proportion_halos( coupler );
       compute_hydrostasis_edges       ( coupler );
 
-      auto projection_config = acoustic_projection_config(coupler);
-      if (projection_config.preconditioner == "GeometricMultigrid") {
+      this->proj_config = acoustic_projection_config(coupler);
+      if (proj_config.preconditioner == "GeometricMultigrid") {
         anelastic_geometric_multigrid = std::make_shared<GeometricMultigrid<float>>();
-        projection_config.geometric_multigrid = anelastic_geometric_multigrid;
+        proj_config.geometric_multigrid = anelastic_geometric_multigrid;
       }
-      initialize_acoustic_projection<ord>(coupler,projection_config);
+      initialize_acoustic_projection<ord>(coupler,proj_config);
 
       // Projection pressure is a diagnostic constraint pressure, not thermodynamic EOS pressure. It is mean-zero only
       // for the unscreened operator, whose pressure has a constant nullspace.

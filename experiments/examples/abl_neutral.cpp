@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     real dx         = 8;
     real umax       = 15;
     real cfl        = 0.6;
-    real cs         = 350; // umax*2;
+    real cs         = umax*10; // umax*2;
     bool buoy_theta = true;
     bool rsst       = true;
     // real cs         = 10;
@@ -66,6 +66,7 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "dycore_cs"                          , cs            );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false         );
     coupler.set_option<bool       >( "dycore_use_weno_immersed"           , false         );
+    coupler.set_option<std::string>( "dycore_time_stepper"                , "linrk3"      );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false         );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false         );
     coupler.set_option<real       >( "surface_flux_kinematic_viscosity"   , 1.5e-5        );
@@ -77,7 +78,7 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_anelastic_check_cg_compatibility"                  , true   );
     coupler.set_option<bool       >( "dycore_anelastic_use_cg"                                  , true   );
     coupler.set_option<bool       >( "dycore_anelastic_time_linear_solver"                      , false  );
-    coupler.set_option<bool       >( "dycore_anelastic_screening"                               , false  );
+    coupler.set_option<bool       >( "dycore_anelastic_screening"                               , true   );
     coupler.set_option<real       >( "dycore_anelastic_projection_beta"                         , 0.1    );
     coupler.set_option<real       >( "dycore_anelastic_projection_pressure_beta"                , 0      );
     coupler.set_option<bool       >( "dycore_anelastic_use_jacobi_preconditioner"               , false  );
