@@ -144,7 +144,7 @@ namespace modules {
       auto delta_mult     = coupler.get_option<real>("les_closure_delta_multiplier",0.3); // Whether to run in DNS mode (no LES closure)
       auto imm_diff_norm  = coupler.get_option<bool>("les_closure_immersed_diffuse_normal_velocity",true);
       auto &dm            = coupler.get_data_manager_readwrite();               // DataManager for reading/writing variables
-      auto immersed       = dm.get<real const,3>("immersed_proportion_halos");  // Immersed boundary proportion array with halos
+      auto immersed       = dm.get<real const,3>("immersed_proportion");  // Immersed boundary proportion array with halos
       real constexpr Pr = 0.7;  // Prandtl number for SGS diffusivity
       auto imm_th = coupler.get_option<real>("immersed_threshold",0.5);
       if (! enable_gravity) grav = 0;

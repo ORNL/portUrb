@@ -43,6 +43,7 @@ namespace custom_modules {
     auto dm_wvel  = dm.get<real,3>("wvel"       );
     auto dm_temp  = dm.get<real,3>("temperature");
     auto dm_imm   = dm.get<real,3>("immersed_proportion");
+    int constexpr imm_hs = 1;
 
     const int nqpoints = 9;
     SArray<real,nqpoints> qpoints;
@@ -64,7 +65,7 @@ namespace custom_modules {
 
       real u0 = 10;
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) , KOKKOS_LAMBDA (int k, int j, int i) {
-        if (dm_imm(k,j,i) == 0) {
+        if (dm_imm(imm_hs+k,imm_hs+j,imm_hs+i) == 0) {
           yakl::Random rng(0,3*(k*ny_glob*nx_glob + (j_beg+j)*nx_glob + i_beg+i));
           dm_uvel(k,j,i) += rng.gen_uniform<real>(-0.1,0.1)*u0;
           dm_vvel(k,j,i) += rng.gen_uniform<real>(-0.1,0.1)*u0;

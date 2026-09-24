@@ -29,6 +29,13 @@ namespace custom_modules {
       check_interval(name + " range", global_min, global_max, lower, upper);
     }
 
+    void check_immersed_proportion_range(real lower, real upper) {
+      auto const field = immersed_proportion_physical();
+      auto const global_min = comm.all_reduce(yakl::intrinsics::minval(field), MPI_MIN);
+      auto const global_max = comm.all_reduce(yakl::intrinsics::maxval(field), MPI_MAX);
+      check_interval("immersed_proportion range", global_min, global_max, lower, upper);
+    }
+
     void check_field_range_if_present(std::string const & name, real lower, real upper) {
       if (dm.entry_exists(name)) check_field_range(name, lower, upper);
     }
@@ -38,6 +45,13 @@ namespace custom_modules {
       auto const global_sum   = comm.all_reduce(yakl::intrinsics::sum(field), MPI_SUM);
       auto const global_count = comm.all_reduce(field.size(), MPI_SUM);
       check_scalar(name + " mean", global_sum / global_count, lower, upper);
+    }
+
+    void check_immersed_proportion_mean(real lower, real upper) {
+      auto const field = immersed_proportion_physical();
+      auto const global_sum = comm.all_reduce(yakl::intrinsics::sum(field), MPI_SUM);
+      auto const global_count = comm.all_reduce(field.size(), MPI_SUM);
+      check_scalar("immersed_proportion mean", global_sum / global_count, lower, upper);
     }
 
     void check_volume_weighted_mean(std::string const & name, real lower, real upper) {
@@ -59,6 +73,12 @@ namespace custom_modules {
       auto const field      = dm.get_collapsed<real const>(name);
       auto const global_max = comm.all_reduce(yakl::intrinsics::maxval(field), MPI_MAX);
       check_scalar(name + " maximum", global_max, lower, upper);
+    }
+
+    void check_immersed_proportion_max(real lower, real upper) {
+      auto const field = immersed_proportion_physical();
+      auto const global_max = comm.all_reduce(yakl::intrinsics::maxval(field), MPI_MAX);
+      check_scalar("immersed_proportion maximum", global_max, lower, upper);
     }
 
     void check_velocity_magnitude(real upper) {
@@ -105,6 +125,20 @@ namespace custom_modules {
         std::cout << test_name << ": PASS (" << global_cells << " cells; " << checks
                   << " final-state physical checks)" << std::endl;
       }
+    }
+
+    real3d immersed_proportion_physical() const {
+      auto const nx = coupler.get_nx();
+      auto const ny = coupler.get_ny();
+      auto const nz = coupler.get_nz();
+      int constexpr imm_hs = 1;
+      auto const immersed = dm.get<real const,3>("immersed_proportion");
+      real3d physical("integration_test_immersed_proportion",nz,ny,nx);
+      yakl::parallel_for(YAKL_AUTO_LABEL(), yakl::SimpleBounds<3>(nz,ny,nx),
+                         KOKKOS_LAMBDA(int k, int j, int i) {
+        physical(k,j,i) = immersed(imm_hs+k,imm_hs+j,imm_hs+i);
+      });
+      return physical;
     }
 
   private:
@@ -160,7 +194,7 @@ namespace custom_modules {
     check.check_volume_weighted_mean("wvel", -mean_w_max, mean_w_max);
     check.check_field_max("TKE", tke_activity_min, 5);
     check.check_field_range_if_present("water_vapor", 0, 1.e-14);
-    check.check_field_range("immersed_proportion", 0, 0);
+    check.check_immersed_proportion_range(0, 0);
     check.finish();
   }
 
@@ -187,9 +221,9 @@ namespace custom_modules {
     check.check_volume_weighted_mean("wvel", -0.5, 0.5);
     check.check_field_max("TKE", 0.01, 50);
     check.check_field_range_if_present("water_vapor", 0, 1.e-14);
-    check.check_field_range("immersed_proportion", 0, 1);
-    check.check_field_mean("immersed_proportion", 0.005, 0.25);
-    check.check_field_max("immersed_proportion", 0.99, 1);
+    check.check_immersed_proportion_range(0, 1);
+    check.check_immersed_proportion_mean(0.005, 0.25);
+    check.check_immersed_proportion_max(0.99, 1);
     check.finish();
   }
 
@@ -202,7 +236,7 @@ namespace custom_modules {
     check.check_max_ratio("water_vapor", "density_dry", 0.05);
     check.check_max_ratio("cloud_liquid", "density_dry", 0.05);
     check.check_max_ratio("precip_liquid", "density_dry", 0.05);
-    check.check_field_range("immersed_proportion", 0, 0);
+    check.check_immersed_proportion_range(0, 0);
     check.finish();
   }
 
@@ -218,7 +252,7 @@ namespace custom_modules {
     check.check_field_range_if_present("micro_rainnc", 0, std::numeric_limits<real>::max());
     check.check_field_range_if_present("micro_snownc", 0, std::numeric_limits<real>::max());
     check.check_field_range_if_present("micro_graupelnc", 0, std::numeric_limits<real>::max());
-    check.check_field_range("immersed_proportion", 0, 0);
+    check.check_immersed_proportion_range(0, 0);
     check.finish();
   }
 
@@ -230,7 +264,7 @@ namespace custom_modules {
     check.check_volume_weighted_mean("wvel", -0.5, 0.5);
     check.check_field_max("TKE", 0.01, 20);
     check.check_field_range_if_present("water_vapor", 0, 1.e-14);
-    check.check_field_range("immersed_proportion", 0, 0);
+    check.check_immersed_proportion_range(0, 0);
     check.finish();
   }
 
@@ -243,7 +277,7 @@ namespace custom_modules {
     check.check_volume_weighted_mean("wvel", -0.5, 0.5);
     check.check_field_max("TKE", turbine_active ? 0.01 : 1.e-6, 25);
     check.check_field_range_if_present("water_vapor", 0, 1.e-14);
-    check.check_field_range("immersed_proportion", 0, 0);
+    check.check_immersed_proportion_range(0, 0);
     check.finish();
   }
 

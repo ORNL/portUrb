@@ -137,8 +137,8 @@ namespace modules {
       auto grav        = coupler.get_option<real>("grav");
       auto idTKE       = coupler.get_option<int >("surface_flux_idTKE");
       auto &dm         = coupler.get_data_manager_readwrite(); // Get reference to the data manager (read/write)
-      auto imm_prop    = dm.get<real const,3>("immersed_proportion_halos"); // Get immersed boundary proportion array
-      auto imm_rough   = dm.get<real const,3>("immersed_roughness_halos" ); // Get immersed boundary roughness array
+      auto imm_prop    = dm.get<real const,3>("immersed_proportion"); // Get immersed boundary proportion array
+      auto imm_rough   = dm.get<real const,3>("immersed_roughness" ); // Get immersed boundary roughness array
       auto imm_theta   = dm.get<real const,3>("surface_flux_imm_theta"   );
       auto sfc_ustar   = dm.get<real      ,2>("surface_flux_sfc_ustar");
       auto sfc_thstar  = dm.get<real      ,2>("surface_flux_sfc_thstar");

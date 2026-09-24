@@ -140,8 +140,9 @@ int main(int argc, char** argv) {
           auto nx = coupler.get_nx();
           auto ny = coupler.get_ny();
           auto nz = coupler.get_nz();
+          int constexpr imm_hs = 1;
           yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<2>(ny,nx) , KOKKOS_LAMBDA (int j, int i) {
-            if (imm(0,j,i) == 0) smoke(0,j,i) += dt*1.0e-4/sim_time;
+            if (imm(imm_hs,imm_hs+j,imm_hs+i) == 0) smoke(0,j,i) += dt*1.0e-4/sim_time;
           });
         }
         coupler.run_module( [&] (Coupler &c) { uniform_pg_wind_forcing_height(c,dt,hr,ur,vr,tr); } , "pg_forcing"     );

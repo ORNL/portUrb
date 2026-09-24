@@ -1511,9 +1511,11 @@ namespace modules {
 
       auto immersed_prop       = dm.get<real const,3>("immersed_proportion");
       auto immersed_prop_halos = dm.get<real,3>("dycore_immersed_proportion_halos");
+      int constexpr imm_hs = 1;
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx) ,
                                               KOKKOS_LAMBDA (int k, int j, int i) {
-        immersed_prop_halos(hs+k,hs+j,hs+i) = immersed_prop(k,j,i) > immersed_thresh ? 1 : 0;
+        immersed_prop_halos(hs+k,hs+j,hs+i) =
+        immersed_prop(imm_hs+k,imm_hs+j,imm_hs+i) > immersed_thresh ? 1 : 0;
       });
 
       // Exchanging x before y propagates the physical-domain values into the horizontal corner halos.
@@ -1836,9 +1838,6 @@ namespace modules {
       //  immersed-distance data, and compute hydrostatic edge values
       create_immersed_proportion_halos( coupler );
       compute_hydrostasis_edges       ( coupler );
-
-      // Register immersed_proportion as an output and restart variable
-      coupler.register_output_variable<real>( "immersed_proportion" , core::Coupler::DIMS_3D      );
 
       // Create an output module to be called during coupler.write_output() to write hydrostatic profiles
       //   and write perturbations of potential temperature, pressure, and density to file

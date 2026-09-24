@@ -61,7 +61,7 @@ for j in range(nexp) :
   pp      = np.array(nc["density_dry"][:,:,:])*R_d*np.array(nc["temperature"][:,:,:]) - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
   rhopcs2 = (np.array(nc["density_dry"][:,:,:])-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
   pert    = pp if press[j]=="orig" else rhopcs2
-  pert    = np.ma.array(data=pert,mask=np.array(nc["immersed_proportion"][:,:,:]) > 0)
+  pert    = np.ma.array(data=pert,mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1]) > 0)
   pert    = np.mean(pert,axis=(1,2))
   pert    = pert - np.mean(pert)
   z2      = get_ind(z,1.25)
@@ -85,7 +85,7 @@ for j in range(nexp) :
   pp      = np.array(nc["density_dry"][:,:,:])*R_d*np.array(nc["temperature"][:,:,:]) - np.array(nc["hy_pressure_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
   rhopcs2 = (np.array(nc["density_dry"][:,:,:])-np.array(nc["hy_dens_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis])*cs[j]**2
   pert    = pp if press[j]=="orig" else rhopcs2
-  pert    = np.ma.array(data=pert,mask=np.array(nc["immersed_proportion"][:,:,:]) > 0)
+  pert    = np.ma.array(data=pert,mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1]) > 0)
   pert    = np.mean(pert,axis=(1,2))
   pert    = pert - np.mean(pert)
   z2      = get_ind(z,1.25)
@@ -105,9 +105,9 @@ ax = fig.gca()
 for j in range(nexp) :
   nc   = Dataset(f"{files[j]}_00000020.nc","r")
   z    = np.array(nc["z"][:])/1000
-  uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-  vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-  wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+  uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+  vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+  wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
   mag  = np.sqrt(uvel*uvel+vvel*vvel+wvel*wvel)
   umean = np.mean(mag,axis=(1,2))
   roughness = 0.1
@@ -133,9 +133,9 @@ for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
     z    = np.array(nc["z"][:])/1000
-    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     vp = vvel - np.mean(vvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     wp = wvel - np.mean(wvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -161,9 +161,9 @@ for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
     z    = np.array(nc["z"][:])/1000
-    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     vp = vvel - np.mean(vvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     wp = wvel - np.mean(wvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -189,9 +189,9 @@ for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
     z    = np.array(nc["z"][:])/1000
-    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     vp = vvel - np.mean(vvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     wp = wvel - np.mean(wvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -217,9 +217,9 @@ for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
     z    = np.array(nc["z"][:])/1000
-    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     vp = vvel - np.mean(vvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     wp = wvel - np.mean(wvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -245,9 +245,9 @@ for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
     z    = np.array(nc["z"][:])/1000
-    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     vp = vvel - np.mean(vvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     wp = wvel - np.mean(wvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -273,9 +273,9 @@ for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
     z    = np.array(nc["z"][:])/1000
-    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+    uvel = np.ma.array(nc["uvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    vvel = np.ma.array(nc["vvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    wvel = np.ma.array(nc["wvel"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     vp = vvel - np.mean(vvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     wp = wvel - np.mean(wvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -301,11 +301,11 @@ for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
     z    = np.array(nc["z"][:])/1000
-    rho  = np.ma.array(nc["density_dry"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    uvel = np.ma.array(nc["uvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    vvel = np.ma.array(nc["vvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    wvel = np.ma.array(nc["wvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    T    = np.ma.array(nc["temperature"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+    rho  = np.ma.array(nc["density_dry"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    uvel = np.ma.array(nc["uvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    vvel = np.ma.array(nc["vvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    wvel = np.ma.array(nc["wvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    T    = np.ma.array(nc["temperature"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
     pres = rho*R_d*T
     thet = np.pow(pres/C0,1/gamma_d)/rho - np.array(nc["hy_theta_cells"][hs:hs+nz])[:,np.newaxis,np.newaxis]
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -334,10 +334,10 @@ for j in range(nexp) :
   for k in range(len(times)) :
     nc   = Dataset(f"{files[j]}_{times[k]:08d}.nc","r")
     z    = np.array(nc["z"][:])/1000
-    rho  = np.ma.array(nc["density_dry"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    uvel = np.ma.array(nc["uvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    vvel = np.ma.array(nc["vvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-    wvel = np.ma.array(nc["wvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+    rho  = np.ma.array(nc["density_dry"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    uvel = np.ma.array(nc["uvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    vvel = np.ma.array(nc["vvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+    wvel = np.ma.array(nc["wvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
     up = uvel - np.mean(uvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     vp = vvel - np.mean(vvel,axis=(1,2))[:,np.newaxis,np.newaxis]
     wp = wvel - np.mean(wvel,axis=(1,2))[:,np.newaxis,np.newaxis]
@@ -366,10 +366,10 @@ for j in range(nexp) :
   nc   = Dataset(f"{files[j]}_00000020.nc","r")
   z    = np.array(nc["z"][:])/1000
   dx   = z[1]-z[0]
-  rho  = np.ma.array(nc["density_dry"][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-  uvel = np.ma.array(nc["uvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-  vvel = np.ma.array(nc["vvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
-  wvel = np.ma.array(nc["wvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][:,:,:])>0)
+  rho  = np.ma.array(nc["density_dry"][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+  uvel = np.ma.array(nc["uvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+  vvel = np.ma.array(nc["vvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
+  wvel = np.ma.array(nc["wvel"       ][:,:,:],mask=np.array(nc["immersed_proportion"][1:-1,1:-1,1:-1])>0)
   mag  = np.sqrt(uvel*uvel+vvel*vvel+wvel*wvel)
   freq,spd1 = spectra(mag[k1:k2+1,:,:],dx=dx)
   ax.plot(freq,spd1,color=colors[j],label=labels[j],linestyle=styles[j])

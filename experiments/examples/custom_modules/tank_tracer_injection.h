@@ -45,6 +45,7 @@ namespace custom_modules {
         auto imm_th         = c.get_option<real>("immersed_threshold",0.5);
         auto &dm            = c.get_data_manager_readonly();
         auto immersed_prop  = dm.get<real const,3>("immersed_proportion");
+        int constexpr imm_hs = 1;
         auto hy_dens_edges  = dm.get<real const,1>("hy_dens_edges"      );
         auto hy_theta_edges = dm.get<real const,1>("hy_theta_edges"     );
         int constexpr idR   = Dycore::idR;
@@ -57,7 +58,8 @@ namespace custom_modules {
           real x = (i_beg+i+0.5)*dx;
           real y = (j_beg+j+0.5)*dy;
           real r = std::sqrt((x-x0)*(x-x0) + (y-y0)*(y-y0));
-          if (r <= std::max(wvel_radius,tracer_radius) && immersed_prop(0,j,i) <= imm_th) {
+            if (r <= std::max(wvel_radius,tracer_radius) &&
+              immersed_prop(imm_hs,imm_hs+j,imm_hs+i) <= imm_th) {
             real wvel_shape   = 1; // std::max( 0. , 1.-(r/wvel_radius)*(r/wvel_radius) );
             real tracer_shape = 1; // std::max( 0. , 1.-(r/tracer_radius)*(r/tracer_radius) );
             real w_in         = wvel*wvel_shape;

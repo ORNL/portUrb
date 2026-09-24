@@ -209,13 +209,13 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   coupler.set_option<real>("cfl",benchmark_cfl);
   coupler.set_option<std::string>("dycore_time_stepper","ssprk3");
   coupler.set_option<bool>("dycore_anelastic_projection_diagnostics",true);
+  coupler.set_option<bool>("dycore_anelastic_time_linear_solver",benchmark_case);
   coupler.set_option<bool>("dycore_anelastic_check_linearity",
                            flow == 2 && (run_invariance_checks || preconditioner == "GeometricMultigrid"));
   coupler.set_option<bool>("dycore_anelastic_check_cg_compatibility",
                            benchmark_case || preconditioner == "GeometricMultigrid");
   coupler.set_option<bool>("dycore_anelastic_screening",sound_speed > 0);
   coupler.set_option<std::string>("dycore_anelastic_preconditioner",preconditioner);
-  coupler.set_option<bool>("dycore_anelastic_time_linear_solver",false);
   if (preconditioner == "Schwarz") {
     coupler.set_option<int>("dycore_anelastic_schwarz_tile_nx",schwarz_tile);
     coupler.set_option<int>("dycore_anelastic_schwarz_tile_ny",schwarz_tile);
@@ -262,6 +262,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   auto w   = dm.get<real,3>("wvel");
   auto q   = dm.get<real,3>("water_vapor");
   auto imm = dm.get<real,3>("immersed_proportion");
+  int constexpr imm_hs = 1;
   auto const dx = coupler.get_dx();
   auto const dy = coupler.get_dy();
   auto const zmid = coupler.get_zmid();
@@ -289,7 +290,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
     bool immersed = with_immersed && k >= cube_k_beg && k < cube_k_beg+cube_width &&
                     j_glob >= cube_j_beg && j_glob < cube_j_beg+cube_width &&
                     i_glob >= cube_i_beg && i_glob < cube_i_beg+cube_width;
-    imm(k,j,i) = immersed ? 1 : 0;
+    imm(imm_hs+k,imm_hs+j,imm_hs+i) = immersed ? 1 : 0;
   });
 
   modules::Dynamics_Euler_Stratified dycore;
@@ -331,7 +332,6 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   real benchmark_iterations_mean = 0;
   if (benchmark_case) {
     int constexpr benchmark_repetitions = 5;
-    coupler.set_option<bool>("dycore_anelastic_time_linear_solver",true);
     for (int repetition = 0; repetition < benchmark_repetitions; repetition++) {
       dm.get<real,3>("anelastic_pressure_pert") = 0;
       dycore.compute_tendencies(coupler,state,state_tend,tracers,tracer_tend,dt,0,0);
@@ -351,7 +351,7 @@ real run_case(std::string const & name, int flow, bool with_immersed, int n = 8,
   real4d fluid_tracer_tend("anelastic_test_fluid_tracer_tend",1,nz,ny_local,nx_local);
   yakl::parallel_for(YAKL_AUTO_LABEL(), yakl::SimpleBounds<3>(nz,ny_local,nx_local),
                      KOKKOS_LAMBDA (int k, int j, int i) {
-    fluid_tracer_tend(0,k,j,i) = imm(k,j,i) == 0 ? tracer_tend(0,k,j,i) : 0;
+    fluid_tracer_tend(0,k,j,i) = imm(imm_hs+k,imm_hs+j,imm_hs+i) == 0 ? tracer_tend(0,k,j,i) : 0;
   });
   real const tracer_error = max_abs(coupler,fluid_tracer_tend);
   require(coupler,tracer_error < 2.e-6,name + ": constant tracer mixing ratio was not preserved; max tendency = " +

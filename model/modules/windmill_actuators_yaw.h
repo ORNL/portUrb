@@ -159,7 +159,7 @@ namespace modules {
         auto zmid   = coupler.get_zmid();
         auto myrank = coupler.get_myrank();
         auto imm    = coupler.get_data_manager_readwrite().get<real,3>("immersed_proportion");
-        auto imm_h  = coupler.get_data_manager_readwrite().get<real,3>("immersed_proportion_halos");
+        int constexpr imm_hs = 1;
         // bounds of this MPI task's domain
         real dom_x1  = (i_beg+0 )*dx;
         real dom_x2  = (i_beg+nx)*dx;
@@ -235,8 +235,7 @@ namespace modules {
               }
             }
             // Express the base as an immersed boundary
-            imm  (  k,  j,  i) += static_cast<real>(count)/(N*N*N);
-            imm_h(1+k,1+j,1+i) += static_cast<real>(count)/(N*N*N);
+            imm(imm_hs+k,imm_hs+j,imm_hs+i) += static_cast<real>(count)/(N*N*N);
           });
         }
       }
