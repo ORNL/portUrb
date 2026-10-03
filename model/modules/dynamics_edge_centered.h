@@ -701,9 +701,6 @@ namespace modules {
       halo_boundary_conditions( coupler , fields_loc , istage , icycle );
 
       // Storage for cell-edge fluxes in each direction
-      yakl::Array<FLOC ****> val_x ("val_x" ,nfields,nz,ny,nx+1);
-      yakl::Array<FLOC ****> val_y ("val_y" ,nfields,nz,ny+1,nx);
-      yakl::Array<FLOC ****> val_z ("val_z" ,nfields,nz+1,ny,nx);
       yakl::Array<FLOC ****> flux_x("flux_x",nfields,nz,ny,nx+1);
       yakl::Array<FLOC ****> flux_y("flux_y",nfields,nz,ny+1,nx);
       yakl::Array<FLOC ****> flux_z("flux_z",nfields,nz+1,ny,nx);
@@ -722,131 +719,130 @@ namespace modules {
       FLOC immbeta_pow = 1;
 
       // Interpolate needed quantities at cell edges in the x, y, and z directions
-      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nfields,nz,ny,nx+1) ,
-                                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        SArray<FLOC,ord> s;        // Stencil values
-        for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(l,hs+k,hs+j,i+ii); }
-        SArray<bool,ord> imm;        // Stencil values for immersed boundary
-        for (int ii = 0; ii < ord; ii++) { imm(ii) = immersed_prop(hs+k,hs+j,i+ii) > imm_th; }
-        if (l != idU) modify_stencil_immersed_der0( s , imm);
-        val_x(l,k,j,i) = TransformMatrices::edge_val(s);
-        if (l != idP) {
-          SArray<FLOC,ord> s_hv;
-          for (int ii = 0; ii < ord; ii++) { s_hv(ii) = s(ii); }
-          if (l != idU) modify_stencil_immersed_der0( s_hv , imm );
-          FLOC hvcoefloc = hvcoef;
-          FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(k,j,std::min(nx-1,i)), immersed_dist(k,j,std::max(0,i-1)) ) );
-          if (imm_dist <= 12) {
-            FLOC mult = 2.*imm_dist*imm_dist*imm_dist/1331. - 39.*imm_dist*imm_dist/1331. + 72.*imm_dist/1331. + 1296./1331.;
-            hvcoefloc *= 1 + immbeta_amp*std::pow( std::max(FLOC(0),mult) , immbeta_pow );
-          }
-          flux_x(l,k,j,i) = hvcoefloc*dx*TransformMatrices::edge_hvder(s_hv);
-          if (l != idR) flux_x(l,k,j,i) *= hy_dens_cells(hs+k);
-        }
-      });
-      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nfields,nz,ny+1,nx) ,
-                                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        SArray<FLOC,ord> s;        // Stencil values
-        for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(l,hs+k,j+jj,hs+i); }
-        SArray<bool,ord> imm;        // Stencil values for immersed boundary
-        for (int jj = 0; jj < ord; jj++) { imm(jj) = immersed_prop(hs+k,j+jj,hs+i) > imm_th; }
-        if (l != idV) modify_stencil_immersed_der0( s , imm);
-        val_y(l,k,j,i) = TransformMatrices::edge_val(s);
-        if (l != idP) {
-          SArray<FLOC,ord> s_hv;
-          for (int jj = 0; jj < ord; jj++) { s_hv(jj) = s(jj); }
-          if (l != idV) modify_stencil_immersed_der0( s_hv , imm );
-          FLOC hvcoefloc = hvcoef;
-          FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(k,std::min(ny-1,j),i), immersed_dist(k,std::max(0,j-1),i) ) );
-          if (imm_dist <= 12) {
-            FLOC mult = 2.*imm_dist*imm_dist*imm_dist/1331. - 39.*imm_dist*imm_dist/1331. + 72.*imm_dist/1331. + 1296./1331.;
-            hvcoefloc *= 1 + immbeta_amp*std::pow( std::max(FLOC(0),mult) , immbeta_pow );
-          }
-          flux_y(l,k,j,i) = hvcoefloc*dy*TransformMatrices::edge_hvder(s_hv);
-          if (l != idR) flux_y(l,k,j,i) *= hy_dens_cells(hs+k);
-          if (py==0         && j==0  && wall_y1) flux_y(l,k,j,i) = 0;
-          if (py==nproc_y-1 && j==ny && wall_y2) flux_y(l,k,j,i) = 0;
-        }
-      });
-      yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(nfields,nz+1,ny,nx) ,
-                                                        KOKKOS_LAMBDA (int l, int k, int j, int i) {
-        SArray<FLOC,ord> s;         // Stencil values
-        for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(l,k+kk,hs+j,hs+i); }
-        SArray<bool,ord> imm;        // Stencil values for immersed boundary
-        for (int kk = 0; kk < ord; kk++) { imm(kk) = immersed_prop(k+kk,hs+j,hs+i) > imm_th; }
-        if (l != idW) modify_stencil_immersed_der0( s , imm);
-        if (l != idP) {
-          // Hyperviscosity uses physical-space values; metric scaling below applies only to edge interpolation
-          SArray<FLOC,ord> s_hv;
-          for (int kk = 0; kk < ord; kk++) { s_hv(kk) = s(kk); }
-          if (l != idW) modify_stencil_immersed_der0( s_hv , imm );
-          FLOC hvcoefloc = hvcoef;
-          FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(std::min(nz-1,k),j,i), immersed_dist(std::max(0,k-1),j,i) ) );
-          if (imm_dist <= 12) {
-            FLOC mult = 2.*imm_dist*imm_dist*imm_dist/1331. - 39.*imm_dist*imm_dist/1331. + 72.*imm_dist/1331. + 1296./1331.;
-            hvcoefloc *= 1 + immbeta_amp*std::pow( std::max(FLOC(0),mult) , immbeta_pow );
-          }
-          real dzloc = 0.5*(dz(std::max(0,k-1)) + dz(std::min(nz-1,k)));
-          flux_z(l,k,j,i) = hvcoefloc*dzloc*TransformMatrices::edge_hvder(s_hv);
-          if (l != idR) flux_z(l,k,j,i) *= hy_dens_edges(k);
-          if (k==0  && wall_z1) flux_z(l,k,j,i) = 0;
-          if (k==nz && wall_z2) flux_z(l,k,j,i) = 0;
-        }
-        for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+kk))); }
-        val_z(l,k,j,i) = TransformMatrices::edge_val(s) / metjac_edges(k);
-      });
-      // Construct fluxes from interpolated values
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny,nx+1) ,
                                                         KOKKOS_LAMBDA (int k, int j, int i) {
-        FLOC r  = val_x(idR,k,j,i) + hy_dens_cells(hs+k);
-        FLOC u  = val_x(idU,k,j,i);
-        FLOC v  = val_x(idV,k,j,i);
-        FLOC w  = val_x(idW,k,j,i);
-        FLOC th = val_x(idT,k,j,i) + hy_theta_cells(hs+k);
-        FLOC p  = val_x(idP,k,j,i);
-        if (immersed_prop(hs+k,hs+j,hs+i-1) > imm_th || immersed_prop(hs+k,hs+j,hs+i) > imm_th) u = 0;
-        flux_x(idR,k,j,i) += r*u;
-        flux_x(idU,k,j,i) += r*u*u+p;
-        flux_x(idV,k,j,i) += r*u*v;
-        flux_x(idW,k,j,i) += r*u*w;
-        flux_x(idT,k,j,i) += r*u*th;
-        for (int l=0; l < num_tracers; l++) { flux_x(num_state+1+l,k,j,i) += r*u*val_x(num_state+1+l,k,j,i); }
+        SArray<bool,ord> imm;        // Stencil values for immersed boundary
+        for (int ii = 0; ii < ord; ii++) { imm(ii) = immersed_prop(hs+k,hs+j,i+ii) > imm_th; }
+        FLOC ru;
+        for (int l=0; l < nfields; l++) {
+          SArray<FLOC,ord> s;          // Stencil values
+          for (int ii = 0; ii < ord; ii++) { s(ii) = fields_loc(l,hs+k,hs+j,i+ii); }
+          if (l != idU) modify_stencil_immersed_der0( s , imm);
+          FLOC val = TransformMatrices::edge_val(s);
+          if (l != idP) {
+            FLOC hvcoefloc = hvcoef;
+            FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(k,j,std::min(nx-1,i)), immersed_dist(k,j,std::max(0,i-1)) ) );
+            if (imm_dist <= 12) {
+              FLOC mult = 2.*imm_dist*imm_dist*imm_dist/1331. - 39.*imm_dist*imm_dist/1331. + 72.*imm_dist/1331. + 1296./1331.;
+              hvcoefloc *= 1 + immbeta_amp*std::pow( std::max(FLOC(0),mult) , immbeta_pow );
+            }
+            flux_x(l,k,j,i) = hvcoefloc*dx*TransformMatrices::edge_hvder(s);
+            if (l != idR) flux_x(l,k,j,i) *= hy_dens_cells(hs+k);
+          }
+          if        (l==idR) {
+            ru  = val + hy_dens_cells(hs+k);
+          } else if (l==idU) {
+            if (immersed_prop(hs+k,hs+j,hs+i-1) > imm_th || immersed_prop(hs+k,hs+j,hs+i) > imm_th) val = 0;
+            ru *= val;
+            flux_x(idR,k,j,i) += ru;
+            flux_x(idU,k,j,i) += ru*val;
+          } else if (l==idP) {
+            flux_x(idU,k,j,i) += val;
+          } else if (l==idT) {
+            flux_x(idT,k,j,i) += ru*(val+hy_theta_cells(hs+k));
+          } else {
+            flux_x(l,k,j,i) += ru*val;
+          }
+        }
       });
+
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz,ny+1,nx) ,
                                                         KOKKOS_LAMBDA (int k, int j, int i) {
-        FLOC r  = val_y(idR,k,j,i) + hy_dens_cells(hs+k);
-        FLOC u  = val_y(idU,k,j,i);
-        FLOC v  = val_y(idV,k,j,i);
-        FLOC w  = val_y(idW,k,j,i);
-        FLOC th = val_y(idT,k,j,i) + hy_theta_cells(hs+k);
-        FLOC p  = val_y(idP,k,j,i);
-        if (immersed_prop(hs+k,hs+j-1,hs+i) > imm_th || immersed_prop(hs+k,hs+j,hs+i) > imm_th) v = 0;
-        if (j==0  && wall_y1) v = 0;
-        if (j==ny && wall_y2) v = 0;
-        flux_y(idR,k,j,i) += r*v;
-        flux_y(idU,k,j,i) += r*v*u;
-        flux_y(idV,k,j,i) += r*v*v+p;
-        flux_y(idW,k,j,i) += r*v*w;
-        flux_y(idT,k,j,i) += r*v*th;
-        for (int l=0; l < num_tracers; l++) { flux_y(num_state+1+l,k,j,i) += r*v*val_y(num_state+1+l,k,j,i); }
+        SArray<bool,ord> imm;        // Stencil values for immersed boundary
+        for (int jj = 0; jj < ord; jj++) { imm(jj) = immersed_prop(hs+k,j+jj,hs+i) > imm_th; }
+        FLOC rv;
+        int constexpr state_order[num_state] = {idR,idV,idU,idW,idT};
+        for (int l_in=0; l_in < nfields; l_in++) {
+          int l = l_in < num_state ? state_order[l_in] : l_in;
+          SArray<FLOC,ord> s;        // Stencil values
+          for (int jj = 0; jj < ord; jj++) { s(jj) = fields_loc(l,hs+k,j+jj,hs+i); }
+          if (l != idV) modify_stencil_immersed_der0( s , imm);
+          FLOC val = TransformMatrices::edge_val(s);
+          if (l != idP) {
+            FLOC hvcoefloc = hvcoef;
+            FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(k,std::min(ny-1,j),i), immersed_dist(k,std::max(0,j-1),i) ) );
+            if (imm_dist <= 12) {
+              FLOC mult = 2.*imm_dist*imm_dist*imm_dist/1331. - 39.*imm_dist*imm_dist/1331. + 72.*imm_dist/1331. + 1296./1331.;
+              hvcoefloc *= 1 + immbeta_amp*std::pow( std::max(FLOC(0),mult) , immbeta_pow );
+            }
+            flux_y(l,k,j,i) = hvcoefloc*dy*TransformMatrices::edge_hvder(s);
+            if (l != idR) flux_y(l,k,j,i) *= hy_dens_cells(hs+k);
+            if (py==0         && j==0  && wall_y1) flux_y(l,k,j,i) = 0;
+            if (py==nproc_y-1 && j==ny && wall_y2) flux_y(l,k,j,i) = 0;
+          }
+          if        (l==idR) {
+            rv  = val + hy_dens_cells(hs+k);
+          } else if (l==idV) {
+            if (immersed_prop(hs+k,hs+j-1,hs+i) > imm_th || immersed_prop(hs+k,hs+j,hs+i) > imm_th) val = 0;
+            if (py==0         && j==0  && wall_y1) val = 0;
+            if (py==nproc_y-1 && j==ny && wall_y2) val = 0;
+            rv *= val;
+            flux_y(idR,k,j,i) += rv;
+            flux_y(idV,k,j,i) += rv*val;
+          } else if (l==idP) {
+            flux_y(idV,k,j,i) += val;
+          } else if (l==idT) {
+            flux_y(idT,k,j,i) += rv*(val+hy_theta_cells(hs+k));
+          } else {
+            flux_y(l,k,j,i) += rv*val;
+          }
+        }
       });
+
       yakl::autotune::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<3>(nz+1,ny,nx) ,
                                                         KOKKOS_LAMBDA (int k, int j, int i) {
-        FLOC r  = val_z(idR,k,j,i) + hy_dens_edges(k);
-        FLOC u  = val_z(idU,k,j,i);
-        FLOC v  = val_z(idV,k,j,i);
-        FLOC w  = val_z(idW,k,j,i);
-        FLOC th = val_z(idT,k,j,i) + hy_theta_edges(k);
-        FLOC p  = val_z(idP,k,j,i);
-        if (immersed_prop(hs+k-1,hs+j,hs+i) > imm_th || immersed_prop(hs+k,hs+j,hs+i) > imm_th) w = 0;
-        if (k==0  && wall_z1) w = 0;
-        if (k==nz && wall_z2) w = 0;
-        flux_z(idR,k,j,i) += r*w;
-        flux_z(idU,k,j,i) += r*w*u;
-        flux_z(idV,k,j,i) += r*w*v;
-        flux_z(idW,k,j,i) += r*w*w+p;
-        flux_z(idT,k,j,i) += r*w*th;
-        for (int l=0; l < num_tracers; l++) { flux_z(num_state+1+l,k,j,i) += r*w*val_z(num_state+1+l,k,j,i); }
+        SArray<bool,ord> imm;        // Stencil values for immersed boundary
+        for (int kk = 0; kk < ord; kk++) { imm(kk) = immersed_prop(k+kk,hs+j,hs+i) > imm_th; }
+        FLOC rw;
+        int constexpr state_order[num_state] = {idR,idW,idU,idV,idT};
+        for (int l_in=0; l_in < nfields; l_in++) {
+          int l = l_in < num_state ? state_order[l_in] : l_in;
+          SArray<FLOC,ord> s;         // Stencil values
+          for (int kk = 0; kk < ord; kk++) { s(kk) = fields_loc(l,k+kk,hs+j,hs+i); }
+          if (l != idW) modify_stencil_immersed_der0( s , imm);
+          if (l != idP) {
+            // Hyperviscosity uses physical-space values; metric scaling below applies only to edge interpolation
+            FLOC hvcoefloc = hvcoef;
+            FLOC imm_dist = static_cast<FLOC>( std::min( immersed_dist(std::min(nz-1,k),j,i), immersed_dist(std::max(0,k-1),j,i) ) );
+            if (imm_dist <= 12) {
+              FLOC mult = 2.*imm_dist*imm_dist*imm_dist/1331. - 39.*imm_dist*imm_dist/1331. + 72.*imm_dist/1331. + 1296./1331.;
+              hvcoefloc *= 1 + immbeta_amp*std::pow( std::max(FLOC(0),mult) , immbeta_pow );
+            }
+            FLOC dzloc = 0.5*(dz(std::max(0,k-1)) + dz(std::min(nz-1,k)));
+            flux_z(l,k,j,i) = hvcoefloc*dzloc*TransformMatrices::edge_hvder(s);
+            if (l != idR) flux_z(l,k,j,i) *= hy_dens_edges(k);
+            if (k==0  && wall_z1) flux_z(l,k,j,i) = 0;
+            if (k==nz && wall_z2) flux_z(l,k,j,i) = 0;
+          }
+          for (int kk = 0; kk < ord; kk++) { s(kk) *= dz(std::max(0,std::min(nz-1,k-hs+kk))); }
+          FLOC val = TransformMatrices::edge_val(s) / metjac_edges(k);
+          if        (l==idR) {
+            rw  = val + hy_dens_edges(k);
+          } else if (l==idW) {
+            if (immersed_prop(hs+k-1,hs+j,hs+i) > imm_th || immersed_prop(hs+k,hs+j,hs+i) > imm_th) val = 0;
+            if (k==0  && wall_z1) val = 0;
+            if (k==nz && wall_z2) val = 0;
+            rw *= val;
+            flux_z(idR,k,j,i) += rw;
+            flux_z(idW,k,j,i) += rw*val;
+          } else if (l==idP) {
+            flux_z(idW,k,j,i) += val;
+          } else if (l==idT) {
+            flux_z(idT,k,j,i) += rw*(val+hy_theta_edges(k));
+          } else {
+            flux_z(l,k,j,i) += rw*val;
+          }
+        }
       });
 
       // Add user-specified fluxes after the dycore flux construction and before computing flux divergences.

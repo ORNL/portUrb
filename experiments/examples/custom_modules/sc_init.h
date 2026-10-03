@@ -368,8 +368,13 @@ namespace custom_modules {
       coupler.set_option<bool       >("enable_gravity",false);
       coupler.set_option<std::string>("bc_x1","periodic"      ); // Boundary condition in west   x direction
       coupler.set_option<std::string>("bc_x2","periodic"      ); // Boundary condition in east   x direction
-      coupler.set_option<std::string>("bc_y1","wall_free_slip"); // Boundary condition in south  y direction
-      coupler.set_option<std::string>("bc_y2","wall_free_slip"); // Boundary condition in north  y direction
+      if (coupler.get_option<bool>( "tank_set_large" , false )) {
+        coupler.set_option<std::string>("bc_y1","periodic"); // Boundary condition in south  y direction
+        coupler.set_option<std::string>("bc_y2","periodic"); // Boundary condition in north  y direction
+      } else {
+        coupler.set_option<std::string>("bc_y1","wall_free_slip"); // Boundary condition in south  y direction
+        coupler.set_option<std::string>("bc_y2","wall_free_slip"); // Boundary condition in north  y direction
+      }
       coupler.set_option<std::string>("bc_z1","wall_free_slip"); // Boundary condition in bottom z direction
       coupler.set_option<std::string>("bc_z2","wall_free_slip"); // Boundary condition in top    z direction
       auto rho   = coupler.get_option<real>("init_density");

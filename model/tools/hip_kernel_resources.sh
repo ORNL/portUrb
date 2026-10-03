@@ -4,12 +4,14 @@ set -euo pipefail
 
 usage() {
   echo "Usage: $0 --executable FILE --output FILE --source-root DIR \\" >&2
-  echo "          --roc-obj-ls FILE --llvm-nm FILE --llvm-readobj FILE --llvm-symbolizer FILE" >&2
+  echo "          --remarks-dir DIR --roc-obj-ls FILE --llvm-nm FILE \\" >&2
+  echo "          --llvm-readobj FILE --llvm-symbolizer FILE" >&2
 }
 
 executable=""
 output=""
 source_root=""
+remarks_dir=""
 roc_obj_ls=""
 llvm_nm=""
 llvm_readobj=""
@@ -20,6 +22,7 @@ while (( $# > 0 )); do
     --executable)      executable="$2";      shift 2 ;;
     --output)          output="$2";          shift 2 ;;
     --source-root)     source_root="$2";     shift 2 ;;
+    --remarks-dir)     remarks_dir="$2";     shift 2 ;;
     --roc-obj-ls)      roc_obj_ls="$2";      shift 2 ;;
     --llvm-nm)         llvm_nm="$2";         shift 2 ;;
     --llvm-readobj)    llvm_readobj="$2";    shift 2 ;;
@@ -46,6 +49,34 @@ trap 'rm -rf "$temporary_dir"' EXIT
 
 all_rows="$temporary_dir/all_rows.tsv"
 : > "$all_rows"
+occupancy_raw="$temporary_dir/occupancy-raw.tsv"
+occupancy_map="$temporary_dir/occupancy.tsv"
+: > "$occupancy_raw"
+if [[ -n "$remarks_dir" && -d "$remarks_dir" ]]; then
+  while IFS= read -r -d '' remarks_file; do
+    awk '
+      /remark: Function Name:/ {
+        name = $0
+        sub(/^.*remark: Function Name:[[:space:]]*/, "", name)
+        bracket = index(name, " [")
+        if (bracket) name = substr(name, 1, bracket-1)
+      }
+      {
+        label = "Occupancy [waves/SIMD]:"
+        start = index($0, label)
+        if (start && name != "") {
+          occupancy = substr($0, start + length(label))
+          sub(/^[[:space:]]*/, "", occupancy)
+          bracket = index(occupancy, " [")
+          if (bracket) occupancy = substr(occupancy, 1, bracket-1)
+          print name, occupancy
+        }
+      }
+    ' "$remarks_file" >> "$occupancy_raw"
+  done < <(find "$remarks_dir" -type f -name '*.hip-resource-remarks' -print0 2>/dev/null)
+fi
+awk 'BEGIN { OFS=sprintf("%c", 9) } { occupancy[$1]=$2 } END { for (name in occupancy) print name, occupancy[name] }' \
+  "$occupancy_raw" > "$occupancy_map"
 declare -A seen_images
 image_index=0
 
@@ -69,6 +100,7 @@ while IFS= read -r listing; do
 
   metadata_raw="$temporary_dir/metadata-${image_index}.txt"
   metadata="$temporary_dir/metadata-${image_index}.tsv"
+  metadata_with_occupancy="$temporary_dir/metadata-with-occupancy-${image_index}.tsv"
   symbols="$temporary_dir/symbols-${image_index}.txt"
   kernels="$temporary_dir/kernels-${image_index}.tsv"
   samples="$temporary_dir/samples-${image_index}.tsv"
@@ -104,6 +136,11 @@ while IFS= read -r listing; do
     END { emit() }
   ' "$metadata_raw" > "$metadata"
 
+  awk 'BEGIN { OFS=sprintf("%c", 9) }
+    FILENAME == ARGV[1] { occupancy[$1]=$2; next }
+    { print $0, (($1 in occupancy) ? occupancy[$1] : "N/A") }
+  ' "$occupancy_map" "$metadata" > "$metadata_with_occupancy"
+
   "$llvm_nm" --defined-only --format=posix "$image" > "$symbols"
   awk -F '\t' '
     NR == FNR {
@@ -116,13 +153,13 @@ while IFS= read -r listing; do
     }
     $1 in address {
       kernel_count++
-      print kernel_count "\t" $1 "\t" address[$1] "\t" size[$1] "\t" $2 "\t" $3 "\t" $4 "\t" $5
+      print kernel_count "\t" $1 "\t" address[$1] "\t" size[$1] "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6
     }
-  ' "$symbols" "$metadata" > "$kernels"
+  ' "$symbols" "$metadata_with_occupancy" > "$kernels"
 
   : > "$samples"
   : > "$addresses"
-  while IFS=$'\t' read -r kernel_id kernel_name address_hex size_hex vgpr vgpr_spills sgpr_spills private_segment; do
+  while IFS=$'\t' read -r kernel_id kernel_name address_hex size_hex vgpr vgpr_spills sgpr_spills private_segment occupancy; do
     address_decimal=$((16#$address_hex))
     size_decimal=$((16#$size_hex))
     if (( size_decimal <= 4 )); then
@@ -220,7 +257,7 @@ while IFS= read -r listing; do
 
   awk -F '\t' 'BEGIN { OFS="\t" }
     NR == FNR { file[$1]=$2; line[$1]=$3; config[$1]=$4; next }
-    { print file[$1], line[$1], config[$1], $5, $6, $7, $8 }
+    { print file[$1], line[$1], config[$1], $5, $6, $7, $8, $9 }
   ' "$locations" "$kernels" > "$image_rows"
   cat "$image_rows" >> "$all_rows"
 done < <("$roc_obj_ls" "$executable")
@@ -247,7 +284,7 @@ awk -F '\t' 'BEGIN { OFS="\t" }
       if (has_configs[group]) launch = "autotune " launch
       row[row_index,3] = launch
       print row[row_index,1], row[row_index,2], row[row_index,3], row[row_index,4], row[row_index,5], \
-            row[row_index,6], row[row_index,7]
+          row[row_index,6], row[row_index,7], row[row_index,8]
     }
   }
 ' "$all_rows" | LC_ALL=C sort -t $'\t' -k1,1 -k2,2n -k3,3 > "$normalized_rows"
@@ -262,15 +299,15 @@ awk -F '\t' -v executable_name="$(basename "$executable")" '
   BEGIN {
     print "HIP kernel resources for " executable_name
     print ""
-    printf "%-64s | %8s | %-34s | %10s | %12s | %12s | %24s\n", \
-           "file", "lineno", "launch_config", "VGPR_count", "VGPR_spills", "SGPR_spills", "private_segment_thread"
-    printf "%-64s-+-%8s-+-%-34s-+-%10s-+-%12s-+-%12s-+-%24s\n", \
+        printf "%-64s | %8s | %-34s | %10s | %12s | %12s | %24s | %22s\n", \
+          "file", "lineno", "launch_config", "VGPR_count", "VGPR_spills", "SGPR_spills", "private_segment_thread", "occupancy [waves/SIMD]"
+        printf "%-64s-+-%8s-+-%-34s-+-%10s-+-%12s-+-%12s-+-%24s-+-%22s\n", \
            "----------------------------------------------------------------", "--------", "----------------------------------", \
-           "----------", "------------", "------------", "------------------------"
+          "----------", "------------", "------------", "------------------------", "----------------------"
   }
   {
-    printf "%-64s | %8s | %-34s | %10s | %12s | %12s | %24s\n", \
-           clip($1,64), $2, clip($3,34), $4, $5, $6, $7
+        printf "%-64s | %8s | %-34s | %10s | %12s | %12s | %24s | %22s\n", \
+          clip($1,64), $2, clip($3,34), $4, $5, $6, $7, $8
   }
 ' "$normalized_rows" > "$temporary_output"
 mv "$temporary_output" "$output"

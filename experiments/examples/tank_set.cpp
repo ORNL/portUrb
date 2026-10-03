@@ -12,6 +12,7 @@
 #include <numeric>
 #include "edge_sponge.h"
 #include "synthetic_turbulent_inflow.h"
+#include "sponge_layer.h"
 
 /*
 In blender, delete the initial objects.
@@ -29,18 +30,24 @@ int main(int argc, char** argv) {
   {
     yakl::timer_start("main");
 
-    real scale                = 1./1250.;
+    bool large = true;
+
+    real scale                = large ? 1 : 1./1250.;
     real dx                   = 0.30*scale;
-    real u0                   = 0.5804;
+    real u0                   = large ? 8 : 0.58;
     real turbulence_intensity = 0.06;
     real inj_conc_width       = 4.0*scale;
     real inj_wvel_width       = 4.5*scale;
     real inj_conc             = 0.65;
-    real inj_wvel             = 0.60;
-    real roughness            = 5e-7;
+    real inj_wvel             = large ? 8.28 : 0.60;
+    real roughness            = 0.000625*scale;
+    real max_wind             = large ? 20 : 2;
+    real cs                   = max_wind * 4;
+    real ydom                 = large ? 400 : 200;
+    real zdom                 = large ? 100 : 50;
 
 
-    real les_delta_multiplier = 0.05;
+    real les_delta_multiplier = 0.30;
 
     modules::TriMesh mesh;
     mesh.load_file("/ccs/home/imn/330deg.obj");
@@ -48,10 +55,10 @@ int main(int argc, char** argv) {
     if (core::ParallelComm(MPI_COMM_WORLD).get_rank_id()==0) std::cout << mesh;
     real disk_x    = mesh.domain_hi.x;
     real disk_y    = mesh.domain_hi.y;
-    real offset_x1 = 10 + 1 + 50; // 38.85 is the original fetch between grid and circle
-    real offset_x2 = 30;
-    real offset_y1 = (200-disk_y)/2;
-    real offset_y2 = (200-disk_y)/2;
+    real offset_x1 = (10 + 1 + 50) * (large ? 2 : 1); // 38.85 is the original fetch between grid and circle
+    real offset_x2 = 30 * (large ? 2 : 1);
+    real offset_y1 = (ydom-disk_y)/2;
+    real offset_y2 = (ydom-disk_y)/2;
     mesh.add_offset(offset_x1,offset_y1,0);
     mesh.apply_scaling(scale,scale,scale);
     DEBUG_PRINT_MAIN_VAL(offset_x1+disk_x/2);
@@ -60,8 +67,8 @@ int main(int argc, char** argv) {
     // real        ylen        = std::ceil((mesh.domain_hi.y + 0     *scale)/dx)*dx;
     // real        zlen        = std::ceil((mesh.domain_hi.z*5             )/dx)*dx;
     real        xlen        = mesh.domain_hi.x + offset_x2*scale;
-    real        ylen        = 200*scale;
-    real        zlen        = 50 *scale;
+    real        ylen        = ydom*scale;
+    real        zlen        = zdom*scale;
     real        sim_time    = 10*xlen/u0;
     int         nx_glob     = xlen/dx;
     int         ny_glob     = ylen/dx;
@@ -86,17 +93,18 @@ int main(int argc, char** argv) {
     coupler.set_option<real       >( "init_uvel"                          , u0          );
     coupler.set_option<real       >( "init_vvel"                          , 0           );
     coupler.set_option<real       >( "cfl"                                , 0.6         );
-    coupler.set_option<real       >( "dycore_max_wind"                    , 2           );
-    coupler.set_option<real       >( "dycore_cs"                          , 10          );
+    coupler.set_option<real       >( "dycore_max_wind"                    , max_wind    );
+    coupler.set_option<real       >( "dycore_cs"                          , cs          );
     coupler.set_option<bool       >( "dycore_use_weno"                    , false       );
     coupler.set_option<bool       >( "dycore_use_weno_immersed"           , true        );
     coupler.set_option<bool       >( "dycore_buoyancy_theta"              , false       );
     coupler.set_option<bool       >( "dycore_immersed_hypervis"           , false       );
     coupler.set_option<int        >( "dycore_max_cycles"                  , dyn_cycle+1 );
-    coupler.set_option<real       >( "kinematic_viscosity"                , 1.e-6       );
+    coupler.set_option<real       >( "kinematic_viscosity"                , large ? 1e-5 : 1.e-6 );
     coupler.set_option<real       >( "les_closure_delta_multiplier"       , les_delta_multiplier );
     coupler.set_option<bool       >( "surface_flux_force_theta"           , false       );
     coupler.set_option<bool       >( "surface_flux_stability_corrections" , false       );
+    coupler.set_option<bool       >( "tank_set_large"                     , large       );
 
     coupler.init( core::ParallelComm(MPI_COMM_WORLD) ,
                   coupler.generate_levels_const_low_high(zlen,dx,11.2*scale,16*scale,dx*4) ,
@@ -174,6 +182,7 @@ int main(int argc, char** argv) {
         using core::Coupler;
         using modules::uniform_pg_wind_forcing_yzplane;
         using modules::uniform_pg_wind_forcing_specified;
+        using modules::sponge_layer_w;
         // {
         //   real z1  = 0.013470728;
         //   real z2  = 0.02;
@@ -199,6 +208,9 @@ int main(int argc, char** argv) {
         coupler.run_module( [&] (Coupler &c) { dycore.time_step        (c,dt); } , "dycore"         );
         coupler.run_module( [&] (Coupler &c) { sfc_flux.apply          (c,dt); } , "surface_fluxes" );
         // coupler.run_module( [&] (Coupler &c) { les_closure.apply       (c,dt); } , "les_closure"    );
+        if (large) {
+          coupler.run_module( [&] (Coupler &c) { modules::sponge_layer_w(c,dt,0.25*xlen/u0,0.05); } , "sponge" );
+        }
         coupler.run_module( [&] (Coupler &c) { time_averager.accumulate(c,dt); } , "time_averager"  );
       }
 

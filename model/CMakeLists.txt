@@ -33,20 +33,34 @@ if (Kokkos_ENABLE_HIP)
     set(PORTURB_HIP_RESOURCE_REPORT_SCRIPT
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/hip_kernel_resources.sh"
         CACHE INTERNAL "portUrb HIP kernel resource report script")
+    set(PORTURB_HIP_RESOURCE_CAPTURE_SCRIPT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/hip_kernel_resources_compile.sh"
+        CACHE INTERNAL "portUrb HIP kernel resource capture script")
 
     function(porturb_add_hip_kernel_resource_reports)
       get_property(porturb_targets DIRECTORY "${CMAKE_SOURCE_DIR}" PROPERTY BUILDSYSTEM_TARGETS)
       foreach(porturb_target IN LISTS porturb_targets)
         get_target_property(porturb_target_type "${porturb_target}" TYPE)
         if (porturb_target_type STREQUAL "EXECUTABLE")
+          get_target_property(porturb_target_binary_dir "${porturb_target}" BINARY_DIR)
+          get_target_property(porturb_existing_compile_launcher "${porturb_target}" CXX_COMPILER_LAUNCHER)
+          set(porturb_compile_launcher "${PORTURB_BASH};${PORTURB_HIP_RESOURCE_CAPTURE_SCRIPT}")
+          if (porturb_existing_compile_launcher AND
+              NOT porturb_existing_compile_launcher STREQUAL "porturb_existing_compile_launcher-NOTFOUND")
+            list(APPEND porturb_compile_launcher ${porturb_existing_compile_launcher})
+          endif()
+          set_property(TARGET "${porturb_target}" PROPERTY CXX_COMPILER_LAUNCHER
+                       "${porturb_compile_launcher}")
           target_compile_options("${porturb_target}" PRIVATE
-                                 $<$<COMPILE_LANGUAGE:CXX>:-gline-tables-only>)
+                                 $<$<COMPILE_LANGUAGE:CXX>:-gline-tables-only>
+                                 $<$<COMPILE_LANGUAGE:CXX>:-Rpass-analysis=kernel-resource-usage>)
           add_custom_command(
             TARGET "${porturb_target}" POST_BUILD
             COMMAND "${PORTURB_BASH}" "${PORTURB_HIP_RESOURCE_REPORT_SCRIPT}"
                     --executable "$<TARGET_FILE:${porturb_target}>"
                     --output "$<TARGET_FILE_DIR:${porturb_target}>/${porturb_target}.hip_kernel_resources.txt"
                     --source-root "${PORTURB_HOME}"
+                    --remarks-dir "${porturb_target_binary_dir}/CMakeFiles/${porturb_target}.dir"
                     --roc-obj-ls "${PORTURB_ROC_OBJ_LS}"
                     --llvm-nm "${PORTURB_LLVM_NM}"
                     --llvm-readobj "${PORTURB_LLVM_READOBJ}"
