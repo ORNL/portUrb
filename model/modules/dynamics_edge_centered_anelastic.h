@@ -12,8 +12,9 @@ namespace modules {
 
 
   struct Dynamics_Euler_Stratified {
-    mutable std::shared_ptr<GeometricMultigrid<float>> anelastic_geometric_multigrid;
-    mutable AcousticProjectionConfig proj_config;
+    typedef float FLOC; // Use single precision locally
+    mutable std::shared_ptr<GeometricMultigrid<FLOC>> anelastic_geometric_multigrid;
+    mutable AcousticProjectionConfig<FLOC> proj_config;
     // Order of accuracy (numerical convergence rate for smooth flows) for the dynamical core
     #ifndef PORTURB_ORD
       int static constexpr ord = 8;
@@ -31,7 +32,6 @@ namespace modules {
     int  static constexpr idW = 3;  // w-momentum
     int  static constexpr idT = 4;  // Density * potential temperature
 
-    typedef float FLOC; // Use single precision locally
 
 
     // Increase precursor ghost-cell storage when the current sub-cycle exceeds its capacity
@@ -103,8 +103,8 @@ namespace modules {
 
 
 
-    AcousticProjectionConfig acoustic_projection_config(core::Coupler const &coupler) const {
-      AcousticProjectionConfig config;
+    AcousticProjectionConfig<FLOC> acoustic_projection_config(core::Coupler const &coupler) const {
+      AcousticProjectionConfig<FLOC> config;
       config.diagnostics                            = coupler.get_option<bool       >("dycore_anelastic_projection_diagnostics"      ,false);
       config.check_linearity                        = coupler.get_option<bool       >("dycore_anelastic_check_linearity"             ,false);
       config.check_cg_compatibility                 = coupler.get_option<bool       >("dycore_anelastic_check_cg_compatibility"      ,true );
@@ -247,7 +247,7 @@ namespace modules {
 
       // Stage 1
       // Compute time derivatives of the state and tracers using a time steyp of dt/3
-      this->proj_config.linear_solver_relative_tolerance = 1.e-2;
+      this->proj_config.linear_solver_relative_tolerance = coupler.get_option<real>("dycore_anelastic_gmres_rel_tol",1.e-6)/100;
       compute_tendencies(coupler,state    ,state_tend,tracers    ,tracers_tend,dt_dyn/3,0,icycle);
       // Apply tendencies for the first stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
@@ -263,7 +263,7 @@ namespace modules {
 
       // Stage 2
       // Compute time derivatives of the state and tracers using a time step of dt/2
-      this->proj_config.linear_solver_relative_tolerance = 1.e-2;
+      this->proj_config.linear_solver_relative_tolerance = coupler.get_option<real>("dycore_anelastic_gmres_rel_tol",1.e-6)/100;
       compute_tendencies(coupler,state_tmp,state_tend,tracers_tmp,tracers_tend,dt_dyn/2,1,icycle);
       // Apply tendencies for the second stage for state and tracers
       yakl::parallel_for( YAKL_AUTO_LABEL() , SimpleBounds<4>(num_state+num_tracers,nz,ny,nx) ,
@@ -802,7 +802,7 @@ namespace modules {
                  (flux_y(l,k,j+1,i)-flux_y(l,k,j,i))*r_dy_loc +
                  (flux_z(l,k+1,j,i)-flux_z(l,k,j,i))/static_cast<FLOC>(dz(k));
         };
-        adv(idR,k,j,i) = static_cast<FLOC>(rho_h(hs+k))       - dt_loc*divergence(idR);
+        adv(idR,k,j,i) = static_cast<FLOC>(rho_h(hs+k))      - dt_loc*divergence(idR);
         adv(idU,k,j,i) = static_cast<FLOC>(state(idU,k,j,i)) - dt_loc*divergence(idU);
         adv(idV,k,j,i) = static_cast<FLOC>(state(idV,k,j,i)) - dt_loc*divergence(idV);
         adv(idW,k,j,i) = static_cast<FLOC>(state(idW,k,j,i)) - dt_loc*divergence(idW);
@@ -815,7 +815,7 @@ namespace modules {
         star(3,k,j,i) = adv(idT,k,j,i)*r_rho;
         if (gravity) {
           FLOC const theta_h_loc = static_cast<FLOC>(theta_h(hs+k));
-          star(2,k,j,i) += dt_loc*static_cast<FLOC>(grav)*(star(3,k,j,i)-theta_h_loc)/theta_h_loc;
+          star(2,k,j,i) += dt_loc*static_cast<FLOC>(grav)*fields_loc(idT,hs+k,hs+j,hs+i)/theta_h_loc;
         }
         for (int tr = 0; tr < num_tracers; tr++) {
           FLOC const rhoq = static_cast<FLOC>(tracers(tr,k,j,i))-dt_loc*divergence(num_state+1+tr);
@@ -845,7 +845,7 @@ namespace modules {
         momentum_in(2,k,j,i) = rho*star(2,k,j,i);
       });
       auto pressure = dm.get<real,3>("anelastic_pressure_pert");
-      acoustic_projection<ord>(coupler,momentum_in,momentum_out,pressure,dt,proj_config);
+      acoustic_projection<ord,FLOC>(coupler,momentum_in,momentum_out,pressure,dt,proj_config);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
         real const rho = rho_h(hs+k);
         state_tend(idR,k,j,i) = 0;
@@ -1584,10 +1584,10 @@ namespace modules {
 
       this->proj_config = acoustic_projection_config(coupler);
       if (proj_config.preconditioner == "GeometricMultigrid") {
-        anelastic_geometric_multigrid = std::make_shared<GeometricMultigrid<float>>();
+        anelastic_geometric_multigrid = std::make_shared<GeometricMultigrid<FLOC>>();
         proj_config.geometric_multigrid = anelastic_geometric_multigrid;
       }
-      initialize_acoustic_projection<ord>(coupler,proj_config);
+      initialize_acoustic_projection<ord,FLOC>(coupler,proj_config);
 
       // Projection pressure is a diagnostic constraint pressure, not thermodynamic EOS pressure. It is mean-zero only
       // for the unscreened operator, whose pressure has a constant nullspace.

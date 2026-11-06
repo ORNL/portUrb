@@ -9,9 +9,11 @@
 #include "GeometricMultigrid.h"
 #include <memory>
 #include <sstream>
+#include <type_traits>
 
 namespace modules {
 
+  template <class FP = float>
   struct AcousticProjectionConfig {
     bool diagnostics                    = false;
     bool check_linearity                = false;
@@ -35,7 +37,7 @@ namespace modules {
     int schwarz_chebyshev_degree        = 8;
     real schwarz_chebyshev_lambda_min   = 0.02;
     real schwarz_chebyshev_lambda_max   = 2;
-    std::shared_ptr<GeometricMultigrid<float>> geometric_multigrid;
+    std::shared_ptr<GeometricMultigrid<FP>> geometric_multigrid;
     int geometric_multigrid_vcycles            = 1;
     int geometric_multigrid_pre_smooth         = 2;
     int geometric_multigrid_post_smooth        = 2;
@@ -49,12 +51,14 @@ namespace modules {
   namespace detail {
 
   // Implementation details for the public function-based acoustic projection API.
-  template <int ord>
+  template <int ord, class FP = float>
   struct AcousticProjectionImpl {
-    using FLOC = float;
-    using ProjectionScalar = float;
+    using FLOC = FP;
+    using ProjectionScalar = FP;
     using Projection3d = yakl::Array<ProjectionScalar ***>;
     using Projection4d = yakl::Array<ProjectionScalar ****>;
+    static_assert(std::is_floating_point_v<ProjectionScalar>,
+                  "Acoustic projection precision must be a floating-point type");
 
     struct VerticalCellWeight {
       real1d dz;
@@ -72,8 +76,8 @@ namespace modules {
     int static constexpr idRV = 2;
     int static constexpr idRW = 3;
 
-    template <class FP, int ORD>
-    KOKKOS_INLINE_FUNCTION static void modify_stencil_immersed_der0( SArray<FP,   ORD>       & stencil,
+    template <class StencilFP, int ORD>
+    KOKKOS_INLINE_FUNCTION static void modify_stencil_immersed_der0( SArray<StencilFP, ORD>       & stencil,
                                                                      SArray<bool, ORD> const & immersed) {
       static_assert(ORD >= 2, "Stencil must contain at least two points");
       static_assert(ORD%2 == 0, "Edge-centered stencil order must be even");
@@ -84,7 +88,7 @@ namespace modules {
       // Extend the last in-domain value to the right.
       for (int i2 = hs; i2 < ORD; i2++) {
         if (immersed(i2)) {
-          FP const boundary_value = stencil(i2-1);
+          StencilFP const boundary_value = stencil(i2-1);
           for (int i3 = i2; i3 < ORD; i3++) { stencil(i3) = boundary_value; }
           break;
         }
@@ -92,7 +96,7 @@ namespace modules {
       // Extend the last in-domain value to the left.
       for (int i2 = hs - 1; i2 >= 0; i2--) {
         if (immersed(i2)) {
-          FP const boundary_value = stencil(i2+1);
+          StencilFP const boundary_value = stencil(i2+1);
           for (int i3 = i2; i3 >= 0; i3--) { stencil(i3) = boundary_value; }
           break;
         }
@@ -176,9 +180,9 @@ namespace modules {
       }
     }
 
-    static void apply(core::Coupler &coupler, float4d const &momentum_in,
-                      float4d const &momentum_out, real3d const &pressure_io, real dt,
-                      AcousticProjectionConfig const &config) {
+    static void apply(core::Coupler &coupler, Projection4d const &momentum_in,
+                      Projection4d const &momentum_out, real3d const &pressure_io, real dt,
+                      AcousticProjectionConfig<FP> const &config) {
       using yakl::SimpleBounds;
       auto const nx          = coupler.get_nx();
       auto const ny          = coupler.get_ny();
@@ -199,7 +203,7 @@ namespace modules {
       auto const metjac_edge = dm.get<real const,1>("dycore_metjac_edges");
       auto const fluid_mask = dm.get<int const,3>("dycore_anelastic_fluid_mask");
       auto const inv_diagonal_dtless =
-          dm.get<float const,3>("dycore_anelastic_projection_inv_diagonal_dtless");
+          dm.get<ProjectionScalar const,3>("dycore_anelastic_projection_inv_diagonal_dtless");
       ProjectionScalar const vertical_weight_scale = static_cast<ProjectionScalar>(
           coupler.get_option<real>("dycore_anelastic_vertical_inner_product_scale"));
       ProjectionScalar const fluid_volume_weight = static_cast<ProjectionScalar>(
@@ -648,7 +652,7 @@ namespace modules {
         auto local_rhs = dm.get<ProjectionScalar,4>("dycore_anelastic_schwarz_local_rhs");
         auto local_x   = dm.get<ProjectionScalar,4>("dycore_anelastic_schwarz_local_x_0");
         auto local_Ax  = dm.get<ProjectionScalar,4>("dycore_anelastic_schwarz_local_x_1");
-        auto const coefficients = dm.get<float const,5>("dycore_anelastic_schwarz_coefficients");
+        auto const coefficients = dm.get<ProjectionScalar const,5>("dycore_anelastic_schwarz_coefficients");
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<4>(num_tiles,nz,max_tile_y,max_tile_x),
                            KOKKOS_LAMBDA (int tile, int k, int jj, int ii) {
           int const tx = tiles(tile,2);
@@ -1171,7 +1175,7 @@ namespace modules {
     }
 
 
-    static void init(core::Coupler &coupler, AcousticProjectionConfig const &config) {
+    static void init(core::Coupler &coupler, AcousticProjectionConfig<FP> const &config) {
       using yakl::SimpleBounds;
       auto const nx      = coupler.get_nx();
       auto const ny      = coupler.get_ny();
@@ -1238,16 +1242,16 @@ namespace modules {
 
       // Reuse the Krylov vectors across every Runge-Kutta-stage pressure solve. CG receives collapsed views and performs
       // no runtime allocation.
-      dm.register_and_allocate<float>("dycore_anelastic_cg_r" ,{nz,ny,nx});
-      dm.register_and_allocate<float>("dycore_anelastic_cg_z" ,{nz,ny,nx});
-      dm.register_and_allocate<float>("dycore_anelastic_cg_p" ,{nz,ny,nx});
-      dm.register_and_allocate<float>("dycore_anelastic_cg_Ap",{nz,ny,nx});
-      dm.register_and_allocate<float>("dycore_anelastic_cg_s" ,{nz,ny,nx});
-      auto cg_r  = dm.get<float,3>("dycore_anelastic_cg_r");
-      auto cg_z  = dm.get<float,3>("dycore_anelastic_cg_z");
-      auto cg_p  = dm.get<float,3>("dycore_anelastic_cg_p");
-      auto cg_Ap = dm.get<float,3>("dycore_anelastic_cg_Ap");
-      auto cg_s  = dm.get<float,3>("dycore_anelastic_cg_s");
+      dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_cg_r" ,{nz,ny,nx});
+      dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_cg_z" ,{nz,ny,nx});
+      dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_cg_p" ,{nz,ny,nx});
+      dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_cg_Ap",{nz,ny,nx});
+      dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_cg_s" ,{nz,ny,nx});
+      auto cg_r  = dm.get<ProjectionScalar,3>("dycore_anelastic_cg_r");
+      auto cg_z  = dm.get<ProjectionScalar,3>("dycore_anelastic_cg_z");
+      auto cg_p  = dm.get<ProjectionScalar,3>("dycore_anelastic_cg_p");
+      auto cg_Ap = dm.get<ProjectionScalar,3>("dycore_anelastic_cg_Ap");
+      auto cg_s  = dm.get<ProjectionScalar,3>("dycore_anelastic_cg_s");
       yakl::parallel_for(YAKL_AUTO_LABEL(),SimpleBounds<3>(nz,ny,nx),KOKKOS_LAMBDA (int k, int j, int i) {
         cg_r (k,j,i) = 0;
         cg_z (k,j,i) = 0;
@@ -1259,10 +1263,10 @@ namespace modules {
       // Cache the inverse diagonal of the fixed-geometry, unscreened unit-timestep local pressure operator. The mean-zero
       // P*A*P projection is deliberately omitted from this Jacobi approximation because its dense rank-one contribution
       // would destroy locality. Runtime application adds screening and divides by dt.
-      dm.register_and_allocate<float>("dycore_anelastic_projection_inv_diagonal_dtless",{nz,ny,nx});
-      auto inv_diagonal = dm.get<float,3>("dycore_anelastic_projection_inv_diagonal_dtless");
-      float const pressure_beta = static_cast<float>(config.pressure_hyperviscosity);
-      float pressure_hvcoef = pressure_beta/std::pow(2.f,ord);
+      dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_projection_inv_diagonal_dtless",{nz,ny,nx});
+      auto inv_diagonal = dm.get<ProjectionScalar,3>("dycore_anelastic_projection_inv_diagonal_dtless");
+      ProjectionScalar const pressure_beta = static_cast<ProjectionScalar>(config.pressure_hyperviscosity);
+      ProjectionScalar pressure_hvcoef = pressure_beta/std::pow(ProjectionScalar(2),ord);
       if ((ord/2)%2 == 1) pressure_hvcoef *= -1;
       bool const pressure_hv_enabled = pressure_beta != 0;
       bool const periodic_x = coupler.get_option<std::string>("bc_x1") == "periodic";
@@ -1278,8 +1282,8 @@ namespace modules {
       int const j_beg_int = static_cast<int>(coupler.get_j_beg());
       int const nx_glob_int = static_cast<int>(nx_glob);
       int const ny_glob_int = static_cast<int>(ny_glob);
-      float const r_dx = 1.f/static_cast<float>(dx);
-      float const r_dy = 1.f/static_cast<float>(dy);
+      ProjectionScalar const r_dx = ProjectionScalar(1)/static_cast<ProjectionScalar>(dx);
+      ProjectionScalar const r_dy = ProjectionScalar(1)/static_cast<ProjectionScalar>(dy);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
         if (fluid_mask(k,j,i) == 0) {
           inv_diagonal(k,j,i) = 0;
@@ -1291,11 +1295,11 @@ namespace modules {
           return std::max(0,std::min(extent-1,index));
         };
         auto x_face_response = [&] (int face, bool hv) {
-          SArray<float,ord> s;
+          SArray<ProjectionScalar,ord> s;
           SArray<bool,ord> imm;
           for (int ii = 0; ii < ord; ii++) {
             int const i_glob_stencil = map_index(i_beg_int+face+ii-hs,nx_glob_int,periodic_x);
-            s(ii) = i_glob_stencil == i_beg_int+i ? 1.f : 0.f;
+            s(ii) = i_glob_stencil == i_beg_int+i ? 1. : 0.;
             imm(ii) = immersed_halos(hs+k,hs+j,face+ii) > immersed_threshold;
           }
           modify_stencil_immersed_der0(s,imm);
@@ -1303,15 +1307,15 @@ namespace modules {
                               immersed_halos(hs+k,hs+j,hs+face  ) > immersed_threshold ||
                               (px == 0         && face == 0  && wall_x1) ||
                               (px == nproc_x-1 && face == nx && wall_x2);
-          if (closed) return 0.f;
+          if (closed) return ProjectionScalar(0);
           return hv ? TransformMatrices::edge_hvder(s) : TransformMatrices::edge_der(s);
         };
         auto y_face_response = [&] (int face, bool hv) {
-          SArray<float,ord> s;
+          SArray<ProjectionScalar,ord> s;
           SArray<bool,ord> imm;
           for (int jj = 0; jj < ord; jj++) {
             int const j_glob_stencil = map_index(j_beg_int+face+jj-hs,ny_glob_int,periodic_y);
-            s(jj) = j_glob_stencil == j_beg_int+j ? 1.f : 0.f;
+            s(jj) = j_glob_stencil == j_beg_int+j ? 1. : 0.;
             imm(jj) = immersed_halos(hs+k,face+jj,hs+i) > immersed_threshold;
           }
           modify_stencil_immersed_der0(s,imm);
@@ -1319,49 +1323,51 @@ namespace modules {
                               immersed_halos(hs+k,hs+face  ,hs+i) > immersed_threshold ||
                               (py == 0         && face == 0  && wall_y1) ||
                               (py == nproc_y-1 && face == ny && wall_y2);
-          if (closed) return 0.f;
+          if (closed) return ProjectionScalar(0);
           return hv ? TransformMatrices::edge_hvder(s) : TransformMatrices::edge_der(s);
         };
         auto z_face_response = [&] (int face, bool hv) {
-          SArray<float,ord> s;
+          SArray<ProjectionScalar,ord> s;
           SArray<bool,ord> imm;
           for (int kk = 0; kk < ord; kk++) {
             int const k_stencil = map_index(face+kk-hs,nz,periodic_z);
-            s(kk) = k_stencil == k ? 1.f : 0.f;
+            s(kk) = k_stencil == k ? 1. : 0.;
             imm(kk) = immersed_halos(face+kk,hs+j,hs+i) > immersed_threshold;
           }
           modify_stencil_immersed_der0(s,imm);
           bool const closed = immersed_halos(hs+face-1,hs+j,hs+i) > immersed_threshold ||
                               immersed_halos(hs+face  ,hs+j,hs+i) > immersed_threshold ||
                               (face == 0  && wall_z1) || (face == nz && wall_z2);
-          if (closed) return 0.f;
+          if (closed) return ProjectionScalar(0);
           return hv ? TransformMatrices::edge_hvder(s) : TransformMatrices::edge_der(s);
         };
 
-        float const x_der_l = x_face_response(i  ,false);
-        float const x_der_r = x_face_response(i+1,false);
-        float const y_der_l = y_face_response(j  ,false);
-        float const y_der_r = y_face_response(j+1,false);
-        float const z_der_l = z_face_response(k  ,false);
-        float const z_der_r = z_face_response(k+1,false);
-        float const dz_cell = static_cast<float>(dz(k));
-        float diagonal = (x_der_l-x_der_r)*r_dx*r_dx + (y_der_l-y_der_r)*r_dy*r_dy +
-                         (z_der_l/static_cast<float>(metjac_edges(k))-
-                          z_der_r/static_cast<float>(metjac_edges(k+1)))/dz_cell;
+        ProjectionScalar const x_der_l = x_face_response(i  ,false);
+        ProjectionScalar const x_der_r = x_face_response(i+1,false);
+        ProjectionScalar const y_der_l = y_face_response(j  ,false);
+        ProjectionScalar const y_der_r = y_face_response(j+1,false);
+        ProjectionScalar const z_der_l = z_face_response(k  ,false);
+        ProjectionScalar const z_der_r = z_face_response(k+1,false);
+        ProjectionScalar const dz_cell = static_cast<ProjectionScalar>(dz(k));
+        ProjectionScalar diagonal = (x_der_l-x_der_r)*r_dx*r_dx + (y_der_l-y_der_r)*r_dy*r_dy +
+                         (z_der_l/static_cast<ProjectionScalar>(metjac_edges(k))-
+                          z_der_r/static_cast<ProjectionScalar>(metjac_edges(k+1)))/dz_cell;
         if (pressure_hv_enabled) {
-          float const x_hv_l = x_face_response(i  ,true);
-          float const x_hv_r = x_face_response(i+1,true);
-          float const y_hv_l = y_face_response(j  ,true);
-          float const y_hv_r = y_face_response(j+1,true);
-          float const z_hv_l = z_face_response(k  ,true);
-          float const z_hv_r = z_face_response(k+1,true);
-          float const dz_l = 0.5f*(static_cast<float>(dz(std::max(0,k-1)))+static_cast<float>(dz(k)));
-          float const dz_r = 0.5f*(static_cast<float>(dz(k))+static_cast<float>(dz(std::min(nz-1,k+1))));
+          ProjectionScalar const x_hv_l = x_face_response(i  ,true);
+          ProjectionScalar const x_hv_r = x_face_response(i+1,true);
+          ProjectionScalar const y_hv_l = y_face_response(j  ,true);
+          ProjectionScalar const y_hv_r = y_face_response(j+1,true);
+          ProjectionScalar const z_hv_l = z_face_response(k  ,true);
+          ProjectionScalar const z_hv_r = z_face_response(k+1,true);
+          ProjectionScalar const dz_l = ProjectionScalar(0.5)*
+              (static_cast<ProjectionScalar>(dz(std::max(0,k-1)))+static_cast<ProjectionScalar>(dz(k)));
+          ProjectionScalar const dz_r = ProjectionScalar(0.5)*
+              (static_cast<ProjectionScalar>(dz(k))+static_cast<ProjectionScalar>(dz(std::min(nz-1,k+1))));
           diagonal += pressure_hvcoef*((x_hv_r-x_hv_l)*r_dx*r_dx + (y_hv_r-y_hv_l)*r_dy*r_dy +
                                       (z_hv_r/dz_r-z_hv_l/dz_l)/dz_cell);
         }
-        inv_diagonal(k,j,i) = std::isfinite(diagonal) && diagonal > std::numeric_limits<float>::min() ?
-                              1.f/diagonal : 0;
+        inv_diagonal(k,j,i) = std::isfinite(diagonal) && diagonal > std::numeric_limits<ProjectionScalar>::min() ?
+                              1./diagonal : 0;
       });
       yakl::Array<int ***> invalid_diagonal("anelastic_invalid_jacobi_diagonal",nz,ny,nx);
       yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<3>(nz,ny,nx), KOKKOS_LAMBDA (int k, int j, int i) {
@@ -1383,14 +1389,14 @@ namespace modules {
         if (!config.geometric_multigrid) {
           endrun("ERROR: anelastic geometric multigrid preconditioner has no persistent solver object");
         }
-        typename GeometricMultigrid<float>::Options options;
+        typename GeometricMultigrid<ProjectionScalar>::Options options;
         options.vcycles = config.geometric_multigrid_vcycles;
         options.pre_smooth = config.geometric_multigrid_pre_smooth;
         options.post_smooth = config.geometric_multigrid_post_smooth;
         options.coarse_smooth = config.geometric_multigrid_coarse_smooth;
         options.coarse_cells = config.geometric_multigrid_coarse_cells;
         options.min_cells_per_rank = config.geometric_multigrid_min_cells_per_rank;
-        options.jacobi_weight = static_cast<float>(config.geometric_multigrid_jacobi_weight);
+        options.jacobi_weight = static_cast<ProjectionScalar>(config.geometric_multigrid_jacobi_weight);
         options.coarsening_factor = config.geometric_multigrid_coarsening_factor;
         config.geometric_multigrid->initialize(coupler,options);
       } else if (preconditioner == "Schwarz") {
@@ -1489,22 +1495,22 @@ namespace modules {
         coupler.halo_exchange(mask_fields,schwarz_hs);
         int const max_tile_x = tile_nx+2*overlap;
         int const max_tile_y = tile_ny+2*overlap;
-        dm.register_and_allocate<float>("dycore_anelastic_schwarz_residual_halos",
+        dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_schwarz_residual_halos",
                                         {1,nz+2*schwarz_hs,ny+2*schwarz_hs,nx+2*schwarz_hs});
-        dm.register_and_allocate<float>("dycore_anelastic_schwarz_local_rhs",
+        dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_schwarz_local_rhs",
                                         {num_local_tiles,nz,max_tile_y,max_tile_x});
-        dm.register_and_allocate<float>("dycore_anelastic_schwarz_local_x_0",
+        dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_schwarz_local_x_0",
                                         {num_local_tiles,nz,max_tile_y,max_tile_x});
-        dm.register_and_allocate<float>("dycore_anelastic_schwarz_local_x_1",
+        dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_schwarz_local_x_1",
                                         {num_local_tiles,nz,max_tile_y,max_tile_x});
         // Cached rectangular stencil: diagonal, inverse diagonal, and xm/xp/ym/yp/zm/zp neighbor coefficients.
-        dm.register_and_allocate<float>("dycore_anelastic_schwarz_coefficients",
+        dm.register_and_allocate<ProjectionScalar>("dycore_anelastic_schwarz_coefficients",
                                         {8,num_local_tiles,nz,max_tile_y,max_tile_x});
-        auto coefficients = dm.get<float,5>("dycore_anelastic_schwarz_coefficients");
+        auto coefficients = dm.get<ProjectionScalar,5>("dycore_anelastic_schwarz_coefficients");
         coefficients = 0;
         auto tiles = dm.get<int const,2>("dycore_anelastic_schwarz_tiles");
-        float const cx = r_dx*r_dx;
-        float const cy = r_dy*r_dy;
+        ProjectionScalar const cx = r_dx*r_dx;
+        ProjectionScalar const cy = r_dy*r_dy;
         yakl::parallel_for(YAKL_AUTO_LABEL(), SimpleBounds<4>(num_local_tiles,nz,max_tile_y,max_tile_x),
                            KOKKOS_LAMBDA (int tile, int k, int jj, int ii) {
           int const tx = tiles(tile,2);
@@ -1524,8 +1530,8 @@ namespace modules {
           int const jh = schwarz_hs+dj;
           if (mask_halos(schwarz_hs+k,jh,ih) == 0) return;
 
-          float diagonal = 0;
-          auto cache_horizontal = [&] (int field, int ni, int nj, int ngi, int ngj, float coefficient,
+          ProjectionScalar diagonal = 0;
+          auto cache_horizontal = [&] (int field, int ni, int nj, int ngi, int ngj, ProjectionScalar coefficient,
                                        bool physical_outside) {
             if (physical_outside) return;
             if (ni < 0 || ni >= tx || nj < 0 || nj >= ty) {
@@ -1553,17 +1559,19 @@ namespace modules {
           int const km = k > 0 ? k-1 : nz-1;
           int const kp = k+1 < nz ? k+1 : 0;
           if ((k > 0 || periodic_z) && mask_halos(schwarz_hs+km,jh,ih) == 1) {
-            float const coefficient = 1.f/(static_cast<float>(dz(k))*static_cast<float>(metjac_edges(k)));
+            ProjectionScalar const coefficient = ProjectionScalar(1)/
+                (static_cast<ProjectionScalar>(dz(k))*static_cast<ProjectionScalar>(metjac_edges(k)));
             diagonal += coefficient;
             coefficients(6,tile,k,jj,ii) = coefficient;
           }
           if ((k+1 < nz || periodic_z) && mask_halos(schwarz_hs+kp,jh,ih) == 1) {
-            float const coefficient = 1.f/(static_cast<float>(dz(k))*static_cast<float>(metjac_edges(k+1)));
+            ProjectionScalar const coefficient = ProjectionScalar(1)/
+                (static_cast<ProjectionScalar>(dz(k))*static_cast<ProjectionScalar>(metjac_edges(k+1)));
             diagonal += coefficient;
             coefficients(7,tile,k,jj,ii) = coefficient;
           }
           coefficients(0,tile,k,jj,ii) = diagonal;
-          coefficients(1,tile,k,jj,ii) = diagonal > 0 ? 1.f/diagonal : 0;
+          coefficients(1,tile,k,jj,ii) = diagonal > 0 ? 1./diagonal : 0;
         });
         coupler.set_option<int>("dycore_anelastic_schwarz_num_local_tiles",num_local_tiles);
         coupler.set_option<int>("dycore_anelastic_schwarz_halo",schwarz_hs);
@@ -1580,10 +1588,10 @@ namespace modules {
     detail::AcousticProjectionImpl<ORD>::template modify_stencil_immersed_der0<FP,ORD>(stencil,immersed);
   }
 
-  template <int ord>
-  void acoustic_projection(core::Coupler &coupler, float4d const &momentum_in,
-                           float4d const &momentum_out, real3d const &pressure, real dt,
-                           AcousticProjectionConfig const &config) {
+  template <int ord, class FP = float>
+  void acoustic_projection(core::Coupler &coupler, yakl::Array<FP ****> const &momentum_in,
+                           yakl::Array<FP ****> const &momentum_out, real3d const &pressure, real dt,
+                           AcousticProjectionConfig<FP> const &config) {
     auto const nz = coupler.get_nz();
     auto const ny = coupler.get_ny();
     auto const nx = coupler.get_nx();
@@ -1597,12 +1605,12 @@ namespace modules {
     if (!momentum_shape_valid || !pressure_shape_valid) {
       endrun("ERROR: acoustic projection input/output dimensions do not match the Coupler grid");
     }
-    detail::AcousticProjectionImpl<ord>::apply(coupler,momentum_in,momentum_out,pressure,dt,config);
+    detail::AcousticProjectionImpl<ord,FP>::apply(coupler,momentum_in,momentum_out,pressure,dt,config);
   }
 
-  template <int ord>
-  void initialize_acoustic_projection(core::Coupler &coupler, AcousticProjectionConfig const &config) {
-    detail::AcousticProjectionImpl<ord>::init(coupler,config);
+  template <int ord, class FP = float>
+  void initialize_acoustic_projection(core::Coupler &coupler, AcousticProjectionConfig<FP> const &config) {
+    detail::AcousticProjectionImpl<ord,FP>::init(coupler,config);
   }
 
 }

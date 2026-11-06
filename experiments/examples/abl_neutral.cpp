@@ -1,6 +1,6 @@
 
 #include "coupler.h"
-#include "dynamics_edge_centered.h"
+#include "dynamics_edge_centered_anelastic.h"
 #include "time_averager.h"
 #include "sc_init.h"
 #include "sc_perturb.h"
@@ -23,20 +23,20 @@ int main(int argc, char** argv) {
     // auto buoy_theta = config["buoy_theta"].as<bool>();
     // auto rsst       = config["rsst"      ].as<bool>();
 
-    real dx         = 8;
+    real dx         = 20;
     real umax       = 15;
     real cfl        = 0.6;
-    real cs         = umax*10; // umax*2;
+    real cs         = 350; // umax*2;
     bool buoy_theta = true;
     bool rsst       = true;
     // real cs         = 10;
     // bool buoy_theta = true;
     // bool rsst       = true;
 
-    real        sim_time    = 101;
-    real        xlen        = 4096;
-    real        ylen        = 4096;
-    real        zlen        = 1024;
+    real        sim_time    = 3600*10;
+    real        xlen        = 1000;
+    real        ylen        = 1000;
+    real        zlen        = 1000;
     int         nx_glob     = (int) std::round(xlen/dx);
     int         ny_glob     = (int) std::round(ylen/dx);
     int         nz          = (int) std::round(zlen/dx);
@@ -79,12 +79,12 @@ int main(int argc, char** argv) {
     coupler.set_option<bool       >( "dycore_anelastic_use_cg"                                  , true   );
     coupler.set_option<bool       >( "dycore_anelastic_time_linear_solver"                      , false  );
     coupler.set_option<bool       >( "dycore_anelastic_screening"                               , true   );
-    coupler.set_option<real       >( "dycore_anelastic_projection_beta"                         , 0.1    );
-    coupler.set_option<real       >( "dycore_anelastic_projection_pressure_beta"                , 0      );
+    coupler.set_option<real       >( "dycore_anelastic_projection_beta"                         , 0.0    );
+    coupler.set_option<real       >( "dycore_anelastic_projection_pressure_beta"                , 0.0    );
     coupler.set_option<bool       >( "dycore_anelastic_use_jacobi_preconditioner"               , false  );
     coupler.set_option<std::string>( "dycore_anelastic_preconditioner"                          , "GeometricMultigrid");
     coupler.set_option<int        >( "dycore_anelastic_gmres_restart"                           , 30     );
-    coupler.set_option<int        >( "dycore_anelastic_gmres_max_iters"                         , 200    );
+    coupler.set_option<int        >( "dycore_anelastic_gmres_max_iters"                         , 500    );
     coupler.set_option<real       >( "dycore_anelastic_gmres_rel_tol"                           , 1.e-4  );
     coupler.set_option<real       >( "dycore_anelastic_gmres_abs_tol"                           , 0      );
     coupler.set_option<bool       >( "dycore_anelastic_gmres_verbose"                           , false  );
