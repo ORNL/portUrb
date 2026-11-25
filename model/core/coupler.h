@@ -1195,7 +1195,8 @@ namespace core {
       write_output_attributes(nc,"y"           ,{{"units",std::string("m")}});
       write_output_attributes(nc,"z"           ,{{"units",std::string("m")}});
       write_output_attributes(nc,"zi"          ,{{"units",std::string("m")}});
-      write_output_attributes(nc,"density_dry_mean_column",{{"units",std::string("kg/m^3")}});
+      write_output_attributes(nc,"density_dry_mean_column",{{"coordinates",std::string("z")},
+                                                             {"units",std::string("kg/m^3")}});
       write_output_attributes(nc,"density_dry_deviation",{{"coordinates",std::string("z y x")},
                                                              {"units",std::string("kg/m^3")}});
       write_output_attributes(nc,"uvel"        ,{{"coordinates",std::string("z y x")},
@@ -1204,7 +1205,8 @@ namespace core {
                                                    {"units",std::string("m/s")}});
       write_output_attributes(nc,"wvel"        ,{{"coordinates",std::string("z y x")},
                                                    {"units",std::string("m/s")}});
-      write_output_attributes(nc,"temperature_mean_column",{{"units",std::string("K")}});
+      write_output_attributes(nc,"temperature_mean_column",{{"coordinates",std::string("z")},
+                                                             {"units",std::string("K")}});
       write_output_attributes(nc,"temperature_deviation",{{"coordinates",std::string("z y x")},
                                                              {"units",std::string("K")}});
       for (int tr = 0; tr < num_tracers; tr++) {

@@ -341,7 +341,7 @@ namespace core {
     template <class T>
     void writeVariableAttribute(T const &value, std::string const &variable_name, std::string const &name) {
 #ifdef PORTURB_HAS_PNETCDF
-      if (name != "coordinates") pnetcdf->writeVariableAttribute(value,variable_name,name);
+      pnetcdf->writeVariableAttribute(value,variable_name,name);
 #else
       define_variable_attribute(value,variable_name,name);
 #endif
